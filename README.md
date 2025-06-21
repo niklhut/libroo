@@ -1,49 +1,37 @@
-# Nuxt Starter Template
+# 📚 Libroo
 
-[![Nuxt UI Pro](https://img.shields.io/badge/Made%20with-Nuxt%20UI%20Pro-00DC82?logo=nuxt&labelColor=020420)](https://ui.nuxt.com/pro)
-[![Deploy to NuxtHub](https://img.shields.io/badge/Deploy%20to-NuxtHub-00DC82?logo=nuxt&labelColor=020420)](https://hub.nuxt.com/new?repo=nuxt-ui-pro/starter)
+Libroo is a personal library tracker built to help you manage your books, collections, and track who borrowed what.
 
-This Nuxt starter lets you get started with [Nuxt UI Pro](https://ui.nuxt.com/pro) quickly.
+## ✨ Features
 
-- [Live demo](https://ui-pro-starter.nuxt.dev/)
-- [Documentation](https://ui.nuxt.com/getting-started/installation/pro/nuxt)
+- Add books manually or via ISBN using Open Library API
+- Organize books into custom collections
+- Track borrowing/lending history
+- Mark books as "reading", "finished", etc.
+- Rate and review finished books
 
-<a href="https://ui-pro-starter.nuxt.dev/" target="_blank">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://assets.hub.nuxt.com/eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJodHRwczovL3VpLXByby1zdGFydGVyLm51eHQuZGV2IiwiaWF0IjoxNzM5NDYzMzk4fQ.XLzPkSW6nRbPW07QO1RkMwz_RAPA4KfeyrWrK3li9YI.jpg?theme=dark">
-    <source media="(prefers-color-scheme: light)" srcset="https://assets.hub.nuxt.com/eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJodHRwczovL3VpLXByby1zdGFydGVyLm51eHQuZGV2IiwiaWF0IjoxNzM5NDYzMzk4fQ.XLzPkSW6nRbPW07QO1RkMwz_RAPA4KfeyrWrK3li9YI.jpg?theme=light">
-    <img alt="Nuxt Starter Template" src="https://assets.hub.nuxt.com/eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJodHRwczovL3VpLXByby1zdGFydGVyLm51eHQuZGV2IiwiaWF0IjoxNzM5NDYzMzk4fQ.XLzPkSW6nRbPW07QO1RkMwz_RAPA4KfeyrWrK3li9YI.jpg">
-  </picture>
-</a>
+## 🛠️ Stack
 
-## Setup
+- [Nuxt 3](https://nuxt.com/)
+- [Nuxt UI](https://ui.nuxt.com)
+- [Drizzle ORM](https://orm.drizzle.team/) + PostgreSQL
+- [Better Auth](https://better-auth.com/)
+- [Open Library API](https://openlibrary.org/developers/api)
 
-Make sure to install the dependencies:
+## 📦 Local Setup
 
 ```bash
+git clone https://github.com/niklhut/libroo
+cd libroo
+cp .env.example .env # add DB + auth credentials
 pnpm install
-```
-
-## Development Server
-
-Start the development server on `http://localhost:3000`:
-
-```bash
 pnpm dev
 ```
 
-## Production
+## 🗺️ Roadmap
 
-Build the application for production:
-
-```bash
-pnpm build
-```
-
-Locally preview production build:
-
-```bash
-pnpm preview
-```
-
-Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
+- [ ] ISBN-based book search and auto-fill
+- [ ] Create/read/update/delete books
+- [ ] Lending tracker with borrower info
+- [ ] Collections UI
+- [ ] Reading status + rating
