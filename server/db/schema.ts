@@ -63,8 +63,11 @@ export const bookCollection = pgTable('book_collection', {
 
 export const borrower = pgTable('borrower', {
   id: uuid('id').primaryKey().defaultRandom(),
-  userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  createdByUserId: text('created_by_user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  userId: text('user_id').references(() => user.id, { onDelete: 'set null' }),
   name: text('name').notNull(),
+  email: text('email'),
+  isLinkedToUser: boolean('is_linked_to_user').default(false).notNull(),
   ...timestamps
 }, table => [
   unique('borrower_user_name_unique_idx').on(table.userId, table.name)
