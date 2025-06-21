@@ -13,6 +13,10 @@ export default defineNuxtConfig({
 
   css: ['~/assets/css/main.css'],
 
+  runtimeConfig: {
+    databaseUrl: 'postgresql://libroo:libroo@localhost:5432/libroo-db'
+  },
+
   routeRules: {
     '/': { prerender: true }
   },
