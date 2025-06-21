@@ -35,3 +35,7 @@ pnpm dev
 - [ ] Lending tracker with borrower info
 - [ ] Collections UI
 - [ ] Reading status + rating
+
+## License
+
+This project is licensed under the [GNU AGPLv3](LICENSE). This means you are free to use, modify, and self-host the app, but if you run a modified version as a public service, you must also make your source code available.
