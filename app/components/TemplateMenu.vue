@@ -4,7 +4,7 @@
     :modal="false"
     :items="[{
       label: 'Starter',
-      to: 'https://ui-pro-starter.nuxt.dev/',
+      to: 'https://starter-template.nuxt.dev/',
       color: 'primary',
       checked: true,
       type: 'checkbox'
@@ -23,8 +23,15 @@
     }, {
       label: 'Chat',
       to: 'https://chat-template.nuxt.dev/'
+    }, {
+      label: 'Portfolio',
+      to: 'https://portfolio-template.nuxt.dev/'
+    }, {
+      label: 'Changelog',
+      to: 'https://changelog-template.nuxt.dev/'
     }]"
-    :ui="{ content: 'w-(--reka-dropdown-menu-trigger-width) min-w-0' }"
+    :content="{ align: 'start' }"
+    :ui="{ content: 'min-w-fit' }"
     size="xs"
   >
     <UButton
