@@ -1,95 +1,66 @@
-import { books } from 'hub:db:schema'
-import { blob } from 'hub:blob'
+import { runEffect, Effect } from '../../utils/effect'
+import { addBookByISBN, BookAlreadyOwnedError } from '../../repositories/book.repository'
+import { BookNotFoundError, OpenLibraryApiError } from '../../repositories/openLibrary.repository'
+import { requireAuth } from '../../services/auth.service'
 
 export default defineEventHandler(async (event) => {
-  // Validate session
-  const session = await auth.api.getSession({
-    headers: event.headers
-  })
+  // Read request body
+  const body = await readBody(event)
 
-  if (!session) {
-    throw createError({
-      statusCode: 401,
-      message: 'Unauthorized'
-    })
-  }
-
-  // Parse multipart form data
-  const formData = await readMultipartFormData(event)
-
-  if (!formData) {
+  if (!body?.isbn) {
     throw createError({
       statusCode: 400,
-      message: 'Invalid form data'
+      message: 'ISBN is required'
     })
   }
 
-  // Extract fields from form data
-  let title = ''
-  let author = ''
-  let isbn = ''
-  let coverFile: { data: Buffer; type: string; filename: string } | null = null
+  try {
+    return await runEffect(
+      Effect.gen(function* () {
+        // Get authenticated user
+        const user = yield* requireAuth(event)
 
-  for (const field of formData) {
-    if (field.name === 'title' && field.data) {
-      title = field.data.toString()
-    } else if (field.name === 'author' && field.data) {
-      author = field.data.toString()
-    } else if (field.name === 'isbn' && field.data) {
-      isbn = field.data.toString()
-    } else if (field.name === 'cover' && field.data && field.type) {
-      coverFile = {
-        data: field.data,
-        type: field.type,
-        filename: field.filename || 'cover.jpg'
-      }
-    }
-  }
+        // Add book by ISBN (will lookup from OpenLibrary if not exists)
+        const userBook = yield* addBookByISBN(user.id, body.isbn)
 
-  // Validate required fields
-  if (!title || !author) {
-    throw createError({
-      statusCode: 400,
-      message: 'Title and author are required'
-    })
-  }
-
-  // Generate unique ID
-  const id = crypto.randomUUID()
-  const now = new Date()
-  let coverPath: string | null = null
-
-  // Upload cover image if provided
-  if (coverFile) {
-    const blobResult = await blob.put(
-      `covers/${session.user.id}/${id}-${coverFile.filename}`,
-      coverFile.data,
-      { contentType: coverFile.type }
+        return {
+          id: userBook.id,
+          bookId: userBook.bookId,
+          title: userBook.book.title,
+          author: userBook.book.author,
+          isbn: userBook.book.isbn,
+          coverPath: userBook.book.coverPath,
+          addedAt: userBook.addedAt
+        }
+      }),
+      event
     )
-    coverPath = blobResult.pathname
-  }
-
-  // Insert book into database
-  const db = useDrizzle()
-
-  const newBook = {
-    id,
-    title,
-    author,
-    isbn: isbn || null,
-    coverPath,
-    userId: session.user.id,
-    createdAt: now
-  }
-
-  await db.insert(books).values(newBook)
-
-  return {
-    id: newBook.id,
-    title: newBook.title,
-    author: newBook.author,
-    isbn: newBook.isbn,
-    coverPath: newBook.coverPath,
-    createdAt: newBook.createdAt
+  } catch (error: any) {
+    // Handle specific errors
+    if (error._tag === 'BookAlreadyOwnedError') {
+      throw createError({
+        statusCode: 409,
+        message: `You already have this book (ISBN: ${error.isbn}) in your library`
+      })
+    }
+    if (error._tag === 'BookNotFoundError') {
+      throw createError({
+        statusCode: 404,
+        message: `Book with ISBN ${error.isbn} not found on OpenLibrary`
+      })
+    }
+    if (error._tag === 'OpenLibraryApiError') {
+      throw createError({
+        statusCode: 502,
+        message: `Failed to lookup book: ${error.message}`
+      })
+    }
+    if (error._tag === 'UnauthorizedError') {
+      throw createError({
+        statusCode: 401,
+        message: 'Unauthorized'
+      })
+    }
+    throw error
   }
 })

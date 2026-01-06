@@ -1,16 +1,14 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import * as z from 'zod'
+import type { FormSubmitEvent, AuthFormField } from '@nuxt/ui'
 
 definePageMeta({
   layout: false
 })
 
 const { signUp, session } = useAuth()
+const toast = useToast()
 
-const name = ref('')
-const email = ref('')
-const password = ref('')
-const confirmPassword = ref('')
 const isLoading = ref(false)
 const error = ref('')
 
@@ -21,33 +19,85 @@ watch(session, (newSession) => {
   }
 }, { immediate: true })
 
-async function handleSubmit() {
+// Form fields
+const fields: AuthFormField[] = [
+  {
+    name: 'name',
+    type: 'text',
+    label: 'Name',
+    placeholder: 'Enter your name',
+    required: true
+  },
+  {
+    name: 'email',
+    type: 'email',
+    label: 'Email',
+    placeholder: 'Enter your email',
+    required: true
+  },
+  {
+    name: 'password',
+    type: 'password',
+    label: 'Password',
+    placeholder: 'Enter your password',
+    hint: 'At least 8 characters',
+    required: true
+  },
+  {
+    name: 'confirmPassword',
+    type: 'password',
+    label: 'Confirm Password',
+    placeholder: 'Confirm your password',
+    required: true
+  }
+]
+
+// Validation schema
+const schema = z.object({
+  name: z.string('Name is required').min(1, 'Name is required'),
+  email: z.email('Please enter a valid email address'),
+  password: z.string('Password is required').min(8, 'Password must be at least 8 characters'),
+  confirmPassword: z.string('Confirm Password is required').min(1, 'Please confirm your password')
+}).refine((data) => data.password === data.confirmPassword, {
+  message: 'Passwords do not match',
+  path: ['confirmPassword']
+})
+
+type Schema = z.output<typeof schema>
+
+async function onSubmit(payload: FormSubmitEvent<Schema>) {
   error.value = ''
-
-  // Validate passwords match
-  if (password.value !== confirmPassword.value) {
-    error.value = 'Passwords do not match'
-    return
-  }
-
-  // Validate password length
-  if (password.value.length < 8) {
-    error.value = 'Password must be at least 8 characters'
-    return
-  }
-
   isLoading.value = true
 
   try {
-    const result = await signUp(email.value, password.value, name.value)
+    const result = await signUp(
+      payload.data.email,
+      payload.data.password,
+      payload.data.name
+    )
 
     if (result.error) {
       error.value = result.error.message || 'Failed to create account'
+      toast.add({
+        title: 'Registration failed',
+        description: error.value,
+        color: 'error'
+      })
     } else {
+      toast.add({
+        title: 'Account created!',
+        description: 'Welcome to Libroo.',
+        color: 'success'
+      })
       navigateTo('/library')
     }
   } catch (e: any) {
     error.value = e.message || 'An unexpected error occurred'
+    toast.add({
+      title: 'Error',
+      description: error.value,
+      color: 'error'
+    })
   } finally {
     isLoading.value = false
   }
@@ -55,96 +105,38 @@ async function handleSubmit() {
 </script>
 
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 py-12 px-4 sm:px-6 lg:px-8">
-    <div class="max-w-md w-full space-y-8">
-      <div class="text-center">
-        <h1 class="text-4xl font-bold text-gray-900 dark:text-white">
-          Libroo
-        </h1>
-        <p class="mt-2 text-gray-600 dark:text-gray-400">
-          Your Library, Managed
-        </p>
-      </div>
-
-      <UCard class="mt-8">
-        <template #header>
-          <h2 class="text-xl font-semibold text-center">
-            Create Account
-          </h2>
+  <div class="flex flex-col items-center justify-center min-h-screen p-4">
+    <UPageCard class="w-full max-w-md">
+      <UAuthForm
+        :schema="schema"
+        :fields="fields"
+        :loading="isLoading"
+        title="Create Account"
+        icon="i-lucide-user-plus"
+        submit-label="Create Account"
+        @submit="onSubmit"
+      >
+        <template #description>
+          Already have an account?
+          <ULink to="/auth/login" class="text-primary font-medium">
+            Sign in
+          </ULink>
         </template>
 
-        <form class="space-y-4" @submit.prevent="handleSubmit">
+        <template v-if="error" #validation>
           <UAlert
-            v-if="error"
             color="error"
-            variant="subtle"
-            :title="error"
             icon="i-lucide-alert-circle"
+            :title="error"
           />
-
-          <UFormField label="Name" name="name" required>
-            <UInput
-              v-model="name"
-              type="text"
-              placeholder="Your name"
-              icon="i-lucide-user"
-              size="lg"
-              class="w-full"
-            />
-          </UFormField>
-
-          <UFormField label="Email" name="email" required>
-            <UInput
-              v-model="email"
-              type="email"
-              placeholder="you@example.com"
-              icon="i-lucide-mail"
-              size="lg"
-              class="w-full"
-            />
-          </UFormField>
-
-          <UFormField label="Password" name="password" required hint="At least 8 characters">
-            <UInput
-              v-model="password"
-              type="password"
-              placeholder="••••••••"
-              icon="i-lucide-lock"
-              size="lg"
-              class="w-full"
-            />
-          </UFormField>
-
-          <UFormField label="Confirm Password" name="confirmPassword" required>
-            <UInput
-              v-model="confirmPassword"
-              type="password"
-              placeholder="••••••••"
-              icon="i-lucide-lock"
-              size="lg"
-              class="w-full"
-            />
-          </UFormField>
-
-          <UButton
-            type="submit"
-            block
-            size="lg"
-            :loading="isLoading"
-          >
-            Create Account
-          </UButton>
-        </form>
+        </template>
 
         <template #footer>
-          <p class="text-center text-sm text-gray-600 dark:text-gray-400">
-            Already have an account?
-            <NuxtLink to="/auth/login" class="text-primary-500 hover:text-primary-600 font-medium">
-              Sign in
-            </NuxtLink>
+          <p class="text-center text-sm text-muted">
+            Libroo - Your Library, Managed
           </p>
         </template>
-      </UCard>
-    </div>
+      </UAuthForm>
+    </UPageCard>
   </div>
 </template>

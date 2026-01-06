@@ -1,47 +1,71 @@
 import { Context, Effect, Layer, Data } from 'effect'
-import { eq } from 'drizzle-orm'
+import { eq, and } from 'drizzle-orm'
 import { DbService } from '../services/db.service'
-import { StorageService, putBlob } from '../services/storage.service'
-import { books } from 'hub:db:schema'
+import { StorageService } from '../services/storage.service'
+import {
+  OpenLibraryRepository,
+  downloadCover,
+  lookupByISBN,
+  BookNotFoundError as OpenLibraryNotFoundError,
+  OpenLibraryApiError
+} from './openLibrary.repository'
+import { books, userBooks } from 'hub:db:schema'
 
 // Error types
 export class BookNotFoundError extends Data.TaggedError('BookNotFoundError')<{
-  bookId: string
+  bookId?: string
+  isbn?: string
 }> { }
 
 export class BookCreateError extends Data.TaggedError('BookCreateError')<{
   message: string
 }> { }
 
-// Input types
-export interface AddBookInput {
-  title: string
-  author: string
-  isbn?: string
-  coverImage?: {
-    data: Buffer | Blob | ArrayBuffer
-    contentType: string
-    filename: string
-  }
-}
+export class BookAlreadyOwnedError extends Data.TaggedError('BookAlreadyOwnedError')<{
+  isbn: string
+}> { }
 
 // Output types
 export interface Book {
   id: string
+  isbn: string | null
   title: string
   author: string
-  isbn: string | null
   coverPath: string | null
-  userId: string
+  openLibraryKey: string | null
   createdAt: Date
+}
+
+export interface UserBook {
+  id: string
+  bookId: string
+  book: Book
+  addedAt: Date
 }
 
 // Service interface
 export interface BookRepositoryInterface {
-  addBook: (userId: string, input: AddBookInput) => Effect.Effect<Book, BookCreateError | Error, StorageService | DbService>
-  getLibrary: (userId: string) => Effect.Effect<Book[], Error, DbService>
+  // Add book by ISBN (lookup from OpenLibrary if not exists)
+  addBookByISBN: (
+    userId: string,
+    isbn: string
+  ) => Effect.Effect<
+    UserBook,
+    BookCreateError | BookAlreadyOwnedError | OpenLibraryNotFoundError | OpenLibraryApiError | Error,
+    DbService | StorageService | OpenLibraryRepository
+  >
+
+  // Get user's library
+  getLibrary: (userId: string) => Effect.Effect<UserBook[], Error, DbService>
+
+  // Get single book by ID
   getBookById: (bookId: string) => Effect.Effect<Book, BookNotFoundError | Error, DbService>
-  deleteBook: (bookId: string, userId: string) => Effect.Effect<void, BookNotFoundError | Error, DbService>
+
+  // Remove book from user's library
+  removeFromLibrary: (
+    userBookId: string,
+    userId: string
+  ) => Effect.Effect<void, BookNotFoundError | Error, DbService>
 }
 
 // Service tag
@@ -59,39 +83,94 @@ export const BookRepositoryLive = Layer.effect(
     const dbService = yield* DbService
 
     return {
-      addBook: (userId, input) =>
+      addBookByISBN: (userId, isbn) =>
         Effect.gen(function* () {
-          let coverPath: string | null = null
-
-          // Upload cover image if provided
-          if (input.coverImage) {
-            const blobResult = yield* putBlob(
-              `covers/${userId}/${generateId()}-${input.coverImage.filename}`,
-              input.coverImage.data,
-              { contentType: input.coverImage.contentType }
-            )
-            coverPath = blobResult.pathname
-          }
-
-          const id = generateId()
-          const now = new Date()
-
-          const newBook = {
-            id,
-            title: input.title,
-            author: input.author,
-            isbn: input.isbn ?? null,
-            coverPath,
-            userId,
-            createdAt: now
-          }
-
-          const result = yield* Effect.tryPromise({
-            try: () => dbService.db.insert(books).values(newBook),
-            catch: (error) => new BookCreateError({ message: `Failed to create book: ${error}` })
+          // Check if user already owns a book with this ISBN
+          const existingUserBook = yield* Effect.tryPromise({
+            try: async () => {
+              const result = await dbService.db
+                .select()
+                .from(userBooks)
+                .innerJoin(books, eq(userBooks.bookId, books.id))
+                .where(and(eq(userBooks.userId, userId), eq(books.isbn, isbn)))
+                .limit(1)
+              return result[0] || null
+            },
+            catch: (error) => new BookCreateError({ message: `Database error: ${error}` })
           })
 
-          return newBook
+          if (existingUserBook) {
+            return yield* Effect.fail(new BookAlreadyOwnedError({ isbn }))
+          }
+
+          // Check if book already exists in database (shared)
+          let book = yield* Effect.tryPromise({
+            try: async () => {
+              const result = await dbService.db
+                .select()
+                .from(books)
+                .where(eq(books.isbn, isbn))
+                .limit(1)
+              return result[0] || null
+            },
+            catch: (error) => new BookCreateError({ message: `Database error: ${error}` })
+          })
+
+          // If book doesn't exist, fetch from OpenLibrary and create it
+          if (!book) {
+            const openLibraryData = yield* lookupByISBN(isbn)
+
+            // Download cover to local storage
+            const coverPath = yield* downloadCover(isbn, 'L')
+
+            const newBookId = generateId()
+            const now = new Date()
+
+            book = {
+              id: newBookId,
+              isbn: openLibraryData.isbn,
+              title: openLibraryData.title,
+              author: openLibraryData.authors.join(', '),
+              coverPath,
+              openLibraryKey: openLibraryData.openLibraryKey,
+              createdAt: now
+            }
+
+            yield* Effect.tryPromise({
+              try: () => dbService.db.insert(books).values(book!),
+              catch: (error) => new BookCreateError({ message: `Failed to insert book: ${error}` })
+            })
+          }
+
+          // Create userBooks entry
+          const userBookId = generateId()
+          const addedAt = new Date()
+
+          yield* Effect.tryPromise({
+            try: () =>
+              dbService.db.insert(userBooks).values({
+                id: userBookId,
+                userId,
+                bookId: book!.id,
+                addedAt
+              }),
+            catch: (error) => new BookCreateError({ message: `Failed to add book to library: ${error}` })
+          })
+
+          return {
+            id: userBookId,
+            bookId: book!.id,
+            book: {
+              id: book!.id,
+              isbn: book!.isbn,
+              title: book!.title,
+              author: book!.author,
+              coverPath: book!.coverPath,
+              openLibraryKey: book!.openLibraryKey,
+              createdAt: book!.createdAt instanceof Date ? book!.createdAt : new Date(book!.createdAt)
+            },
+            addedAt
+          }
         }),
 
       getLibrary: (userId) =>
@@ -99,13 +178,28 @@ export const BookRepositoryLive = Layer.effect(
           try: async () => {
             const result = await dbService.db
               .select()
-              .from(books)
-              .where(eq(books.userId, userId))
-              .orderBy(books.createdAt)
+              .from(userBooks)
+              .innerJoin(books, eq(userBooks.bookId, books.id))
+              .where(eq(userBooks.userId, userId))
+              .orderBy(userBooks.addedAt)
 
-            return result.map((book) => ({
-              ...book,
-              createdAt: new Date(book.createdAt)
+            return result.map((row) => ({
+              id: row.user_books.id,
+              bookId: row.books.id,
+              book: {
+                id: row.books.id,
+                isbn: row.books.isbn,
+                title: row.books.title,
+                author: row.books.author,
+                coverPath: row.books.coverPath,
+                openLibraryKey: row.books.openLibraryKey,
+                createdAt: row.books.createdAt instanceof Date
+                  ? row.books.createdAt
+                  : new Date(row.books.createdAt)
+              },
+              addedAt: row.user_books.addedAt instanceof Date
+                ? row.user_books.addedAt
+                : new Date(row.user_books.addedAt)
             }))
           },
           catch: (error) => new Error(`Failed to get library: ${error}`)
@@ -120,32 +214,39 @@ export const BookRepositoryLive = Layer.effect(
                 .from(books)
                 .where(eq(books.id, bookId))
                 .limit(1),
-            catch: (error) => new Error(`Failed to get book: ${error}`)
+            catch: (error) => new Error(`Database error: ${error}`)
           })
 
-          if (result.length === 0) {
+          const [book] = result
+          if (!book) {
             return yield* Effect.fail(new BookNotFoundError({ bookId }))
           }
 
           return {
-            ...result[0],
-            createdAt: new Date(result[0].createdAt)
+            id: book.id,
+            isbn: book.isbn,
+            title: book.title,
+            author: book.author,
+            coverPath: book.coverPath,
+            openLibraryKey: book.openLibraryKey,
+            createdAt: book.createdAt instanceof Date ? book.createdAt : new Date(book.createdAt)
           }
         }),
 
-      deleteBook: (bookId, userId) =>
+      removeFromLibrary: (userBookId, userId) =>
         Effect.gen(function* () {
+          // Verify ownership and delete
           const result = yield* Effect.tryPromise({
             try: () =>
               dbService.db
-                .delete(books)
-                .where(eq(books.id, bookId))
+                .delete(userBooks)
+                .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId)))
                 .returning(),
-            catch: (error) => new Error(`Failed to delete book: ${error}`)
+            catch: (error) => new Error(`Database error: ${error}`)
           })
 
-          if (result.length === 0 || result[0].userId !== userId) {
-            return yield* Effect.fail(new BookNotFoundError({ bookId }))
+          if (result.length === 0) {
+            return yield* Effect.fail(new BookNotFoundError({ bookId: userBookId }))
           }
         })
     }
@@ -153,8 +254,8 @@ export const BookRepositoryLive = Layer.effect(
 )
 
 // Helper effects
-export const addBook = (userId: string, input: AddBookInput) =>
-  Effect.flatMap(BookRepository, (repo) => repo.addBook(userId, input))
+export const addBookByISBN = (userId: string, isbn: string) =>
+  Effect.flatMap(BookRepository, (repo) => repo.addBookByISBN(userId, isbn))
 
 export const getLibrary = (userId: string) =>
   Effect.flatMap(BookRepository, (repo) => repo.getLibrary(userId))
@@ -162,5 +263,5 @@ export const getLibrary = (userId: string) =>
 export const getBookById = (bookId: string) =>
   Effect.flatMap(BookRepository, (repo) => repo.getBookById(bookId))
 
-export const deleteBook = (bookId: string, userId: string) =>
-  Effect.flatMap(BookRepository, (repo) => repo.deleteBook(bookId, userId))
+export const removeFromLibrary = (userBookId: string, userId: string) =>
+  Effect.flatMap(BookRepository, (repo) => repo.removeFromLibrary(userBookId, userId))

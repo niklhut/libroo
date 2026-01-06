@@ -24,7 +24,8 @@
     "better-auth": "^1.4.10",
     "drizzle-orm": "^0.45.1",
     "effect": "^3.19.14",
-    "nuxt": "^4.2.2"
+    "nuxt": "^4.2.2",
+    "zod": "^4.3.5"
   },
   "devDependencies": {
     "@nuxt/eslint": "^1.12.1",

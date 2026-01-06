@@ -1,35 +1,26 @@
-import { Effect, Layer } from 'effect'
-import { books } from 'hub:db:schema'
-import { eq } from 'drizzle-orm'
+import { runEffect, Effect } from '../../utils/effect'
+import { getLibrary, type UserBook } from '../../repositories/book.repository'
+import { requireAuth } from '../../services/auth.service'
 
 export default defineEventHandler(async (event) => {
-  // Validate session
-  const session = await auth.api.getSession({
-    headers: event.headers
-  })
+  return runEffect(
+    Effect.gen(function* () {
+      // Get authenticated user
+      const user = yield* requireAuth(event)
 
-  if (!session) {
-    throw createError({
-      statusCode: 401,
-      message: 'Unauthorized'
-    })
-  }
+      // Get user's library
+      const library = yield* getLibrary(user.id)
 
-  const db = useDrizzle()
-
-  // Get all books for the user
-  const userBooks = await db
-    .select()
-    .from(books)
-    .where(eq(books.userId, session.user.id))
-    .orderBy(books.createdAt)
-
-  return userBooks.map((book) => ({
-    id: book.id,
-    title: book.title,
-    author: book.author,
-    isbn: book.isbn,
-    coverPath: book.coverPath,
-    createdAt: book.createdAt
-  }))
+      return library.map((userBook: UserBook) => ({
+        id: userBook.id,
+        bookId: userBook.bookId,
+        title: userBook.book.title,
+        author: userBook.book.author,
+        isbn: userBook.book.isbn,
+        coverPath: userBook.book.coverPath,
+        addedAt: userBook.addedAt
+      }))
+    }),
+    event
+  )
 })

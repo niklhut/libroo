@@ -1,14 +1,14 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import * as z from 'zod'
+import type { FormSubmitEvent, AuthFormField } from '@nuxt/ui'
 
 definePageMeta({
   layout: false
 })
 
 const { signIn, session } = useAuth()
+const toast = useToast()
 
-const email = ref('')
-const password = ref('')
 const isLoading = ref(false)
 const error = ref('')
 
@@ -19,20 +19,61 @@ watch(session, (newSession) => {
   }
 }, { immediate: true })
 
-async function handleSubmit() {
+// Form fields
+const fields: AuthFormField[] = [
+  {
+    name: 'email',
+    type: 'email',
+    label: 'Email',
+    placeholder: 'Enter your email',
+    required: true
+  },
+  {
+    name: 'password',
+    type: 'password',
+    label: 'Password',
+    placeholder: 'Enter your password',
+    required: true
+  }
+]
+
+// Validation schema
+const schema = z.object({
+  email: z.email('Please enter a valid email address'),
+  password: z.string('Password is required').min(1, 'Password is required')
+})
+
+type Schema = z.output<typeof schema>
+
+async function onSubmit(payload: FormSubmitEvent<Schema>) {
   error.value = ''
   isLoading.value = true
 
   try {
-    const result = await signIn(email.value, password.value)
+    const result = await signIn(payload.data.email, payload.data.password)
 
     if (result.error) {
       error.value = result.error.message || 'Failed to sign in'
+      toast.add({
+        title: 'Sign in failed',
+        description: error.value,
+        color: 'error'
+      })
     } else {
+      toast.add({
+        title: 'Welcome back!',
+        description: 'You have been signed in successfully.',
+        color: 'success'
+      })
       navigateTo('/library')
     }
   } catch (e: any) {
     error.value = e.message || 'An unexpected error occurred'
+    toast.add({
+      title: 'Error',
+      description: error.value,
+      color: 'error'
+    })
   } finally {
     isLoading.value = false
   }
@@ -40,74 +81,43 @@ async function handleSubmit() {
 </script>
 
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 py-12 px-4 sm:px-6 lg:px-8">
-    <div class="max-w-md w-full space-y-8">
-      <div class="text-center">
-        <h1 class="text-4xl font-bold text-gray-900 dark:text-white">
-          Libroo
-        </h1>
-        <p class="mt-2 text-gray-600 dark:text-gray-400">
-          Your Library, Managed
-        </p>
-      </div>
-
-      <UCard class="mt-8">
-        <template #header>
-          <h2 class="text-xl font-semibold text-center">
-            Sign In
-          </h2>
+  <div class="flex flex-col items-center justify-center min-h-screen p-4">
+    <UPageCard class="w-full max-w-md">
+      <UAuthForm
+        :schema="schema"
+        :fields="fields"
+        :loading="isLoading"
+        title="Welcome back!"
+        icon="i-lucide-library"
+        @submit="onSubmit"
+      >
+        <template #description>
+          Don't have an account?
+          <ULink to="/auth/register" class="text-primary font-medium">
+            Sign up
+          </ULink>
         </template>
 
-        <form class="space-y-4" @submit.prevent="handleSubmit">
+        <template #password-hint>
+          <ULink to="#" class="text-primary font-medium" tabindex="-1">
+            Forgot password?
+          </ULink>
+        </template>
+
+        <template v-if="error" #validation>
           <UAlert
-            v-if="error"
             color="error"
-            variant="subtle"
-            :title="error"
             icon="i-lucide-alert-circle"
+            :title="error"
           />
-
-          <UFormField label="Email" name="email" required>
-            <UInput
-              v-model="email"
-              type="email"
-              placeholder="you@example.com"
-              icon="i-lucide-mail"
-              size="lg"
-              class="w-full"
-            />
-          </UFormField>
-
-          <UFormField label="Password" name="password" required>
-            <UInput
-              v-model="password"
-              type="password"
-              placeholder="••••••••"
-              icon="i-lucide-lock"
-              size="lg"
-              class="w-full"
-            />
-          </UFormField>
-
-          <UButton
-            type="submit"
-            block
-            size="lg"
-            :loading="isLoading"
-          >
-            Sign In
-          </UButton>
-        </form>
+        </template>
 
         <template #footer>
-          <p class="text-center text-sm text-gray-600 dark:text-gray-400">
-            Don't have an account?
-            <NuxtLink to="/auth/register" class="text-primary-500 hover:text-primary-600 font-medium">
-              Sign up
-            </NuxtLink>
+          <p class="text-center text-sm text-muted">
+            Libroo - Your Library, Managed
           </p>
         </template>
-      </UCard>
-    </div>
+      </UAuthForm>
+    </UPageCard>
   </div>
 </template>
