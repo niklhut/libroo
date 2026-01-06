@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1767719908573,
+      "tag": "0000_legal_black_cat",
+      "breakpoints": true
+    }
+  ]
+}

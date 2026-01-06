@@ -1,6 +1,7 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
   modules: [
+    '@nuxthub/core',
     '@nuxt/eslint',
     '@nuxt/ui',
     '@nuxt/hints',
@@ -8,6 +9,11 @@ export default defineNuxtConfig({
     '@nuxt/scripts',
     '@nuxt/test-utils'
   ],
+
+  hub: {
+    db: 'sqlite',
+    blob: true
+  },
 
   devtools: {
     enabled: true

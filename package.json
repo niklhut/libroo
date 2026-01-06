@@ -13,16 +13,22 @@
   "dependencies": {
     "@iconify-json/lucide": "^1.2.82",
     "@iconify-json/simple-icons": "^1.2.63",
+    "@libsql/client": "^0.15.15",
     "@nuxt/hints": "1.0.0-alpha.5",
     "@nuxt/image": "2.0.0",
     "@nuxt/scripts": "0.13.2",
     "@nuxt/test-utils": "3.22.0",
     "@nuxt/ui": "^4.3.0",
+    "@nuxthub/core": "^0.10.4",
     "@unhead/vue": "^2.0.19",
+    "better-auth": "^1.4.10",
+    "drizzle-orm": "^0.45.1",
+    "effect": "^3.19.14",
     "nuxt": "^4.2.2"
   },
   "devDependencies": {
     "@nuxt/eslint": "^1.12.1",
+    "drizzle-kit": "^0.31.8",
     "eslint": "^9.39.2",
     "typescript": "^5.9.3",
     "vue-tsc": "^3.2.1"

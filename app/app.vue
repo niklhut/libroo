@@ -1,4 +1,6 @@
 <script setup>
+const { session, signOut } = useAuth()
+
 useHead({
   meta: [
     { name: 'viewport', content: 'width=device-width, initial-scale=1' }
@@ -11,42 +13,72 @@ useHead({
   }
 })
 
-const title = 'Nuxt Starter Template'
-const description = 'A production-ready starter template powered by Nuxt UI. Build beautiful, accessible, and performant applications in minutes, not hours.'
+const title = 'Libroo - Your Library, Managed'
+const description = 'A private, physical-first library management system. Track what you own, who borrowed it, and where it is.'
 
 useSeoMeta({
   title,
   description,
   ogTitle: title,
   ogDescription: description,
-  ogImage: 'https://ui.nuxt.com/assets/templates/nuxt/starter-light.png',
-  twitterImage: 'https://ui.nuxt.com/assets/templates/nuxt/starter-light.png',
   twitterCard: 'summary_large_image'
 })
+
+async function handleSignOut() {
+  await signOut()
+  navigateTo('/auth/login')
+}
 </script>
 
 <template>
   <UApp>
     <UHeader>
       <template #left>
-        <NuxtLink to="/">
-          <AppLogo class="w-auto h-6 shrink-0" />
+        <NuxtLink to="/" class="flex items-center gap-2">
+          <UIcon name="i-lucide-library" class="text-2xl text-primary-500" />
+          <span class="font-bold text-lg">Libroo</span>
         </NuxtLink>
-
-        <TemplateMenu />
       </template>
 
       <template #right>
         <UColorModeButton />
 
-        <UButton
-          to="https://github.com/nuxt-ui-templates/starter"
-          target="_blank"
-          icon="i-simple-icons-github"
-          aria-label="GitHub"
-          color="neutral"
-          variant="ghost"
-        />
+        <template v-if="session.data?.user">
+          <NuxtLink to="/library">
+            <UButton
+              color="neutral"
+              variant="ghost"
+              icon="i-lucide-book-open"
+            >
+              My Library
+            </UButton>
+          </NuxtLink>
+          <UButton
+            color="neutral"
+            variant="ghost"
+            icon="i-lucide-log-out"
+            @click="handleSignOut"
+          >
+            Sign Out
+          </UButton>
+        </template>
+        <template v-else>
+          <NuxtLink to="/auth/login">
+            <UButton
+              color="neutral"
+              variant="ghost"
+            >
+              Sign In
+            </UButton>
+          </NuxtLink>
+          <NuxtLink to="/auth/register">
+            <UButton
+              color="primary"
+            >
+              Get Started
+            </UButton>
+          </NuxtLink>
+        </template>
       </template>
     </UHeader>
 
@@ -54,18 +86,18 @@ useSeoMeta({
       <NuxtPage />
     </UMain>
 
-    <USeparator icon="i-simple-icons-nuxtdotjs" />
+    <USeparator icon="i-lucide-library" />
 
     <UFooter>
       <template #left>
         <p class="text-sm text-muted">
-          Built with Nuxt UI • © {{ new Date().getFullYear() }}
+          Libroo - Your Library, Managed • © {{ new Date().getFullYear() }}
         </p>
       </template>
 
       <template #right>
         <UButton
-          to="https://github.com/nuxt-ui-templates/starter"
+          to="https://github.com"
           target="_blank"
           icon="i-simple-icons-github"
           aria-label="GitHub"
