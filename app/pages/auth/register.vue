@@ -58,7 +58,7 @@ const schema = z.object({
   email: z.email('Please enter a valid email address'),
   password: z.string('Password is required').min(8, 'Password must be at least 8 characters'),
   confirmPassword: z.string('Confirm Password is required').min(1, 'Please confirm your password')
-}).refine((data) => data.password === data.confirmPassword, {
+}).refine(data => data.password === data.confirmPassword, {
   message: 'Passwords do not match',
   path: ['confirmPassword']
 })
@@ -107,17 +107,34 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
 <template>
   <UContainer class="py-12 max-w-md">
     <UPageCard>
-      <UAuthForm :schema="schema" :fields="fields" :loading="isLoading" title="Create Account" icon="i-lucide-user-plus"
-        submit-label="Create Account" @submit="onSubmit">
+      <UAuthForm
+        :schema="schema"
+        :fields="fields"
+        :loading="isLoading"
+        title="Create Account"
+        icon="i-lucide-user-plus"
+        submit-label="Create Account"
+        @submit="onSubmit"
+      >
         <template #description>
           Already have an account?
-          <ULink to="/auth/login" class="text-primary font-medium">
+          <ULink
+            to="/auth/login"
+            class="text-primary font-medium"
+          >
             Sign in
           </ULink>
         </template>
 
-        <template v-if="error" #validation>
-          <UAlert color="error" icon="i-lucide-alert-circle" :title="error" />
+        <template
+          v-if="error"
+          #validation
+        >
+          <UAlert
+            color="error"
+            icon="i-lucide-alert-circle"
+            :title="error"
+          />
         </template>
 
         <template #footer>

@@ -1,5 +1,4 @@
 <script setup lang="ts">
-
 const route = useRoute()
 const toast = useToast()
 
@@ -80,13 +79,25 @@ async function removeBook() {
     <!-- Page Body -->
     <UPageBody>
       <!-- Loading State -->
-      <div v-if="status === 'pending'" class="flex justify-center py-12">
-        <UIcon name="i-lucide-loader-2" class="animate-spin text-4xl text-muted" />
+      <div
+        v-if="status === 'pending'"
+        class="flex justify-center py-12"
+      >
+        <UIcon
+          name="i-lucide-loader-2"
+          class="animate-spin text-4xl text-muted"
+        />
       </div>
 
       <!-- Not Found -->
-      <UCard v-else-if="!book" class="text-center py-12">
-        <UIcon name="i-lucide-book-x" class="text-6xl text-muted mx-auto mb-4" />
+      <UCard
+        v-else-if="!book"
+        class="text-center py-12"
+      >
+        <UIcon
+          name="i-lucide-book-x"
+          class="text-6xl text-muted mx-auto mb-4"
+        />
         <h2 class="text-xl font-semibold mb-2">
           Book not found
         </h2>
@@ -99,7 +110,10 @@ async function removeBook() {
       </UCard>
 
       <!-- Book Details -->
-      <div v-else class="grid md:grid-cols-[280px_1fr] gap-8">
+      <div
+        v-else
+        class="grid md:grid-cols-[280px_1fr] gap-8"
+      >
         <!-- Cover -->
         <div>
           <div class="aspect-[2/3] bg-muted rounded-lg overflow-hidden shadow-lg">
@@ -110,8 +124,14 @@ async function removeBook() {
               :alt="book.title"
               class="w-full h-full object-cover"
             >
-            <div v-else class="w-full h-full flex items-center justify-center">
-              <UIcon name="i-lucide-book" class="text-6xl text-muted" />
+            <div
+              v-else
+              class="w-full h-full flex items-center justify-center"
+            >
+              <UIcon
+                name="i-lucide-book"
+                class="text-6xl text-muted"
+              />
             </div>
           </div>
         </div>
@@ -121,36 +141,62 @@ async function removeBook() {
           <!-- Metadata Grid -->
           <div class="grid grid-cols-2 gap-4">
             <div v-if="book.isbn">
-              <p class="text-sm text-muted">ISBN</p>
-              <p class="font-medium">{{ book.isbn }}</p>
+              <p class="text-sm text-muted">
+                ISBN
+              </p>
+              <p class="font-medium">
+                {{ book.isbn }}
+              </p>
             </div>
             <div v-if="book.publishDate">
-              <p class="text-sm text-muted">Published</p>
-              <p class="font-medium">{{ book.publishDate }}</p>
+              <p class="text-sm text-muted">
+                Published
+              </p>
+              <p class="font-medium">
+                {{ book.publishDate }}
+              </p>
             </div>
             <div v-if="book.publishers">
-              <p class="text-sm text-muted">Publisher</p>
-              <p class="font-medium">{{ book.publishers }}</p>
+              <p class="text-sm text-muted">
+                Publisher
+              </p>
+              <p class="font-medium">
+                {{ book.publishers }}
+              </p>
             </div>
             <div v-if="book.numberOfPages">
-              <p class="text-sm text-muted">Pages</p>
-              <p class="font-medium">{{ book.numberOfPages }}</p>
+              <p class="text-sm text-muted">
+                Pages
+              </p>
+              <p class="font-medium">
+                {{ book.numberOfPages }}
+              </p>
             </div>
             <div v-if="formattedAddedAt">
-              <p class="text-sm text-muted">Added to Library</p>
-              <p class="font-medium">{{ formattedAddedAt }}</p>
+              <p class="text-sm text-muted">
+                Added to Library
+              </p>
+              <p class="font-medium">
+                {{ formattedAddedAt }}
+              </p>
             </div>
           </div>
 
           <!-- Description -->
           <div v-if="book.description">
-            <h2 class="text-lg font-semibold mb-2">Description</h2>
-            <p class="text-muted leading-relaxed whitespace-pre-wrap">{{ book.description }}</p>
+            <h2 class="text-lg font-semibold mb-2">
+              Description
+            </h2>
+            <p class="text-muted leading-relaxed whitespace-pre-wrap">
+              {{ book.description }}
+            </p>
           </div>
 
           <!-- Subjects -->
           <div v-if="book.subjects && book.subjects.length > 0">
-            <h2 class="text-lg font-semibold mb-2">Subjects</h2>
+            <h2 class="text-lg font-semibold mb-2">
+              Subjects
+            </h2>
             <div class="flex flex-wrap gap-2">
               <UBadge
                 v-for="subject in book.subjects"

@@ -1,5 +1,6 @@
 import { Context, Effect, Layer, Data } from 'effect'
-import { StorageService, putBlob } from '../services/storage.service'
+import type { StorageService } from '../services/storage.service'
+import { putBlob } from '../services/storage.service'
 import sharp from 'sharp'
 
 // Error types
@@ -31,7 +32,7 @@ export interface OpenLibraryBookData {
 interface OpenLibraryBooksApiResponse {
   [key: string]: {
     title: string
-    authors?: Array<{ name: string; url?: string }>
+    authors?: Array<{ name: string, url?: string }>
     publishers?: Array<{ name: string }>
     publish_date?: string
     number_of_pages?: number
@@ -44,7 +45,7 @@ interface OpenLibraryBooksApiResponse {
     }
     key?: string
     url?: string
-    subjects?: Array<{ name: string; url?: string }>
+    subjects?: Array<{ name: string, url?: string }>
   }
 }
 
@@ -52,7 +53,7 @@ interface OpenLibraryBooksApiResponse {
 interface OpenLibraryWorksApiResponse {
   key: string
   title: string
-  description?: string | { type: string; value: string }
+  description?: string | { type: string, value: string }
   subjects?: string[]
   subject_places?: string[]
   subject_times?: string[]
@@ -86,7 +87,7 @@ function extractWorkKeyFromUrl(url?: string): string | null {
 
 // Live implementation
 export const OpenLibraryRepositoryLive = Layer.succeed(OpenLibraryRepository, {
-  lookupByISBN: (isbn) =>
+  lookupByISBN: isbn =>
     Effect.tryPromise({
       try: async () => {
         const normalizedISBN = normalizeISBN(isbn)
@@ -236,14 +237,14 @@ export const OpenLibraryRepositoryLive = Layer.succeed(OpenLibraryRepository, {
           pathname: `covers/${normalizedISBN}.webp`
         }
       },
-      catch: (error) => new Error(`Failed to download cover: ${error}`)
+      catch: error => new Error(`Failed to download cover: ${error}`)
     }).pipe(
       Effect.flatMap((result) => {
         if (!result) {
           return Effect.succeed(null)
         }
         return putBlob(result.pathname, result.imageBuffer, { contentType: result.contentType }).pipe(
-          Effect.map((blobMetadata) => blobMetadata.pathname),
+          Effect.map(blobMetadata => blobMetadata.pathname),
           Effect.catchAll(() => Effect.succeed(null)) // If blob storage fails, just return null
         )
       })
@@ -252,7 +253,7 @@ export const OpenLibraryRepositoryLive = Layer.succeed(OpenLibraryRepository, {
 
 // Helper effects
 export const lookupByISBN = (isbn: string) =>
-  Effect.flatMap(OpenLibraryRepository, (repo) => repo.lookupByISBN(isbn))
+  Effect.flatMap(OpenLibraryRepository, repo => repo.lookupByISBN(isbn))
 
 export const downloadCover = (isbn: string, size?: 'S' | 'M' | 'L') =>
-  Effect.flatMap(OpenLibraryRepository, (repo) => repo.downloadCover(isbn, size))
+  Effect.flatMap(OpenLibraryRepository, repo => repo.downloadCover(isbn, size))

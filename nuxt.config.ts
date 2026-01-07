@@ -10,11 +10,6 @@ export default defineNuxtConfig({
     '@nuxt/test-utils'
   ],
 
-  hub: {
-    db: 'sqlite',
-    blob: true
-  },
-
   devtools: {
     enabled: true
   },
@@ -27,11 +22,18 @@ export default defineNuxtConfig({
 
   compatibilityDate: '2025-01-15',
 
+  hub: {
+    db: 'sqlite',
+    blob: true
+  },
+
   eslint: {
     config: {
       stylistic: {
         commaDangle: 'never',
-        braceStyle: '1tbs'
+        braceStyle: '1tbs',
+        semi: false,
+        quotes: 'single'
       }
     }
   }

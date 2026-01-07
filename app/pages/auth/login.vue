@@ -97,18 +97,28 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
       >
         <template #description>
           Don't have an account?
-          <ULink to="/auth/register" class="text-primary font-medium">
+          <ULink
+            to="/auth/register"
+            class="text-primary font-medium"
+          >
             Sign up
           </ULink>
         </template>
 
         <template #password-hint>
-          <ULink to="#" class="text-primary font-medium" tabindex="-1">
+          <ULink
+            to="#"
+            class="text-primary font-medium"
+            tabindex="-1"
+          >
             Forgot password?
           </ULink>
         </template>
 
-        <template v-if="error" #validation>
+        <template
+          v-if="error"
+          #validation
+        >
           <UAlert
             color="error"
             icon="i-lucide-alert-circle"

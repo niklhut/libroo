@@ -41,52 +41,52 @@ export const StorageServiceLive = Layer.succeed(StorageService, {
           uploadedAt: new Date(result.uploadedAt)
         }
       },
-      catch: (error) => new Error(`Failed to put blob: ${error}`)
+      catch: error => new Error(`Failed to put blob: ${error}`)
     }),
 
-  get: (pathname) =>
+  get: pathname =>
     Effect.tryPromise({
       try: async () => {
         const { blob } = await import('hub:blob')
         return await blob.get(pathname)
       },
-      catch: (error) => new Error(`Failed to get blob: ${error}`)
+      catch: error => new Error(`Failed to get blob: ${error}`)
     }),
 
-  delete: (pathname) =>
+  delete: pathname =>
     Effect.tryPromise({
       try: async () => {
         const { blob } = await import('hub:blob')
         await blob.delete(pathname)
       },
-      catch: (error) => new Error(`Failed to delete blob: ${error}`)
+      catch: error => new Error(`Failed to delete blob: ${error}`)
     }),
 
-  list: (prefix) =>
+  list: prefix =>
     Effect.tryPromise({
       try: async () => {
         const { blob } = await import('hub:blob')
         const results = await blob.list({ prefix })
-        return results.blobs.map((b) => ({
+        return results.blobs.map(b => ({
           pathname: b.pathname,
           contentType: b.contentType,
           size: b.size,
           uploadedAt: b.uploadedAt instanceof Date ? b.uploadedAt : new Date(b.uploadedAt)
         }))
       },
-      catch: (error) => new Error(`Failed to list blobs: ${error}`)
+      catch: error => new Error(`Failed to list blobs: ${error}`)
     })
 })
 
 // Helper effects
 export const putBlob = (pathname: string, data: Buffer | Blob | ArrayBuffer, options?: BlobPutOptions) =>
-  Effect.flatMap(StorageService, (service) => service.put(pathname, data, options))
+  Effect.flatMap(StorageService, service => service.put(pathname, data, options))
 
 export const getBlob = (pathname: string) =>
-  Effect.flatMap(StorageService, (service) => service.get(pathname))
+  Effect.flatMap(StorageService, service => service.get(pathname))
 
 export const deleteBlob = (pathname: string) =>
-  Effect.flatMap(StorageService, (service) => service.delete(pathname))
+  Effect.flatMap(StorageService, service => service.delete(pathname))
 
 export const listBlobs = (prefix?: string) =>
-  Effect.flatMap(StorageService, (service) => service.list(prefix))
+  Effect.flatMap(StorageService, service => service.list(prefix))

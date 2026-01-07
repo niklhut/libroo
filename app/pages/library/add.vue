@@ -132,7 +132,10 @@ function resetLookup() {
           <UCard v-if="!lookupResult?.found">
             <template #header>
               <div class="flex items-center gap-2">
-                <UIcon name="i-lucide-search" class="text-lg" />
+                <UIcon
+                  name="i-lucide-search"
+                  class="text-lg"
+                />
                 <span class="font-semibold">Find Book by ISBN</span>
               </div>
             </template>
@@ -143,7 +146,11 @@ function resetLookup() {
               class="space-y-4"
               @submit="lookupISBN"
             >
-              <UFormField label="ISBN" name="isbn" required>
+              <UFormField
+                label="ISBN"
+                name="isbn"
+                required
+              >
                 <UInput
                   v-model="formState.isbn"
                   name="isbn"
@@ -163,7 +170,10 @@ function resetLookup() {
                 size="lg"
                 :loading="isLookingUp"
               >
-                <UIcon name="i-lucide-search" class="mr-2" />
+                <UIcon
+                  name="i-lucide-search"
+                  class="mr-2"
+                />
                 Look Up Book
               </UButton>
             </UForm>
@@ -173,9 +183,16 @@ function resetLookup() {
           <UCard v-else>
             <template #header>
               <div class="flex items-center gap-2">
-                <UIcon name="i-lucide-book-check" class="text-lg text-success" />
+                <UIcon
+                  name="i-lucide-book-check"
+                  class="text-lg text-success"
+                />
                 <span class="font-semibold">Book Found</span>
-                <UBadge v-if="lookupResult.existsLocally" color="info" variant="subtle">
+                <UBadge
+                  v-if="lookupResult.existsLocally"
+                  color="info"
+                  variant="subtle"
+                >
                   Already in database
                 </UBadge>
               </div>
@@ -192,39 +209,69 @@ function resetLookup() {
                     class="w-full h-full object-cover"
                     loading="eager"
                   />
-                  <div v-else class="w-full h-full flex items-center justify-center">
-                    <UIcon name="i-lucide-book" class="text-4xl text-muted" />
+                  <div
+                    v-else
+                    class="w-full h-full flex items-center justify-center"
+                  >
+                    <UIcon
+                      name="i-lucide-book"
+                      class="text-4xl text-muted"
+                    />
                   </div>
                 </div>
 
                 <!-- Book Details -->
                 <div class="flex-1 space-y-3">
-                  <h2 class="text-xl font-semibold">{{ lookupResult.title }}</h2>
-                  <p class="text-muted">{{ lookupResult.author }}</p>
+                  <h2 class="text-xl font-semibold">
+                    {{ lookupResult.title }}
+                  </h2>
+                  <p class="text-muted">
+                    {{ lookupResult.author }}
+                  </p>
                   <div class="flex flex-wrap gap-2">
-                    <UBadge color="neutral" variant="subtle">
+                    <UBadge
+                      color="neutral"
+                      variant="subtle"
+                    >
                       ISBN: {{ lookupResult.isbn }}
                     </UBadge>
-                    <UBadge v-if="lookupResult.publishDate" color="neutral" variant="subtle">
+                    <UBadge
+                      v-if="lookupResult.publishDate"
+                      color="neutral"
+                      variant="subtle"
+                    >
                       {{ lookupResult.publishDate }}
                     </UBadge>
-                    <UBadge v-if="lookupResult.numberOfPages" color="neutral" variant="subtle">
+                    <UBadge
+                      v-if="lookupResult.numberOfPages"
+                      color="neutral"
+                      variant="subtle"
+                    >
                       {{ lookupResult.numberOfPages }} pages
                     </UBadge>
                   </div>
-                  <p v-if="lookupResult.publishers && lookupResult.publishers.length > 0" class="text-sm text-muted">
+                  <p
+                    v-if="lookupResult.publishers && lookupResult.publishers.length > 0"
+                    class="text-sm text-muted"
+                  >
                     Publisher: {{ lookupResult.publishers.join(', ') }}
                   </p>
                 </div>
               </div>
 
               <!-- Description preview -->
-              <div v-if="lookupResult.description" class="text-sm text-muted line-clamp-3">
+              <div
+                v-if="lookupResult.description"
+                class="text-sm text-muted line-clamp-3"
+              >
                 {{ lookupResult.description }}
               </div>
 
               <!-- Subjects preview -->
-              <div v-if="lookupResult.subjects && lookupResult.subjects.length > 0" class="flex flex-wrap gap-2">
+              <div
+                v-if="lookupResult.subjects && lookupResult.subjects.length > 0"
+                class="flex flex-wrap gap-2"
+              >
                 <UBadge
                   v-for="subject in lookupResult.subjects.slice(0, 5)"
                   :key="subject"
@@ -234,7 +281,10 @@ function resetLookup() {
                 >
                   {{ subject }}
                 </UBadge>
-                <span v-if="lookupResult.subjects.length > 5" class="text-sm text-muted self-center">
+                <span
+                  v-if="lookupResult.subjects.length > 5"
+                  class="text-sm text-muted self-center"
+                >
                   +{{ lookupResult.subjects.length - 5 }} more
                 </span>
               </div>
@@ -242,21 +292,33 @@ function resetLookup() {
               <USeparator />
 
               <!-- Adding state with explanation -->
-              <div v-if="isAdding" class="text-center py-4">
-                <UIcon name="i-lucide-loader-2" class="animate-spin text-2xl text-primary mb-2" />
+              <div
+                v-if="isAdding"
+                class="text-center py-4"
+              >
+                <UIcon
+                  name="i-lucide-loader-2"
+                  class="animate-spin text-2xl text-primary mb-2"
+                />
                 <p class="text-sm text-muted">
                   Adding book and downloading cover image...
                 </p>
               </div>
 
-              <div v-else class="flex gap-3">
+              <div
+                v-else
+                class="flex gap-3"
+              >
                 <UButton
                   color="neutral"
                   variant="outline"
                   size="lg"
                   @click="resetLookup"
                 >
-                  <UIcon name="i-lucide-arrow-left" class="mr-2" />
+                  <UIcon
+                    name="i-lucide-arrow-left"
+                    class="mr-2"
+                  />
                   Search Again
                 </UButton>
                 <UButton
@@ -264,7 +326,10 @@ function resetLookup() {
                   class="flex-1"
                   @click="addBookToLibrary"
                 >
-                  <UIcon name="i-lucide-plus" class="mr-2" />
+                  <UIcon
+                    name="i-lucide-plus"
+                    class="mr-2"
+                  />
                   Add to Library
                 </UButton>
               </div>

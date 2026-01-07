@@ -2,7 +2,7 @@ import { Effect } from 'effect'
 import { effectHandlerPublic } from '../../utils/effectHandler'
 import { getBlob } from '../../services/storage.service'
 
-export default effectHandlerPublic((event) =>
+export default effectHandlerPublic(event =>
   Effect.gen(function* () {
     // Get the blob pathname from the URL
     const pathname = getRouterParam(event, 'pathname')

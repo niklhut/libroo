@@ -15,4 +15,4 @@ export const DbServiceLive = Layer.sync(DbService, () => ({
 }))
 
 // Helper to get the database instance
-export const getDb = Effect.map(DbService, (service) => service.db)
+export const getDb = Effect.map(DbService, service => service.db)

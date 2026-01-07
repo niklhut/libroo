@@ -27,7 +27,7 @@ export default effectHandler((event, user) =>
           .innerJoin(books, eq(userBooks.bookId, books.id))
           .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, user.id)))
           .limit(1),
-      catch: (error) => new Error(`Database error: ${error}`)
+      catch: error => new Error(`Database error: ${error}`)
     })
 
     const row = result[0]

@@ -1,13 +1,15 @@
 import { Context, Effect, Layer, Data } from 'effect'
 import { eq, and, count, desc } from 'drizzle-orm'
 import { DbService } from '../services/db.service'
-import { StorageService } from '../services/storage.service'
-import {
+import type { StorageService } from '../services/storage.service'
+import type {
   OpenLibraryRepository,
-  downloadCover,
-  lookupByISBN,
   BookNotFoundError as OpenLibraryNotFoundError,
   OpenLibraryApiError
+} from './openLibrary.repository'
+import {
+  downloadCover,
+  lookupByISBN
 } from './openLibrary.repository'
 import { books, userBooks } from 'hub:db:schema'
 
@@ -112,7 +114,7 @@ export const BookRepositoryLive = Layer.effect(
                 .limit(1)
               return result[0] || null
             },
-            catch: (error) => new BookCreateError({ message: `Database error: ${error}` })
+            catch: error => new BookCreateError({ message: `Database error: ${error}` })
           })
 
           if (existingUserBook) {
@@ -129,7 +131,7 @@ export const BookRepositoryLive = Layer.effect(
                 .limit(1)
               return result[0] || null
             },
-            catch: (error) => new BookCreateError({ message: `Database error: ${error}` })
+            catch: error => new BookCreateError({ message: `Database error: ${error}` })
           })
 
           // If book doesn't exist, fetch from OpenLibrary and create it
@@ -160,7 +162,7 @@ export const BookRepositoryLive = Layer.effect(
 
             yield* Effect.tryPromise({
               try: () => dbService.db.insert(books).values(newBook),
-              catch: (error) => new BookCreateError({ message: `Failed to insert book: ${error}` })
+              catch: error => new BookCreateError({ message: `Failed to insert book: ${error}` })
             })
 
             book = newBook
@@ -178,7 +180,7 @@ export const BookRepositoryLive = Layer.effect(
                 bookId: book!.id,
                 addedAt
               }),
-            catch: (error) => new BookCreateError({ message: `Failed to add book to library: ${error}` })
+            catch: error => new BookCreateError({ message: `Failed to add book to library: ${error}` })
           })
 
           return {
@@ -222,7 +224,7 @@ export const BookRepositoryLive = Layer.effect(
               .limit(pageSize)
               .offset(offset)
 
-            const items = result.map((row) => ({
+            const items = result.map(row => ({
               id: row.user_books.id,
               bookId: row.books.id,
               book: {
@@ -252,10 +254,10 @@ export const BookRepositoryLive = Layer.effect(
               }
             }
           },
-          catch: (error) => new Error(`Failed to get library: ${error}`)
+          catch: error => new Error(`Failed to get library: ${error}`)
         }),
 
-      getBookById: (bookId) =>
+      getBookById: bookId =>
         Effect.gen(function* () {
           const result = yield* Effect.tryPromise({
             try: () =>
@@ -264,7 +266,7 @@ export const BookRepositoryLive = Layer.effect(
                 .from(books)
                 .where(eq(books.id, bookId))
                 .limit(1),
-            catch: (error) => new Error(`Database error: ${error}`)
+            catch: error => new Error(`Database error: ${error}`)
           })
 
           const [book] = result
@@ -291,7 +293,7 @@ export const BookRepositoryLive = Layer.effect(
                 .delete(userBooks)
                 .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId)))
                 .returning(),
-            catch: (error) => new Error(`Database error: ${error}`)
+            catch: error => new Error(`Database error: ${error}`)
           })
 
           if (result.length === 0) {
@@ -304,13 +306,13 @@ export const BookRepositoryLive = Layer.effect(
 
 // Helper effects
 export const addBookByISBN = (userId: string, isbn: string) =>
-  Effect.flatMap(BookRepository, (repo) => repo.addBookByISBN(userId, isbn))
+  Effect.flatMap(BookRepository, repo => repo.addBookByISBN(userId, isbn))
 
 export const getLibrary = (userId: string, pagination: PaginationParams) =>
-  Effect.flatMap(BookRepository, (repo) => repo.getLibrary(userId, pagination))
+  Effect.flatMap(BookRepository, repo => repo.getLibrary(userId, pagination))
 
 export const getBookById = (bookId: string) =>
-  Effect.flatMap(BookRepository, (repo) => repo.getBookById(bookId))
+  Effect.flatMap(BookRepository, repo => repo.getBookById(bookId))
 
 export const removeFromLibrary = (userBookId: string, userId: string) =>
-  Effect.flatMap(BookRepository, (repo) => repo.removeFromLibrary(userBookId, userId))
+  Effect.flatMap(BookRepository, repo => repo.removeFromLibrary(userBookId, userId))

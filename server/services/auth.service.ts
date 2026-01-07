@@ -39,7 +39,7 @@ export class AuthService extends Context.Tag('AuthService')<AuthService, AuthSer
 
 // Live implementation
 export const AuthServiceLive = Layer.succeed(AuthService, {
-  getCurrentUser: (event) =>
+  getCurrentUser: event =>
     Effect.tryPromise({
       try: async () => {
         const session = await auth.api.getSession({
@@ -60,7 +60,7 @@ export const AuthServiceLive = Layer.succeed(AuthService, {
       }
     }),
 
-  requireAuth: (event) =>
+  requireAuth: event =>
     Effect.flatMap(
       Effect.tryPromise({
         try: async () => {
@@ -81,13 +81,13 @@ export const AuthServiceLive = Layer.succeed(AuthService, {
           return new UnauthorizedError({ message: 'Authentication failed' })
         }
       }),
-      (user) => Effect.succeed(user)
+      user => Effect.succeed(user)
     )
 })
 
 // Helper effects
 export const getCurrentUser = (event: H3Event) =>
-  Effect.flatMap(AuthService, (service) => service.getCurrentUser(event))
+  Effect.flatMap(AuthService, service => service.getCurrentUser(event))
 
 export const requireAuth = (event: H3Event) =>
-  Effect.flatMap(AuthService, (service) => service.requireAuth(event))
+  Effect.flatMap(AuthService, service => service.requireAuth(event))

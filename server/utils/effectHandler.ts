@@ -15,21 +15,21 @@ const errorMappings: Record<string, (error: any) => HttpErrorMapping> = {
     statusCode: 401,
     message: 'Unauthorized'
   }),
-  BookNotFoundError: (error) => ({
+  BookNotFoundError: error => ({
     statusCode: 404,
     message: error.isbn
       ? `Book with ISBN ${error.isbn} not found`
       : `Book not found`
   }),
-  BookAlreadyOwnedError: (error) => ({
+  BookAlreadyOwnedError: error => ({
     statusCode: 409,
     message: `You already have this book (ISBN: ${error.isbn}) in your library`
   }),
-  OpenLibraryApiError: (error) => ({
+  OpenLibraryApiError: error => ({
     statusCode: 502,
     message: error.message || 'Failed to communicate with OpenLibrary'
   }),
-  BookCreateError: (error) => ({
+  BookCreateError: error => ({
     statusCode: 500,
     message: error.message || 'Failed to create book'
   })
@@ -79,7 +79,7 @@ interface EffectHandlerOptions {
 export function effectHandler<A>(
   handler: (
     event: H3Event,
-    user: { id: string; name: string; email: string }
+    user: { id: string, name: string, email: string }
   ) => Effect.Effect<A, any, any>,
   options: EffectHandlerOptions = {}
 ) {
@@ -88,7 +88,7 @@ export function effectHandler<A>(
   return defineEventHandler(async (event) => {
     const effect = Effect.gen(function* () {
       // Always check auth first if required
-      let user: { id: string; name: string; email: string }
+      let user: { id: string, name: string, email: string }
 
       if (needsAuth) {
         user = yield* requireAuth(event)

@@ -6,7 +6,7 @@ import { eq } from 'drizzle-orm'
 import { db } from 'hub:db'
 
 // This endpoint doesn't require auth - anyone can preview a book lookup
-export default effectHandlerPublic((event) =>
+export default effectHandlerPublic(event =>
   Effect.gen(function* () {
     // Read request body
     const body = yield* Effect.tryPromise({
@@ -56,7 +56,7 @@ export default effectHandlerPublic((event) =>
 
     // Not found locally, try OpenLibrary
     const lookupEffect = lookupByISBN(body.isbn).pipe(
-      Effect.map((bookData) => ({
+      Effect.map(bookData => ({
         found: true,
         isbn: bookData.isbn,
         title: bookData.title,

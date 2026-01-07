@@ -19,10 +19,19 @@ const links = computed(() => {
 </script>
 
 <template>
-  <UHeader title="Libroo" to="/">
+  <UHeader
+    title="Libroo"
+    to="/"
+  >
     <template #title>
-      <NuxtLink to="/" class="flex items-center gap-2">
-        <UIcon name="i-lucide-book-open-check" class="text-2xl text-primary" />
+      <NuxtLink
+        to="/"
+        class="flex items-center gap-2"
+      >
+        <UIcon
+          name="i-lucide-book-open-check"
+          class="text-2xl text-primary"
+        />
         <span class="font-bold text-xl">Libroo</span>
       </NuxtLink>
     </template>

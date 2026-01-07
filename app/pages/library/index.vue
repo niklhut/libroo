@@ -1,5 +1,4 @@
 <script setup lang="ts">
-
 interface LibraryBook {
   id: string
   bookId: string
@@ -180,13 +179,25 @@ async function deleteSelected() {
       </div>
 
       <!-- Loading State -->
-      <div v-if="status === 'pending'" class="flex justify-center py-12">
-        <UIcon name="i-lucide-loader-2" class="animate-spin text-4xl text-muted" />
+      <div
+        v-if="status === 'pending'"
+        class="flex justify-center py-12"
+      >
+        <UIcon
+          name="i-lucide-loader-2"
+          class="animate-spin text-4xl text-muted"
+        />
       </div>
 
       <!-- Empty State -->
-      <UCard v-else-if="!hasBooks" class="text-center py-12">
-        <UIcon name="i-lucide-book-open" class="text-6xl text-muted mx-auto mb-4" />
+      <UCard
+        v-else-if="!hasBooks"
+        class="text-center py-12"
+      >
+        <UIcon
+          name="i-lucide-book-open"
+          class="text-6xl text-muted mx-auto mb-4"
+        />
         <h2 class="text-xl font-semibold mb-2">
           Your library is empty
         </h2>
@@ -207,8 +218,8 @@ async function deleteSelected() {
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
           <BookCard
             v-for="book in books"
-            :key="book.id"
             :id="book.id"
+            :key="book.id"
             :book-id="book.bookId"
             :title="book.title"
             :author="book.author"
@@ -222,7 +233,10 @@ async function deleteSelected() {
         </div>
 
         <!-- Load More -->
-        <div v-if="pagination?.hasMore" class="mt-8 text-center">
+        <div
+          v-if="pagination?.hasMore"
+          class="mt-8 text-center"
+        >
           <UButton
             color="neutral"
             variant="outline"
@@ -233,7 +247,10 @@ async function deleteSelected() {
         </div>
 
         <!-- Pagination Info -->
-        <div v-if="pagination" class="mt-4 text-center text-sm text-muted">
+        <div
+          v-if="pagination"
+          class="mt-4 text-center text-sm text-muted"
+        >
           Showing {{ books.length }} of {{ pagination.totalItems }} books
         </div>
       </template>
