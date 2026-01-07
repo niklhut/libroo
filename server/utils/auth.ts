@@ -1,12 +1,12 @@
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import * as schema from 'hub:db:schema'
-import { useDrizzle } from './drizzle'
+import { db } from 'hub:db'
 
 export const auth = betterAuth({
   baseURL: process.env.BETTER_AUTH_URL || 'http://localhost:3000',
   secret: process.env.BETTER_AUTH_SECRET || 'libroo-dev-secret-change-in-production',
-  database: drizzleAdapter(useDrizzle(), {
+  database: drizzleAdapter(db, {
     provider: 'sqlite',
     schema
   }),

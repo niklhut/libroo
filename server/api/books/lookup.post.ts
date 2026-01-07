@@ -1,50 +1,49 @@
-import { runEffect, Effect } from '../../utils/effect'
+import { Effect } from 'effect'
+import { effectHandlerPublic } from '../../utils/effectHandler'
 import { lookupByISBN } from '../../repositories/openLibrary.repository'
 
-export default defineEventHandler(async (event) => {
-  // Read request body
-  const body = await readBody(event)
-
-  if (!body?.isbn) {
-    throw createError({
-      statusCode: 400,
-      message: 'ISBN is required'
+// This endpoint doesn't require auth - anyone can preview a book lookup
+export default effectHandlerPublic((event) =>
+  Effect.gen(function* () {
+    // Read request body
+    const body = yield* Effect.tryPromise({
+      try: () => readBody(event),
+      catch: () => new Error('Invalid request body')
     })
-  }
 
-  try {
-    return await runEffect(
-      Effect.gen(function* () {
-        // Lookup book from OpenLibrary (no auth required for preview)
-        const bookData = yield* lookupByISBN(body.isbn)
+    // Validate ISBN
+    if (!body?.isbn || typeof body.isbn !== 'string') {
+      return yield* Effect.fail(
+        createError({
+          statusCode: 400,
+          message: 'ISBN is required'
+        })
+      )
+    }
 
-        return {
-          found: true,
-          isbn: bookData.isbn,
-          title: bookData.title,
-          author: bookData.authors.join(', '),
-          coverUrl: bookData.coverUrl,
-          publishDate: bookData.publishDate,
-          publishers: bookData.publishers,
-          numberOfPages: bookData.numberOfPages
-        }
-      }),
-      event
+    // Try to lookup the book - catch NotFound errors and return found: false
+    const lookupEffect = lookupByISBN(body.isbn).pipe(
+      Effect.map((bookData) => ({
+        found: true,
+        isbn: bookData.isbn,
+        title: bookData.title,
+        author: bookData.authors.join(', '),
+        coverUrl: bookData.coverUrl,
+        description: bookData.description,
+        subjects: bookData.subjects,
+        publishDate: bookData.publishDate,
+        publishers: bookData.publishers,
+        numberOfPages: bookData.numberOfPages
+      })),
+      Effect.catchTag('BookNotFoundError', () =>
+        Effect.succeed({
+          found: false,
+          isbn: body.isbn,
+          message: 'Book not found on OpenLibrary'
+        })
+      )
     )
-  } catch (error: any) {
-    if (error._tag === 'BookNotFoundError') {
-      return {
-        found: false,
-        isbn: body.isbn,
-        message: 'Book not found on OpenLibrary'
-      }
-    }
-    if (error._tag === 'OpenLibraryApiError') {
-      throw createError({
-        statusCode: 502,
-        message: `Failed to lookup book: ${error.message}`
-      })
-    }
-    throw error
-  }
-})
+
+    return yield* lookupEffect
+  })
+)

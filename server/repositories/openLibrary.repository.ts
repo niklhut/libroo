@@ -17,10 +17,45 @@ export interface OpenLibraryBookData {
   authors: string[]
   isbn: string
   openLibraryKey: string
+  workKey: string | null
   coverUrl: string | null
+  description?: string
+  subjects?: string[]
   publishDate?: string
   publishers?: string[]
   numberOfPages?: number
+}
+
+// OpenLibrary API response format for /api/books endpoint
+interface OpenLibraryBooksApiResponse {
+  [key: string]: {
+    title: string
+    authors?: Array<{ name: string; url?: string }>
+    publishers?: Array<{ name: string }>
+    publish_date?: string
+    number_of_pages?: number
+    notes?: string
+    excerpts?: Array<{ text: string }>
+    cover?: {
+      small?: string
+      medium?: string
+      large?: string
+    }
+    key?: string
+    url?: string
+    subjects?: Array<{ name: string; url?: string }>
+  }
+}
+
+// OpenLibrary Works API response
+interface OpenLibraryWorksApiResponse {
+  key: string
+  title: string
+  description?: string | { type: string; value: string }
+  subjects?: string[]
+  subject_places?: string[]
+  subject_times?: string[]
+  covers?: number[]
 }
 
 // Service interface
@@ -40,62 +75,120 @@ function normalizeISBN(isbn: string): string {
   return isbn.replace(/[-\s]/g, '')
 }
 
+// Extract work key from edition key
+function extractWorkKeyFromUrl(url?: string): string | null {
+  if (!url) return null
+  // URL like: https://openlibrary.org/books/OL24303521M/...
+  // We need to find the works link from the book data
+  return null
+}
+
 // Live implementation
 export const OpenLibraryRepositoryLive = Layer.succeed(OpenLibraryRepository, {
   lookupByISBN: (isbn) =>
     Effect.tryPromise({
       try: async () => {
         const normalizedISBN = normalizeISBN(isbn)
+        const bibkey = `ISBN:${normalizedISBN}`
 
-        // Fetch book data from OpenLibrary
-        const response = await fetch(`https://openlibrary.org/isbn/${normalizedISBN}.json`)
+        // Use the /api/books endpoint which returns more complete data including authors
+        const response = await fetch(
+          `https://openlibrary.org/api/books?bibkeys=${bibkey}&jscmd=data&format=json`
+        )
 
         if (!response.ok) {
-          if (response.status === 404) {
-            throw new BookNotFoundError({
-              isbn: normalizedISBN,
-              message: `Book with ISBN ${normalizedISBN} not found`
-            })
-          }
           throw new OpenLibraryApiError({
             message: `OpenLibrary API error: ${response.status}`
           })
         }
 
-        const data = await response.json()
+        const data: OpenLibraryBooksApiResponse = await response.json()
+        const bookData = data[bibkey]
 
-        // Get author names (need to fetch author details)
-        let authors: string[] = []
-        if (data.authors && Array.isArray(data.authors)) {
-          const authorPromises = data.authors.map(async (author: { key: string }) => {
-            try {
-              const authorResponse = await fetch(`https://openlibrary.org${author.key}.json`)
-              if (authorResponse.ok) {
-                const authorData = await authorResponse.json()
-                return authorData.name || 'Unknown Author'
-              }
-            } catch {
-              // Ignore author fetch errors
-            }
-            return 'Unknown Author'
+        if (!bookData) {
+          throw new BookNotFoundError({
+            isbn: normalizedISBN,
+            message: `Book with ISBN ${normalizedISBN} not found`
           })
-          authors = await Promise.all(authorPromises)
         }
 
-        // Determine cover URL
-        const coverUrl = data.covers && data.covers.length > 0
-          ? `https://covers.openlibrary.org/b/id/${data.covers[0]}-L.jpg`
-          : `https://covers.openlibrary.org/b/isbn/${normalizedISBN}-L.jpg`
+        // Extract authors
+        const authors = bookData.authors?.map(a => a.name) || ['Unknown Author']
+
+        // Extract cover URL (prefer large)
+        const coverUrl = bookData.cover?.large
+          || bookData.cover?.medium
+          || `https://covers.openlibrary.org/b/isbn/${normalizedISBN}-L.jpg`
+
+        // Extract publishers
+        const publishers = bookData.publishers?.map(p => p.name)
+
+        // Extract subjects (filter out NYT-specific ones)
+        let subjects = bookData.subjects
+          ?.map(s => s.name)
+          .filter(s => !s.startsWith('nyt:'))
+          .slice(0, 20) // Limit to 20 subjects
+
+        // The bookData.key is the edition key like "/books/OL24303521M"
+        // We need to fetch the edition page to get the works key
+        const editionKey = bookData.key
+
+        // Try to get description from notes/excerpts first
+        let description = bookData.notes || bookData.excerpts?.[0]?.text
+
+        // If no description and we have an edition key, try to fetch works data
+        let workKey: string | null = null
+        if (editionKey) {
+          try {
+            // Fetch the edition to get the works key
+            const editionResponse = await fetch(`https://openlibrary.org${editionKey}.json`)
+            if (editionResponse.ok) {
+              const editionData = await editionResponse.json()
+              // Works key is at editionData.works[0].key
+              if (editionData.works && editionData.works.length > 0) {
+                workKey = editionData.works[0].key
+
+                // Fetch works data for description
+                const worksResponse = await fetch(`https://openlibrary.org${workKey}.json`)
+                if (worksResponse.ok) {
+                  const worksData: OpenLibraryWorksApiResponse = await worksResponse.json()
+
+                  // Extract description
+                  if (worksData.description) {
+                    if (typeof worksData.description === 'string') {
+                      description = worksData.description
+                    } else if (worksData.description.value) {
+                      description = worksData.description.value
+                    }
+                  }
+
+                  // Merge subjects from works if we don't have enough
+                  if ((!subjects || subjects.length < 5) && worksData.subjects) {
+                    const worksSubjects = worksData.subjects
+                      .filter(s => !s.startsWith('nyt:'))
+                      .slice(0, 20)
+                    subjects = [...new Set([...(subjects || []), ...worksSubjects])].slice(0, 20)
+                  }
+                }
+              }
+            }
+          } catch {
+            // Ignore errors fetching additional data - it's optional
+          }
+        }
 
         return {
-          title: data.title || 'Unknown Title',
-          authors: authors.length > 0 ? authors : ['Unknown Author'],
+          title: bookData.title || 'Unknown Title',
+          authors,
           isbn: normalizedISBN,
-          openLibraryKey: data.key || '',
+          openLibraryKey: editionKey || '',
+          workKey,
           coverUrl,
-          publishDate: data.publish_date,
-          publishers: data.publishers,
-          numberOfPages: data.number_of_pages
+          description,
+          subjects,
+          publishDate: bookData.publish_date,
+          publishers,
+          numberOfPages: bookData.number_of_pages
         }
       },
       catch: (error) => {

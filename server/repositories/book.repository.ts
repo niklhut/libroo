@@ -1,5 +1,5 @@
 import { Context, Effect, Layer, Data } from 'effect'
-import { eq, and } from 'drizzle-orm'
+import { eq, and, count, desc } from 'drizzle-orm'
 import { DbService } from '../services/db.service'
 import { StorageService } from '../services/storage.service'
 import {
@@ -43,9 +43,25 @@ export interface UserBook {
   addedAt: Date
 }
 
+// Pagination types
+export interface PaginationParams {
+  page: number
+  pageSize: number
+}
+
+export interface PaginatedResult<T> {
+  items: T[]
+  pagination: {
+    page: number
+    pageSize: number
+    totalItems: number
+    totalPages: number
+    hasMore: boolean
+  }
+}
+
 // Service interface
 export interface BookRepositoryInterface {
-  // Add book by ISBN (lookup from OpenLibrary if not exists)
   addBookByISBN: (
     userId: string,
     isbn: string
@@ -55,13 +71,13 @@ export interface BookRepositoryInterface {
     DbService | StorageService | OpenLibraryRepository
   >
 
-  // Get user's library
-  getLibrary: (userId: string) => Effect.Effect<UserBook[], Error, DbService>
+  getLibrary: (
+    userId: string,
+    pagination: PaginationParams
+  ) => Effect.Effect<PaginatedResult<UserBook>, Error, DbService>
 
-  // Get single book by ID
   getBookById: (bookId: string) => Effect.Effect<Book, BookNotFoundError | Error, DbService>
 
-  // Remove book from user's library
   removeFromLibrary: (
     userBookId: string,
     userId: string
@@ -126,20 +142,28 @@ export const BookRepositoryLive = Layer.effect(
             const newBookId = generateId()
             const now = new Date()
 
-            book = {
+            const newBook = {
               id: newBookId,
               isbn: openLibraryData.isbn,
               title: openLibraryData.title,
               author: openLibraryData.authors.join(', '),
               coverPath,
               openLibraryKey: openLibraryData.openLibraryKey,
+              workKey: openLibraryData.workKey || null,
+              description: openLibraryData.description || null,
+              subjects: openLibraryData.subjects ? JSON.stringify(openLibraryData.subjects) : null,
+              publishDate: openLibraryData.publishDate || null,
+              publishers: openLibraryData.publishers?.join(', ') || null,
+              numberOfPages: openLibraryData.numberOfPages || null,
               createdAt: now
             }
 
             yield* Effect.tryPromise({
-              try: () => dbService.db.insert(books).values(book!),
+              try: () => dbService.db.insert(books).values(newBook),
               catch: (error) => new BookCreateError({ message: `Failed to insert book: ${error}` })
             })
+
+            book = newBook
           }
 
           // Create userBooks entry
@@ -167,23 +191,38 @@ export const BookRepositoryLive = Layer.effect(
               author: book!.author,
               coverPath: book!.coverPath,
               openLibraryKey: book!.openLibraryKey,
-              createdAt: book!.createdAt instanceof Date ? book!.createdAt : new Date(book!.createdAt)
+              createdAt: book!.createdAt instanceof Date ? book!.createdAt : new Date(book!.createdAt as unknown as string)
             },
             addedAt
           }
         }),
 
-      getLibrary: (userId) =>
+      getLibrary: (userId, pagination) =>
         Effect.tryPromise({
           try: async () => {
+            const { page, pageSize } = pagination
+            const offset = (page - 1) * pageSize
+
+            // Get total count
+            const countResult = await dbService.db
+              .select({ count: count() })
+              .from(userBooks)
+              .where(eq(userBooks.userId, userId))
+
+            const totalItems = countResult[0]?.count ?? 0
+            const totalPages = Math.ceil(totalItems / pageSize)
+
+            // Get paginated items
             const result = await dbService.db
               .select()
               .from(userBooks)
               .innerJoin(books, eq(userBooks.bookId, books.id))
               .where(eq(userBooks.userId, userId))
-              .orderBy(userBooks.addedAt)
+              .orderBy(desc(userBooks.addedAt))
+              .limit(pageSize)
+              .offset(offset)
 
-            return result.map((row) => ({
+            const items = result.map((row) => ({
               id: row.user_books.id,
               bookId: row.books.id,
               book: {
@@ -195,12 +234,23 @@ export const BookRepositoryLive = Layer.effect(
                 openLibraryKey: row.books.openLibraryKey,
                 createdAt: row.books.createdAt instanceof Date
                   ? row.books.createdAt
-                  : new Date(row.books.createdAt)
+                  : new Date(row.books.createdAt as unknown as string)
               },
               addedAt: row.user_books.addedAt instanceof Date
                 ? row.user_books.addedAt
-                : new Date(row.user_books.addedAt)
+                : new Date(row.user_books.addedAt as unknown as string)
             }))
+
+            return {
+              items,
+              pagination: {
+                page,
+                pageSize,
+                totalItems,
+                totalPages,
+                hasMore: page < totalPages
+              }
+            }
           },
           catch: (error) => new Error(`Failed to get library: ${error}`)
         }),
@@ -229,13 +279,12 @@ export const BookRepositoryLive = Layer.effect(
             author: book.author,
             coverPath: book.coverPath,
             openLibraryKey: book.openLibraryKey,
-            createdAt: book.createdAt instanceof Date ? book.createdAt : new Date(book.createdAt)
+            createdAt: book.createdAt instanceof Date ? book.createdAt : new Date(book.createdAt as unknown as string)
           }
         }),
 
       removeFromLibrary: (userBookId, userId) =>
         Effect.gen(function* () {
-          // Verify ownership and delete
           const result = yield* Effect.tryPromise({
             try: () =>
               dbService.db
@@ -257,8 +306,8 @@ export const BookRepositoryLive = Layer.effect(
 export const addBookByISBN = (userId: string, isbn: string) =>
   Effect.flatMap(BookRepository, (repo) => repo.addBookByISBN(userId, isbn))
 
-export const getLibrary = (userId: string) =>
-  Effect.flatMap(BookRepository, (repo) => repo.getLibrary(userId))
+export const getLibrary = (userId: string, pagination: PaginationParams) =>
+  Effect.flatMap(BookRepository, (repo) => repo.getLibrary(userId, pagination))
 
 export const getBookById = (bookId: string) =>
   Effect.flatMap(BookRepository, (repo) => repo.getBookById(bookId))

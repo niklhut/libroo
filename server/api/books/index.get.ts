@@ -1,17 +1,26 @@
-import { runEffect, Effect } from '../../utils/effect'
+import { Effect } from 'effect'
+import { effectHandler } from '../../utils/effectHandler'
 import { getLibrary, type UserBook } from '../../repositories/book.repository'
-import { requireAuth } from '../../services/auth.service'
 
-export default defineEventHandler(async (event) => {
-  return runEffect(
-    Effect.gen(function* () {
-      // Get authenticated user
-      const user = yield* requireAuth(event)
+// Default pagination values
+const DEFAULT_PAGE_SIZE = 12
+const MAX_PAGE_SIZE = 100
 
-      // Get user's library
-      const library = yield* getLibrary(user.id)
+export default effectHandler((event, user) =>
+  Effect.gen(function* () {
+    // Parse query parameters
+    const query = getQuery(event)
+    const page = Math.max(1, parseInt(query.page as string) || 1)
+    const pageSize = Math.min(
+      MAX_PAGE_SIZE,
+      Math.max(1, parseInt(query.pageSize as string) || DEFAULT_PAGE_SIZE)
+    )
 
-      return library.map((userBook: UserBook) => ({
+    // Get user's library with SQL pagination
+    const result = yield* getLibrary(user.id, { page, pageSize })
+
+    return {
+      items: result.items.map((userBook: UserBook) => ({
         id: userBook.id,
         bookId: userBook.bookId,
         title: userBook.book.title,
@@ -19,8 +28,8 @@ export default defineEventHandler(async (event) => {
         isbn: userBook.book.isbn,
         coverPath: userBook.book.coverPath,
         addedAt: userBook.addedAt
-      }))
-    }),
-    event
-  )
-})
+      })),
+      pagination: result.pagination
+    }
+  })
+)

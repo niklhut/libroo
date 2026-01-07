@@ -1,20 +1,14 @@
-import { drizzle } from 'drizzle-orm/libsql'
-import { createClient } from '@libsql/client'
-import * as schema from 'hub:db:schema'
+// import * as schema from 'hub:db:schema'
 
-let _db: ReturnType<typeof drizzle<typeof schema>> | null = null
+// // Re-export the schema for type access
+// export { schema }
 
-export function useDrizzle() {
-  if (_db) {
-    return _db
-  }
+// // NuxtHub auto-imports `db` (Drizzle instance) at runtime via #imports
+// // This utility is just for consistency and type access in services
+// export function useDrizzle() {
+//   // The `db` variable is auto-imported by NuxtHub in server context
+//   return db
+// }
 
-  const client = createClient({
-    url: 'file:.data/db/sqlite.db'
-  })
-
-  _db = drizzle(client, { schema })
-  return _db
-}
-
-export type DrizzleDB = ReturnType<typeof useDrizzle>
+// // The DrizzleDB type must match the NuxtHub auto-imported db instance
+// export type DrizzleDB = typeof db

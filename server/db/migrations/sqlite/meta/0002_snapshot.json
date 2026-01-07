@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "36d4d2e9-3228-47b3-b043-8c0c832123d6",
-  "prevId": "00000000-0000-0000-0000-000000000000",
+  "id": "94979399-a600-49de-a02e-48b1ab2aefb0",
+  "prevId": "ea7e7fec-3356-4082-8d90-4fbd0d45e30e",
   "tables": {
     "account": {
       "name": "account",
@@ -160,6 +160,48 @@
         "open_library_key": {
           "name": "open_library_key",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "work_key": {
+          "name": "work_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "subjects": {
+          "name": "subjects",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "publish_date": {
+          "name": "publish_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "publishers": {
+          "name": "publishers",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "number_of_pages": {
+          "name": "number_of_pages",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false

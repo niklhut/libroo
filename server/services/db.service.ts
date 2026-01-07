@@ -1,9 +1,9 @@
 import { Context, Effect, Layer } from 'effect'
-import { useDrizzle, type DrizzleDB } from '../utils/drizzle'
+import { db } from 'hub:db'
 
 // Service interface
 export interface DbServiceInterface {
-  readonly db: DrizzleDB
+  readonly db: typeof db
 }
 
 // Service tag
@@ -11,7 +11,7 @@ export class DbService extends Context.Tag('DbService')<DbService, DbServiceInte
 
 // Live implementation
 export const DbServiceLive = Layer.sync(DbService, () => ({
-  db: useDrizzle()
+  db
 }))
 
 // Helper to get the database instance

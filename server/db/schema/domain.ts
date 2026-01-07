@@ -11,7 +11,16 @@ export const books = sqliteTable('books', {
   title: text('title').notNull(),
   author: text('author').notNull(),
   coverPath: text('cover_path'), // Local blob storage path
-  openLibraryKey: text('open_library_key'), // OpenLibrary work/edition key
+  openLibraryKey: text('open_library_key'), // OpenLibrary edition key
+  workKey: text('work_key'), // OpenLibrary works key (for description)
+
+  // Enhanced metadata from OpenLibrary
+  description: text('description'),
+  subjects: text('subjects'), // JSON array of subject strings
+  publishDate: text('publish_date'),
+  publishers: text('publishers'),
+  numberOfPages: integer('number_of_pages'),
+
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull()
 })
 

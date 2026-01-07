@@ -17,25 +17,23 @@ CREATE TABLE `account` (
 --> statement-breakpoint
 CREATE TABLE `books` (
 	`id` text PRIMARY KEY NOT NULL,
+	`isbn` text,
 	`title` text NOT NULL,
 	`author` text NOT NULL,
-	`isbn` text,
 	`cover_path` text,
-	`user_id` text NOT NULL,
-	`created_at` integer NOT NULL,
-	FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE cascade
+	`open_library_key` text,
+	`created_at` integer NOT NULL
 );
 --> statement-breakpoint
+CREATE UNIQUE INDEX `books_isbn_unique` ON `books` (`isbn`);--> statement-breakpoint
 CREATE TABLE `loans` (
 	`id` text PRIMARY KEY NOT NULL,
-	`book_id` text NOT NULL,
+	`user_book_id` text NOT NULL,
 	`borrower_name` text NOT NULL,
 	`date_loaned` integer NOT NULL,
 	`date_returned` integer,
-	`user_id` text NOT NULL,
 	`created_at` integer NOT NULL,
-	FOREIGN KEY (`book_id`) REFERENCES `books`(`id`) ON UPDATE no action ON DELETE cascade,
-	FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE cascade
+	FOREIGN KEY (`user_book_id`) REFERENCES `user_books`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
 CREATE TABLE `session` (
@@ -62,6 +60,15 @@ CREATE TABLE `user` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `user_email_unique` ON `user` (`email`);--> statement-breakpoint
+CREATE TABLE `user_books` (
+	`id` text PRIMARY KEY NOT NULL,
+	`user_id` text NOT NULL,
+	`book_id` text NOT NULL,
+	`added_at` integer NOT NULL,
+	FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`book_id`) REFERENCES `books`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
 CREATE TABLE `verification` (
 	`id` text PRIMARY KEY NOT NULL,
 	`identifier` text NOT NULL,
