@@ -56,6 +56,7 @@ export default effectHandler((event, user) =>
       publishers: bookData.publishers ?? null,
       numberOfPages: bookData.numberOfPages ?? bookData.number_of_pages ?? null,
       openLibraryKey: bookData.openLibraryKey ?? bookData.open_library_key,
+      workKey: bookData.workKey ?? bookData.work_key ?? null,
       addedAt: row.user_books.addedAt
     }
   })

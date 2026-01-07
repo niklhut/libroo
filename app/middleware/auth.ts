@@ -1,8 +1,25 @@
-export default defineNuxtRouteMiddleware(async (to) => {
-  const { session } = useAuth()
+// export default defineNuxtRouteMiddleware(async (to, from) => {
+//   if (import.meta.server) {
+//     const session = await auth.api.getSession({
+//       headers: useRequestHeaders()
+//     })
 
-  // If no session data value, redirect to login
-  if (!session.value?.data?.user) {
-    return navigateTo('/auth/login')
+//     if (!session?.user) {
+//       return navigateTo('/auth/login')
+//     }
+//   } else {
+//     const session = await authClient.getSession()
+//     if (!session?.data?.user) {
+//       return navigateTo('/auth/login')
+//     }
+//   }
+// })
+
+export default defineNuxtRouteMiddleware(async (to, from) => {
+  const { data: session } = await authClient.useSession(useFetch);
+  if (!session.value) {
+    if (to.meta.auth === false) {
+      return navigateTo("/auth/login");
+    }
   }
-})
+});

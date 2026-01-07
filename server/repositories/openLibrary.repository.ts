@@ -1,5 +1,6 @@
 import { Context, Effect, Layer, Data } from 'effect'
 import { StorageService, putBlob } from '../services/storage.service'
+import sharp from 'sharp'
 
 // Error types
 export class BookNotFoundError extends Data.TaggedError('BookNotFoundError')<{
@@ -222,10 +223,18 @@ export const OpenLibraryRepositoryLive = Layer.succeed(OpenLibraryRepository, {
         }
 
         const imageBuffer = await response.arrayBuffer()
-        const contentType = response.headers.get('content-type') || 'image/jpeg'
 
-        // Store in blob - we'll do this in a separate step
-        return { imageBuffer, contentType, pathname: `covers/${normalizedISBN}.jpg` }
+        // Convert to WebP using sharp
+        const webpBuffer = await sharp(Buffer.from(imageBuffer))
+          .webp({ quality: 85 })
+          .toBuffer()
+
+        // Store as WebP in blob
+        return {
+          imageBuffer: webpBuffer,
+          contentType: 'image/webp',
+          pathname: `covers/${normalizedISBN}.webp`
+        }
       },
       catch: (error) => new Error(`Failed to download cover: ${error}`)
     }).pipe(

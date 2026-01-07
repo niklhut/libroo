@@ -1,8 +1,4 @@
 <script setup lang="ts">
-// Require authentication
-definePageMeta({
-  middleware: 'auth'
-})
 
 const route = useRoute()
 const toast = useToast()
@@ -22,6 +18,7 @@ interface BookDetail {
   publishers: string | null
   numberOfPages: number | null
   openLibraryKey: string | null
+  workKey: string | null
   addedAt: string
 }
 
@@ -38,7 +35,7 @@ const coverUrl = computed(() => {
   return null
 })
 
-// Format date
+// Format date nicely
 const formattedAddedAt = computed(() => {
   if (!book.value?.addedAt) return null
   return new Date(book.value.addedAt).toLocaleDateString('en-US', {
@@ -73,130 +70,142 @@ async function removeBook() {
 </script>
 
 <template>
-  <UContainer class="py-8 max-w-4xl">
-    <!-- Back button -->
-    <div class="mb-6">
-      <UButton
-        color="neutral"
-        variant="ghost"
-        icon="i-lucide-arrow-left"
-        to="/library"
-      >
-        Back to Library
-      </UButton>
-    </div>
+  <UContainer class="py-8 max-w-6xl">
+    <!-- Page Header -->
+    <UPageHeader
+      :title="book?.title || 'Book Details'"
+      :description="book?.author"
+    />
 
-    <!-- Loading State -->
-    <div v-if="status === 'pending'" class="flex justify-center py-12">
-      <UIcon name="i-lucide-loader-2" class="animate-spin text-4xl text-muted" />
-    </div>
-
-    <!-- Not Found -->
-    <UCard v-else-if="!book" class="text-center py-12">
-      <UIcon name="i-lucide-book-x" class="text-6xl text-muted mx-auto mb-4" />
-      <h2 class="text-xl font-semibold mb-2">
-        Book not found
-      </h2>
-      <p class="text-muted mb-6">
-        This book doesn't exist or you don't have access to it.
-      </p>
-      <UButton to="/library">
-        Back to Library
-      </UButton>
-    </UCard>
-
-    <!-- Book Details -->
-    <div v-else class="grid md:grid-cols-[250px_1fr] gap-8">
-      <!-- Cover -->
-      <div>
-        <div class="aspect-[2/3] bg-muted rounded-lg overflow-hidden shadow-lg">
-          <img
-            v-if="coverUrl"
-            :src="coverUrl"
-            :alt="book.title"
-            class="w-full h-full object-cover"
-          >
-          <div v-else class="w-full h-full flex items-center justify-center">
-            <UIcon name="i-lucide-book" class="text-6xl text-muted" />
-          </div>
-        </div>
+    <!-- Page Body -->
+    <UPageBody>
+      <!-- Loading State -->
+      <div v-if="status === 'pending'" class="flex justify-center py-12">
+        <UIcon name="i-lucide-loader-2" class="animate-spin text-4xl text-muted" />
       </div>
 
-      <!-- Info -->
-      <div class="space-y-6">
+      <!-- Not Found -->
+      <UCard v-else-if="!book" class="text-center py-12">
+        <UIcon name="i-lucide-book-x" class="text-6xl text-muted mx-auto mb-4" />
+        <h2 class="text-xl font-semibold mb-2">
+          Book not found
+        </h2>
+        <p class="text-muted mb-6">
+          This book doesn't exist or you don't have access to it.
+        </p>
+        <UButton to="/library">
+          Back to Library
+        </UButton>
+      </UCard>
+
+      <!-- Book Details -->
+      <div v-else class="grid md:grid-cols-[280px_1fr] gap-8">
+        <!-- Cover -->
         <div>
-          <h1 class="text-3xl font-bold mb-2">{{ book.title }}</h1>
-          <p class="text-xl text-muted">{{ book.author }}</p>
-        </div>
-
-        <!-- Metadata -->
-        <div class="grid grid-cols-2 gap-4">
-          <div v-if="book.isbn">
-            <p class="text-sm text-muted">ISBN</p>
-            <p class="font-medium">{{ book.isbn }}</p>
-          </div>
-          <div v-if="book.publishDate">
-            <p class="text-sm text-muted">Published</p>
-            <p class="font-medium">{{ book.publishDate }}</p>
-          </div>
-          <div v-if="book.publishers">
-            <p class="text-sm text-muted">Publisher</p>
-            <p class="font-medium">{{ book.publishers }}</p>
-          </div>
-          <div v-if="book.numberOfPages">
-            <p class="text-sm text-muted">Pages</p>
-            <p class="font-medium">{{ book.numberOfPages }}</p>
-          </div>
-          <div v-if="formattedAddedAt">
-            <p class="text-sm text-muted">Added to Library</p>
-            <p class="font-medium">{{ formattedAddedAt }}</p>
-          </div>
-        </div>
-
-        <!-- Description -->
-        <div v-if="book.description">
-          <h2 class="text-lg font-semibold mb-2">Description</h2>
-          <p class="text-muted">{{ book.description }}</p>
-        </div>
-
-        <!-- Subjects -->
-        <div v-if="book.subjects && book.subjects.length > 0">
-          <h2 class="text-lg font-semibold mb-2">Subjects</h2>
-          <div class="flex flex-wrap gap-2">
-            <UBadge
-              v-for="subject in book.subjects.slice(0, 10)"
-              :key="subject"
-              color="neutral"
-              variant="subtle"
+          <div class="aspect-[2/3] bg-muted rounded-lg overflow-hidden shadow-lg">
+            <!-- Use img directly for blob URLs (already WebP optimized) -->
+            <img
+              v-if="coverUrl"
+              :src="coverUrl"
+              :alt="book.title"
+              class="w-full h-full object-cover"
             >
-              {{ subject }}
-            </UBadge>
+            <div v-else class="w-full h-full flex items-center justify-center">
+              <UIcon name="i-lucide-book" class="text-6xl text-muted" />
+            </div>
           </div>
         </div>
 
-        <!-- Actions -->
-        <USeparator />
-        <div class="flex gap-3">
-          <UButton
-            v-if="book.openLibraryKey"
-            color="neutral"
-            variant="outline"
-            icon="i-lucide-external-link"
-            :href="`https://openlibrary.org${book.openLibraryKey}`"
-            target="_blank"
-          >
-            View on OpenLibrary
-          </UButton>
-          <UButton
-            color="error"
-            variant="outline"
-            icon="i-lucide-trash-2"
-            @click="removeBook"
-          >
-            Remove from Library
-          </UButton>
+        <!-- Info -->
+        <div class="space-y-6">
+          <!-- Metadata Grid -->
+          <div class="grid grid-cols-2 gap-4">
+            <div v-if="book.isbn">
+              <p class="text-sm text-muted">ISBN</p>
+              <p class="font-medium">{{ book.isbn }}</p>
+            </div>
+            <div v-if="book.publishDate">
+              <p class="text-sm text-muted">Published</p>
+              <p class="font-medium">{{ book.publishDate }}</p>
+            </div>
+            <div v-if="book.publishers">
+              <p class="text-sm text-muted">Publisher</p>
+              <p class="font-medium">{{ book.publishers }}</p>
+            </div>
+            <div v-if="book.numberOfPages">
+              <p class="text-sm text-muted">Pages</p>
+              <p class="font-medium">{{ book.numberOfPages }}</p>
+            </div>
+            <div v-if="formattedAddedAt">
+              <p class="text-sm text-muted">Added to Library</p>
+              <p class="font-medium">{{ formattedAddedAt }}</p>
+            </div>
+          </div>
+
+          <!-- Description -->
+          <div v-if="book.description">
+            <h2 class="text-lg font-semibold mb-2">Description</h2>
+            <p class="text-muted leading-relaxed whitespace-pre-wrap">{{ book.description }}</p>
+          </div>
+
+          <!-- Subjects -->
+          <div v-if="book.subjects && book.subjects.length > 0">
+            <h2 class="text-lg font-semibold mb-2">Subjects</h2>
+            <div class="flex flex-wrap gap-2">
+              <UBadge
+                v-for="subject in book.subjects"
+                :key="subject"
+                color="secondary"
+                variant="subtle"
+                size="md"
+              >
+                {{ subject }}
+              </UBadge>
+            </div>
+          </div>
+
+          <!-- Actions -->
+          <USeparator />
+          <div class="flex flex-wrap gap-3">
+            <UButton
+              to="/library"
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-arrow-left"
+            >
+              Back to Library
+            </UButton>
+            <UButton
+              v-if="book.openLibraryKey"
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-external-link"
+              :href="`https://openlibrary.org${book.openLibraryKey}`"
+              target="_blank"
+            >
+              View Edition
+            </UButton>
+            <UButton
+              v-if="book.workKey"
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-library"
+              :href="`https://openlibrary.org${book.workKey}`"
+              target="_blank"
+            >
+              View Work
+            </UButton>
+            <UButton
+              color="error"
+              variant="outline"
+              icon="i-lucide-trash-2"
+              @click="removeBook"
+            >
+              Remove from Library
+            </UButton>
+          </div>
         </div>
       </div>
-    </div>
+    </UPageBody>
   </UContainer>
 </template>

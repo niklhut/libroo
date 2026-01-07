@@ -1,29 +1,38 @@
-import { blob } from 'hub:blob'
+import { Effect } from 'effect'
+import { effectHandlerPublic } from '../../utils/effectHandler'
+import { getBlob } from '../../services/storage.service'
 
-export default defineEventHandler(async (event) => {
-  // Get the blob pathname from the URL
-  const pathname = getRouterParam(event, 'pathname')
+export default effectHandlerPublic((event) =>
+  Effect.gen(function* () {
+    // Get the blob pathname from the URL
+    const pathname = getRouterParam(event, 'pathname')
 
-  if (!pathname) {
-    throw createError({
-      statusCode: 400,
-      message: 'Pathname is required'
-    })
-  }
+    if (!pathname) {
+      return yield* Effect.fail(
+        createError({
+          statusCode: 400,
+          message: 'Pathname is required'
+        })
+      )
+    }
 
-  // Get the blob
-  const blobData = await blob.get(pathname)
+    // Get the blob using Effect
+    const blobData = yield* getBlob(pathname)
 
-  if (!blobData) {
-    throw createError({
-      statusCode: 404,
-      message: 'Blob not found'
-    })
-  }
+    if (!blobData) {
+      return yield* Effect.fail(
+        createError({
+          statusCode: 404,
+          message: 'Blob not found'
+        })
+      )
+    }
 
-  // Set content type if available
-  setHeader(event, 'Content-Type', blobData.type || 'application/octet-stream')
+    // Set content type if available
+    setHeader(event, 'Content-Type', blobData.type || 'application/octet-stream')
+    setHeader(event, 'Cache-Control', 'public, max-age=31536000, immutable')
 
-  // Return the blob as a stream
-  return blobData
-})
+    // Return the blob
+    return blobData
+  })
+)

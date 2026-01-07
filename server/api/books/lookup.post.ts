@@ -1,6 +1,9 @@
 import { Effect } from 'effect'
 import { effectHandlerPublic } from '../../utils/effectHandler'
 import { lookupByISBN } from '../../repositories/openLibrary.repository'
+import { books } from 'hub:db:schema'
+import { eq } from 'drizzle-orm'
+import { db } from 'hub:db'
 
 // This endpoint doesn't require auth - anyone can preview a book lookup
 export default effectHandlerPublic((event) =>
@@ -21,7 +24,37 @@ export default effectHandlerPublic((event) =>
       )
     }
 
-    // Try to lookup the book - catch NotFound errors and return found: false
+    const normalizedISBN = body.isbn.replace(/[-\s]/g, '')
+
+    // First, check if book exists in local database
+    const localBookEffect = Effect.tryPromise({
+      try: async () => {
+        const [localBook] = await db.select().from(books).where(eq(books.isbn, normalizedISBN)).limit(1)
+        return localBook
+      },
+      catch: () => null
+    })
+
+    const localBook = yield* localBookEffect
+
+    // If found locally, return that data
+    if (localBook) {
+      return {
+        found: true,
+        isbn: localBook.isbn || normalizedISBN,
+        title: localBook.title,
+        author: localBook.author,
+        coverUrl: localBook.coverPath ? `/api/blob/${localBook.coverPath}` : null,
+        description: localBook.description,
+        subjects: localBook.subjects ? JSON.parse(localBook.subjects) : null,
+        publishDate: localBook.publishDate,
+        publishers: localBook.publishers ? localBook.publishers.split(', ') : null,
+        numberOfPages: localBook.numberOfPages,
+        existsLocally: true
+      }
+    }
+
+    // Not found locally, try OpenLibrary
     const lookupEffect = lookupByISBN(body.isbn).pipe(
       Effect.map((bookData) => ({
         found: true,
@@ -33,7 +66,8 @@ export default effectHandlerPublic((event) =>
         subjects: bookData.subjects,
         publishDate: bookData.publishDate,
         publishers: bookData.publishers,
-        numberOfPages: bookData.numberOfPages
+        numberOfPages: bookData.numberOfPages,
+        existsLocally: false
       })),
       Effect.catchTag('BookNotFoundError', () =>
         Effect.succeed({

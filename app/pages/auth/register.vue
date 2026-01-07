@@ -3,7 +3,7 @@ import * as z from 'zod'
 import type { FormSubmitEvent, AuthFormField } from '@nuxt/ui'
 
 definePageMeta({
-  layout: false
+  auth: false
 })
 
 const { signUp, session } = useAuth()
@@ -105,17 +105,10 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
 </script>
 
 <template>
-  <div class="flex flex-col items-center justify-center min-h-screen p-4">
-    <UPageCard class="w-full max-w-md">
-      <UAuthForm
-        :schema="schema"
-        :fields="fields"
-        :loading="isLoading"
-        title="Create Account"
-        icon="i-lucide-user-plus"
-        submit-label="Create Account"
-        @submit="onSubmit"
-      >
+  <UContainer class="py-12 max-w-md">
+    <UPageCard>
+      <UAuthForm :schema="schema" :fields="fields" :loading="isLoading" title="Create Account" icon="i-lucide-user-plus"
+        submit-label="Create Account" @submit="onSubmit">
         <template #description>
           Already have an account?
           <ULink to="/auth/login" class="text-primary font-medium">
@@ -124,11 +117,7 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
         </template>
 
         <template v-if="error" #validation>
-          <UAlert
-            color="error"
-            icon="i-lucide-alert-circle"
-            :title="error"
-          />
+          <UAlert color="error" icon="i-lucide-alert-circle" :title="error" />
         </template>
 
         <template #footer>
@@ -138,5 +127,5 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
         </template>
       </UAuthForm>
     </UPageCard>
-  </div>
+  </UContainer>
 </template>

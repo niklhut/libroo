@@ -3,19 +3,23 @@ import * as z from 'zod'
 import type { FormSubmitEvent, AuthFormField } from '@nuxt/ui'
 
 definePageMeta({
-  layout: false
+  auth: false
 })
 
+const route = useRoute()
 const { signIn, session } = useAuth()
 const toast = useToast()
 
 const isLoading = ref(false)
 const error = ref('')
 
+// Get redirect path from query
+const redirectPath = computed(() => (route.query.redirect as string) || '/library')
+
 // Redirect if already logged in
 watch(session, (newSession) => {
   if (newSession.data?.user) {
-    navigateTo('/library')
+    navigateTo(redirectPath.value)
   }
 }, { immediate: true })
 
@@ -65,7 +69,7 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
         description: 'You have been signed in successfully.',
         color: 'success'
       })
-      navigateTo('/library')
+      navigateTo(redirectPath.value)
     }
   } catch (e: any) {
     error.value = e.message || 'An unexpected error occurred'
@@ -81,8 +85,8 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
 </script>
 
 <template>
-  <div class="flex flex-col items-center justify-center min-h-screen p-4">
-    <UPageCard class="w-full max-w-md">
+  <UContainer class="py-12 max-w-md">
+    <UPageCard>
       <UAuthForm
         :schema="schema"
         :fields="fields"
@@ -119,5 +123,5 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
         </template>
       </UAuthForm>
     </UPageCard>
-  </div>
+  </UContainer>
 </template>
