@@ -1,77 +1,58 @@
 <script setup lang="ts">
-// App header component using Nuxt UI UHeader
+import type { NavigationMenuItem } from '@nuxt/ui'
+
 const { session, signOut } = useAuth()
+const router = useRouter()
 
 async function handleSignOut() {
   await signOut()
-  navigateTo('/')
+  router.push('/')
 }
 
-// Navigation links
-const links = computed(() => {
+// 1. Define the Navigation Links (Center/Left)
+const links = computed<NavigationMenuItem[]>(() => {
+  const items = []
+
   if (session.value?.data?.user) {
-    return [
-      { label: 'My Library', to: '/library' }
-    ]
+    items.push({
+      label: 'My Library',
+      to: '/library',
+      icon: 'i-lucide-book-open'
+    })
+    items.push({
+      label: 'Sign Out',
+      icon: 'i-lucide-log-out',
+      color: 'neutral' as const,
+      variant: 'ghost' as const,
+      onClick: handleSignOut
+    })
+  } else {
+    items.push({
+      label: 'Sign In',
+      to: '/auth/login',
+      color: 'neutral' as const,
+      variant: 'ghost' as const
+    })
   }
-  return []
+
+  return items
 })
 </script>
 
 <template>
-  <UHeader
-    title="Libroo"
-    to="/"
-  >
-    <template #title>
-      <NuxtLink
-        to="/"
-        class="flex items-center gap-2"
-      >
-        <UIcon
-          name="i-lucide-book-open-check"
-          class="text-2xl text-primary"
-        />
+  <UHeader :links="links">
+    <template #left>
+      <NuxtLink to="/" class="flex items-center gap-2">
+        <UIcon name="i-lucide-book-open-check" class="text-2xl text-primary" />
         <span class="font-bold text-xl">Libroo</span>
       </NuxtLink>
     </template>
 
+
     <template #right>
+      <UNavigationMenu :items="links" class="hidden lg:flex" variant="link" />
+
       <UColorModeButton />
-
-      <template v-if="session.data?.user">
-        <UButton
-          to="/library"
-          color="neutral"
-          variant="ghost"
-        >
-          My Library
-        </UButton>
-        <UButton
-          color="neutral"
-          variant="ghost"
-          icon="i-lucide-log-out"
-          @click="handleSignOut"
-        >
-          Sign Out
-        </UButton>
-      </template>
-
-      <template v-else>
-        <UButton
-          to="/auth/login"
-          color="neutral"
-          variant="ghost"
-        >
-          Sign In
-        </UButton>
-        <UButton
-          to="/auth/register"
-          color="primary"
-        >
-          Get Started
-        </UButton>
-      </template>
     </template>
   </UHeader>
 </template>
