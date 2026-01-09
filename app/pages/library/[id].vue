@@ -34,15 +34,41 @@ const coverUrl = computed(() => {
   return null
 })
 
-// Format date nicely
-const formattedAddedAt = computed(() => {
-  if (!book.value?.addedAt) return null
-  return new Date(book.value.addedAt).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  })
-})
+// Format date helper function
+function formatDate(dateString: string | null): string | null {
+  if (!dateString) return null
+  
+  // Try to parse as a full date first
+  const date = new Date(dateString)
+  if (!isNaN(date.getTime())) {
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    })
+  }
+  
+  // If it's just a year (e.g., "2015"), return as-is
+  if (/^\d{4}$/.test(dateString)) {
+    return dateString
+  }
+  
+  // For other formats like "January 2015", try to parse
+  const monthYearDate = new Date(dateString)
+  if (!isNaN(monthYearDate.getTime())) {
+    return monthYearDate.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long'
+    })
+  }
+  
+  // Fallback: return the original string
+  return dateString
+}
+
+// Format dates nicely
+const formattedAddedAt = computed(() => formatDate(book.value?.addedAt ?? null))
+const formattedPublishDate = computed(() => formatDate(book.value?.publishDate ?? null))
 
 // Remove book
 async function removeBook() {
@@ -70,12 +96,6 @@ async function removeBook() {
 
 <template>
   <UContainer class="py-8 max-w-6xl">
-    <!-- Page Header -->
-    <UPageHeader
-      :title="book?.title || 'Book Details'"
-      :description="book?.author"
-    />
-
     <!-- Page Body -->
     <UPageBody>
       <!-- Loading State -->
@@ -112,74 +132,78 @@ async function removeBook() {
       <!-- Book Details -->
       <div
         v-else
-        class="grid md:grid-cols-[280px_1fr] gap-8"
+        class="md:flex md:gap-8"
       >
-        <!-- Cover -->
-        <div>
-          <div class="aspect-[2/3] bg-muted rounded-lg overflow-hidden shadow-lg">
-            <!-- Use img directly for blob URLs (already WebP optimized) -->
-            <img
-              v-if="coverUrl"
-              :src="coverUrl"
-              :alt="book.title"
-              class="w-full h-full object-cover"
-            >
-            <div
-              v-else
-              class="w-full h-full flex items-center justify-center"
-            >
-              <UIcon
-                name="i-lucide-book"
-                class="text-6xl text-muted"
+        <!-- Cover - Small centered on mobile, sticky on desktop -->
+        <div class="flex justify-center mb-6 md:mb-0 md:block md:shrink-0 md:w-[280px]">
+          <div class="w-40 md:w-[280px] md:sticky md:top-24 md:self-start">
+            <div class="rounded-lg overflow-hidden shadow-lg">
+              <NuxtImg
+                v-if="coverUrl"
+                :src="coverUrl"
+                :alt="book.title"
+                width="280"
+                height="420"
+                preload
               />
+              <div
+                v-else
+                class="w-full h-full flex items-center justify-center"
+              >
+                <UIcon
+                  name="i-lucide-book"
+                  class="text-6xl text-muted"
+                />
+              </div>
             </div>
           </div>
         </div>
 
         <!-- Info -->
-        <div class="space-y-6">
-          <!-- Metadata Grid -->
-          <div class="grid grid-cols-2 gap-4">
-            <div v-if="book.isbn">
-              <p class="text-sm text-muted">
-                ISBN
-              </p>
-              <p class="font-medium">
-                {{ book.isbn }}
-              </p>
-            </div>
-            <div v-if="book.publishDate">
-              <p class="text-sm text-muted">
-                Published
-              </p>
-              <p class="font-medium">
-                {{ book.publishDate }}
-              </p>
-            </div>
-            <div v-if="book.publishers">
-              <p class="text-sm text-muted">
-                Publisher
-              </p>
-              <p class="font-medium">
-                {{ book.publishers }}
-              </p>
-            </div>
-            <div v-if="book.numberOfPages">
-              <p class="text-sm text-muted">
-                Pages
-              </p>
-              <p class="font-medium">
-                {{ book.numberOfPages }}
-              </p>
-            </div>
-            <div v-if="formattedAddedAt">
-              <p class="text-sm text-muted">
-                Added to Library
-              </p>
-              <p class="font-medium">
-                {{ formattedAddedAt }}
-              </p>
-            </div>
+        <div class="space-y-3 md:flex-1">
+          <!-- Title & Author -->
+          <div class="text-center md:text-left">
+            <h1 class="text-3xl md:text-4xl font-bold tracking-tight">
+              {{ book.title }}
+            </h1>
+            <p class="text-lg text-muted mt-2">
+              {{ book.author }}
+            </p>
+          </div>
+
+          <!-- Compact Metadata -->
+          <div class="flex flex-wrap items-center justify-center md:justify-start gap-x-2 gap-y-1 text-sm text-muted">
+            <span v-if="formattedPublishDate">
+              Published {{ formattedPublishDate }}
+            </span>
+            <span
+              v-if="formattedPublishDate && book.publishers"
+              class="text-muted/50"
+            >•</span>
+            <span v-if="book.publishers">
+              {{ book.publishers }}
+            </span>
+            <span
+              v-if="(formattedPublishDate || book.publishers) && book.numberOfPages"
+              class="text-muted/50"
+            >•</span>
+            <span v-if="book.numberOfPages">
+              {{ book.numberOfPages }} pages
+            </span>
+          </div>
+
+          <!-- ISBN & Added At (secondary metadata) -->
+          <div class="flex flex-wrap items-center justify-center md:justify-start gap-x-2 gap-y-1 text-xs text-muted/70">
+            <span v-if="book.isbn">
+              ISBN: {{ book.isbn }}
+            </span>
+            <span
+              v-if="book.isbn && formattedAddedAt"
+              class="text-muted/40"
+            >•</span>
+            <span v-if="formattedAddedAt">
+              Added {{ formattedAddedAt }}
+            </span>
           </div>
 
           <!-- Description -->
@@ -213,14 +237,6 @@ async function removeBook() {
           <!-- Actions -->
           <USeparator />
           <div class="flex flex-wrap gap-3">
-            <UButton
-              to="/library"
-              color="neutral"
-              variant="outline"
-              icon="i-lucide-arrow-left"
-            >
-              Back to Library
-            </UButton>
             <UButton
               v-if="book.openLibraryKey"
               color="neutral"

@@ -27,6 +27,10 @@ export default defineNuxtConfig({
     blob: true
   },
 
+  image: {
+    provider: 'none',
+  },
+
   eslint: {
     config: {
       stylistic: {
