@@ -188,13 +188,6 @@ function resetLookup() {
                   class="text-lg text-success"
                 />
                 <span class="font-semibold">Book Found</span>
-                <UBadge
-                  v-if="lookupResult.existsLocally"
-                  color="info"
-                  variant="subtle"
-                >
-                  Already in database
-                </UBadge>
               </div>
             </template>
 
@@ -202,7 +195,7 @@ function resetLookup() {
               <div class="flex gap-6">
                 <!-- Cover Preview - show OpenLibrary cover -->
                 <div class="w-32 h-48 flex-shrink-0 bg-muted rounded-lg overflow-hidden shadow-md">
-                  <NuxtImg
+                  <img
                     v-if="lookupResult.coverUrl"
                     :src="lookupResult.coverUrl"
                     :alt="lookupResult.title"

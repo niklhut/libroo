@@ -129,8 +129,8 @@ async function deleteSelected() {
         <UButton
           v-if="hasBooks"
           size="lg"
-          :color="isSelectMode ? 'primary' : 'neutral'"
-          :variant="isSelectMode ? 'solid' : 'outline'"
+          color="neutral"
+          variant="outline"
           icon="i-lucide-check-square"
           class="min-w-[100px]"
           @click="toggleSelectMode"
