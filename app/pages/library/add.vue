@@ -106,7 +106,7 @@ function resetLookup() {
 </script>
 
 <template>
-  <UContainer class="py-8 max-w-6xl">
+  <UContainer>
     <!-- Page Header -->
     <UPageHeader
       title="Add Book"

@@ -95,7 +95,7 @@ async function removeBook() {
 </script>
 
 <template>
-  <UContainer class="py-8 max-w-6xl">
+  <UContainer>
     <!-- Page Body -->
     <UPageBody>
       <!-- Loading State -->
