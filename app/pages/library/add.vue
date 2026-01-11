@@ -194,17 +194,17 @@ function resetLookup() {
             <div class="space-y-6">
               <div class="flex gap-6">
                 <!-- Cover Preview - show OpenLibrary cover -->
-                <div class="w-32 h-48 flex-shrink-0 bg-muted rounded-lg overflow-hidden shadow-md">
+                <div class="w-32 max-h-48 flex-shrink-0 rounded-lg overflow-hidden shadow-md">
                   <img
                     v-if="lookupResult.coverUrl"
                     :src="lookupResult.coverUrl"
                     :alt="lookupResult.title"
-                    class="w-full h-full object-cover"
+                    class="max-w-full max-h-full object-cover"
                     loading="eager"
                   />
                   <div
                     v-else
-                    class="w-full h-full flex items-center justify-center"
+                    class="w-full h-full flex items-center justify-center bg-muted aspect-[1/1.5]"
                   >
                     <UIcon
                       name="i-lucide-book"

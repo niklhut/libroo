@@ -44,29 +44,32 @@ function handleClick(e: MouseEvent) {
     class="block cursor-pointer"
   >
     <UCard
-      class="overflow-hidden h-full transition-all hover:shadow-lg"
+      variant="subtle"
+      class="h-full transition-all hover:shadow-lg dark:hover:shadow-neutral-500/20"
+      :ui="{
+        header: 'p-0 sm:px-0',
+        body: 'p-2 sm:p-4'
+      }"
     >
-      <!-- Cover in header slot - no padding -->
       <template #header>
-        <div class="aspect-[2/3] bg-muted flex items-center justify-center relative -m-4 -mb-4">
-          <!-- Use img directly for blob URLs (already WebP optimized) -->
+        <div class="flex items-center justify-center relative">
           <NuxtImg
             v-if="coverUrl"
             :src="coverUrl"
             :alt="title"
-            class="w-full h-full object-cover"
+            class="w-full object-cover"
             loading="lazy"
           />
-          <UIcon
-            v-else
-            name="i-lucide-book"
-            class="text-4xl text-muted"
-          />
+          <div v-else class="w-full h-full flex items-center justify-center bg-muted aspect-[1/1.5]">
+            <UIcon
+              name="i-lucide-book"
+              class="text-4xl text-muted"
+            />
+          </div>
         </div>
       </template>
 
-      <!-- Book Info -->
-      <div class="space-y-1 pt-2">
+      <div class="space-y-1">
         <h3 class="font-semibold text-sm line-clamp-2">
           {{ title }}
         </h3>

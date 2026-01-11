@@ -148,7 +148,7 @@ async function removeBook() {
               />
               <div
                 v-else
-                class="w-full h-full flex items-center justify-center"
+                class="w-full h-full flex items-center justify-center bg-muted aspect-[1/1.5]"
               >
                 <UIcon
                   name="i-lucide-book"

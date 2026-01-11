@@ -85,6 +85,32 @@ function extractWorkKeyFromUrl(url?: string): string | null {
   return null
 }
 
+// Check if a cover URL actually exists and returns a valid image
+async function checkCoverExists(coverUrl: string): Promise<boolean> {
+  try {
+    // Add ?default=false to prevent OpenLibrary from returning a placeholder
+    const urlWithParam = coverUrl.includes('?')
+      ? `${coverUrl}&default=false`
+      : `${coverUrl}?default=false`
+
+    const response = await fetch(urlWithParam, { method: 'HEAD' })
+
+    if (!response.ok) {
+      return false
+    }
+
+    // Check content length to detect placeholder images (1x1 pixels are very small)
+    const contentLength = response.headers.get('content-length')
+    if (contentLength && parseInt(contentLength) < 1000) {
+      return false
+    }
+
+    return true
+  } catch {
+    return false
+  }
+}
+
 // Live implementation
 export const OpenLibraryRepositoryLive = Layer.succeed(OpenLibraryRepository, {
   lookupByISBN: isbn =>
@@ -117,10 +143,20 @@ export const OpenLibraryRepositoryLive = Layer.succeed(OpenLibraryRepository, {
         // Extract authors
         const authors = bookData.authors?.map(a => a.name) || ['Unknown Author']
 
-        // Extract cover URL (prefer large)
-        const coverUrl = bookData.cover?.large
-          || bookData.cover?.medium
-          || `https://covers.openlibrary.org/b/isbn/${normalizedISBN}-L.jpg`
+        // Extract cover URL (prefer large, validate that it exists)
+        let coverUrl: string | null = null
+        const potentialCovers = [
+          bookData.cover?.large,
+          bookData.cover?.medium,
+          `https://covers.openlibrary.org/b/isbn/${normalizedISBN}-L.jpg`
+        ].filter(Boolean) as string[]
+
+        for (const url of potentialCovers) {
+          if (await checkCoverExists(url)) {
+            coverUrl = url
+            break
+          }
+        }
 
         // Extract publishers
         const publishers = bookData.publishers?.map(p => p.name)
@@ -207,7 +243,7 @@ export const OpenLibraryRepositoryLive = Layer.succeed(OpenLibraryRepository, {
     Effect.tryPromise({
       try: async () => {
         const normalizedISBN = normalizeISBN(isbn)
-        const coverUrl = `https://covers.openlibrary.org/b/isbn/${normalizedISBN}-${size}.jpg`
+        const coverUrl = `https://covers.openlibrary.org/b/isbn/${normalizedISBN}-${size}.jpg?default=false`
 
         const response = await fetch(coverUrl)
 
