@@ -257,35 +257,42 @@ export const OpenLibraryRepositoryLive = Layer.succeed(OpenLibraryRepository, {
   downloadCover: (isbn, size = 'L') =>
     Effect.tryPromise({
       try: async () => {
-        const normalizedISBN = normalizeISBN(isbn)
-        const coverUrl = `https://covers.openlibrary.org/b/isbn/${normalizedISBN}-${size}.jpg?default=false`
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 5000)
 
-        const response = await fetch(coverUrl)
+        try {
+          const normalizedISBN = normalizeISBN(isbn)
+          const coverUrl = `https://covers.openlibrary.org/b/isbn/${normalizedISBN}-${size}.jpg?default=false`
 
-        if (!response.ok) {
-          // No cover available, return null (not an error)
-          return null
-        }
+          const response = await fetch(coverUrl, { signal: controller.signal })
 
-        // Check if we got a valid image (OpenLibrary returns a 1x1 transparent pixel for missing covers)
-        const contentLength = response.headers.get('content-length')
-        if (contentLength && parseInt(contentLength) < 1000) {
-          // Too small, probably the placeholder image
-          return null
-        }
+          if (!response.ok) {
+            // No cover available, return null (not an error)
+            return null
+          }
 
-        const imageBuffer = await response.arrayBuffer()
+          // Check if we got a valid image (OpenLibrary returns a 1x1 transparent pixel for missing covers)
+          const contentLength = response.headers.get('content-length')
+          if (contentLength && parseInt(contentLength) < 1000) {
+            // Too small, probably the placeholder image
+            return null
+          }
 
-        // Convert to WebP using sharp
-        const webpBuffer = await sharp(Buffer.from(imageBuffer))
-          .webp({ quality: 85 })
-          .toBuffer()
+          const imageBuffer = await response.arrayBuffer()
 
-        // Store as WebP in blob
-        return {
-          imageBuffer: webpBuffer,
-          contentType: 'image/webp',
-          pathname: `covers/${normalizedISBN}.webp`
+          // Convert to WebP using sharp
+          const webpBuffer = await sharp(Buffer.from(imageBuffer))
+            .webp({ quality: 85 })
+            .toBuffer()
+
+          // Store as WebP in blob
+          return {
+            imageBuffer: webpBuffer,
+            contentType: 'image/webp',
+            pathname: `covers/${normalizedISBN}.webp`
+          }
+        } finally {
+          clearTimeout(timeoutId)
         }
       },
       catch: error => new Error(`Failed to download cover: ${error}`)
