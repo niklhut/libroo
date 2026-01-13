@@ -31,7 +31,7 @@ const lookupResult = ref<LookupResult | null>(null)
 
 // ISBN validation schema
 const isbnSchema = z.object({
-  isbn: z.string('ISBN is required').min(10, 'ISBN must be at least 10 characters').max(17, 'ISBN is too long')
+  isbn: z.string().min(1, 'ISBN is required').min(10, 'ISBN must be at least 10 characters').max(17, 'ISBN is too long')
 })
 
 type IsbnSchema = z.output<typeof isbnSchema>
