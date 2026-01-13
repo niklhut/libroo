@@ -91,12 +91,11 @@ export const BookServiceLive = Layer.effect(
 
       batchRemoveFromLibrary: (ids, userId) =>
         Effect.gen(function* () {
-          // Process all deletions in parallel (unbounded concurrency)
           // Wrap each operation in Either to capture success/failure individually
           const results = yield* Effect.forEach(
             ids,
             id => Effect.either(bookRepo.removeFromLibrary(id, userId)),
-            { concurrency: 'unbounded' }
+            { concurrency: 10 }
           )
 
           const removedIds: string[] = []
