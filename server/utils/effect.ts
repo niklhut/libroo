@@ -1,5 +1,5 @@
-import { Effect, Layer } from 'effect'
-import type { H3Event } from 'h3'
+import { Effect, Layer, pipe } from 'effect'
+import type { H3Error } from 'h3'
 
 // Base services layer (no dependencies)
 const BaseServicesLive = Layer.mergeAll(
@@ -36,14 +36,77 @@ export type MainServices
     | OpenLibraryRepository
     | BookService
 
-// Helper to run an Effect in a Nitro event handler
+// Helper to safely get property from unknown object
+function getProp<T>(obj: unknown, key: string): T | undefined {
+  if (obj && typeof obj === 'object' && key in obj) {
+    return (obj as Record<string, unknown>)[key] as T
+  }
+  return undefined
+}
+
+// Error mappings for converting tagged errors to HTTP status codes
+const errorStatusCodes: Record<string, number> = {
+  UnauthorizedError: 401,
+  BookNotFoundError: 404,
+  BookAlreadyOwnedError: 409,
+  OpenLibraryApiError: 502,
+  BookCreateError: 500
+}
+
+// Custom error message formatters
+const errorMessageFormatters: Record<string, (error: unknown) => string> = {
+  BookNotFoundError: (error) => {
+    const isbn = getProp<string>(error, 'isbn')
+    return isbn ? `Book with ISBN ${isbn} not found` : 'Book not found'
+  },
+  BookAlreadyOwnedError: (error) => {
+    const isbn = getProp<string>(error, 'isbn')
+    return `You already have this book (ISBN: ${isbn || 'unknown'}) in your library`
+  }
+}
+
+/**
+ * Converts any error to an H3Error within Effect.
+ * Uses Effect.logError for structured logging.
+ */
+export function handleError(error: unknown): Effect.Effect<H3Error> {
+  return Effect.gen(function* () {
+    // Check if it's already an H3 error
+    if (error && typeof error === 'object' && 'statusCode' in error) {
+      return error as H3Error
+    }
+
+    // Check if it's a tagged error with _tag
+    const tag = getProp<string>(error, '_tag')
+    if (tag) {
+      const statusCode = errorStatusCodes[tag] ?? 500
+      const formatter = errorMessageFormatters[tag]
+      const message = formatter
+        ? formatter(error)
+        : getProp<string>(error, 'message') ?? tag
+
+      yield* Effect.logError(`[${tag}] ${message}`)
+      return createError({ statusCode, message })
+    }
+
+    // Unknown error - log and return internal server error
+    const message = error instanceof Error ? error.message : String(error)
+    yield* Effect.logError(`Unexpected error: ${message}`)
+    return createError({ statusCode: 500, message: 'Internal Server Error' })
+  })
+}
+
+// Helper to run an Effect in a Nitro event handler or elsewhere
 export async function runEffect<A, E>(
-  effect: Effect.Effect<A, E, MainServices>,
-  _event?: H3Event
-): Promise<A> {
-  const runnable = Effect.provide(effect, MainLive)
-  return Effect.runPromise(runnable)
+  effect: Effect.Effect<A, E, MainServices>
+): Promise<A | H3Error> {
+  return pipe(
+    effect,
+    Effect.provide(MainLive),
+    Effect.catchAll(handleError),
+    Effect.runPromise
+  )
 }
 
 // Re-export common Effect utilities
-export { Effect, Layer, Context, Data, pipe } from 'effect'
+export { Effect, Layer, Context, Data } from 'effect'
