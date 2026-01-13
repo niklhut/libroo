@@ -102,17 +102,20 @@ export const BookServiceLive = Layer.effect(
           const removedIds: string[] = []
           const failedIds: string[] = []
 
+          const errors: unknown[] = []
           results.forEach((result, index) => {
             const id = ids[index]!
             if (Either.isRight(result)) {
               removedIds.push(id)
             } else {
               failedIds.push(id)
-              // Log the error for debugging
-              Effect.logError(result.left)
+              errors.push(result.left)
             }
           })
-
+          // Log all errors
+          for (const error of errors) {
+            yield* Effect.logError(error)
+          }
           return { removedIds, failedIds }
         }),
 
