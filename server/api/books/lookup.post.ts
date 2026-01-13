@@ -1,12 +1,12 @@
 import { Effect } from 'effect'
-import { effectHandlerPublic } from '../../utils/effectHandler'
+import { effectHandler } from '../../utils/effectHandler'
 import { lookupByISBN } from '../../repositories/openLibrary.repository'
 import { books } from 'hub:db:schema'
 import { eq } from 'drizzle-orm'
 import { db } from 'hub:db'
 
-// This endpoint doesn't require auth - anyone can preview a book lookup
-export default effectHandlerPublic(event =>
+// Lookup endpoint requires auth - users can preview books before adding
+export default effectHandler((event, _user) =>
   Effect.gen(function* () {
     // Read request body
     const body = yield* Effect.tryPromise({

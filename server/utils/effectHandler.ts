@@ -1,6 +1,6 @@
 import { Effect } from 'effect'
-import type { H3Event, H3Error } from 'h3'
-import { MainLive } from './effect'
+import type { H3Event } from 'h3'
+import { MainLive, type MainServices } from './effect'
 import { requireAuth } from '../services/auth.service'
 
 // Error mapping for converting Effect errors to HTTP errors
@@ -44,11 +44,11 @@ const errorMappings: Record<string, (error: unknown) => HttpErrorMapping> = {
   })
 }
 
-// Convert any Effect error to an H3 error
-function errorToH3Error(error: unknown): H3Error {
-  // If it's already an H3 error, return it
+// Convert any Effect error to an H3 error and throw it
+function throwH3Error(error: unknown): never {
+  // If it's already an H3 error, throw it
   if (error && typeof error === 'object' && 'statusCode' in error) {
-    return error as H3Error
+    throw error
   }
 
   // Check if it's a tagged error with _tag
@@ -57,23 +57,18 @@ function errorToH3Error(error: unknown): H3Error {
     const mapper = errorMappings[tag]
     if (mapper) {
       const { statusCode, message } = mapper(error)
-      return createError({ statusCode, message })
+      throw createError({ statusCode, message })
     }
   }
 
   // Default to internal server error
   const message = error instanceof Error ? error.message : 'Internal server error'
-  return createError({ statusCode: 500, message })
-}
-
-// Type for the effect handler options
-interface EffectHandlerOptions {
-  // Whether auth is required (default: true)
-  requireAuth?: boolean
+  throw createError({ statusCode: 500, message })
 }
 
 /**
  * Creates a fully Effect-based event handler with automatic error conversion.
+ * Authentication is always required.
  *
  * Example usage:
  * ```ts
@@ -85,58 +80,25 @@ interface EffectHandlerOptions {
  * )
  * ```
  */
-export function effectHandler<A>(
+export function effectHandler<A, E>(
   handler: (
     event: H3Event,
-    user: { id: string, name: string, email: string }
-  ) => Effect.Effect<A, unknown, unknown>,
-  options: EffectHandlerOptions = {}
+    user: { id: string; name: string; email: string }
+  ) => Effect.Effect<A, E, MainServices>
 ) {
-  const { requireAuth: needsAuth = true } = options
-
   return defineEventHandler(async (event) => {
     const effect = Effect.gen(function* () {
-      // Always check auth first if required
-      let user: { id: string, name: string, email: string }
-
-      if (needsAuth) {
-        user = yield* requireAuth(event)
-      } else {
-        // Provide a dummy user for non-auth endpoints
-        user = { id: '', name: '', email: '' }
-      }
-
-      // Run the handler
+      const user = yield* requireAuth(event)
       return yield* handler(event, user)
     })
 
-    // Provide layers and run - use type assertion to handle the layer type
-    const runnable = Effect.provide(effect, MainLive) as Effect.Effect<A, unknown, never>
-
-    try {
-      return await Effect.runPromise(runnable)
-    } catch (error) {
-      throw errorToH3Error(error)
-    }
-  })
-}
-
-/**
- * Creates an Effect-based handler that doesn't require authentication.
- */
-export function effectHandlerPublic<A>(
-  handler: (event: H3Event) => Effect.Effect<A, unknown, unknown>
-) {
-  return defineEventHandler(async (event) => {
-    const effect = handler(event)
-
-    // Provide layers and run - use type assertion to handle the layer type
-    const runnable = Effect.provide(effect, MainLive) as Effect.Effect<A, unknown, never>
-
-    try {
-      return await Effect.runPromise(runnable)
-    } catch (error) {
-      throw errorToH3Error(error)
-    }
+    // 1. Provide dependencies (MainLive)
+    // 2. Catch all errors and throw them as H3 errors (using Effect.sync to run the throwing function)
+    // 3. Run the promise
+    return await effect.pipe(
+      Effect.provide(MainLive),
+      Effect.catchAll((error) => Effect.sync(() => throwH3Error(error))),
+      Effect.runPromise
+    )
   })
 }

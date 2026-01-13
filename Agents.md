@@ -33,21 +33,14 @@
 ## Code Conventions
 
 ### Effect-TS Patterns
-All API handlers use Effect wrappers:
+All API handlers use Effect wrappers with required authentication:
 ```typescript
-// Protected endpoint (requires auth)
+// All endpoints require auth
 export default effectHandler((event, user) =>
   Effect.gen(function* () {
     // user is guaranteed authenticated
     // Use Effect.tryPromise for async operations
     // Use Effect.fail for errors
-  })
-)
-
-// Public endpoint
-export default effectHandlerPublic((event) =>
-  Effect.gen(function* () {
-    // No auth required
   })
 )
 ```
