@@ -1,16 +1,19 @@
 # Libroo Agent Instructions
 
 ## Project Overview
+
 **Libroo** is a private, physical-first library management system for inventory, lending logistics, and shelf mapping.
 
 ---
 
 ## Tech Stack & Architecture
+
 - **Framework:** Nuxt 4 (SSR, Auto-imports) + NuxtHub (DB/Blob).
 - **UI:** Nuxt UI v4 (UPageHeader, UPageBody, UCard, etc.).
 - **Logic:** Effect-ts (Functional DI) + Drizzle ORM.
 
 ### The 3-Tier Architecture (Mandatory)
+
 Every feature MUST be split into these three layers. No exceptions.
 
 1. **Route Handler (`/server/api`):** The "Entry Point."
@@ -28,7 +31,9 @@ Every feature MUST be split into these three layers. No exceptions.
 ## Code Conventions
 
 ### Effect-TS & Dependency Injection
+
 Always use `Effect.gen` and provide the required layers at the entry point.
+
 ```typescript
 // server/api/example.post.ts
 export default effectHandler((event, user) => 
@@ -43,12 +48,14 @@ export default effectHandler((event, user) =>
 ```
 
 ### Strict Guardrails
+
 - **No Fat Handlers**: If an API route logic exceeds 15 lines, move it to a Service.
 - **Error Handling**: Use `Data.TaggedError` for domain errors.
 - **Local-First**: Check `BookRepository` before calling `OpenLibraryRepository`.
 - **Images**: All uploads must pass through a `StorageService` for WebP conversion via `sharp`.
 
 ### UI Implementation
+
 - Always use [NuxtUI](https://ui.nuxt.com/) components, when possible instead of writing your own components or inline styles.
 - Use `#links` slot in `UPageHeader` for primary actions.
 - Wrap all content in `UPageBody` for consistent spacing.
@@ -57,6 +64,7 @@ export default effectHandler((event, user) =>
 ---
 
 ## Development Workflow
+
 - Define Schema: Update `server/database/schema.ts`.
 - Create Repository: Implement data access in `server/repositories/`.
 - Create Service: Implement business logic in `server/services/`.
