@@ -119,10 +119,7 @@ export const BookServiceLive = Layer.effect(
         }),
 
       getBookDetails: (userBookId, userId) =>
-        Effect.gen(function* () {
-          const result = yield* bookRepo.getUserBookWithDetails(userBookId, userId)
-          return result
-        }),
+        bookRepo.getUserBookWithDetails(userBookId, userId),
 
       lookupBook: isbn =>
         Effect.gen(function* () {
