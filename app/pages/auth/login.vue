@@ -14,7 +14,13 @@ const isLoading = ref(false)
 const error = ref('')
 
 // Get redirect path from query
-const redirectPath = computed(() => (route.query.redirect as string) || '/library')
+const redirectPath = computed(() => {
+  const redirect = route.query.redirect
+  if (typeof redirect === 'string' && /^\/(?!\/)/.test(redirect)) {
+    return redirect
+  }
+  return '/library'
+})
 
 // Redirect if already logged in
 watch(session, (newSession) => {
