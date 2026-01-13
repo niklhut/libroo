@@ -28,7 +28,7 @@ export default effectHandler(event =>
 
     // Set content type if available
     setHeader(event, 'Content-Type', blobData.type || 'application/octet-stream')
-    setHeader(event, 'Cache-Control', 'private, no-cache, no-store, must-revalidate')
+    setHeader(event, 'Cache-Control', 'private, max-age=3600')
 
     // Return the blob
     return blobData
