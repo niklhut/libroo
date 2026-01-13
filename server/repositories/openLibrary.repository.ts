@@ -77,13 +77,19 @@ function normalizeISBN(isbn: string): string {
 
 // Check if a cover URL actually exists and returns a valid image
 async function checkCoverExists(coverUrl: string): Promise<boolean> {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 5000)
+
   try {
     // Add ?default=false to prevent OpenLibrary from returning a placeholder
     const urlWithParam = coverUrl.includes('?')
       ? `${coverUrl}&default=false`
       : `${coverUrl}?default=false`
 
-    const response = await fetch(urlWithParam, { method: 'HEAD' })
+    const response = await fetch(urlWithParam, {
+      method: 'HEAD',
+      signal: controller.signal
+    })
 
     if (!response.ok) {
       return false
@@ -98,6 +104,8 @@ async function checkCoverExists(coverUrl: string): Promise<boolean> {
     return true
   } catch {
     return false
+  } finally {
+    clearTimeout(timeoutId)
   }
 }
 
@@ -106,120 +114,137 @@ export const OpenLibraryRepositoryLive = Layer.succeed(OpenLibraryRepository, {
   lookupByISBN: isbn =>
     Effect.tryPromise({
       try: async () => {
-        const normalizedISBN = normalizeISBN(isbn)
-        const bibkey = `ISBN:${normalizedISBN}`
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 5000)
 
-        // Use the /api/books endpoint which returns more complete data including authors
-        const response = await fetch(
-          `https://openlibrary.org/api/books?bibkeys=${bibkey}&jscmd=data&format=json`
-        )
+        try {
+          const normalizedISBN = normalizeISBN(isbn)
+          const bibkey = `ISBN:${normalizedISBN}`
 
-        if (!response.ok) {
-          throw new OpenLibraryApiError({
-            message: `OpenLibrary API error: ${response.status}`
-          })
-        }
+          // Use the /api/books endpoint which returns more complete data including authors
+          const response = await fetch(
+            `https://openlibrary.org/api/books?bibkeys=${bibkey}&jscmd=data&format=json`,
+            { signal: controller.signal }
+          )
 
-        const data: OpenLibraryBooksApiResponse = await response.json()
-        const bookData = data[bibkey]
-
-        if (!bookData) {
-          throw new OpenLibraryBookNotFoundError({
-            isbn: normalizedISBN,
-            message: `Book with ISBN ${normalizedISBN} not found`
-          })
-        }
-
-        // Extract authors
-        const authors = bookData.authors?.map(a => a.name) || ['Unknown Author']
-
-        // Extract cover URL (prefer large, validate that it exists)
-        let coverUrl: string | null = null
-        const potentialCovers = [
-          bookData.cover?.large,
-          bookData.cover?.medium,
-          `https://covers.openlibrary.org/b/isbn/${normalizedISBN}-L.jpg`
-        ].filter(Boolean) as string[]
-
-        for (const url of potentialCovers) {
-          if (await checkCoverExists(url)) {
-            coverUrl = url
-            break
+          if (!response.ok) {
+            throw new OpenLibraryApiError({
+              message: `OpenLibrary API error: ${response.status}`
+            })
           }
-        }
 
-        // Extract publishers
-        const publishers = bookData.publishers?.map(p => p.name)
+          const data: OpenLibraryBooksApiResponse = await response.json()
+          const bookData = data[bibkey]
 
-        // Extract subjects (filter out NYT-specific ones)
-        let subjects = bookData.subjects
-          ?.map(s => s.name)
-          .filter(s => !s.startsWith('nyt:'))
-          .slice(0, 20) // Limit to 20 subjects
+          if (!bookData) {
+            throw new OpenLibraryBookNotFoundError({
+              isbn: normalizedISBN,
+              message: `Book with ISBN ${normalizedISBN} not found`
+            })
+          }
 
-        // The bookData.key is the edition key like "/books/OL24303521M"
-        // We need to fetch the edition page to get the works key
-        const editionKey = bookData.key
+          // Extract authors
+          const authors = bookData.authors?.map(a => a.name) || ['Unknown Author']
 
-        // Try to get description from notes/excerpts first
-        let description = bookData.notes || bookData.excerpts?.[0]?.text
+          // Extract cover URL (prefer large, validate that it exists)
+          let coverUrl: string | null = null
+          const potentialCovers = [
+            bookData.cover?.large,
+            bookData.cover?.medium,
+            `https://covers.openlibrary.org/b/isbn/${normalizedISBN}-L.jpg`
+          ].filter(Boolean) as string[]
 
-        // If no description and we have an edition key, try to fetch works data
-        let workKey: string | null = null
-        if (editionKey) {
-          try {
-            // Fetch the edition to get the works key
-            const editionResponse = await fetch(`https://openlibrary.org${editionKey}.json`)
-            if (editionResponse.ok) {
-              const editionData = await editionResponse.json()
-              // Works key is at editionData.works[0].key
-              if (editionData.works && editionData.works.length > 0) {
-                workKey = editionData.works[0].key
+          for (const url of potentialCovers) {
+            if (await checkCoverExists(url)) {
+              coverUrl = url
+              break
+            }
+          }
 
-                // Fetch works data for description
-                const worksResponse = await fetch(`https://openlibrary.org${workKey}.json`)
-                if (worksResponse.ok) {
-                  const worksData: OpenLibraryWorksApiResponse = await worksResponse.json()
+          // Extract publishers
+          const publishers = bookData.publishers?.map(p => p.name)
 
-                  // Extract description
-                  if (worksData.description) {
-                    if (typeof worksData.description === 'string') {
-                      description = worksData.description
-                    } else if (worksData.description.value) {
-                      description = worksData.description.value
+          // Extract subjects (filter out NYT-specific ones)
+          let subjects = bookData.subjects
+            ?.map(s => s.name)
+            .filter(s => !s.startsWith('nyt:'))
+            .slice(0, 20) // Limit to 20 subjects
+
+          // The bookData.key is the edition key like "/books/OL24303521M"
+          // We need to fetch the edition page to get the works key
+          const editionKey = bookData.key
+
+          // Try to get description from notes/excerpts first
+          let description = bookData.notes || bookData.excerpts?.[0]?.text
+
+          // If no description and we have an edition key, try to fetch works data
+          let workKey: string | null = null
+          if (editionKey) {
+            try {
+              // Fetch the edition to get the works key
+              const editionResponse = await fetch(`https://openlibrary.org${editionKey}.json`, {
+                signal: controller.signal
+              })
+              if (editionResponse.ok) {
+                const editionData = await editionResponse.json()
+                // Works key is at editionData.works[0].key
+                if (editionData.works && editionData.works.length > 0) {
+                  workKey = editionData.works[0].key
+
+                  // Fetch works data for description
+                  const worksResponse = await fetch(`https://openlibrary.org${workKey}.json`, {
+                    signal: controller.signal
+                  })
+                  if (worksResponse.ok) {
+                    const worksData: OpenLibraryWorksApiResponse = await worksResponse.json()
+
+                    // Extract description
+                    if (worksData.description) {
+                      if (typeof worksData.description === 'string') {
+                        description = worksData.description
+                      } else if (worksData.description.value) {
+                        description = worksData.description.value
+                      }
                     }
-                  }
 
-                  // Merge subjects from works if we don't have enough
-                  if ((!subjects || subjects.length < 5) && worksData.subjects) {
-                    const worksSubjects = worksData.subjects
-                      .filter(s => !s.startsWith('nyt:'))
-                      .slice(0, 20)
-                    subjects = [...new Set([...(subjects || []), ...worksSubjects])].slice(0, 20)
+                    // Merge subjects from works if we don't have enough
+                    if ((!subjects || subjects.length < 5) && worksData.subjects) {
+                      const worksSubjects = worksData.subjects
+                        .filter(s => !s.startsWith('nyt:'))
+                        .slice(0, 20)
+                      subjects = [...new Set([...(subjects || []), ...worksSubjects])].slice(0, 20)
+                    }
                   }
                 }
               }
+            } catch {
+              // Ignore errors fetching additional data - it's optional
             }
-          } catch {
-            // Ignore errors fetching additional data - it's optional
           }
-        }
 
-        return {
-          title: bookData.title || 'Unknown Title',
-          authors,
-          isbn: normalizedISBN,
-          openLibraryKey: editionKey || '',
-          workKey,
-          coverUrl,
-          description,
-          subjects,
-          publishDate: bookData.publish_date,
-          publishers,
-          numberOfPages: bookData.number_of_pages
+          return {
+            title: bookData.title || 'Unknown Title',
+            authors,
+            isbn: normalizedISBN,
+            openLibraryKey: editionKey || '',
+            workKey,
+            coverUrl,
+            description,
+            subjects,
+            publishDate: bookData.publish_date,
+            publishers,
+            numberOfPages: bookData.number_of_pages
+          }
+        } finally {
+          clearTimeout(timeoutId)
         }
       },
       catch: (error) => {
+        if (error instanceof Error && error.name === 'AbortError') {
+          return new OpenLibraryApiError({
+            message: 'OpenLibrary lookup timed out'
+          })
+        }
         if (error instanceof OpenLibraryBookNotFoundError || error instanceof OpenLibraryApiError) {
           return error
         }
