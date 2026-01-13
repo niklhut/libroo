@@ -1,5 +1,6 @@
 import { Context, Effect, Layer, Data } from 'effect'
 import { eq, and, count, desc } from 'drizzle-orm'
+import type { InferSelectModel } from 'drizzle-orm'
 import { books, userBooks } from 'hub:db:schema'
 
 // Error types
@@ -25,6 +26,30 @@ export interface Book {
   coverPath: string | null
   openLibraryKey: string | null
   createdAt: Date
+  description?: string | null
+  subjects?: string | null
+  publishDate?: string | null
+  publishers?: string | null
+  numberOfPages?: number | null
+  workKey?: string | null
+}
+
+// Full book details for book detail page
+export interface BookDetails {
+  id: string
+  bookId: string
+  title: string
+  author: string
+  isbn: string | null
+  coverPath: string | null
+  description: string | null
+  subjects: string[] | null
+  publishDate: string | null
+  publishers: string | null
+  numberOfPages: number | null
+  openLibraryKey: string | null
+  workKey: string | null
+  addedAt: Date
 }
 
 export interface UserBook {
@@ -73,6 +98,15 @@ export interface BookRepositoryInterface {
     userBookId: string,
     userId: string
   ) => Effect.Effect<void, BookNotFoundError | Error, DbService>
+
+  findByIsbn: (
+    isbn: string
+  ) => Effect.Effect<InferSelectModel<typeof books> | null, Error, DbService>
+
+  getUserBookWithDetails: (
+    userBookId: string,
+    userId: string
+  ) => Effect.Effect<BookDetails, BookNotFoundError | Error, DbService>
 }
 
 // Service tag
@@ -283,6 +317,57 @@ export const BookRepositoryLive = Layer.effect(
 
           if (result.length === 0) {
             return yield* Effect.fail(new BookNotFoundError({ bookId: userBookId }))
+          }
+        }),
+
+      findByIsbn: isbn =>
+        Effect.tryPromise({
+          try: async () => {
+            const [book] = await dbService.db
+              .select()
+              .from(books)
+              .where(eq(books.isbn, isbn))
+              .limit(1)
+            return book || null
+          },
+          catch: error => new Error(`Database error: ${error}`)
+        }),
+
+      getUserBookWithDetails: (userBookId, userId) =>
+        Effect.gen(function* () {
+          const result = yield* Effect.tryPromise({
+            try: () =>
+              dbService.db
+                .select()
+                .from(userBooks)
+                .innerJoin(books, eq(userBooks.bookId, books.id))
+                .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId)))
+                .limit(1),
+            catch: error => new Error(`Database error: ${error}`)
+          })
+
+          const row = result[0]
+          if (!row) {
+            return yield* Effect.fail(new BookNotFoundError({ bookId: userBookId }))
+          }
+
+          const bookData = row.books
+
+          return {
+            id: row.user_books.id,
+            bookId: bookData.id,
+            title: bookData.title,
+            author: bookData.author,
+            isbn: bookData.isbn,
+            coverPath: bookData.coverPath,
+            description: bookData.description ?? null,
+            subjects: bookData.subjects ? JSON.parse(bookData.subjects) : null,
+            publishDate: bookData.publishDate ?? null,
+            publishers: bookData.publishers ?? null,
+            numberOfPages: bookData.numberOfPages ?? null,
+            openLibraryKey: bookData.openLibraryKey,
+            workKey: bookData.workKey ?? null,
+            addedAt: row.user_books.addedAt
           }
         })
     }

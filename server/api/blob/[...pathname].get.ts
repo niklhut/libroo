@@ -1,6 +1,6 @@
 import { Effect } from 'effect'
 
-export default effectHandler((event) =>
+export default effectHandler(event =>
   Effect.gen(function* () {
     // Get the blob pathname from the URL
     const pathname = getRouterParam(event, 'pathname')

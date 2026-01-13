@@ -104,7 +104,7 @@ async function deleteSelected() {
   try {
     // Call the batch delete endpoint
     const selectedIds = Array.from(selectedBooks.value)
-    
+
     const response = await $fetch<{ removedIds: string[], failedIds: string[] }>('/api/books/batch-delete', {
       method: 'POST',
       body: { ids: selectedIds }
@@ -132,10 +132,10 @@ async function deleteSelected() {
         color: 'success'
       })
     } else {
-      const failedMessage = failedIds.length > 0 
-        ? `Failed IDs: ${failedIds.join(', ')}` 
+      const failedMessage = failedIds.length > 0
+        ? `Failed IDs: ${failedIds.join(', ')}`
         : ''
-      
+
       toast.add({
         title: removedIds.length > 0 ? 'Partial success' : 'Failed to remove books',
         description: `${removedIds.length} removed, ${failedIds.length} failed. ${failedMessage}`,

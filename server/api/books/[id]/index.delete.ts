@@ -14,8 +14,8 @@ export default effectHandler((event, user) =>
       )
     }
 
-    // Remove book from user's library
-    yield* removeFromLibrary(userBookId, user.id)
+    // Remove book from user's library via BookService
+    yield* removeBookFromLibrary(userBookId, user.id)
 
     return { success: true }
   })

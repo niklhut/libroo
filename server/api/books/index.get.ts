@@ -14,20 +14,7 @@ export default effectHandler((event, user) =>
       Math.max(1, parseInt(query.pageSize as string) || DEFAULT_PAGE_SIZE)
     )
 
-    // Get user's library with SQL pagination
-    const result = yield* getLibrary(user.id, { page, pageSize })
-
-    return {
-      items: result.items.map((userBook: UserBook) => ({
-        id: userBook.id,
-        bookId: userBook.bookId,
-        title: userBook.book.title,
-        author: userBook.book.author,
-        isbn: userBook.book.isbn,
-        coverPath: userBook.book.coverPath,
-        addedAt: userBook.addedAt
-      })),
-      pagination: result.pagination
-    }
+    // Get user's library via BookService
+    return yield* getUserLibrary(user.id, { page, pageSize })
   })
 )

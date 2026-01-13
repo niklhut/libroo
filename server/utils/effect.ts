@@ -1,17 +1,7 @@
 import { Effect, Layer } from 'effect'
 import type { H3Event } from 'h3'
-import type { DbService } from '../services/db.service'
-import { DbServiceLive } from '../services/db.service'
-import type { StorageService } from '../services/storage.service'
-import { StorageServiceLive } from '../services/storage.service'
-import type { AuthService } from '../services/auth.service'
-import { AuthServiceLive } from '../services/auth.service'
-import type { BookRepository } from '../repositories/book.repository'
-import { BookRepositoryLive } from '../repositories/book.repository'
-import type { OpenLibraryRepository } from '../repositories/openLibrary.repository'
-import { OpenLibraryRepositoryLive } from '../repositories/openLibrary.repository'
 
-// Base services layer
+// Base services layer (no dependencies)
 const BaseServicesLive = Layer.mergeAll(
   DbServiceLive,
   StorageServiceLive,
@@ -25,19 +15,26 @@ const RepositoriesLive = Layer.provideMerge(
   BaseServicesLive
 )
 
+// Service layer (depends on repositories)
+const ServicesLive = Layer.provideMerge(
+  BookServiceLive,
+  RepositoriesLive
+)
+
 // Combined live layer for all services
 export const MainLive = Layer.provideMerge(
-  RepositoriesLive,
+  ServicesLive,
   BaseServicesLive
 )
 
 // Type for all available services
 export type MainServices
-  = | DbService
+  = DbService
     | StorageService
     | AuthService
     | BookRepository
     | OpenLibraryRepository
+    | BookService
 
 // Helper to run an Effect in a Nitro event handler
 export async function runEffect<A, E>(
