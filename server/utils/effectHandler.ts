@@ -1,74 +1,77 @@
 import { Effect } from 'effect'
-import type { H3Event } from 'h3'
+import type { H3Event, H3Error } from 'h3'
 import { MainLive, type MainServices } from './effect'
 import { requireAuth } from '../services/auth.service'
 
-// Error mapping for converting Effect errors to HTTP errors
-interface HttpErrorMapping {
-  statusCode: number
-  message: string
-}
+// Default internal server error
+const internalServerError = createError({ statusCode: 500, message: 'Internal Server Error' })
 
-// Helper to safely get string property
-function getStringProp(obj: unknown, key: string): string | undefined {
+// Helper to safely get property from unknown object
+function getProp<T>(obj: unknown, key: string): T | undefined {
   if (obj && typeof obj === 'object' && key in obj) {
-    const value = (obj as Record<string, unknown>)[key]
-    return typeof value === 'string' ? value : undefined
+    return (obj as Record<string, unknown>)[key] as T
   }
   return undefined
 }
 
-// Default error mappings for known error types
-const errorMappings: Record<string, (error: unknown) => HttpErrorMapping> = {
-  UnauthorizedError: () => ({
-    statusCode: 401,
-    message: 'Unauthorized'
-  }),
-  BookNotFoundError: error => ({
-    statusCode: 404,
-    message: getStringProp(error, 'isbn')
-      ? `Book with ISBN ${getStringProp(error, 'isbn')} not found`
-      : `Book not found`
-  }),
-  BookAlreadyOwnedError: error => ({
-    statusCode: 409,
-    message: `You already have this book (ISBN: ${getStringProp(error, 'isbn') || 'unknown'}) in your library`
-  }),
-  OpenLibraryApiError: error => ({
-    statusCode: 502,
-    message: getStringProp(error, 'message') || 'Failed to communicate with OpenLibrary'
-  }),
-  BookCreateError: error => ({
-    statusCode: 500,
-    message: getStringProp(error, 'message') || 'Failed to create book'
-  })
+// Error mappings for converting tagged errors to HTTP status codes
+const errorStatusCodes: Record<string, number> = {
+  UnauthorizedError: 401,
+  BookNotFoundError: 404,
+  BookAlreadyOwnedError: 409,
+  OpenLibraryApiError: 502,
+  BookCreateError: 500
 }
 
-// Convert any Effect error to an H3 error and throw it
-function throwH3Error(error: unknown): never {
-  // If it's already an H3 error, throw it
-  if (error && typeof error === 'object' && 'statusCode' in error) {
-    throw error
+// Custom error message formatters
+const errorMessageFormatters: Record<string, (error: unknown) => string> = {
+  BookNotFoundError: (error) => {
+    const isbn = getProp<string>(error, 'isbn')
+    return isbn ? `Book with ISBN ${isbn} not found` : 'Book not found'
+  },
+  BookAlreadyOwnedError: (error) => {
+    const isbn = getProp<string>(error, 'isbn')
+    return `You already have this book (ISBN: ${isbn || 'unknown'}) in your library`
   }
+}
 
-  // Check if it's a tagged error with _tag
-  if (error && typeof error === 'object' && '_tag' in error) {
-    const tag = (error as { _tag: string })._tag
-    const mapper = errorMappings[tag]
-    if (mapper) {
-      const { statusCode, message } = mapper(error)
-      throw createError({ statusCode, message })
+/**
+ * Converts any error to an H3Error within Effect.
+ * Uses Effect.logError for structured logging.
+ */
+function handleError(error: unknown): Effect.Effect<H3Error> {
+  return Effect.gen(function* () {
+    // Check if it's already an H3 error
+    if (error && typeof error === 'object' && 'statusCode' in error) {
+      return error as H3Error
     }
-  }
 
-  // Default to internal server error
-  const message = error instanceof Error ? error.message : 'Internal server error'
-  throw createError({ statusCode: 500, message })
+    // Check if it's a tagged error with _tag
+    const tag = getProp<string>(error, '_tag')
+    if (tag) {
+      const statusCode = errorStatusCodes[tag] ?? 500
+      const formatter = errorMessageFormatters[tag]
+      const message = formatter
+        ? formatter(error)
+        : getProp<string>(error, 'message') ?? tag
+
+      yield* Effect.logError(`[${tag}] ${message}`)
+      return createError({ statusCode, message })
+    }
+
+    // Unknown error - log and return internal server error
+    const message = error instanceof Error ? error.message : String(error)
+    yield* Effect.logError(`Unexpected error: ${message}`)
+    return internalServerError
+  })
 }
 
 /**
  * Creates a fully Effect-based event handler with automatic error conversion.
  * Authentication is always required.
+ *
+ * Errors are handled within Effect using catchAll, converting them to H3 errors.
+ * The H3 error is then thrown after the Effect completes for proper HTTP response handling.
  *
  * Example usage:
  * ```ts
@@ -92,13 +95,23 @@ export function effectHandler<A, E>(
       return yield* handler(event, user)
     })
 
+    // Run the effect pipeline:
     // 1. Provide dependencies (MainLive)
-    // 2. Catch all errors and throw them as H3 errors (using Effect.sync to run the throwing function)
+    // 2. Catch all errors and convert them to H3 errors (as success values)
     // 3. Run the promise
-    return await effect.pipe(
+    const result = await effect.pipe(
       Effect.provide(MainLive),
-      Effect.catchAll((error) => Effect.sync(() => throwH3Error(error))),
+      Effect.catchAll(handleError),
       Effect.runPromise
     )
+
+    // If the result is an H3 error, throw it for proper HTTP error response
+    // (returning it would just serialize as JSON with 200 OK)
+    if (result && typeof result === 'object' && 'statusCode' in result && 'message' in result) {
+      throw result
+    }
+
+    return result
   })
 }
+
