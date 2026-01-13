@@ -180,7 +180,7 @@ function resetLookup() {
                   <img
                     v-if="lookupResult.coverUrl"
                     :src="lookupResult.coverUrl"
-                    :alt="lookupResult.title"
+                    :alt="lookupResult.title || 'Book cover'"
                     class="max-w-full max-h-full object-cover"
                     loading="eager"
                   >

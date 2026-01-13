@@ -20,7 +20,7 @@ const pageSize = ref(12)
 
 // Selection state
 const isSelectMode = ref(false)
-const selectedBooks = ref<Set<string>>(new Set())
+const selectedBooks = shallowRef<Set<string>>(new Set())
 
 // Fetch books with pagination
 const { data, refresh, status } = await useFetch<PaginatedResponse>('/api/books', {
