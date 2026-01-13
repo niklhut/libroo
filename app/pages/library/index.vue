@@ -131,14 +131,12 @@ async function deleteSelected() {
         color: 'success'
       })
     } else {
-      const failedMessage = failedIds.length > 0
-        ? `Failed IDs: ${failedIds.join(', ')}`
-        : ''
+      const failedMessage = `Failed IDs: ${failedIds.join(', ')}`
 
       toast.add({
-        title: removedIds.length > 0 ? 'Partial success' : 'Failed to remove books',
+        title: 'Partial success',
         description: `${removedIds.length} removed, ${failedIds.length} failed. ${failedMessage}`,
-        color: removedIds.length > 0 ? 'warning' : 'error'
+        color: 'warning'
       })
     }
 
