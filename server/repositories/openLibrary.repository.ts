@@ -77,14 +77,6 @@ function normalizeISBN(isbn: string): string {
   return isbn.replace(/[-\s]/g, '')
 }
 
-// Extract work key from edition key
-function extractWorkKeyFromUrl(url?: string): string | null {
-  if (!url) return null
-  // URL like: https://openlibrary.org/books/OL24303521M/...
-  // We need to find the works link from the book data
-  return null
-}
-
 // Check if a cover URL actually exists and returns a valid image
 async function checkCoverExists(coverUrl: string): Promise<boolean> {
   try {
