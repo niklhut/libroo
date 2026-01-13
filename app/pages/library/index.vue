@@ -1,13 +1,5 @@
 <script setup lang="ts">
-interface LibraryBook {
-  id: string
-  bookId: string
-  title: string
-  author: string
-  isbn: string | null
-  coverPath: string | null
-  addedAt: string
-}
+import type { LibraryBook, BatchDeleteResult } from '~~/shared/types/book'
 
 interface PaginatedResponse {
   items: LibraryBook[]
@@ -105,7 +97,7 @@ async function deleteSelected() {
     // Call the batch delete endpoint
     const selectedIds = Array.from(selectedBooks.value)
 
-    const response = await $fetch<{ removedIds: string[], failedIds: string[] }>('/api/books/batch-delete', {
+    const response = await $fetch<BatchDeleteResult>('/api/books/batch-delete', {
       method: 'POST',
       body: { ids: selectedIds }
     })

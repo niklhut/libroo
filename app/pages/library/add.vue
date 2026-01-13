@@ -11,22 +11,7 @@ const formState = reactive({
 const isLookingUp = ref(false)
 const isAdding = ref(false)
 
-interface LookupResult {
-  found: boolean
-  isbn: string
-  title?: string
-  author?: string
-  coverUrl?: string | null
-  publishDate?: string
-  publishers?: string[]
-  numberOfPages?: number
-  description?: string
-  subjects?: string[]
-  message?: string
-  existsLocally?: boolean
-}
-
-const lookupResult = ref<LookupResult | null>(null)
+const lookupResult = ref<BookLookupResult | null>(null)
 
 // Lookup book by ISBN
 async function lookupISBN(payload: FormSubmitEvent<BookIsbnSchema>) {
@@ -34,7 +19,7 @@ async function lookupISBN(payload: FormSubmitEvent<BookIsbnSchema>) {
   lookupResult.value = null
 
   try {
-    const result = await $fetch<LookupResult>('/api/books/lookup', {
+    const result = await $fetch<BookLookupResult>('/api/books/lookup', {
       method: 'POST',
       body: { isbn: payload.data.isbn }
     })

@@ -34,46 +34,11 @@ export interface Book {
   workKey?: string | null
 }
 
-// Full book details for book detail page
-export interface BookDetails {
-  id: string
-  bookId: string
-  title: string
-  author: string
-  isbn: string | null
-  coverPath: string | null
-  description: string | null
-  subjects: string[] | null
-  publishDate: string | null
-  publishers: string | null
-  numberOfPages: number | null
-  openLibraryKey: string | null
-  workKey: string | null
-  addedAt: Date
-}
-
 export interface UserBook {
   id: string
   bookId: string
   book: Book
   addedAt: Date
-}
-
-// Pagination types
-export interface PaginationParams {
-  page: number
-  pageSize: number
-}
-
-export interface PaginatedResult<T> {
-  items: T[]
-  pagination: {
-    page: number
-    pageSize: number
-    totalItems: number
-    totalPages: number
-    hasMore: boolean
-  }
 }
 
 // Service interface

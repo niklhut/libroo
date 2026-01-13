@@ -4,25 +4,8 @@ const toast = useToast()
 
 const userBookId = route.params.id as string
 
-interface BookDetail {
-  id: string
-  bookId: string
-  title: string
-  author: string
-  isbn: string | null
-  coverPath: string | null
-  description: string | null
-  subjects: string[] | null
-  publishDate: string | null
-  publishers: string | null
-  numberOfPages: number | null
-  openLibraryKey: string | null
-  workKey: string | null
-  addedAt: string
-}
-
 // Fetch book details
-const { data: book, status } = await useFetch<BookDetail>(`/api/books/${userBookId}`, {
+const { data: book, status } = await useFetch<BookDetails>(`/api/books/${userBookId}`, {
   headers: useRequestHeaders(['cookie'])
 })
 
@@ -35,11 +18,11 @@ const coverUrl = computed(() => {
 })
 
 // Format date helper function
-function formatDate(dateString: string | null): string | null {
-  if (!dateString) return null
+function formatDate(dateInput: string | Date | null): string | null {
+  if (!dateInput) return null
 
-  // Try to parse as a full date first
-  const date = new Date(dateString)
+  // If it's already a Date object
+  const date = dateInput instanceof Date ? dateInput : new Date(dateInput)
   if (!isNaN(date.getTime())) {
     return date.toLocaleDateString('en-US', {
       year: 'numeric',
@@ -49,12 +32,12 @@ function formatDate(dateString: string | null): string | null {
   }
 
   // If it's just a year (e.g., "2015"), return as-is
-  if (/^\d{4}$/.test(dateString)) {
-    return dateString
+  if (typeof dateInput === 'string' && /^\d{4}$/.test(dateInput)) {
+    return dateInput
   }
 
   // For other formats like "January 2015", try to parse
-  const monthYearDate = new Date(dateString)
+  const monthYearDate = dateInput instanceof Date ? dateInput : new Date(dateInput)
   if (!isNaN(monthYearDate.getTime())) {
     return monthYearDate.toLocaleDateString('en-US', {
       year: 'numeric',
@@ -63,7 +46,7 @@ function formatDate(dateString: string | null): string | null {
   }
 
   // Fallback: return the original string
-  return dateString
+  return String(dateInput)
 }
 
 // Format dates nicely
