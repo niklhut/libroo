@@ -1,18 +1,4 @@
 import { Context, Effect, Layer, Either } from 'effect'
-import {
-  BookRepository,
-  type BookNotFoundError,
-  type PaginationParams,
-  type PaginatedResult,
-  type BookDetails
-} from '../repositories/book.repository'
-import {
-  lookupByISBN,
-  type OpenLibraryRepository,
-  type OpenLibraryBookData
-} from '../repositories/openLibrary.repository'
-import type { DbService } from './db.service'
-import type { StorageService } from './storage.service'
 
 // ===== Output Types =====
 
@@ -25,9 +11,6 @@ export interface LibraryBook {
   coverPath: string | null
   addedAt: Date
 }
-
-// Re-export BookDetails from repository for convenience
-export type { BookDetails } from '../repositories/book.repository'
 
 export interface BookLookupResult {
   found: boolean
