@@ -21,8 +21,15 @@ const coverUrl = computed(() => {
 function formatDate(dateInput: string | Date | null): string | null {
   if (!dateInput) return null
 
-  // If it's already a Date object
+  // 1. If it's just a year (e.g., "2015"), return it immediately
+  if (typeof dateInput === 'string' && /^\d{4}$/.test(dateInput)) {
+    return dateInput
+  }
+
+  // 2. Perform a single Date construction/validation
   const date = dateInput instanceof Date ? dateInput : new Date(dateInput)
+
+  // 3. If the Date is valid, return a single toLocaleDateString result
   if (!isNaN(date.getTime())) {
     return date.toLocaleDateString('en-US', {
       year: 'numeric',
@@ -31,21 +38,7 @@ function formatDate(dateInput: string | Date | null): string | null {
     })
   }
 
-  // If it's just a year (e.g., "2015"), return as-is
-  if (typeof dateInput === 'string' && /^\d{4}$/.test(dateInput)) {
-    return dateInput
-  }
-
-  // For other formats like "January 2015", try to parse
-  const monthYearDate = dateInput instanceof Date ? dateInput : new Date(dateInput)
-  if (!isNaN(monthYearDate.getTime())) {
-    return monthYearDate.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long'
-    })
-  }
-
-  // Fallback: return the original string
+  // 4. Otherwise return the original as a string
   return String(dateInput)
 }
 
