@@ -1,15 +1,10 @@
-name: ci
+name: Typecheck and Lint
 
 on: push
 
 jobs:
-  ci:
-    runs-on: ${{ matrix.os }}
-
-    strategy:
-      matrix:
-        os: [ubuntu-latest]
-        node: [22]
+  typecheck:
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
@@ -21,7 +16,7 @@ jobs:
       - name: Install node
         uses: actions/setup-node@v6
         with:
-          node-version: ${{ matrix.node }}
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies
@@ -29,6 +24,9 @@ jobs:
 
       - name: Lint
         run: pnpm run lint
+
+      - name: Prepare
+        run: pnpm run prepare
 
       - name: Typecheck
         run: pnpm run typecheck
