@@ -16,6 +16,15 @@ export default defineNuxtConfig({
 
   css: ['~/assets/css/main.css'],
 
+  nitro: {
+    imports: {
+      dirs: [
+        './server/services',
+        './server/repositories',
+      ]
+    }
+  },
+
   routeRules: {
     '/': { prerender: true }
   },

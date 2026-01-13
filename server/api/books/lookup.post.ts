@@ -1,28 +1,15 @@
 import { Effect } from 'effect'
-import { effectHandler } from '../../utils/effectHandler'
-import { lookupByISBN } from '../../repositories/openLibrary.repository'
 import { books } from 'hub:db:schema'
 import { eq } from 'drizzle-orm'
 import { db } from 'hub:db'
 
-// Lookup endpoint requires auth - users can preview books before adding
 export default effectHandler((event, _user) =>
   Effect.gen(function* () {
     // Read request body
     const body = yield* Effect.tryPromise({
-      try: () => readBody(event),
-      catch: () => new Error('Invalid request body')
+      try: () => readValidatedBody(event, bookIsbnSchema.parse),
+      catch: (e) => createError({ statusCode: 400, message: 'Validation Error', data: e })
     })
-
-    // Validate ISBN
-    if (!body?.isbn || typeof body.isbn !== 'string') {
-      return yield* Effect.fail(
-        createError({
-          statusCode: 400,
-          message: 'ISBN is required'
-        })
-      )
-    }
 
     const normalizedISBN = body.isbn.replace(/[-\s]/g, '')
 
@@ -69,7 +56,7 @@ export default effectHandler((event, _user) =>
         numberOfPages: bookData.numberOfPages,
         existsLocally: false
       })),
-      Effect.catchTag('BookNotFoundError', () =>
+      Effect.catchTag('OpenLibraryBookNotFoundError', () =>
         Effect.succeed({
           found: false,
           isbn: body.isbn,

@@ -1,16 +1,5 @@
 import { Context, Effect, Layer, Data } from 'effect'
 import { eq, and, count, desc } from 'drizzle-orm'
-import { DbService } from '../services/db.service'
-import type { StorageService } from '../services/storage.service'
-import type {
-  OpenLibraryRepository,
-  BookNotFoundError as OpenLibraryNotFoundError,
-  OpenLibraryApiError
-} from './openLibrary.repository'
-import {
-  downloadCover,
-  lookupByISBN
-} from './openLibrary.repository'
 import { books, userBooks } from 'hub:db:schema'
 
 // Error types
@@ -69,7 +58,7 @@ export interface BookRepositoryInterface {
     isbn: string
   ) => Effect.Effect<
     UserBook,
-    BookCreateError | BookAlreadyOwnedError | OpenLibraryNotFoundError | OpenLibraryApiError | Error,
+    BookCreateError | BookAlreadyOwnedError | OpenLibraryBookNotFoundError | OpenLibraryApiError | Error,
     DbService | StorageService | OpenLibraryRepository
   >
 

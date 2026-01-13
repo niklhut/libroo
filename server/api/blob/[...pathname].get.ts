@@ -1,6 +1,4 @@
 import { Effect } from 'effect'
-import { effectHandler } from '../../utils/effectHandler'
-import { getBlob } from '../../services/storage.service'
 
 export default effectHandler((event, _user) =>
   Effect.gen(function* () {

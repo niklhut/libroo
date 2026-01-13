@@ -1,10 +1,8 @@
 import { Context, Effect, Layer, Data } from 'effect'
-import type { StorageService } from '../services/storage.service'
-import { putBlob } from '../services/storage.service'
 import sharp from 'sharp'
 
 // Error types
-export class BookNotFoundError extends Data.TaggedError('BookNotFoundError')<{
+export class OpenLibraryBookNotFoundError extends Data.TaggedError('OpenLibraryBookNotFoundError')<{
   isbn: string
   message?: string
 }> { }
@@ -62,7 +60,7 @@ interface OpenLibraryWorksApiResponse {
 
 // Service interface
 export interface OpenLibraryRepositoryInterface {
-  lookupByISBN: (isbn: string) => Effect.Effect<OpenLibraryBookData, BookNotFoundError | OpenLibraryApiError>
+  lookupByISBN: (isbn: string) => Effect.Effect<OpenLibraryBookData, OpenLibraryBookNotFoundError | OpenLibraryApiError>
   downloadCover: (isbn: string, size?: 'S' | 'M' | 'L') => Effect.Effect<string | null, Error, StorageService>
 }
 
@@ -126,7 +124,7 @@ export const OpenLibraryRepositoryLive = Layer.succeed(OpenLibraryRepository, {
         const bookData = data[bibkey]
 
         if (!bookData) {
-          throw new BookNotFoundError({
+          throw new OpenLibraryBookNotFoundError({
             isbn: normalizedISBN,
             message: `Book with ISBN ${normalizedISBN} not found`
           })
@@ -222,7 +220,7 @@ export const OpenLibraryRepositoryLive = Layer.succeed(OpenLibraryRepository, {
         }
       },
       catch: (error) => {
-        if (error instanceof BookNotFoundError || error instanceof OpenLibraryApiError) {
+        if (error instanceof OpenLibraryBookNotFoundError || error instanceof OpenLibraryApiError) {
           return error
         }
         return new OpenLibraryApiError({

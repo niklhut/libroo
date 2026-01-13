@@ -1,6 +1,4 @@
 import { Effect } from 'effect'
-import { effectHandler } from '../../utils/effectHandler'
-import { getLibrary, type UserBook } from '../../repositories/book.repository'
 
 // Default pagination values
 const DEFAULT_PAGE_SIZE = 12

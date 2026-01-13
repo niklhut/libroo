@@ -1,6 +1,4 @@
 import { Effect } from 'effect'
-import { effectHandler } from '../../../utils/effectHandler'
-import { DbService } from '../../../services/db.service'
 import { eq, and } from 'drizzle-orm'
 import { books, userBooks } from 'hub:db:schema'
 import type { InferSelectModel } from 'drizzle-orm'

@@ -15,7 +15,7 @@
 ## Tech Stack
 
 ### Framework
-- **Nuxt 4** with SSR (server-side rendering)
+- **Nuxt 4** with SSR (server-side rendering) -> rely on Nuxt's auto imports whenever possible, to avoid explicit imports
 - **NuxtHub** for database and blob storage
 - **Nuxt UI v4** for components (UHeader, UPageHeader, UPageBody, UCard, etc.)
 

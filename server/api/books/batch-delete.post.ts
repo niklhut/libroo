@@ -1,15 +1,12 @@
 import { Effect, Either } from 'effect'
-import { effectHandler } from '../../utils/effectHandler'
-import { removeFromLibrary } from '../../repositories/book.repository'
 
 export default effectHandler((event, user) =>
   Effect.gen(function* () {
-    const body = yield* Effect.tryPromise(() => readBody<{ ids: string[] }>(event))
+    const body = yield* Effect.tryPromise({
+      try: () => readValidatedBody(event, bookBatchDeleteSchema.parse),
+      catch: (e) => createError({ statusCode: 400, message: 'Validation Error', data: e })
+    })
     const { ids } = body
-
-    if (!ids || !Array.isArray(ids) || ids.length === 0) {
-      return { removedIds: [], failedIds: [] }
-    }
 
     // Process all deletions in parallel (unbounded concurrency)
     // Wrap each operation in Either to capture success/failure individually (like Promise.allSettled)

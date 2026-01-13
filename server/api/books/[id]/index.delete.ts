@@ -1,6 +1,4 @@
 import { Effect } from 'effect'
-import { effectHandler } from '../../utils/effectHandler'
-import { removeFromLibrary } from '../../repositories/book.repository'
 
 export default effectHandler((event, user) =>
   Effect.gen(function* () {

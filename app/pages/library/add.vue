@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import * as z from 'zod'
 import type { FormSubmitEvent } from '@nuxt/ui'
 
 const toast = useToast()
@@ -29,15 +28,8 @@ interface LookupResult {
 
 const lookupResult = ref<LookupResult | null>(null)
 
-// ISBN validation schema
-const isbnSchema = z.object({
-  isbn: z.string().min(1, 'ISBN is required').min(10, 'ISBN must be at least 10 characters').max(17, 'ISBN is too long')
-})
-
-type IsbnSchema = z.output<typeof isbnSchema>
-
 // Lookup book by ISBN
-async function lookupISBN(payload: FormSubmitEvent<IsbnSchema>) {
+async function lookupISBN(payload: FormSubmitEvent<BookIsbnSchema>) {
   isLookingUp.value = true
   lookupResult.value = null
 
@@ -146,7 +138,7 @@ function resetLookup() {
             </template>
 
             <UForm
-              :schema="isbnSchema"
+              :schema="bookIsbnSchema"
               :state="formState"
               class="space-y-4"
               @submit="lookupISBN"
