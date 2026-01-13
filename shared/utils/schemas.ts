@@ -2,7 +2,6 @@ import { z } from 'zod'
 
 export const bookIsbnSchema = z.object({
   isbn: z.string({ error: 'ISBN is required' })
-    .min(1, { error: 'ISBN is required' })
     .min(10, { error: 'ISBN must be at least 10 characters' })
     .max(17, { error: 'ISBN is too long' })
 })
