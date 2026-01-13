@@ -55,10 +55,13 @@ async function lookupISBN(payload: FormSubmitEvent<IsbnSchema>) {
         color: 'warning'
       })
     }
-  } catch (error: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error
+      ? err.message
+      : (err as { data?: { message?: string } })?.data?.message || 'Failed to lookup book'
     toast.add({
       title: 'Lookup failed',
-      description: error.data?.message || error.message || 'Failed to lookup book',
+      description: message,
       color: 'error'
     })
   } finally {
@@ -86,8 +89,10 @@ async function addBookToLibrary() {
 
     // Navigate back to library
     navigateTo('/library')
-  } catch (error: any) {
-    const message = error.data?.message || error.message || 'Failed to add book'
+  } catch (err: unknown) {
+    const message = err instanceof Error
+      ? err.message
+      : (err as { data?: { message?: string } })?.data?.message || 'Failed to add book'
     toast.add({
       title: 'Failed to add book',
       description: message,

@@ -177,7 +177,7 @@ export const BookRepositoryLive = Layer.effect(
               dbService.db.insert(userBooks).values({
                 id: userBookId,
                 userId,
-                bookId: book!.id,
+                bookId: book.id,
                 addedAt
               }),
             catch: error => new BookCreateError({ message: `Failed to add book to library: ${error}` })
@@ -185,15 +185,15 @@ export const BookRepositoryLive = Layer.effect(
 
           return {
             id: userBookId,
-            bookId: book!.id,
+            bookId: book.id,
             book: {
-              id: book!.id,
-              isbn: book!.isbn,
-              title: book!.title,
-              author: book!.author,
-              coverPath: book!.coverPath,
-              openLibraryKey: book!.openLibraryKey,
-              createdAt: book!.createdAt instanceof Date ? book!.createdAt : new Date(book!.createdAt as unknown as string)
+              id: book.id,
+              isbn: book.isbn,
+              title: book.title,
+              author: book.author,
+              coverPath: book.coverPath,
+              openLibraryKey: book.openLibraryKey,
+              createdAt: book.createdAt
             },
             addedAt
           }
@@ -234,13 +234,9 @@ export const BookRepositoryLive = Layer.effect(
                 author: row.books.author,
                 coverPath: row.books.coverPath,
                 openLibraryKey: row.books.openLibraryKey,
-                createdAt: row.books.createdAt instanceof Date
-                  ? row.books.createdAt
-                  : new Date(row.books.createdAt as unknown as string)
+                createdAt: row.books.createdAt
               },
-              addedAt: row.user_books.addedAt instanceof Date
-                ? row.user_books.addedAt
-                : new Date(row.user_books.addedAt as unknown as string)
+              addedAt: row.user_books.addedAt
             }))
 
             return {

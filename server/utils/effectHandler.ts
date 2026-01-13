@@ -9,29 +9,38 @@ interface HttpErrorMapping {
   message: string
 }
 
+// Helper to safely get string property
+function getStringProp(obj: unknown, key: string): string | undefined {
+  if (obj && typeof obj === 'object' && key in obj) {
+    const value = (obj as Record<string, unknown>)[key]
+    return typeof value === 'string' ? value : undefined
+  }
+  return undefined
+}
+
 // Default error mappings for known error types
-const errorMappings: Record<string, (error: any) => HttpErrorMapping> = {
+const errorMappings: Record<string, (error: unknown) => HttpErrorMapping> = {
   UnauthorizedError: () => ({
     statusCode: 401,
     message: 'Unauthorized'
   }),
   BookNotFoundError: error => ({
     statusCode: 404,
-    message: error.isbn
-      ? `Book with ISBN ${error.isbn} not found`
+    message: getStringProp(error, 'isbn')
+      ? `Book with ISBN ${getStringProp(error, 'isbn')} not found`
       : `Book not found`
   }),
   BookAlreadyOwnedError: error => ({
     statusCode: 409,
-    message: `You already have this book (ISBN: ${error.isbn}) in your library`
+    message: `You already have this book (ISBN: ${getStringProp(error, 'isbn') || 'unknown'}) in your library`
   }),
   OpenLibraryApiError: error => ({
     statusCode: 502,
-    message: error.message || 'Failed to communicate with OpenLibrary'
+    message: getStringProp(error, 'message') || 'Failed to communicate with OpenLibrary'
   }),
   BookCreateError: error => ({
     statusCode: 500,
-    message: error.message || 'Failed to create book'
+    message: getStringProp(error, 'message') || 'Failed to create book'
   })
 }
 
@@ -44,7 +53,7 @@ function errorToH3Error(error: unknown): H3Error {
 
   // Check if it's a tagged error with _tag
   if (error && typeof error === 'object' && '_tag' in error) {
-    const tag = (error as any)._tag
+    const tag = (error as { _tag: string })._tag
     const mapper = errorMappings[tag]
     if (mapper) {
       const { statusCode, message } = mapper(error)
@@ -80,7 +89,7 @@ export function effectHandler<A>(
   handler: (
     event: H3Event,
     user: { id: string, name: string, email: string }
-  ) => Effect.Effect<A, any, any>,
+  ) => Effect.Effect<A, unknown, unknown>,
   options: EffectHandlerOptions = {}
 ) {
   const { requireAuth: needsAuth = true } = options
@@ -102,7 +111,7 @@ export function effectHandler<A>(
     })
 
     // Provide layers and run - use type assertion to handle the layer type
-    const runnable = Effect.provide(effect, MainLive) as Effect.Effect<A, any, never>
+    const runnable = Effect.provide(effect, MainLive) as Effect.Effect<A, unknown, never>
 
     try {
       return await Effect.runPromise(runnable)
@@ -116,13 +125,13 @@ export function effectHandler<A>(
  * Creates an Effect-based handler that doesn't require authentication.
  */
 export function effectHandlerPublic<A>(
-  handler: (event: H3Event) => Effect.Effect<A, any, any>
+  handler: (event: H3Event) => Effect.Effect<A, unknown, unknown>
 ) {
   return defineEventHandler(async (event) => {
     const effect = handler(event)
 
     // Provide layers and run - use type assertion to handle the layer type
-    const runnable = Effect.provide(effect, MainLive) as Effect.Effect<A, any, never>
+    const runnable = Effect.provide(effect, MainLive) as Effect.Effect<A, unknown, never>
 
     try {
       return await Effect.runPromise(runnable)

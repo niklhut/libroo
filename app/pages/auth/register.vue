@@ -91,8 +91,8 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
       })
       navigateTo('/library')
     }
-  } catch (e: any) {
-    error.value = e.message || 'An unexpected error occurred'
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : 'An unexpected error occurred'
     toast.add({
       title: 'Error',
       description: error.value,

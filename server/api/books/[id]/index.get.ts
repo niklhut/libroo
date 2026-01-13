@@ -3,6 +3,9 @@ import { effectHandler } from '../../../utils/effectHandler'
 import { DbService } from '../../../services/db.service'
 import { eq, and } from 'drizzle-orm'
 import { books, userBooks } from 'hub:db:schema'
+import type { InferSelectModel } from 'drizzle-orm'
+
+type Book = InferSelectModel<typeof books>
 
 export default effectHandler((event, user) =>
   Effect.gen(function* () {
@@ -40,8 +43,7 @@ export default effectHandler((event, user) =>
       )
     }
 
-    // Cast to any to access new schema fields that may not be in stale types
-    const bookData = row.books as any
+    const bookData: Book = row.books
 
     return {
       id: row.user_books.id,
@@ -49,14 +51,14 @@ export default effectHandler((event, user) =>
       title: bookData.title,
       author: bookData.author,
       isbn: bookData.isbn,
-      coverPath: bookData.coverPath ?? bookData.cover_path,
+      coverPath: bookData.coverPath,
       description: bookData.description ?? null,
       subjects: bookData.subjects ? JSON.parse(bookData.subjects) : null,
-      publishDate: bookData.publishDate ?? bookData.publish_date ?? null,
+      publishDate: bookData.publishDate ?? null,
       publishers: bookData.publishers ?? null,
-      numberOfPages: bookData.numberOfPages ?? bookData.number_of_pages ?? null,
-      openLibraryKey: bookData.openLibraryKey ?? bookData.open_library_key,
-      workKey: bookData.workKey ?? bookData.work_key ?? null,
+      numberOfPages: bookData.numberOfPages ?? null,
+      openLibraryKey: bookData.openLibraryKey,
+      workKey: bookData.workKey ?? null,
       addedAt: row.user_books.addedAt
     }
   })

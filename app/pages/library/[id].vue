@@ -84,10 +84,13 @@ async function removeBook() {
     })
 
     navigateTo('/library')
-  } catch (error: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error
+      ? err.message
+      : (err as { data?: { message?: string } })?.data?.message || 'An error occurred'
     toast.add({
       title: 'Failed to remove book',
-      description: error.data?.message || error.message || 'An error occurred',
+      description: message,
       color: 'error'
     })
   }
