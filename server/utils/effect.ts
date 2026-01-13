@@ -100,13 +100,19 @@ export function handleError(error: unknown): Effect.Effect<H3Error> {
 // Helper to run an Effect in a Nitro event handler or elsewhere
 export async function runEffect<A, E>(
   effect: Effect.Effect<A, E, MainServices>
-): Promise<A | H3Error> {
-  return pipe(
+): Promise<A> {
+  const result = await pipe(
     effect,
     Effect.provide(MainLive),
     Effect.catchAll(handleError),
     Effect.runPromise
   )
+
+  if (isError(result)) {
+    throw result
+  }
+
+  return result as A
 }
 
 // Re-export common Effect utilities

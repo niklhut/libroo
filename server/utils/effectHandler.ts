@@ -1,6 +1,6 @@
 import { Effect } from 'effect'
 import type { H3Event } from 'h3'
-import { MainLive, type MainServices, handleError } from './effect'
+import { MainLive, type MainServices, handleError, runEffect } from './effect'
 import { requireAuth } from '../services/auth.service'
 
 /**
@@ -36,18 +36,6 @@ export function effectHandler<A, E>(
     // 1. Provide dependencies (MainLive)
     // 2. Catch all errors and convert them to H3 errors (as success values)
     // 3. Run the promise
-    const result = await effect.pipe(
-      Effect.provide(MainLive),
-      Effect.catchAll(handleError),
-      Effect.runPromise
-    )
-
-    // If the result is an H3 error, throw it for proper HTTP error response
-    // (returning it would just serialize as JSON with 200 OK)
-    if (result && typeof result === 'object' && 'statusCode' in result && 'message' in result) {
-      throw result
-    }
-
-    return result
+    return runEffect(effect)
   })
 }
