@@ -149,7 +149,7 @@ export const BookServiceLive = Layer.effect(
           }
 
           // Not found locally, try OpenLibrary
-          const lookupEffect = lookupByISBN(isbn).pipe(
+          const lookupEffect = lookupByISBN(normalizedISBN).pipe(
             Effect.map((bookData: OpenLibraryBookData): BookLookupResult => ({
               found: true,
               isbn: bookData.isbn,
