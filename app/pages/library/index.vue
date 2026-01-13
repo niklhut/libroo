@@ -102,29 +102,59 @@ async function deleteSelected() {
   isDeleting.value = true
 
   try {
-    // Delete each selected book
-    const deletePromises = Array.from(selectedBooks.value).map(id =>
-      $fetch(`/api/books/${id}`, { method: 'DELETE' })
-    )
-
-    await Promise.all(deletePromises)
-
-    toast.add({
-      title: 'Books removed',
-      description: `${selectedBooks.value.size} book(s) removed from your library`,
-      color: 'success'
+    // Call the batch delete endpoint
+    const selectedIds = Array.from(selectedBooks.value)
+    
+    const response = await $fetch<{ removedIds: string[], failedIds: string[] }>('/api/books/batch-delete', {
+      method: 'POST',
+      body: { ids: selectedIds }
     })
 
-    selectedBooks.value.clear()
-    isSelectMode.value = false
-    page.value = 1
-    await refresh()
+    const { removedIds, failedIds } = response
+
+    // Remove successfully deleted books from selection
+    if (removedIds.length > 0) {
+      removedIds.forEach(id => selectedBooks.value.delete(id))
+      // Force reactivity
+      selectedBooks.value = new Set(selectedBooks.value)
+    }
+
+    // Toggle off select mode only if everything was removed
+    if (selectedBooks.value.size === 0) {
+      isSelectMode.value = false
+    }
+
+    // Prepare toast message
+    if (failedIds.length === 0) {
+      toast.add({
+        title: 'Books removed',
+        description: `${removedIds.length} book(s) removed from your library`,
+        color: 'success'
+      })
+    } else {
+      const failedMessage = failedIds.length > 0 
+        ? `Failed IDs: ${failedIds.join(', ')}` 
+        : ''
+      
+      toast.add({
+        title: removedIds.length > 0 ? 'Partial success' : 'Failed to remove books',
+        description: `${removedIds.length} removed, ${failedIds.length} failed. ${failedMessage}`,
+        color: removedIds.length > 0 ? 'warning' : 'error'
+      })
+    }
+
+    // Refresh if any changes made
+    // The user requested to call refresh() after handling partial results
+    if (removedIds.length > 0) {
+      page.value = 1
+      await refresh()
+    }
   } catch (err: unknown) {
     const message = err instanceof Error
       ? err.message
       : (err as { data?: { message?: string } })?.data?.message || 'An error occurred'
     toast.add({
-      title: 'Failed to remove books',
+      title: 'Error processing deletion',
       description: message,
       color: 'error'
     })
