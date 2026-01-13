@@ -30,11 +30,11 @@ export const MainLive = Layer.provideMerge(
 // Type for all available services
 export type MainServices
   = DbService
-    | StorageService
-    | AuthService
-    | BookRepository
-    | OpenLibraryRepository
-    | BookService
+  | StorageService
+  | AuthService
+  | BookRepository
+  | OpenLibraryRepository
+  | BookService
 
 // Helper to safely get property from unknown object
 function getProp<T>(obj: unknown, key: string): T | undefined {
@@ -48,6 +48,7 @@ function getProp<T>(obj: unknown, key: string): T | undefined {
 const errorStatusCodes: Record<string, number> = {
   UnauthorizedError: 401,
   BookNotFoundError: 404,
+  OpenLibraryBookNotFoundError: 404,
   BookAlreadyOwnedError: 409,
   OpenLibraryApiError: 502,
   BookCreateError: 500
