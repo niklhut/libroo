@@ -49,8 +49,8 @@ const fields: AuthFormField[] = [
 
 // Validation schema
 const schema = z.object({
-  email: z.email('Please enter a valid email address'),
-  password: z.string('Password is required').min(1, 'Password is required')
+  email: z.email({ error: 'Please enter a valid email address' }),
+  password: z.string({ error: 'Password is required' }).min(1, { error: 'Password is required' })
 })
 
 type Schema = z.output<typeof schema>

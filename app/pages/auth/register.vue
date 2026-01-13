@@ -54,10 +54,10 @@ const fields: AuthFormField[] = [
 
 // Validation schema
 const schema = z.object({
-  name: z.string('Name is required').min(1, 'Name is required'),
-  email: z.email('Please enter a valid email address'),
-  password: z.string('Password is required').min(8, 'Password must be at least 8 characters'),
-  confirmPassword: z.string('Confirm Password is required').min(1, 'Please confirm your password')
+  name: z.string({ error: 'Name is required' }).min(1, { error: 'Name is required' }),
+  email: z.email({ error: 'Please enter a valid email address' }),
+  password: z.string({ error: 'Password is required' }).min(8, { error: 'Password must be at least 8 characters' }),
+  confirmPassword: z.string({ error: 'Confirm Password is required' }).min(1, { error: 'Please confirm your password' })
 }).refine(data => data.password === data.confirmPassword, {
   message: 'Passwords do not match',
   path: ['confirmPassword']
