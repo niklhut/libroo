@@ -17,6 +17,7 @@ const toast = useToast()
 // Pagination state
 const page = ref(1)
 const pageSize = ref(12)
+const isLoadingMore = ref(false)
 
 // Selection state
 const isSelectMode = ref(false)
@@ -81,8 +82,14 @@ function toggleSelectAll() {
 
 // Load more
 async function loadMore() {
-  if (pagination.value?.hasMore) {
-    page.value++
+  if (pagination.value?.hasMore && !isLoadingMore.value) {
+    isLoadingMore.value = true
+    try {
+      page.value++
+      await refresh()
+    } finally {
+      isLoadingMore.value = false
+    }
   }
 }
 
@@ -219,7 +226,7 @@ async function deleteSelected() {
 
       <!-- Loading State -->
       <div
-        v-if="status === 'pending'"
+        v-if="status === 'pending' && !hasBooks"
         class="flex justify-center py-12"
       >
         <UIcon
@@ -279,6 +286,8 @@ async function deleteSelected() {
           <UButton
             color="neutral"
             variant="outline"
+            :loading="isLoadingMore"
+            :disabled="isLoadingMore"
             @click="loadMore"
           >
             Load More
