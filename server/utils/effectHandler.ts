@@ -86,7 +86,7 @@ function handleError(error: unknown): Effect.Effect<H3Error> {
 export function effectHandler<A, E>(
   handler: (
     event: H3Event,
-    user: { id: string; name: string; email: string }
+    user: { id: string, name: string, email: string }
   ) => Effect.Effect<A, E, MainServices>
 ) {
   return defineEventHandler(async (event) => {
@@ -114,4 +114,3 @@ export function effectHandler<A, E>(
     return result
   })
 }
-
