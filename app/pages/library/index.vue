@@ -56,7 +56,7 @@ const allSelected = computed(() => books.value.length > 0 && selectedBooks.value
 function toggleSelectMode() {
   isSelectMode.value = !isSelectMode.value
   if (!isSelectMode.value) {
-    selectedBooks.value.clear()
+    selectedBooks.value = new Set()
   }
 }
 
@@ -74,7 +74,7 @@ function toggleBookSelection(id: string) {
 // Select all / deselect all
 function toggleSelectAll() {
   if (allSelected.value) {
-    selectedBooks.value.clear()
+    selectedBooks.value = new Set()
   } else {
     selectedBooks.value = new Set(books.value.map(b => b.id))
   }
