@@ -39,8 +39,21 @@ const { data, refresh, status } = await useFetch<PaginatedResponse>('/api/books'
   }))
 })
 
+// Accumulated books
+const allBooks = ref<LibraryBook[]>([])
+
+watch(data, (response) => {
+  if (!response) return
+
+  if (page.value === 1) {
+    allBooks.value = [...response.items]
+  } else {
+    allBooks.value.push(...response.items)
+  }
+}, { immediate: true })
+
 // Computed values
-const books = computed(() => data.value?.items || [])
+const books = computed(() => allBooks.value)
 const pagination = computed(() => data.value?.pagination)
 const hasBooks = computed(() => books.value.length > 0)
 const selectedCount = computed(() => selectedBooks.value.size)
@@ -104,6 +117,7 @@ async function deleteSelected() {
 
     selectedBooks.value.clear()
     isSelectMode.value = false
+    page.value = 1
     await refresh()
   } catch (err: unknown) {
     const message = err instanceof Error
