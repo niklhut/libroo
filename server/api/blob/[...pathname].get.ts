@@ -1,6 +1,6 @@
 import { Effect } from 'effect'
 
-export default effectHandler((event, _user) =>
+export default effectHandler((event) =>
   Effect.gen(function* () {
     // Get the blob pathname from the URL
     const pathname = getRouterParam(event, 'pathname')
@@ -28,7 +28,7 @@ export default effectHandler((event, _user) =>
 
     // Set content type if available
     setHeader(event, 'Content-Type', blobData.type || 'application/octet-stream')
-    setHeader(event, 'Cache-Control', 'public, max-age=31536000, immutable')
+    setHeader(event, 'Cache-Control', 'private, no-cache, no-store, must-revalidate')
 
     // Return the blob
     return blobData
