@@ -37,7 +37,7 @@ const coverUrl = computed(() => {
 // Format date helper function
 function formatDate(dateString: string | null): string | null {
   if (!dateString) return null
-  
+
   // Try to parse as a full date first
   const date = new Date(dateString)
   if (!isNaN(date.getTime())) {
@@ -47,12 +47,12 @@ function formatDate(dateString: string | null): string | null {
       day: 'numeric'
     })
   }
-  
+
   // If it's just a year (e.g., "2015"), return as-is
   if (/^\d{4}$/.test(dateString)) {
     return dateString
   }
-  
+
   // For other formats like "January 2015", try to parse
   const monthYearDate = new Date(dateString)
   if (!isNaN(monthYearDate.getTime())) {
@@ -61,7 +61,7 @@ function formatDate(dateString: string | null): string | null {
       month: 'long'
     })
   }
-  
+
   // Fallback: return the original string
   return dateString
 }

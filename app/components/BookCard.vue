@@ -60,7 +60,10 @@ function handleClick(e: MouseEvent) {
             class="w-full object-cover"
             loading="lazy"
           />
-          <div v-else class="w-full h-full flex items-center justify-center bg-muted aspect-[1/1.5]">
+          <div
+            v-else
+            class="w-full h-full flex items-center justify-center bg-muted aspect-[1/1.5]"
+          >
             <UIcon
               name="i-lucide-book"
               class="text-4xl text-muted"

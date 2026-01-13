@@ -42,15 +42,24 @@ const links = computed<NavigationMenuItem[]>(() => {
 <template>
   <UHeader :links="links">
     <template #left>
-      <NuxtLink to="/" class="flex items-center gap-2">
-        <UIcon name="i-lucide-book-open-check" class="text-2xl text-primary" />
+      <NuxtLink
+        to="/"
+        class="flex items-center gap-2"
+      >
+        <UIcon
+          name="i-lucide-book-open-check"
+          class="text-2xl text-primary"
+        />
         <span class="font-bold text-xl">Libroo</span>
       </NuxtLink>
     </template>
 
-
     <template #right>
-      <UNavigationMenu :items="links" class="hidden lg:flex" variant="link" />
+      <UNavigationMenu
+        :items="links"
+        class="hidden lg:flex"
+        variant="link"
+      />
 
       <UColorModeButton />
     </template>

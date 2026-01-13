@@ -201,7 +201,7 @@ function resetLookup() {
                     :alt="lookupResult.title"
                     class="max-w-full max-h-full object-cover"
                     loading="eager"
-                  />
+                  >
                   <div
                     v-else
                     class="w-full h-full flex items-center justify-center bg-muted aspect-[1/1.5]"

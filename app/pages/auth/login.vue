@@ -87,23 +87,43 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
 <template>
   <UContainer class="py-12 max-w-md">
     <UPageCard>
-      <UAuthForm :schema="schema" :fields="fields" :loading="isLoading" title="Welcome back!" icon="i-lucide-library"
-        @submit="onSubmit">
+      <UAuthForm
+        :schema="schema"
+        :fields="fields"
+        :loading="isLoading"
+        title="Welcome back!"
+        icon="i-lucide-library"
+        @submit="onSubmit"
+      >
         <template #description>
           Don't have an account?
-          <ULink to="/auth/register" class="text-primary font-medium">
+          <ULink
+            to="/auth/register"
+            class="text-primary font-medium"
+          >
             Sign up
           </ULink>
         </template>
 
         <template #password-hint>
-          <ULink to="#" class="text-primary font-medium" tabindex="-1">
+          <ULink
+            to="#"
+            class="text-primary font-medium"
+            tabindex="-1"
+          >
             Forgot password?
           </ULink>
         </template>
 
-        <template v-if="error" #validation>
-          <UAlert color="error" icon="i-lucide-alert-circle" :title="error" />
+        <template
+          v-if="error"
+          #validation
+        >
+          <UAlert
+            color="error"
+            icon="i-lucide-alert-circle"
+            :title="error"
+          />
         </template>
 
         <template #footer>

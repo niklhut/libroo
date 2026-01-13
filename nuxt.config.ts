@@ -27,10 +27,6 @@ export default defineNuxtConfig({
     blob: true
   },
 
-  image: {
-    provider: 'none',
-  },
-
   eslint: {
     config: {
       stylistic: {
@@ -40,5 +36,9 @@ export default defineNuxtConfig({
         quotes: 'single'
       }
     }
+  },
+
+  image: {
+    provider: 'none'
   }
 })
