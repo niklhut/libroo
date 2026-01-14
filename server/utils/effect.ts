@@ -1,12 +1,24 @@
-import { Effect, Layer, pipe } from 'effect'
+import { Effect, Layer, Logger, LogLevel, pipe, Context } from 'effect'
+import { HttpClient } from '@effect/platform'
+import { NodeHttpClient } from '@effect/platform-node'
 import type { H3Error } from 'h3'
+
+// Create HttpClient layer that follows redirects (OpenLibrary cover URLs redirect)
+const HttpClientLive = Layer.effect(
+  HttpClient.HttpClient,
+  Effect.gen(function* () {
+    const baseClient = yield* HttpClient.HttpClient
+    return HttpClient.followRedirects(baseClient, 10)
+  })
+).pipe(Layer.provide(NodeHttpClient.layer))
 
 // Base services layer (no dependencies)
 const BaseServicesLive = Layer.mergeAll(
   DbServiceLive,
   StorageServiceLive,
   AuthServiceLive,
-  OpenLibraryRepositoryLive
+  OpenLibraryRepositoryLive,
+  HttpClientLive
 )
 
 // Repository layer (depends on base services)
@@ -35,6 +47,7 @@ export type MainServices
   | BookRepository
   | OpenLibraryRepository
   | BookService
+  | HttpClient.HttpClient
 
 // Helper to safely get property from unknown object
 function getProp<T>(obj: unknown, key: string): T | undefined {
@@ -51,7 +64,9 @@ const errorStatusCodes: Record<string, number> = {
   OpenLibraryBookNotFoundError: 404,
   BookAlreadyOwnedError: 409,
   OpenLibraryApiError: 502,
-  BookCreateError: 500
+  BookCreateError: 500,
+  DatabaseError: 500,
+  StorageError: 500
 }
 
 // Custom error message formatters

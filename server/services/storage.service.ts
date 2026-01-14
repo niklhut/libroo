@@ -1,4 +1,10 @@
-import { Context, Effect, Layer } from 'effect'
+import { Context, Effect, Layer, Data } from 'effect'
+
+// Error types
+export class StorageError extends Data.TaggedError('StorageError')<{
+  message: string
+  operation: 'put' | 'get' | 'delete' | 'list'
+}> { }
 
 // Types for blob operations
 export interface BlobPutOptions {
@@ -15,10 +21,10 @@ export interface BlobMetadata {
 
 // Service interface
 export interface StorageServiceInterface {
-  put: (pathname: string, data: Buffer | Blob | ArrayBuffer, options?: BlobPutOptions) => Effect.Effect<BlobMetadata, Error>
-  get: (pathname: string) => Effect.Effect<Blob | null, Error>
-  delete: (pathname: string) => Effect.Effect<void, Error>
-  list: (prefix?: string) => Effect.Effect<BlobMetadata[], Error>
+  put: (pathname: string, data: Buffer | Blob | ArrayBuffer, options?: BlobPutOptions) => Effect.Effect<BlobMetadata, StorageError>
+  get: (pathname: string) => Effect.Effect<Blob | null, StorageError>
+  delete: (pathname: string) => Effect.Effect<void, StorageError>
+  list: (prefix?: string) => Effect.Effect<BlobMetadata[], StorageError>
 }
 
 // Service tag
@@ -27,54 +33,66 @@ export class StorageService extends Context.Tag('StorageService')<StorageService
 // Live implementation - uses dynamic import to avoid build issues
 export const StorageServiceLive = Layer.succeed(StorageService, {
   put: (pathname, data, options) =>
-    Effect.tryPromise({
-      try: async () => {
-        const { blob } = await import('hub:blob')
-        const result = await blob.put(pathname, data, {
+    Effect.gen(function* () {
+      const { blob } = yield* Effect.promise(() => import('hub:blob'))
+      const result = yield* Effect.tryPromise({
+        try: () => blob.put(pathname, data, {
           contentType: options?.contentType,
           prefix: options?.prefix
+        }),
+        catch: (error) => new StorageError({
+          message: `Failed to put blob: ${error}`,
+          operation: 'put'
         })
-        return {
-          pathname: result.pathname,
-          contentType: result.contentType,
-          size: result.size,
-          uploadedAt: new Date(result.uploadedAt)
-        }
-      },
-      catch: error => new Error(`Failed to put blob: ${error}`)
+      })
+      return {
+        pathname: result.pathname,
+        contentType: result.contentType,
+        size: result.size,
+        uploadedAt: new Date(result.uploadedAt)
+      }
     }),
 
   get: pathname =>
-    Effect.tryPromise({
-      try: async () => {
-        const { blob } = await import('hub:blob')
-        return await blob.get(pathname)
-      },
-      catch: error => new Error(`Failed to get blob: ${error}`)
+    Effect.gen(function* () {
+      const { blob } = yield* Effect.promise(() => import('hub:blob'))
+      return yield* Effect.tryPromise({
+        try: () => blob.get(pathname),
+        catch: (error) => new StorageError({
+          message: `Failed to get blob: ${error}`,
+          operation: 'get'
+        })
+      })
     }),
 
   delete: pathname =>
-    Effect.tryPromise({
-      try: async () => {
-        const { blob } = await import('hub:blob')
-        await blob.delete(pathname)
-      },
-      catch: error => new Error(`Failed to delete blob: ${error}`)
+    Effect.gen(function* () {
+      const { blob } = yield* Effect.promise(() => import('hub:blob'))
+      yield* Effect.tryPromise({
+        try: () => blob.delete(pathname),
+        catch: (error) => new StorageError({
+          message: `Failed to delete blob: ${error}`,
+          operation: 'delete'
+        })
+      })
     }),
 
   list: prefix =>
-    Effect.tryPromise({
-      try: async () => {
-        const { blob } = await import('hub:blob')
-        const results = await blob.list({ prefix })
-        return results.blobs.map(b => ({
-          pathname: b.pathname,
-          contentType: b.contentType,
-          size: b.size,
-          uploadedAt: b.uploadedAt instanceof Date ? b.uploadedAt : new Date(b.uploadedAt)
-        }))
-      },
-      catch: error => new Error(`Failed to list blobs: ${error}`)
+    Effect.gen(function* () {
+      const { blob } = yield* Effect.promise(() => import('hub:blob'))
+      const results = yield* Effect.tryPromise({
+        try: () => blob.list({ prefix }),
+        catch: (error) => new StorageError({
+          message: `Failed to list blobs: ${error}`,
+          operation: 'list'
+        })
+      })
+      return results.blobs.map(b => ({
+        pathname: b.pathname,
+        contentType: b.contentType,
+        size: b.size,
+        uploadedAt: b.uploadedAt instanceof Date ? b.uploadedAt : new Date(b.uploadedAt)
+      }))
     })
 })
 

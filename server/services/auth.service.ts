@@ -40,49 +40,32 @@ export class AuthService extends Context.Tag('AuthService')<AuthService, AuthSer
 // Live implementation
 export const AuthServiceLive = Layer.succeed(AuthService, {
   getCurrentUser: event =>
-    Effect.tryPromise({
-      try: async () => {
-        const session = await auth.api.getSession({
-          headers: event.headers
-        })
+    Effect.gen(function* () {
+      const session = yield* Effect.tryPromise({
+        try: () => auth.api.getSession({ headers: event.headers }),
+        catch: () => new UnauthorizedError({ message: 'Failed to get session' })
+      })
 
-        if (!session) {
-          throw new UnauthorizedError({ message: 'No active session' })
-        }
-
-        return session as Session
-      },
-      catch: (error) => {
-        if (error instanceof UnauthorizedError) {
-          return error
-        }
-        return new UnauthorizedError({ message: 'Failed to get session' })
+      if (!session) {
+        return yield* Effect.fail(new UnauthorizedError({ message: 'No active session' }))
       }
+
+      return session as Session
     }),
 
   requireAuth: event =>
-    Effect.flatMap(
-      Effect.tryPromise({
-        try: async () => {
-          const session = await auth.api.getSession({
-            headers: event.headers
-          })
+    Effect.gen(function* () {
+      const session = yield* Effect.tryPromise({
+        try: () => auth.api.getSession({ headers: event.headers }),
+        catch: () => new UnauthorizedError({ message: 'Authentication failed' })
+      })
 
-          if (!session) {
-            throw new UnauthorizedError({ message: 'Authentication required' })
-          }
+      if (!session) {
+        return yield* Effect.fail(new UnauthorizedError({ message: 'Authentication required' }))
+      }
 
-          return session.user as AuthUser
-        },
-        catch: (error) => {
-          if (error instanceof UnauthorizedError) {
-            return error
-          }
-          return new UnauthorizedError({ message: 'Authentication failed' })
-        }
-      }),
-      user => Effect.succeed(user)
-    )
+      return session.user as AuthUser
+    })
 })
 
 // Helper effects

@@ -1,4 +1,5 @@
 import { Context, Effect, Layer, Data } from 'effect'
+import { HttpClient } from '@effect/platform'
 import { eq, and, count, desc } from 'drizzle-orm'
 import type { InferSelectModel } from 'drizzle-orm'
 import { books, userBooks } from 'hub:db:schema'
@@ -15,6 +16,11 @@ export class BookCreateError extends Data.TaggedError('BookCreateError')<{
 
 export class BookAlreadyOwnedError extends Data.TaggedError('BookAlreadyOwnedError')<{
   isbn: string
+}> { }
+
+export class DatabaseError extends Data.TaggedError('DatabaseError')<{
+  message: string
+  operation: string
 }> { }
 
 // Output types
@@ -48,30 +54,30 @@ export interface BookRepositoryInterface {
     isbn: string
   ) => Effect.Effect<
     UserBook,
-    BookCreateError | BookAlreadyOwnedError | OpenLibraryBookNotFoundError | OpenLibraryApiError | Error,
-    DbService | StorageService | OpenLibraryRepository
+    BookCreateError | BookAlreadyOwnedError | OpenLibraryBookNotFoundError | OpenLibraryApiError | DatabaseError,
+    DbService | StorageService | OpenLibraryRepository | HttpClient.HttpClient
   >
 
   getLibrary: (
     userId: string,
     pagination: PaginationParams
-  ) => Effect.Effect<PaginatedResult<UserBook>, Error, DbService>
+  ) => Effect.Effect<PaginatedResult<UserBook>, DatabaseError, DbService>
 
-  getBookById: (bookId: string) => Effect.Effect<Book, BookNotFoundError | Error, DbService>
+  getBookById: (bookId: string) => Effect.Effect<Book, BookNotFoundError | DatabaseError, DbService>
 
   removeFromLibrary: (
     userBookId: string,
     userId: string
-  ) => Effect.Effect<void, BookNotFoundError | Error, DbService>
+  ) => Effect.Effect<void, BookNotFoundError | DatabaseError, DbService>
 
   findByIsbn: (
     isbn: string
-  ) => Effect.Effect<InferSelectModel<typeof books> | null, Error, DbService>
+  ) => Effect.Effect<InferSelectModel<typeof books> | null, DatabaseError, DbService>
 
   getUserBookWithDetails: (
     userBookId: string,
     userId: string
-  ) => Effect.Effect<BookDetails, BookNotFoundError | Error, DbService>
+  ) => Effect.Effect<BookDetails, BookNotFoundError | DatabaseError, DbService>
 }
 
 // Service tag
@@ -92,35 +98,39 @@ export const BookRepositoryLive = Layer.effect(
       addBookByISBN: (userId, isbn) =>
         Effect.gen(function* () {
           // Check if user already owns a book with this ISBN
-          const existingUserBook = yield* Effect.tryPromise({
-            try: async () => {
-              const result = await dbService.db
+          const existingResult = yield* Effect.tryPromise({
+            try: () =>
+              dbService.db
                 .select()
                 .from(userBooks)
                 .innerJoin(books, eq(userBooks.bookId, books.id))
                 .where(and(eq(userBooks.userId, userId), eq(books.isbn, isbn)))
-                .limit(1)
-              return result[0] || null
-            },
-            catch: error => new BookCreateError({ message: `Database error: ${error}` })
+                .limit(1),
+            catch: (error) => new DatabaseError({
+              message: `Failed to check existing ownership: ${error}`,
+              operation: 'addBookByISBN.checkExisting'
+            })
           })
 
-          if (existingUserBook) {
+          if (existingResult[0]) {
             return yield* Effect.fail(new BookAlreadyOwnedError({ isbn }))
           }
 
           // Check if book already exists in database (shared)
-          let book = yield* Effect.tryPromise({
-            try: async () => {
-              const result = await dbService.db
+          const bookResult = yield* Effect.tryPromise({
+            try: () =>
+              dbService.db
                 .select()
                 .from(books)
                 .where(eq(books.isbn, isbn))
-                .limit(1)
-              return result[0] || null
-            },
-            catch: error => new BookCreateError({ message: `Database error: ${error}` })
+                .limit(1),
+            catch: (error) => new DatabaseError({
+              message: `Failed to find existing book: ${error}`,
+              operation: 'addBookByISBN.findExisting'
+            })
           })
+
+          let book = bookResult[0] || null
 
           // If book doesn't exist, fetch from OpenLibrary and create it
           if (!book) {
@@ -150,7 +160,7 @@ export const BookRepositoryLive = Layer.effect(
 
             yield* Effect.tryPromise({
               try: () => dbService.db.insert(books).values(newBook),
-              catch: error => new BookCreateError({ message: `Failed to insert book: ${error}` })
+              catch: (error) => new BookCreateError({ message: `Failed to insert book: ${error}` })
             })
 
             book = newBook
@@ -168,7 +178,7 @@ export const BookRepositoryLive = Layer.effect(
                 bookId: book.id,
                 addedAt
               }),
-            catch: error => new BookCreateError({ message: `Failed to add book to library: ${error}` })
+            catch: (error) => new BookCreateError({ message: `Failed to add book to library: ${error}` })
           })
 
           return {
@@ -188,57 +198,68 @@ export const BookRepositoryLive = Layer.effect(
         }),
 
       getLibrary: (userId, pagination) =>
-        Effect.tryPromise({
-          try: async () => {
-            const { page, pageSize } = pagination
-            const offset = (page - 1) * pageSize
+        Effect.gen(function* () {
+          const { page, pageSize } = pagination
+          const offset = (page - 1) * pageSize
 
-            // Get total count
-            const countResult = await dbService.db
-              .select({ count: count() })
-              .from(userBooks)
-              .where(eq(userBooks.userId, userId))
+          // Get total count
+          const countResult = yield* Effect.tryPromise({
+            try: () =>
+              dbService.db
+                .select({ count: count() })
+                .from(userBooks)
+                .where(eq(userBooks.userId, userId)),
+            catch: (error) => new DatabaseError({
+              message: `Failed to count library items: ${error}`,
+              operation: 'getLibrary.count'
+            })
+          })
 
-            const totalItems = countResult[0]?.count ?? 0
-            const totalPages = Math.ceil(totalItems / pageSize)
+          const totalItems = countResult[0]?.count ?? 0
+          const totalPages = Math.ceil(totalItems / pageSize)
 
-            // Get paginated items
-            const result = await dbService.db
-              .select()
-              .from(userBooks)
-              .innerJoin(books, eq(userBooks.bookId, books.id))
-              .where(eq(userBooks.userId, userId))
-              .orderBy(desc(userBooks.addedAt))
-              .limit(pageSize)
-              .offset(offset)
+          // Get paginated items
+          const result = yield* Effect.tryPromise({
+            try: () =>
+              dbService.db
+                .select()
+                .from(userBooks)
+                .innerJoin(books, eq(userBooks.bookId, books.id))
+                .where(eq(userBooks.userId, userId))
+                .orderBy(desc(userBooks.addedAt))
+                .limit(pageSize)
+                .offset(offset),
+            catch: (error) => new DatabaseError({
+              message: `Failed to get library items: ${error}`,
+              operation: 'getLibrary.items'
+            })
+          })
 
-            const items = result.map(row => ({
-              id: row.user_books.id,
-              bookId: row.books.id,
-              book: {
-                id: row.books.id,
-                isbn: row.books.isbn,
-                title: row.books.title,
-                author: row.books.author,
-                coverPath: row.books.coverPath,
-                openLibraryKey: row.books.openLibraryKey,
-                createdAt: row.books.createdAt
-              },
-              addedAt: row.user_books.addedAt
-            }))
+          const items = result.map(row => ({
+            id: row.user_books.id,
+            bookId: row.books.id,
+            book: {
+              id: row.books.id,
+              isbn: row.books.isbn,
+              title: row.books.title,
+              author: row.books.author,
+              coverPath: row.books.coverPath,
+              openLibraryKey: row.books.openLibraryKey,
+              createdAt: row.books.createdAt
+            },
+            addedAt: row.user_books.addedAt
+          }))
 
-            return {
-              items,
-              pagination: {
-                page,
-                pageSize,
-                totalItems,
-                totalPages,
-                hasMore: page < totalPages
-              }
+          return {
+            items,
+            pagination: {
+              page,
+              pageSize,
+              totalItems,
+              totalPages,
+              hasMore: page < totalPages
             }
-          },
-          catch: error => new Error(`Failed to get library: ${error}`)
+          }
         }),
 
       getBookById: bookId =>
@@ -250,7 +271,10 @@ export const BookRepositoryLive = Layer.effect(
                 .from(books)
                 .where(eq(books.id, bookId))
                 .limit(1),
-            catch: error => new Error(`Database error: ${error}`)
+            catch: (error) => new DatabaseError({
+              message: `Failed to get book: ${error}`,
+              operation: 'getBookById'
+            })
           })
 
           const [book] = result
@@ -277,7 +301,10 @@ export const BookRepositoryLive = Layer.effect(
                 .delete(userBooks)
                 .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId)))
                 .returning(),
-            catch: error => new Error(`Database error: ${error}`)
+            catch: (error) => new DatabaseError({
+              message: `Failed to remove book from library: ${error}`,
+              operation: 'removeFromLibrary'
+            })
           })
 
           if (result.length === 0) {
@@ -286,16 +313,20 @@ export const BookRepositoryLive = Layer.effect(
         }),
 
       findByIsbn: isbn =>
-        Effect.tryPromise({
-          try: async () => {
-            const [book] = await dbService.db
-              .select()
-              .from(books)
-              .where(eq(books.isbn, isbn))
-              .limit(1)
-            return book || null
-          },
-          catch: error => new Error(`Database error: ${error}`)
+        Effect.gen(function* () {
+          const result = yield* Effect.tryPromise({
+            try: () =>
+              dbService.db
+                .select()
+                .from(books)
+                .where(eq(books.isbn, isbn))
+                .limit(1),
+            catch: (error) => new DatabaseError({
+              message: `Failed to find book by ISBN: ${error}`,
+              operation: 'findByIsbn'
+            })
+          })
+          return result[0] || null
         }),
 
       getUserBookWithDetails: (userBookId, userId) =>
@@ -308,7 +339,10 @@ export const BookRepositoryLive = Layer.effect(
                 .innerJoin(books, eq(userBooks.bookId, books.id))
                 .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId)))
                 .limit(1),
-            catch: error => new Error(`Database error: ${error}`)
+            catch: (error) => new DatabaseError({
+              message: `Failed to get book details: ${error}`,
+              operation: 'getUserBookWithDetails'
+            })
           })
 
           const row = result[0]

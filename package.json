@@ -12,6 +12,8 @@
     "typecheck": "nuxt typecheck"
   },
   "dependencies": {
+    "@effect/platform": "^0.94.1",
+    "@effect/platform-node": "^0.104.0",
     "@iconify-json/lucide": "^1.2.82",
     "@iconify-json/simple-icons": "^1.2.63",
     "@libsql/client": "^0.15.15",

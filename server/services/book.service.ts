@@ -1,4 +1,5 @@
 import { Context, Effect, Layer, Either } from 'effect'
+import { HttpClient } from '@effect/platform'
 
 // ===== Service Interface =====
 
@@ -6,21 +7,21 @@ export interface BookServiceInterface {
   getUserLibrary: (
     userId: string,
     pagination: PaginationParams
-  ) => Effect.Effect<PaginatedResult<LibraryBook>, Error, DbService>
+  ) => Effect.Effect<PaginatedResult<LibraryBook>, DatabaseError, DbService>
 
   addBookToLibrary: (
     userId: string,
     isbn: string
   ) => Effect.Effect<
     LibraryBook,
-    Error,
-    DbService | StorageService | OpenLibraryRepository
+    BookCreateError | BookAlreadyOwnedError | OpenLibraryBookNotFoundError | OpenLibraryApiError | DatabaseError,
+    DbService | StorageService | OpenLibraryRepository | HttpClient.HttpClient
   >
 
   removeBookFromLibrary: (
     userBookId: string,
     userId: string
-  ) => Effect.Effect<void, BookNotFoundError | Error, DbService>
+  ) => Effect.Effect<void, BookNotFoundError | DatabaseError, DbService>
 
   batchRemoveFromLibrary: (
     ids: string[],
@@ -30,14 +31,14 @@ export interface BookServiceInterface {
   getBookDetails: (
     userBookId: string,
     userId: string
-  ) => Effect.Effect<BookDetails, BookNotFoundError | Error, DbService>
+  ) => Effect.Effect<BookDetails, BookNotFoundError | DatabaseError, DbService>
 
   lookupBook: (
     isbn: string
   ) => Effect.Effect<
     BookLookupResult,
-    Error,
-    DbService | OpenLibraryRepository
+    DatabaseError | OpenLibraryApiError,
+    DbService | OpenLibraryRepository | HttpClient.HttpClient
   >
 }
 
