@@ -37,12 +37,12 @@ export const MainLive = ServicesLive
 // Type for all available services
 export type MainServices
   = DbService
-  | StorageService
-  | AuthService
-  | BookRepository
-  | OpenLibraryRepository
-  | BookService
-  | HttpClient.HttpClient
+    | StorageService
+    | AuthService
+    | BookRepository
+    | OpenLibraryRepository
+    | BookService
+    | HttpClient.HttpClient
 
 // Helper to safely get property from unknown object
 function getProp<T>(obj: unknown, key: string): T | undefined {
