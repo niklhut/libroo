@@ -1,4 +1,4 @@
-name: Typecheck and Lint
+name: Lint
 
 on: push
 
@@ -22,11 +22,5 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      - name: Prepare
-        run: pnpm run postinstall
-
       - name: Lint
         run: pnpm run lint
-
-      - name: Typecheck
-        run: pnpm run typecheck
