@@ -14,8 +14,8 @@
   "dependencies": {
     "@effect/platform": "^0.94.1",
     "@effect/platform-node": "^0.104.0",
-    "@iconify-json/lucide": "^1.2.82",
-    "@iconify-json/simple-icons": "^1.2.63",
+    "@iconify-json/lucide": "^1.2.85",
+    "@iconify-json/simple-icons": "^1.2.66",
     "@libsql/client": "^0.15.15",
     "@nuxt/hints": "1.0.0-alpha.5",
     "@nuxt/image": "2.0.0",
@@ -23,8 +23,8 @@
     "@nuxt/test-utils": "3.22.0",
     "@nuxt/ui": "^4.3.0",
     "@nuxthub/core": "^0.10.4",
-    "@unhead/vue": "^2.0.19",
-    "better-auth": "^1.4.10",
+    "@unhead/vue": "^2.1.2",
+    "better-auth": "^1.4.13",
     "drizzle-orm": "^0.45.1",
     "effect": "^3.19.14",
     "nuxt": "^4.2.2",
@@ -36,7 +36,7 @@
     "drizzle-kit": "^0.31.8",
     "eslint": "^9.39.2",
     "typescript": "^5.9.3",
-    "vue-tsc": "^3.2.1"
+    "vue-tsc": "^3.2.2"
   },
-  "packageManager": "pnpm@10.26.1"
+  "packageManager": "pnpm@10.28.0"
 }
