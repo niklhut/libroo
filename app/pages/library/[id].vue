@@ -151,7 +151,7 @@ async function removeBook() {
           </div>
 
           <!-- Metadata -->
-          <div class="space-y-2 md:flex-1">
+          <div class="space-y-2">
             <!-- Compact Metadata -->
             <div class="flex flex-wrap items-center justify-center md:justify-start gap-x-2 gap-y-1 text-sm text-muted">
               <span v-if="formattedPublishDate">
@@ -174,17 +174,19 @@ async function removeBook() {
             </div>
 
             <!-- ISBN -->
-            <div class="flex flex-wrap items-center justify-center md:justify-start gap-x-2 gap-y-1 text-sm text-muted">
-              <span v-if="book.isbn">
-                ISBN: {{ book.isbn }}
-              </span>
+            <div
+              v-if="book.isbn"
+              class="flex flex-wrap items-center justify-center md:justify-start gap-x-2 gap-y-1 text-sm text-muted"
+            >
+              ISBN: {{ book.isbn }}
             </div>
 
             <!-- Added At -->
-            <div class="flex flex-wrap items-center justify-center md:justify-start gap-x-2 gap-y-1 text-sm text-muted">
-              <span v-if="formattedAddedAt">
-                Added: {{ formattedAddedAt }}
-              </span>
+            <div
+              v-if="formattedAddedAt"
+              class="flex flex-wrap items-center justify-center md:justify-start gap-x-2 gap-y-1 text-sm text-muted"
+            >
+              Added: {{ formattedAddedAt }}
             </div>
           </div>
 
