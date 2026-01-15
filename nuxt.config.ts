@@ -16,6 +16,11 @@ export default defineNuxtConfig({
 
   css: ['~/assets/css/main.css'],
 
+  runtimeConfig: {
+    betterAuthSecret: process.env.BETTER_AUTH_SECRET,
+    betterAuthUrl: process.env.BETTER_AUTH_URL
+  },
+
   routeRules: {
     '/': { prerender: true }
   },
