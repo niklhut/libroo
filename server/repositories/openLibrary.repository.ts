@@ -89,7 +89,7 @@ const fetchJson = <T>(url: string) =>
     Effect.timeout(Duration.seconds(5)),
     Effect.flatMap(response => response.json),
     Effect.map(json => json as T),
-    Effect.mapError((error) => new OpenLibraryApiError({
+    Effect.mapError(error => new OpenLibraryApiError({
       message: `HTTP request failed: ${HCError.isHttpClientError(error) ? error.message : String(error)}`
     }))
   )
@@ -100,7 +100,7 @@ const checkCoverExists = (coverUrl: string) =>
     coverUrl.includes('?') ? `${coverUrl}&default=false` : `${coverUrl}?default=false`
   ).pipe(
     Effect.timeout(Duration.seconds(5)),
-    Effect.flatMap(response => {
+    Effect.flatMap((response) => {
       if (response.status < 200 || response.status >= 300) {
         return Effect.succeed(false)
       }
@@ -218,17 +218,17 @@ export const OpenLibraryRepositoryLive = Layer.succeed(OpenLibraryRepository, {
 
   downloadCover: (isbn, size = 'L') =>
     Effect.gen(function* () {
-      console.log("downloadCover", isbn, size)
+      console.log('downloadCover', isbn, size)
       const normalizedISBN = normalizeISBN(isbn)
       const coverUrl = `https://covers.openlibrary.org/b/isbn/${normalizedISBN}-${size}.jpg?default=false`
 
       // Fetch cover and read body in a single scoped operation
       const imageBuffer = yield* HttpClient.get(coverUrl).pipe(
         Effect.timeout(Duration.seconds(10)),
-        Effect.flatMap(response => {
+        Effect.flatMap((response) => {
           if (response.status < 200 || response.status >= 300) {
             // No cover available, return null (not an error)
-            console.log("No cover available for ISBN", normalizedISBN)
+            console.log('No cover available for ISBN', normalizedISBN)
             return Effect.succeed(null as ArrayBuffer | null)
           }
 
@@ -236,33 +236,33 @@ export const OpenLibraryRepositoryLive = Layer.succeed(OpenLibraryRepository, {
           const contentLength = response.headers['content-length']
           if (contentLength && parseInt(contentLength) < 1000) {
             // Too small, probably the placeholder image
-            console.log("Too small, probably the placeholder image", normalizedISBN)
+            console.log('Too small, probably the placeholder image', normalizedISBN)
             return Effect.succeed(null as ArrayBuffer | null)
           }
 
           // Read the body within the same scope as the request
-          console.log("Read the body within the same scope as the request", normalizedISBN)
+          console.log('Read the body within the same scope as the request', normalizedISBN)
           return response.arrayBuffer
         }),
-        Effect.mapError((error) => new OpenLibraryCoverError({
+        Effect.mapError(error => new OpenLibraryCoverError({
           message: `Failed to fetch cover: ${HCError.isHttpClientError(error) ? error.message : String(error)}`,
           isbn: normalizedISBN
         }))
       )
 
-      console.log("image Buffer", imageBuffer?.byteLength)
+      console.log('image Buffer', imageBuffer?.byteLength)
 
       if (!imageBuffer) {
         yield* Effect.log(`[OpenLibrary] No cover found for ISBN ${normalizedISBN}`)
         return null
       }
 
-      console.log("image Buffer", imageBuffer.byteLength)
+      console.log('image Buffer', imageBuffer.byteLength)
 
       // Convert to WebP using sharp
       const webpBuffer = yield* Effect.tryPromise({
         try: () => sharp(Buffer.from(imageBuffer)).webp({ quality: 85 }).toBuffer(),
-        catch: (error) => new OpenLibraryCoverError({
+        catch: error => new OpenLibraryCoverError({
           message: `Failed to convert cover to WebP: ${error}`,
           isbn: normalizedISBN
         })
@@ -273,7 +273,7 @@ export const OpenLibraryRepositoryLive = Layer.succeed(OpenLibraryRepository, {
       // Store in blob storage, return null if storage fails
       return yield* putBlob(pathname, webpBuffer, { contentType: 'image/webp' }).pipe(
         Effect.map(blobMetadata => blobMetadata.pathname),
-        Effect.catchAll((error) =>
+        Effect.catchAll(error =>
           Effect.logWarning(`Failed to store cover in blob storage: ${error}`).pipe(
             Effect.map(() => null)
           )
@@ -281,7 +281,7 @@ export const OpenLibraryRepositoryLive = Layer.succeed(OpenLibraryRepository, {
       )
     }).pipe(
       // If cover download fails, just return null instead of failing the whole operation
-      Effect.catchTag('OpenLibraryCoverError', (error) =>
+      Effect.catchTag('OpenLibraryCoverError', error =>
         Effect.logWarning(`Cover download failed for ISBN ${error.isbn}: ${error.message}`).pipe(
           Effect.map(() => null)
         )

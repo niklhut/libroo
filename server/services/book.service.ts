@@ -1,5 +1,5 @@
 import { Context, Effect, Layer, Either } from 'effect'
-import { HttpClient } from '@effect/platform'
+import type { HttpClient } from '@effect/platform'
 
 // ===== Service Interface =====
 

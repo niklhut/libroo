@@ -40,7 +40,7 @@ export const StorageServiceLive = Layer.succeed(StorageService, {
           contentType: options?.contentType,
           prefix: options?.prefix
         }),
-        catch: (error) => new StorageError({
+        catch: error => new StorageError({
           message: `Failed to put blob: ${error}`,
           operation: 'put'
         })
@@ -58,7 +58,7 @@ export const StorageServiceLive = Layer.succeed(StorageService, {
       const { blob } = yield* Effect.promise(() => import('hub:blob'))
       return yield* Effect.tryPromise({
         try: () => blob.get(pathname),
-        catch: (error) => new StorageError({
+        catch: error => new StorageError({
           message: `Failed to get blob: ${error}`,
           operation: 'get'
         })
@@ -70,7 +70,7 @@ export const StorageServiceLive = Layer.succeed(StorageService, {
       const { blob } = yield* Effect.promise(() => import('hub:blob'))
       yield* Effect.tryPromise({
         try: () => blob.delete(pathname),
-        catch: (error) => new StorageError({
+        catch: error => new StorageError({
           message: `Failed to delete blob: ${error}`,
           operation: 'delete'
         })
@@ -82,7 +82,7 @@ export const StorageServiceLive = Layer.succeed(StorageService, {
       const { blob } = yield* Effect.promise(() => import('hub:blob'))
       const results = yield* Effect.tryPromise({
         try: () => blob.list({ prefix }),
-        catch: (error) => new StorageError({
+        catch: error => new StorageError({
           message: `Failed to list blobs: ${error}`,
           operation: 'list'
         })

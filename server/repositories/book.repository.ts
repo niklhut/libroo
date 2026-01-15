@@ -1,5 +1,5 @@
 import { Context, Effect, Layer, Data } from 'effect'
-import { HttpClient } from '@effect/platform'
+import type { HttpClient } from '@effect/platform'
 import { eq, and, count, desc } from 'drizzle-orm'
 import type { InferSelectModel } from 'drizzle-orm'
 import { books, userBooks } from 'hub:db:schema'
@@ -106,7 +106,7 @@ export const BookRepositoryLive = Layer.effect(
                 .innerJoin(books, eq(userBooks.bookId, books.id))
                 .where(and(eq(userBooks.userId, userId), eq(books.isbn, isbn)))
                 .limit(1),
-            catch: (error) => new DatabaseError({
+            catch: error => new DatabaseError({
               message: `Failed to check existing ownership: ${error}`,
               operation: 'addBookByISBN.checkExisting'
             })
@@ -124,7 +124,7 @@ export const BookRepositoryLive = Layer.effect(
                 .from(books)
                 .where(eq(books.isbn, isbn))
                 .limit(1),
-            catch: (error) => new DatabaseError({
+            catch: error => new DatabaseError({
               message: `Failed to find existing book: ${error}`,
               operation: 'addBookByISBN.findExisting'
             })
@@ -160,7 +160,7 @@ export const BookRepositoryLive = Layer.effect(
 
             yield* Effect.tryPromise({
               try: () => dbService.db.insert(books).values(newBook),
-              catch: (error) => new BookCreateError({ message: `Failed to insert book: ${error}` })
+              catch: error => new BookCreateError({ message: `Failed to insert book: ${error}` })
             })
 
             book = newBook
@@ -178,7 +178,7 @@ export const BookRepositoryLive = Layer.effect(
                 bookId: book.id,
                 addedAt
               }),
-            catch: (error) => new BookCreateError({ message: `Failed to add book to library: ${error}` })
+            catch: error => new BookCreateError({ message: `Failed to add book to library: ${error}` })
           })
 
           return {
@@ -209,7 +209,7 @@ export const BookRepositoryLive = Layer.effect(
                 .select({ count: count() })
                 .from(userBooks)
                 .where(eq(userBooks.userId, userId)),
-            catch: (error) => new DatabaseError({
+            catch: error => new DatabaseError({
               message: `Failed to count library items: ${error}`,
               operation: 'getLibrary.count'
             })
@@ -229,7 +229,7 @@ export const BookRepositoryLive = Layer.effect(
                 .orderBy(desc(userBooks.addedAt))
                 .limit(pageSize)
                 .offset(offset),
-            catch: (error) => new DatabaseError({
+            catch: error => new DatabaseError({
               message: `Failed to get library items: ${error}`,
               operation: 'getLibrary.items'
             })
@@ -271,7 +271,7 @@ export const BookRepositoryLive = Layer.effect(
                 .from(books)
                 .where(eq(books.id, bookId))
                 .limit(1),
-            catch: (error) => new DatabaseError({
+            catch: error => new DatabaseError({
               message: `Failed to get book: ${error}`,
               operation: 'getBookById'
             })
@@ -301,7 +301,7 @@ export const BookRepositoryLive = Layer.effect(
                 .delete(userBooks)
                 .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId)))
                 .returning(),
-            catch: (error) => new DatabaseError({
+            catch: error => new DatabaseError({
               message: `Failed to remove book from library: ${error}`,
               operation: 'removeFromLibrary'
             })
@@ -321,7 +321,7 @@ export const BookRepositoryLive = Layer.effect(
                 .from(books)
                 .where(eq(books.isbn, isbn))
                 .limit(1),
-            catch: (error) => new DatabaseError({
+            catch: error => new DatabaseError({
               message: `Failed to find book by ISBN: ${error}`,
               operation: 'findByIsbn'
             })
@@ -339,7 +339,7 @@ export const BookRepositoryLive = Layer.effect(
                 .innerJoin(books, eq(userBooks.bookId, books.id))
                 .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId)))
                 .limit(1),
-            catch: (error) => new DatabaseError({
+            catch: error => new DatabaseError({
               message: `Failed to get book details: ${error}`,
               operation: 'getUserBookWithDetails'
             })

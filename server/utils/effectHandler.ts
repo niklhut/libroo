@@ -1,6 +1,6 @@
 import { Effect } from 'effect'
 import type { H3Event } from 'h3'
-import { MainLive, type MainServices, handleError, runEffect } from './effect'
+import { type MainServices, runEffect } from './effect'
 import { requireAuth } from '../services/auth.service'
 
 /**
