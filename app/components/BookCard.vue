@@ -99,14 +99,13 @@ function handleClick(e: MouseEvent) {
       <!-- Cover in header slot - no padding -->
       <template #header>
         <div class="aspect-[2/3] bg-muted flex items-center justify-center relative -m-4 -mb-4">
-          <!-- Use img directly for blob URLs (already WebP optimized) -->
-          <img
+          <NuxtImg
             v-if="coverUrl"
             :src="coverUrl"
             :alt="title"
             class="w-full h-full object-cover"
             loading="lazy"
-          >
+          />
           <UIcon
             v-else
             name="i-lucide-book"
