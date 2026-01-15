@@ -218,7 +218,6 @@ export const OpenLibraryRepositoryLive = Layer.succeed(OpenLibraryRepository, {
 
   downloadCover: (isbn, size = 'L') =>
     Effect.gen(function* () {
-      console.log('downloadCover', isbn, size)
       const normalizedISBN = normalizeISBN(isbn)
       const coverUrl = `https://covers.openlibrary.org/b/isbn/${normalizedISBN}-${size}.jpg?default=false`
 
@@ -228,7 +227,6 @@ export const OpenLibraryRepositoryLive = Layer.succeed(OpenLibraryRepository, {
         Effect.flatMap((response) => {
           if (response.status < 200 || response.status >= 300) {
             // No cover available, return null (not an error)
-            console.log('No cover available for ISBN', normalizedISBN)
             return Effect.succeed(null as ArrayBuffer | null)
           }
 
@@ -236,12 +234,10 @@ export const OpenLibraryRepositoryLive = Layer.succeed(OpenLibraryRepository, {
           const contentLength = response.headers['content-length']
           if (contentLength && parseInt(contentLength) < 1000) {
             // Too small, probably the placeholder image
-            console.log('Too small, probably the placeholder image', normalizedISBN)
             return Effect.succeed(null as ArrayBuffer | null)
           }
 
           // Read the body within the same scope as the request
-          console.log('Read the body within the same scope as the request', normalizedISBN)
           return response.arrayBuffer
         }),
         Effect.mapError(error => new OpenLibraryCoverError({
@@ -250,14 +246,10 @@ export const OpenLibraryRepositoryLive = Layer.succeed(OpenLibraryRepository, {
         }))
       )
 
-      console.log('image Buffer', imageBuffer?.byteLength)
-
       if (!imageBuffer) {
         yield* Effect.log(`[OpenLibrary] No cover found for ISBN ${normalizedISBN}`)
         return null
       }
-
-      console.log('image Buffer', imageBuffer.byteLength)
 
       // Convert to WebP using sharp
       const webpBuffer = yield* Effect.tryPromise({
