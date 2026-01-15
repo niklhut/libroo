@@ -158,7 +158,7 @@ export const BookServiceLive = Layer.effect(
             Effect.catchTag('OpenLibraryBookNotFoundError', () =>
               Effect.succeed({
                 found: false,
-                isbn,
+                isbn: normalizedISBN,
                 message: 'Book not found on OpenLibrary'
               } satisfies BookLookupResult)
             )
