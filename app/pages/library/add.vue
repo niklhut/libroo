@@ -177,13 +177,13 @@ function resetLookup() {
               <div class="flex gap-6">
                 <!-- Cover Preview - show OpenLibrary cover -->
                 <div class="w-32 max-h-48 flex-shrink-0 rounded-lg overflow-hidden shadow-md">
-                  <img
+                  <NuxtImg
                     v-if="lookupResult.coverUrl"
                     :src="lookupResult.coverUrl"
                     :alt="lookupResult.title || 'Book cover'"
                     class="max-w-full max-h-full object-cover"
                     loading="eager"
-                  >
+                  />
                   <div
                     v-else
                     class="w-full h-full flex items-center justify-center bg-muted aspect-[1/1.5]"
