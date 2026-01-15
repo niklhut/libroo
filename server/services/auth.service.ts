@@ -1,6 +1,6 @@
 import { Context, Effect, Layer, Data } from 'effect'
 import type { H3Event } from 'h3'
-import type { Session, User } from 'better-auth/types'
+import type { User } from 'better-auth/types'
 import { auth } from '../utils/auth'
 
 // Error types

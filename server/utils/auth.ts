@@ -24,9 +24,9 @@ const getAuthSecret = () => {
   if (!secret || secret.trim() === '') {
     if (isProduction) {
       throw new Error(
-        'CRITICAL: BETTER_AUTH_SECRET environment variable is missing or empty. ' +
-        'This is required in production to ensure session security. ' +
-        'Please set BETTER_AUTH_SECRET or NUXT_BETTER_AUTH_SECRET in your production environment.'
+        'CRITICAL: BETTER_AUTH_SECRET environment variable is missing or empty. '
+        + 'This is required in production to ensure session security. '
+        + 'Please set BETTER_AUTH_SECRET or NUXT_BETTER_AUTH_SECRET in your production environment.'
       )
     }
     return 'libroo-dev-secret'
