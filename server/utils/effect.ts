@@ -17,13 +17,12 @@ const BaseServicesLive = Layer.mergeAll(
   DbServiceLive,
   StorageServiceLive,
   AuthServiceLive,
-  OpenLibraryRepositoryLive,
   HttpClientLive
 )
 
 // Repository layer (depends on base services)
 const RepositoriesLive = Layer.provideMerge(
-  BookRepositoryLive,
+  Layer.mergeAll(BookRepositoryLive, OpenLibraryRepositoryLive),
   BaseServicesLive
 )
 
@@ -34,10 +33,7 @@ const ServicesLive = Layer.provideMerge(
 )
 
 // Combined live layer for all services
-export const MainLive = Layer.provideMerge(
-  ServicesLive,
-  BaseServicesLive
-)
+export const MainLive = ServicesLive
 
 // Type for all available services
 export type MainServices
