@@ -1,5 +1,16 @@
 import { Context, Effect, Layer, Either } from 'effect'
 import type { HttpClient } from '@effect/platform'
+import type { UserBook } from '../repositories/book.repository'
+
+export const toLibraryBook = (userBook: UserBook): LibraryBook => ({
+  id: userBook.id,
+  bookId: userBook.bookId,
+  title: userBook.book.title,
+  author: userBook.book.author,
+  isbn: userBook.book.isbn,
+  coverPath: userBook.book.coverPath,
+  addedAt: userBook.addedAt
+})
 
 // ===== Service Interface =====
 
@@ -59,15 +70,7 @@ export const BookServiceLive = Layer.effect(
           const result = yield* bookRepo.getLibrary(userId, pagination)
 
           return {
-            items: result.items.map((userBook): LibraryBook => ({
-              id: userBook.id,
-              bookId: userBook.bookId,
-              title: userBook.book.title,
-              author: userBook.book.author,
-              isbn: userBook.book.isbn,
-              coverPath: userBook.book.coverPath,
-              addedAt: userBook.addedAt
-            })),
+            items: result.items.map(toLibraryBook),
             pagination: result.pagination
           }
         }),
@@ -76,15 +79,7 @@ export const BookServiceLive = Layer.effect(
         Effect.gen(function* () {
           const userBook = yield* bookRepo.addBookByISBN(userId, isbn)
 
-          return {
-            id: userBook.id,
-            bookId: userBook.bookId,
-            title: userBook.book.title,
-            author: userBook.book.author,
-            isbn: userBook.book.isbn,
-            coverPath: userBook.book.coverPath,
-            addedAt: userBook.addedAt
-          }
+          return toLibraryBook(userBook)
         }),
 
       removeBookFromLibrary: (userBookId, userId) =>
