@@ -48,6 +48,13 @@ const getAuthUrl = () => {
     // Ignore error
   }
 
+  if (!url && process.env.NODE_ENV === 'production') {
+    console.warn(
+      'WARNING: BETTER_AUTH_URL is not set in production. '
+      + 'Using default http://localhost:3000 which may cause authentication failures.'
+    )
+  }
+
   return url || 'http://localhost:3000'
 }
 
