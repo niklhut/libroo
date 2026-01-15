@@ -150,39 +150,44 @@ async function removeBook() {
             </p>
           </div>
 
-          <!-- Compact Metadata -->
-          <div class="flex flex-wrap items-center justify-center md:justify-start gap-x-2 gap-y-1 text-sm text-muted">
-            <span v-if="formattedPublishDate">
-              Published {{ formattedPublishDate }}
-            </span>
-            <span
-              v-if="formattedPublishDate && book.publishers"
-              class="text-muted/50"
-            >•</span>
-            <span v-if="book.publishers">
-              {{ book.publishers }}
-            </span>
-            <span
-              v-if="(formattedPublishDate || book.publishers) && book.numberOfPages"
-              class="text-muted/50"
-            >•</span>
-            <span v-if="book.numberOfPages">
-              {{ book.numberOfPages }} pages
-            </span>
-          </div>
+          <!-- Metadata -->
+          <div class="space-y-2">
+            <!-- Compact Metadata -->
+            <div class="flex flex-wrap items-center justify-center md:justify-start gap-x-2 gap-y-1 text-sm text-muted">
+              <span v-if="formattedPublishDate">
+                Published {{ formattedPublishDate }}
+              </span>
+              <span
+                v-if="formattedPublishDate && book.publishers"
+                class="text-muted/50"
+              >•</span>
+              <span v-if="book.publishers">
+                {{ book.publishers }}
+              </span>
+              <span
+                v-if="(formattedPublishDate || book.publishers) && book.numberOfPages"
+                class="text-muted/50"
+              >•</span>
+              <span v-if="book.numberOfPages">
+                {{ book.numberOfPages }} pages
+              </span>
+            </div>
 
-          <!-- ISBN & Added At (secondary metadata) -->
-          <div class="flex flex-wrap items-center justify-center md:justify-start gap-x-2 gap-y-1 text-xs text-muted/70">
-            <span v-if="book.isbn">
+            <!-- ISBN -->
+            <div
+              v-if="book.isbn"
+              class="flex flex-wrap items-center justify-center md:justify-start gap-x-2 gap-y-1 text-sm text-muted"
+            >
               ISBN: {{ book.isbn }}
-            </span>
-            <span
-              v-if="book.isbn && formattedAddedAt"
-              class="text-muted/40"
-            >•</span>
-            <span v-if="formattedAddedAt">
-              Added {{ formattedAddedAt }}
-            </span>
+            </div>
+
+            <!-- Added At -->
+            <div
+              v-if="formattedAddedAt"
+              class="flex flex-wrap items-center justify-center md:justify-start gap-x-2 gap-y-1 text-sm text-muted"
+            >
+              Added: {{ formattedAddedAt }}
+            </div>
           </div>
 
           <!-- Description -->
