@@ -34,7 +34,6 @@ export class StorageService extends Context.Tag('StorageService')<StorageService
 export const StorageServiceLive = Layer.succeed(StorageService, {
   put: (pathname, data, options) =>
     Effect.gen(function* () {
-      const { blob } = yield* Effect.promise(() => import('hub:blob'))
       const result = yield* Effect.tryPromise({
         try: () => blob.put(pathname, data, {
           contentType: options?.contentType,
@@ -55,7 +54,6 @@ export const StorageServiceLive = Layer.succeed(StorageService, {
 
   get: pathname =>
     Effect.gen(function* () {
-      const { blob } = yield* Effect.promise(() => import('hub:blob'))
       return yield* Effect.tryPromise({
         try: () => blob.get(pathname),
         catch: error => new StorageError({
@@ -67,7 +65,6 @@ export const StorageServiceLive = Layer.succeed(StorageService, {
 
   delete: pathname =>
     Effect.gen(function* () {
-      const { blob } = yield* Effect.promise(() => import('hub:blob'))
       yield* Effect.tryPromise({
         try: () => blob.delete(pathname),
         catch: error => new StorageError({
@@ -79,7 +76,6 @@ export const StorageServiceLive = Layer.succeed(StorageService, {
 
   list: prefix =>
     Effect.gen(function* () {
-      const { blob } = yield* Effect.promise(() => import('hub:blob'))
       const results = yield* Effect.tryPromise({
         try: () => blob.list({ prefix }),
         catch: error => new StorageError({
