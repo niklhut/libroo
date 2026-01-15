@@ -1,4 +1,4 @@
-import { Effect, Layer, pipe } from 'effect'
+import { Cause, Effect, Exit, Layer, pipe } from 'effect'
 import { HttpClient } from '@effect/platform'
 import { NodeHttpClient } from '@effect/platform-node'
 import type { H3Error } from 'h3'
@@ -38,12 +38,12 @@ export const MainLive = ServicesLive
 // Type for all available services
 export type MainServices
   = DbService
-    | StorageService
-    | AuthService
-    | BookRepository
-    | OpenLibraryRepository
-    | BookService
-    | HttpClient.HttpClient
+  | StorageService
+  | AuthService
+  | BookRepository
+  | OpenLibraryRepository
+  | BookService
+  | HttpClient.HttpClient
 
 // Helper to safely get property from unknown object
 function getProp<T>(obj: unknown, key: string): T | undefined {
@@ -78,14 +78,17 @@ const errorMessageFormatters: Record<string, (error: unknown) => string> = {
 }
 
 /**
- * Converts any error to an H3Error within Effect.
- * Uses Effect.logError for structured logging.
+ * Converts any error to an H3Error and throws it as a defect.
+ *
+ * This uses Effect.die() to immediately terminate the Effect with the H3Error
+ * as an unrecoverable defect. The runEffect function will catch this defect
+ * and throw the H3Error to the HTTP layer.
  */
-export function handleError(error: unknown): Effect.Effect<H3Error> {
+export function handleError(error: unknown): Effect.Effect<never> {
   return Effect.gen(function* () {
-    // Check if it's already an H3 error
+    // Check if it's already an H3 error - throw it directly
     if (isError(error)) {
-      return error as H3Error
+      return yield* Effect.die(error)
     }
 
     // Check if it's a tagged error with _tag
@@ -98,32 +101,50 @@ export function handleError(error: unknown): Effect.Effect<H3Error> {
         : getProp<string>(error, 'message') ?? tag
 
       yield* Effect.logError(`[${tag}] ${message}`)
-      return createError({ statusCode, message })
+      return yield* Effect.die(createError({ statusCode, message }))
     }
 
-    // Unknown error - log and return internal server error
+    // Unknown error - log and throw as internal server error
     const message = error instanceof Error ? error.message : String(error)
     yield* Effect.logError(`Unexpected error: ${message}`)
-    return createError({ statusCode: 500, message: 'Internal Server Error' })
+    return yield* Effect.die(createError({ statusCode: 500, message: 'Internal Server Error' }))
   })
 }
 
-// Helper to run an Effect in a Nitro event handler or elsewhere
+/**
+ * Runs an Effect in a Nitro event handler, converting tagged errors to H3Errors
+ * and throwing them to the HTTP layer.
+ *
+ * Error handling flow:
+ * 1. Effect.catchAll intercepts all expected errors (E channel)
+ * 2. handleError converts them to H3Errors and uses Effect.die() to throw as defects
+ * 3. runPromiseExit captures the Exit (success or failure with Cause)
+ * 4. On failure, we extract the H3Error defect and throw it
+ * 5. On success, we return the value directly (no isError check needed)
+ */
 export async function runEffect<A, E>(
   effect: Effect.Effect<A, E, MainServices>
 ): Promise<A> {
-  const result = await pipe(
+  const exit = await pipe(
     effect,
     Effect.provide(MainLive),
     Effect.catchAll(handleError),
-    Effect.runPromise
+    Effect.runPromiseExit
   )
 
-  if (isError(result)) {
-    throw result
-  }
-
-  return result as A
+  return Exit.match(exit, {
+    onFailure: (cause) => {
+      // handleError uses Effect.die() to throw H3Errors as defects.
+      // Extract the first defect (which should be our H3Error) and throw it.
+      const defects = [...Cause.defects(cause)]
+      if (defects.length > 0 && isError(defects[0])) {
+        throw defects[0]
+      }
+      // Fallback for unexpected causes
+      throw createError({ statusCode: 500, message: 'Unexpected internal error' })
+    },
+    onSuccess: (value) => value
+  })
 }
 
 // Re-export common Effect utilities
