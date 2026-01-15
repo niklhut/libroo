@@ -45,7 +45,7 @@ function handleClick(e: MouseEvent) {
   >
     <UCard
       variant="subtle"
-      class="h-full transition-all hover:shadow-lg dark:hover:shadow-neutral-500/20"
+      class="h-full transition-all hover:shadow-lg dark:hover:shadow-neutral-200/20"
       :ui="{
         header: 'p-0 sm:px-0',
         body: 'p-2 sm:p-4'
