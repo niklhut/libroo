@@ -1,7 +1,6 @@
 import { Cause, Effect, Exit, Layer, pipe } from 'effect'
 import { HttpClient } from '@effect/platform'
 import { NodeHttpClient } from '@effect/platform-node'
-import type { H3Error } from 'h3'
 
 // Create HttpClient layer that follows redirects (OpenLibrary cover URLs redirect)
 const HttpClientLive = Layer.effect(
@@ -143,7 +142,7 @@ export async function runEffect<A, E>(
       // Fallback for unexpected causes
       throw createError({ statusCode: 500, message: 'Unexpected internal error' })
     },
-    onSuccess: (value) => value
+    onSuccess: value => value
   })
 }
 
