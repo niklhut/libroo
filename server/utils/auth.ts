@@ -7,8 +7,8 @@ interface EnvSecretOptions {
   envKey: string
   runtimeConfigKey: 'betterAuthSecret' | 'betterAuthUrl'
   devFallback: string
-  productionError?: string  // If set, throws error in production when missing
-  productionWarning?: string  // If set, logs warning in production when missing
+  productionError?: string // If set, throws error in production when missing
+  productionWarning?: string // If set, logs warning in production when missing
 }
 
 /**
