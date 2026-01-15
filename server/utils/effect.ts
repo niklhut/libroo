@@ -42,12 +42,12 @@ export const MainLive = Layer.provideMerge(
 // Type for all available services
 export type MainServices
   = DbService
-    | StorageService
-    | AuthService
-    | BookRepository
-    | OpenLibraryRepository
-    | BookService
-    | HttpClient.HttpClient
+  | StorageService
+  | AuthService
+  | BookRepository
+  | OpenLibraryRepository
+  | BookService
+  | HttpClient.HttpClient
 
 // Helper to safely get property from unknown object
 function getProp<T>(obj: unknown, key: string): T | undefined {
@@ -88,7 +88,7 @@ const errorMessageFormatters: Record<string, (error: unknown) => string> = {
 export function handleError(error: unknown): Effect.Effect<H3Error> {
   return Effect.gen(function* () {
     // Check if it's already an H3 error
-    if (error && typeof error === 'object' && 'statusCode' in error) {
+    if (isError(error)) {
       return error as H3Error
     }
 
