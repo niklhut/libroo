@@ -3,16 +3,30 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import * as schema from 'hub:db:schema'
 import { db } from 'hub:db'
 
-// Validate auth secret and fail fast in production if missing
-const getAuthSecret = () => {
-  let secret = process.env.BETTER_AUTH_SECRET
+interface EnvSecretOptions {
+  envKey: string
+  runtimeConfigKey: 'betterAuthSecret' | 'betterAuthUrl'
+  devFallback: string
+  productionError?: string  // If set, throws error in production when missing
+  productionWarning?: string  // If set, logs warning in production when missing
+}
+
+/**
+ * Unified helper to load secrets/config from env vars or Nuxt runtime config.
+ * Handles consistent validation including trim() checks.
+ */
+const getEnvSecret = (options: EnvSecretOptions): string => {
+  const { envKey, runtimeConfigKey, devFallback, productionError, productionWarning } = options
+
+  let value = process.env[envKey]
 
   // Try to use Nuxt runtime config if available (failsafe for CLI usage)
   try {
     if (typeof useRuntimeConfig === 'function') {
       const config = useRuntimeConfig()
-      if (config.betterAuthSecret) {
-        secret = config.betterAuthSecret
+      const runtimeValue = config[runtimeConfigKey]
+      if (runtimeValue) {
+        value = runtimeValue
       }
     }
   } catch {
@@ -20,43 +34,41 @@ const getAuthSecret = () => {
   }
 
   const isProduction = process.env.NODE_ENV === 'production'
+  const isEmpty = !value || value.trim() === ''
 
-  if (!secret || secret.trim() === '') {
+  if (isEmpty) {
     if (isProduction) {
-      throw new Error(
-        'CRITICAL: BETTER_AUTH_SECRET environment variable is missing or empty. '
-        + 'This is required in production to ensure session security. '
-        + 'Please set BETTER_AUTH_SECRET or NUXT_BETTER_AUTH_SECRET in your production environment.'
-      )
-    }
-    return 'libroo-dev-secret'
-  }
-  return secret
-}
-
-const getAuthUrl = () => {
-  let url = process.env.BETTER_AUTH_URL
-
-  try {
-    if (typeof useRuntimeConfig === 'function') {
-      const config = useRuntimeConfig()
-      if (config.betterAuthUrl) {
-        url = config.betterAuthUrl
+      if (productionError) {
+        throw new Error(productionError)
+      }
+      if (productionWarning) {
+        console.warn(productionWarning)
       }
     }
-  } catch {
-    // Ignore error
+    return devFallback
   }
 
-  if (!url && process.env.NODE_ENV === 'production') {
-    console.warn(
-      'WARNING: BETTER_AUTH_URL is not set in production. '
-      + 'Using default http://localhost:3000 which may cause authentication failures.'
-    )
-  }
-
-  return url || 'http://localhost:3000'
+  return value as string
 }
+
+const getAuthSecret = () => getEnvSecret({
+  envKey: 'BETTER_AUTH_SECRET',
+  runtimeConfigKey: 'betterAuthSecret',
+  devFallback: 'libroo-dev-secret',
+  productionError:
+    'CRITICAL: BETTER_AUTH_SECRET environment variable is missing or empty. '
+    + 'This is required in production to ensure session security. '
+    + 'Please set BETTER_AUTH_SECRET or NUXT_BETTER_AUTH_SECRET in your production environment.'
+})
+
+const getAuthUrl = () => getEnvSecret({
+  envKey: 'BETTER_AUTH_URL',
+  runtimeConfigKey: 'betterAuthUrl',
+  devFallback: 'http://localhost:3000',
+  productionWarning:
+    'WARNING: BETTER_AUTH_URL is not set in production. '
+    + 'Using default http://localhost:3000 which may cause authentication failures.'
+})
 
 export const auth = betterAuth({
   baseURL: getAuthUrl(),
