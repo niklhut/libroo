@@ -12,7 +12,7 @@ Libroo is a personal library tracker built to help you manage your books, collec
 
 ## 🛠️ Stack
 
-- [Nuxt 3](https://nuxt.com/)
+- [Nuxt 4](https://nuxt.com/)
 - [Nuxt UI](https://ui.nuxt.com)
 - [Drizzle ORM](https://orm.drizzle.team/) + PostgreSQL
 - [Better Auth](https://better-auth.com/)

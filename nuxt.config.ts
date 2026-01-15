@@ -1,10 +1,13 @@
-import { copyDrizzleMigrations } from './server/utils/nitro-hooks'
-
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
   modules: [
+    '@nuxthub/core',
     '@nuxt/eslint',
-    '@nuxt/ui-pro'
+    '@nuxt/ui',
+    '@nuxt/hints',
+    '@nuxt/image',
+    '@nuxt/scripts',
+    '@nuxt/test-utils'
   ],
 
   devtools: {
@@ -14,40 +17,42 @@ export default defineNuxtConfig({
   css: ['~/assets/css/main.css'],
 
   runtimeConfig: {
-    databaseUrl: 'postgresql://libroo:libroo@localhost:5432/libroo-db'
+    betterAuthSecret: process.env.BETTER_AUTH_SECRET,
+    betterAuthUrl: process.env.BETTER_AUTH_URL
   },
 
   routeRules: {
     '/': { prerender: true }
   },
 
-  future: {
-    compatibilityVersion: 4
-  },
-
   compatibilityDate: '2025-01-15',
 
   nitro: {
-    experimental: {
-      tasks: true
-    },
     imports: {
       dirs: [
-        'server/db/*'
+        './server/services',
+        './server/repositories'
       ]
     }
   },
 
-  hooks: {
-    'nitro:build:public-assets': copyDrizzleMigrations
+  hub: {
+    db: 'sqlite',
+    blob: true
   },
 
   eslint: {
     config: {
       stylistic: {
         commaDangle: 'never',
-        braceStyle: '1tbs'
+        braceStyle: '1tbs',
+        semi: false,
+        quotes: 'single'
       }
     }
+  },
+
+  image: {
+    provider: 'none'
   }
 })

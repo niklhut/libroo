@@ -1,19 +1,22 @@
+<script setup lang="ts">
+definePageMeta({
+  auth: false
+})
+</script>
+
 <template>
-  <div>
+  <div class="min-h-[60vh]">
     <UPageHero
-      title="Nuxt UI Pro - Starter"
-      description="Nuxt UI Pro is a collection of premium components built on top of Nuxt UI to create beautiful & responsive applications in minutes."
+      title="Your Library, Managed"
+      description="A private, physical-first library management system designed to turn piles of books into a curated, organized, and trackable collection."
       :links="[{
-        label: 'Get started',
-        to: 'https://ui.nuxt.com/getting-started/installation/pro/nuxt',
-        target: '_blank',
+        label: 'Get Started',
+        to: '/auth/register',
         trailingIcon: 'i-lucide-arrow-right',
         size: 'xl'
       }, {
-        label: 'Use this template',
-        to: 'https://github.com/nuxt-ui-pro/starter',
-        target: '_blank',
-        icon: 'i-simple-icons-github',
+        label: 'Sign In',
+        to: '/auth/login',
         size: 'xl',
         color: 'neutral',
         variant: 'subtle'
@@ -22,41 +25,45 @@
 
     <UPageSection
       id="features"
-      title="The freedom to build anything"
-      description="Nuxt UI Pro ships with an extensive set of advanced components that cover a wide range of use-cases. Carefully crafted to reduce boilerplate code without sacrificing flexibility."
+      title="Everything you need to manage your physical library"
+      description="Libroo bridges the gap between digital discovery and physical ownership, giving book lovers total clarity over what they own."
       :features="[{
-        icon: 'i-lucide-wrench',
-        title: 'Fully customizable',
-        description: 'Customize any component through the App Config or fine-tune specific instances with the ui prop, just like Nuxt UI.'
+        icon: 'i-lucide-book-copy',
+        title: 'Physical Inventory First',
+        description: 'Track what you actually own. No more accidental duplicates or forgotten treasures on your shelves.'
       }, {
-        icon: 'i-lucide-square-stack',
-        title: 'Powerful slot system',
-        description: 'Take full control of component layouts and content with Vue\'s comprehensive slot system for maximum flexibility.'
+        icon: 'i-lucide-users',
+        title: 'Lending Ledger',
+        description: 'Know exactly which friend has your book, when they took it, and how long they\'ve had it.'
       }, {
-        icon: 'i-lucide-smartphone',
-        title: 'Mobile-first & responsive',
-        description: 'Built with a mobile-first approach, all components automatically adapt to any screen size while maintaining a polished look.'
+        icon: 'i-lucide-map-pin',
+        title: 'Shelf Mapping',
+        description: 'Assign books to specific locations like Living Room Shelf B or Storage Box 4.'
+      }, {
+        icon: 'i-lucide-scan-barcode',
+        title: 'Fast Cataloging',
+        description: 'Use barcode scanning to catalog books in minutes with high-quality metadata.'
+      }, {
+        icon: 'i-lucide-lock',
+        title: 'Privacy-First',
+        description: 'Your collection is your business. Your library data belongs to you.'
+      }, {
+        icon: 'i-lucide-sparkles',
+        title: 'Beautiful Interface',
+        description: 'A clean interface that celebrates cover art while remaining a powerful utility tool.'
       }]"
     />
 
     <UPageSection>
       <UPageCTA
-        title="Start with Nuxt UI Pro today!"
-        description="Nuxt UI Pro is free in development, but you need a license to use it in production."
+        title="Ready to organize your library?"
+        description="Join book lovers who want total clarity over their collection. Start cataloging today."
         variant="subtle"
         :links="[{
-          label: 'Buy now',
-          to: 'https://ui.nuxt.com/pro/purchase',
-          target: '_blank',
-          icon: 'i-lucide-shopping-cart',
+          label: 'Create Free Account',
+          to: '/auth/register',
+          trailingIcon: 'i-lucide-arrow-right',
           color: 'neutral'
-        }, {
-          label: 'License',
-          to: 'https://ui.nuxt.com/getting-started/license',
-          target: '_blank',
-          trailingIcon: 'i-lucide-circle-help',
-          color: 'neutral',
-          variant: 'subtle'
         }]"
       />
     </UPageSection>

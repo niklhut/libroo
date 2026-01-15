@@ -1,18 +1,61 @@
 @import "tailwindcss";
-@import "@nuxt/ui-pro";
+@import "@nuxt/ui";
 
-@theme static {
+@theme {
   --font-sans: 'Public Sans', sans-serif;
+}
 
-  --color-green-50: #EFFDF5;
-  --color-green-100: #D9FBE8;
-  --color-green-200: #B3F5D1;
-  --color-green-300: #75EDAE;
-  --color-green-400: #00DC82;
-  --color-green-500: #00C16A;
-  --color-green-600: #00A155;
-  --color-green-700: #007F45;
-  --color-green-800: #016538;
-  --color-green-900: #0A5331;
-  --color-green-950: #052E16;
+:root {
+  --ui-radius: 0rem;
+  --ui-container: 72rem;
+
+  --color-royal-blue-50: #f2f5fc;
+  --color-royal-blue-100: #e1e8f8;
+  --color-royal-blue-200: #cbd8f2;
+  --color-royal-blue-300: #a6bfea;
+  --color-royal-blue-400: #7c9dde;
+  --color-royal-blue-500: #5d7dd4;
+  --color-royal-blue-600: #4963c7;
+  --color-royal-blue-700: #3f51b5;
+  --color-royal-blue-800: #394494;
+  --color-royal-blue-900: #323d76;
+  --color-royal-blue-950: #222749;
+
+  --color-vivid-amber-50: #fffbeb;
+  --color-vivid-amber-100: #fef3c7;
+  --color-vivid-amber-200: #fde68a;
+  --color-vivid-amber-300: #fcd34d;
+  --color-vivid-amber-400: #fbbf24;
+  --color-vivid-amber-500: #f59e0b;
+  --color-vivid-amber-600: #d97706;
+  --color-vivid-amber-700: #b45309;
+  --color-vivid-amber-800: #92400e;
+  --color-vivid-amber-900: #78350f;
+  --color-vivid-amber-950: #451a03;
+}
+
+.dark {
+  --color-royal-blue-50: #ecf3ff;
+  --color-royal-blue-100: #dde9ff;
+  --color-royal-blue-200: #c2d7ff;
+  --color-royal-blue-300: #9dbcff;
+  --color-royal-blue-400: #7695ff;
+  --color-royal-blue-500: #536dfe;
+  --color-royal-blue-600: #3745f4;
+  --color-royal-blue-700: #2b35d7;
+  --color-royal-blue-800: #252eae;
+  --color-royal-blue-900: #262f89;
+  --color-royal-blue-950: #171b4f;
+
+  --color-vivid-amber-50: #2d1a05;
+  --color-vivid-amber-100: #452a0a;
+  --color-vivid-amber-200: #784a0f;
+  --color-vivid-amber-300: #b47809;
+  --color-vivid-amber-400: #d99a06;
+  --color-vivid-amber-500: #fbbf24;
+  --color-vivid-amber-600: #fcd34d;
+  --color-vivid-amber-700: #fde68a;
+  --color-vivid-amber-800: #fef3c7;
+  --color-vivid-amber-900: #fffbeb;
+  --color-vivid-amber-950: #ffffff;
 }

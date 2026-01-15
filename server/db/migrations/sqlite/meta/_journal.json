@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1767731864868,
+      "tag": "0000_equal_blade",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1767733994348,
+      "tag": "0001_glossy_shooting_star",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1767736034504,
+      "tag": "0002_jazzy_gauntlet",
+      "breakpoints": true
+    }
+  ]
+}
