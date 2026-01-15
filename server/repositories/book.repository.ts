@@ -385,3 +385,9 @@ export const getBookById = (bookId: string) =>
 
 export const removeFromLibrary = (userBookId: string, userId: string) =>
   Effect.flatMap(BookRepository, repo => repo.removeFromLibrary(userBookId, userId))
+
+export const findByIsbn = (isbn: string) =>
+  Effect.flatMap(BookRepository, repo => repo.findByIsbn(isbn))
+
+export const getUserBookWithDetails = (userBookId: string, userId: string) =>
+  Effect.flatMap(BookRepository, repo => repo.getUserBookWithDetails(userBookId, userId))
