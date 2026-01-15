@@ -1,5 +1,8 @@
-path_filters: 
-- "!node_modules/**"
-- "!dist/**"
-- "!public/**"
-- "!server/db/migrations/**"
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: "en-US"
+reviews:
+  path_filters: 
+    - "!node_modules/**"
+    - "!dist/**"
+    - "!public/**"
+    - "!server/db/migrations/**"
