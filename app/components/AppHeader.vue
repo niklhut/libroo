@@ -1,41 +1,29 @@
 <script setup lang="ts">
 import type { NavigationMenuItem } from '@nuxt/ui'
 
-const { session, signOut } = useAuth()
-const router = useRouter()
+const { user, signOut } = useAuth()
 
 async function handleSignOut() {
   await signOut()
-  router.push('/')
+  // Pass signout param so login page skips auto-redirect (race condition with stale user state)
+  navigateTo('/login?signout=true')
 }
 
-// 1. Define the Navigation Links (Center/Left)
-const links = computed<NavigationMenuItem[]>(() => {
-  const items = []
+// Logo destination based on auth status
+const logoTo = computed(() => user.value ? '/library' : '/login')
 
-  if (session.value?.data?.user) {
-    items.push({
-      label: 'My Library',
-      to: '/library',
-      icon: 'i-lucide-book-open'
-    })
-    items.push({
+// Navigation links - only show Sign Out when logged in
+const links = computed<NavigationMenuItem[]>(() => {
+  if (user.value) {
+    return [{
       label: 'Sign Out',
       icon: 'i-lucide-log-out',
       color: 'neutral' as const,
       variant: 'ghost' as const,
       onClick: handleSignOut
-    })
-  } else {
-    items.push({
-      label: 'Sign In',
-      to: '/auth/login',
-      color: 'neutral' as const,
-      variant: 'ghost' as const
-    })
+    }]
   }
-
-  return items
+  return []
 })
 </script>
 
@@ -43,7 +31,7 @@ const links = computed<NavigationMenuItem[]>(() => {
   <UHeader :links="links">
     <template #left>
       <NuxtLink
-        to="/"
+        :to="logoTo"
         class="flex items-center gap-2"
       >
         <UIcon

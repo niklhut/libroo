@@ -7,7 +7,7 @@ definePageMeta({
 })
 
 const route = useRoute()
-const { signIn, session } = useAuth()
+const { signIn, user } = useAuth()
 const toast = useToast()
 
 const isLoading = ref(false)
@@ -22,9 +22,14 @@ const redirectPath = computed(() => {
   return '/library'
 })
 
-// Redirect if already logged in
-watch(session, (newSession) => {
-  if (newSession.data?.user) {
+// Redirect if already logged in (but not if we just signed out - race condition with stale state)
+const isFromSignout = computed(() => route.query.signout === 'true')
+
+watch(user, (newUser) => {
+  // Skip auto-redirect if we just came from sign-out (stale user state may still be present)
+  if (isFromSignout.value) return
+  
+  if (newUser) {
     navigateTo(redirectPath.value)
   }
 }, { immediate: true })
@@ -104,7 +109,7 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
         <template #description>
           Don't have an account?
           <ULink
-            to="/auth/register"
+            to="/register"
             class="text-primary font-medium"
           >
             Sign up

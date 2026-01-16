@@ -5,13 +5,12 @@ export default defineNuxtRouteMiddleware(async (to) => {
     return
   }
 
-  // Check session using $fetch for SSR compatibility
-  const { data: session } = await authClient.useSession(useFetch)
+  const { user } = useAuth()
 
   // If no session and auth is required, redirect to login
-  if (!session.value?.user) {
+  if (!user.value) {
     return navigateTo({
-      path: '/auth/login',
+      path: '/login',
       query: { redirect: to.fullPath }
     })
   }
