@@ -19,7 +19,7 @@ const isFromSignout = computed(() => route.query.signout === 'true')
 watch(user, async (newUser) => {
   // Skip auto-redirect if we just came from sign-out (stale user state may still be present)
   if (isFromSignout.value) return
-  
+
   if (newUser) {
     navigateTo('/library')
   }
