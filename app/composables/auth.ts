@@ -2,14 +2,11 @@ import { createAuthClient } from 'better-auth/vue'
 
 export const authClient = createAuthClient()
 
-// Type for the session returned by better-auth's useSession
-type BetterAuthSession = Awaited<ReturnType<typeof authClient.useSession>>
-
 export const useAuth = () => {
   // Get the session from the plugin via useNuxtApp()
   // The plugin initializes useSession(useFetch) once at app startup and provides it
   const { $authSession } = useNuxtApp()
-  const session = $authSession as BetterAuthSession
+  const session = $authSession
 
   // Derived computed refs for convenience
   const user = computed(() => session.data.value?.user ?? null)
