@@ -151,10 +151,10 @@ defineExpose({ resetLookup })
     <BookPreview
       :book="lookupResult"
       :is-adding="isAdding"
-      @add="addBookToLibrary"
-      @back="resetLookup"
       back-label="Search Again"
       back-icon="i-lucide-arrow-left"
+      @add="addBookToLibrary"
+      @back="resetLookup"
     />
   </UCard>
 </template>

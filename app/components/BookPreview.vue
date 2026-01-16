@@ -2,7 +2,7 @@
 /**
  * Reusable book preview component showing cover, details, and action buttons
  */
-const props = defineProps<{
+defineProps<{
   book: BookLookupResult
   isAdding?: boolean
   backLabel?: string

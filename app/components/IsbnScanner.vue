@@ -30,7 +30,7 @@ const formats = ['ean_13', 'ean_8', 'upc_a'] as ('ean_13' | 'ean_8' | 'upc_a')[]
 function onCameraReady(capabilities: Partial<MediaTrackCapabilities>) {
   isLoading.value = false
   errorMessage.value = null
-  
+
   // Detect if this is a front-facing (selfie) camera
   const facingModes = capabilities?.facingMode
   isFrontCamera.value = Array.isArray(facingModes) && facingModes.includes('user')
@@ -38,7 +38,7 @@ function onCameraReady(capabilities: Partial<MediaTrackCapabilities>) {
 
 function onError(error: Error) {
   isLoading.value = false
-  
+
   if (error.name === 'NotAllowedError') {
     errorMessage.value = 'Camera permission was denied. Please allow camera access to scan barcodes.'
   } else if (error.name === 'NotFoundError') {
@@ -50,7 +50,7 @@ function onError(error: Error) {
   } else {
     errorMessage.value = `Camera error: ${error.message}`
   }
-  
+
   emit('error', errorMessage.value)
 }
 
@@ -141,13 +141,16 @@ function onDetect(detectedCodes: Array<{ rawValue: string, format: string, bound
       <div class="absolute inset-0 pointer-events-none">
         <!-- Semi-transparent overlay (darkens edges) -->
         <div class="absolute inset-0 bg-black/40" />
-        
+
         <!-- Clear center area for scanning - this gets "cut out" -->
         <div class="absolute inset-0 flex items-center justify-center">
           <div class="scan-window relative w-[70%] h-[40%] bg-transparent rounded-lg overflow-hidden">
             <!-- Clear background to show camera through -->
-            <div class="absolute inset-0 backdrop-blur-0" style="background: transparent; box-shadow: 0 0 0 9999px rgba(0,0,0,0.5);" />
-            
+            <div
+              class="absolute inset-0 backdrop-blur-0"
+              style="background: transparent; box-shadow: 0 0 0 9999px rgba(0,0,0,0.5);"
+            />
+
             <!-- Corner brackets -->
             <div class="absolute inset-0">
               <div class="absolute top-0 left-0 w-6 h-6 border-t-3 border-l-3 border-primary rounded-tl-lg" />

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { ScannedBook } from '~/composables/useIsbnScanner'
 
-const props = defineProps<{
+defineProps<{
   scannedBooks: ScannedBook[]
   isAddingBooks: boolean
   counts: {
@@ -15,7 +15,7 @@ const props = defineProps<{
   }
 }>()
 
-const emit = defineEmits<{
+defineEmits<{
   remove: [isbn: string]
   toggle: [isbn: string]
   selectAll: []
@@ -150,7 +150,10 @@ function getStatusText(status: ScannedBook['status']) {
         >
           <!-- Checkbox (only for found books) or status icon -->
           <template v-if="book.status === 'found'">
-            <div class="pt-1" @click.stop>
+            <div
+              class="pt-1"
+              @click.stop
+            >
               <UCheckbox
                 :model-value="book.selected"
                 @update:model-value="$emit('toggle', book.isbn)"
@@ -286,7 +289,9 @@ function getStatusText(status: ScannedBook['status']) {
         >
           <!-- Description -->
           <div v-if="book.result.description">
-            <p class="text-sm font-medium mb-1">Description</p>
+            <p class="text-sm font-medium mb-1">
+              Description
+            </p>
             <p class="text-sm text-muted">
               {{ book.result.description }}
             </p>
@@ -300,7 +305,10 @@ function getStatusText(status: ScannedBook['status']) {
               variant="subtle"
               size="md"
             >
-              <UIcon name="i-lucide-calendar" class="mr-1" />
+              <UIcon
+                name="i-lucide-calendar"
+                class="mr-1"
+              />
               {{ book.result.publishDate }}
             </UBadge>
             <UBadge
@@ -309,7 +317,10 @@ function getStatusText(status: ScannedBook['status']) {
               variant="subtle"
               size="md"
             >
-              <UIcon name="i-lucide-book-open" class="mr-1" />
+              <UIcon
+                name="i-lucide-book-open"
+                class="mr-1"
+              />
               {{ book.result.numberOfPages }} pages
             </UBadge>
             <UBadge
@@ -318,14 +329,19 @@ function getStatusText(status: ScannedBook['status']) {
               variant="subtle"
               size="md"
             >
-              <UIcon name="i-lucide-building" class="mr-1" />
+              <UIcon
+                name="i-lucide-building"
+                class="mr-1"
+              />
               {{ book.result.publishers.join(', ') }}
             </UBadge>
           </div>
 
           <!-- Subjects -->
           <div v-if="book.result.subjects && book.result.subjects.length > 0">
-            <p class="text-sm font-medium mb-2">Subjects</p>
+            <p class="text-sm font-medium mb-2">
+              Subjects
+            </p>
             <div class="flex flex-wrap gap-2">
               <UBadge
                 v-for="subject in book.result.subjects.slice(0, 8)"

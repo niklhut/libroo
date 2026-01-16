@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import type { FormSubmitEvent } from '@nuxt/ui'
-
 const toast = useToast()
 
 const continuousMode = ref(false)
@@ -149,10 +147,10 @@ defineExpose({ reset })
       <BookPreview
         :book="lookupResult"
         :is-adding="isAdding"
-        @add="addBookToLibrary"
-        @back="resetLookup"
         back-label="Scan Again"
         back-icon="i-lucide-scan-barcode"
+        @add="addBookToLibrary"
+        @back="resetLookup"
       />
     </template>
 
@@ -163,7 +161,9 @@ defineExpose({ reset })
           name="i-lucide-loader-2"
           class="animate-spin text-3xl text-primary mb-3"
         />
-        <p class="text-muted">Looking up book...</p>
+        <p class="text-muted">
+          Looking up book...
+        </p>
       </div>
     </template>
 

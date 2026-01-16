@@ -129,7 +129,7 @@ export function useIsbnScanner() {
    * Select all available books
    */
   function selectAll() {
-    scannedBooks.value.forEach(book => {
+    scannedBooks.value.forEach((book) => {
       if (book.status === 'found') {
         book.selected = true
       }
@@ -140,7 +140,7 @@ export function useIsbnScanner() {
    * Deselect all books
    */
   function deselectAll() {
-    scannedBooks.value.forEach(book => {
+    scannedBooks.value.forEach((book) => {
       book.selected = false
     })
   }
@@ -179,7 +179,7 @@ export function useIsbnScanner() {
       success.forEach(isbn => removeIsbn(isbn))
 
       // Update failed books with error status
-      result.failed.forEach(f => {
+      result.failed.forEach((f) => {
         const book = scannedBooks.value.find(b => b.isbn === f.isbn)
         if (book) {
           book.status = 'error'

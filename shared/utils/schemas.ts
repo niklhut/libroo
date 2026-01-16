@@ -47,7 +47,7 @@ export const bookIsbnSchema = z.object({
   isbn: z.string({ error: 'ISBN is required' })
     .min(10, { error: 'ISBN must be at least 10 characters' })
     .max(17, { error: 'ISBN is too long' })
-    .transform(val => {
+    .transform((val) => {
       // Normalize: remove hyphens and spaces
       const normalized = val.replace(/[-\s]/g, '')
       // Try to extract valid ISBN from potential price barcode
