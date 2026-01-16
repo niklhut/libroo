@@ -1,10 +1,23 @@
 import { createAuthClient } from 'better-auth/vue'
 
-export const authClient = createAuthClient({
-})
+export const authClient = createAuthClient()
 
 export const useAuth = () => {
-  const session = authClient.useSession()
+  // Get the session from the plugin via useNuxtApp()
+  // The plugin initializes useSession(useFetch) once at app startup and provides it
+  const { $authSession } = useNuxtApp()
+  const session = $authSession
+
+  // Derived computed refs for convenience
+  const user = computed(() => session.data.value?.user ?? null)
+  const userSession = computed(() => session.data.value?.session ?? null)
+  const isAuthenticated = computed(() => !!session.data.value?.user)
+  const isPending = computed(() => {
+    const pending = session.isPending
+    // unref handles both Ref<boolean> and plain boolean
+    return unref(pending) ?? true
+  })
+  const error = computed(() => session.error.value ?? null)
 
   const signIn = async (email: string, password: string) => {
     return authClient.signIn.email({
@@ -22,11 +35,15 @@ export const useAuth = () => {
   }
 
   const signOut = async () => {
-    return authClient.signOut()
+    await authClient.signOut()
   }
 
   return {
-    session,
+    user,
+    session: userSession,
+    isAuthenticated,
+    isPending,
+    error,
     signIn,
     signUp,
     signOut
