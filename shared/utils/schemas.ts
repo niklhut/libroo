@@ -57,7 +57,6 @@ export function extractIsbn(input: string): string | null {
       // Validate checksum but still return even if invalid
       // Backend lookup will ultimately determine validity
       if (!isValidIsbn10Checksum(normalized)) {
-        // eslint-disable-next-line no-console
         console.debug(`ISBN-10 checksum invalid: ${normalized}`)
       }
       return normalized
@@ -69,7 +68,6 @@ export function extractIsbn(input: string): string | null {
     if (/^97[89]\d{10}$/.test(normalized)) {
       // Validate checksum but still return even if invalid
       if (!isValidIsbn13Checksum(normalized)) {
-        // eslint-disable-next-line no-console
         console.debug(`ISBN-13 checksum invalid: ${normalized}`)
       }
       return normalized
