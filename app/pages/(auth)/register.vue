@@ -16,7 +16,7 @@ const error = ref('')
 // Redirect if already logged in (but not if we just signed out - race condition with stale state)
 const isFromSignout = computed(() => route.query.signout === 'true')
 
-watch(user, async (newUser) => {
+watch(user, (newUser) => {
   // Skip auto-redirect if we just came from sign-out (stale user state may still be present)
   if (isFromSignout.value) return
 
