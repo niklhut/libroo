@@ -6,28 +6,36 @@ definePageMeta({
   auth: false
 })
 
-const { signUp, session } = useAuth()
+const route = useRoute()
+const { signIn, user } = useAuth()
 const toast = useToast()
 
 const isLoading = ref(false)
 const error = ref('')
 
-// Redirect if already logged in
-watch(session, (newSession) => {
-  if (newSession.data?.user) {
-    navigateTo('/library')
+// Get redirect path from query
+const redirectPath = computed(() => {
+  const redirect = route.query.redirect
+  if (typeof redirect === 'string' && /^\/(?!\/)/.test(redirect)) {
+    return redirect
+  }
+  return '/library'
+})
+
+// Redirect if already logged in (but not if we just signed out - race condition with stale state)
+const isFromSignout = computed(() => route.query.signout === 'true')
+
+watch(user, (newUser) => {
+  // Skip auto-redirect if we just came from sign-out (stale user state may still be present)
+  if (isFromSignout.value) return
+
+  if (newUser) {
+    navigateTo(redirectPath.value)
   }
 }, { immediate: true })
 
 // Form fields
 const fields: AuthFormField[] = [
-  {
-    name: 'name',
-    type: 'text',
-    label: 'Name',
-    placeholder: 'Enter your name',
-    required: true
-  },
   {
     name: 'email',
     type: 'email',
@@ -40,27 +48,14 @@ const fields: AuthFormField[] = [
     type: 'password',
     label: 'Password',
     placeholder: 'Enter your password',
-    hint: 'At least 8 characters',
-    required: true
-  },
-  {
-    name: 'confirmPassword',
-    type: 'password',
-    label: 'Confirm Password',
-    placeholder: 'Confirm your password',
     required: true
   }
 ]
 
 // Validation schema
 const schema = z.object({
-  name: z.string({ error: 'Name is required' }).min(1, { error: 'Name is required' }),
   email: z.email({ error: 'Please enter a valid email address' }),
-  password: z.string({ error: 'Password is required' }).min(8, { error: 'Password must be at least 8 characters' }),
-  confirmPassword: z.string({ error: 'Confirm Password is required' }).min(1, { error: 'Please confirm your password' })
-}).refine(data => data.password === data.confirmPassword, {
-  message: 'Passwords do not match',
-  path: ['confirmPassword']
+  password: z.string({ error: 'Password is required' }).min(1, { error: 'Password is required' })
 })
 
 type Schema = z.output<typeof schema>
@@ -70,26 +65,22 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
   isLoading.value = true
 
   try {
-    const result = await signUp(
-      payload.data.email,
-      payload.data.password,
-      payload.data.name
-    )
+    const result = await signIn(payload.data.email, payload.data.password)
 
     if (result.error) {
-      error.value = result.error.message || 'Failed to create account'
+      error.value = result.error.message || 'Failed to sign in'
       toast.add({
-        title: 'Registration failed',
+        title: 'Sign in failed',
         description: error.value,
         color: 'error'
       })
     } else {
       toast.add({
-        title: 'Account created!',
-        description: 'Welcome to Libroo.',
+        title: 'Welcome back!',
+        description: 'You have been signed in successfully.',
         color: 'success'
       })
-      navigateTo('/library')
+      navigateTo(redirectPath.value)
     }
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : 'An unexpected error occurred'
@@ -111,18 +102,27 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
         :schema="schema"
         :fields="fields"
         :loading="isLoading"
-        title="Create Account"
-        icon="i-lucide-user-plus"
-        submit-label="Create Account"
+        title="Welcome back!"
+        icon="i-lucide-library"
         @submit="onSubmit"
       >
         <template #description>
-          Already have an account?
+          Don't have an account?
           <ULink
-            to="/auth/login"
+            to="/register"
             class="text-primary font-medium"
           >
-            Sign in
+            Sign up
+          </ULink>
+        </template>
+
+        <template #password-hint>
+          <ULink
+            to="#"
+            class="text-primary font-medium"
+            tabindex="-1"
+          >
+            Forgot password?
           </ULink>
         </template>
 
