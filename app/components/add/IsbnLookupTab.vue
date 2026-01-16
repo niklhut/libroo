@@ -77,13 +77,13 @@ async function addBookToLibrary() {
   }
 }
 
-function resetLookup() {
+function reset() {
   lookupResult.value = null
   formState.isbn = ''
 }
 
 // Expose for parent to reset on tab change
-defineExpose({ resetLookup })
+defineExpose({ reset })
 </script>
 
 <template>
@@ -154,7 +154,7 @@ defineExpose({ resetLookup })
       back-label="Search Again"
       back-icon="i-lucide-arrow-left"
       @add="addBookToLibrary"
-      @back="resetLookup"
+      @back="reset"
     />
   </UCard>
 </template>

@@ -2,10 +2,10 @@
 const toast = useToast()
 
 const bulkIsbnText = ref('')
-const isBulkLookingUp = ref(false)
 
 const {
   scannedBooks,
+  isLookingUp,
   isAddingBooks,
   counts,
   addMultipleIsbns,
@@ -27,9 +27,7 @@ async function handleBulkImport() {
     return
   }
 
-  isBulkLookingUp.value = true
   await addMultipleIsbns(bulkIsbnText.value)
-  isBulkLookingUp.value = false
   bulkIsbnText.value = ''
 }
 
@@ -87,7 +85,7 @@ defineExpose({ reset })
         icon="i-lucide-search"
         block
         size="lg"
-        :loading="isBulkLookingUp"
+        :loading="isLookingUp"
         :disabled="!bulkIsbnText.trim()"
         @click="handleBulkImport"
       >

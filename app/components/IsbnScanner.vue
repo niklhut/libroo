@@ -16,8 +16,8 @@ const lastScanned = ref<string | null>(null)
 const scanCooldown = ref(false)
 const isFrontCamera = ref(false)
 
-// Track bounding box for visual feedback
-const detectedBarcodes = ref<Array<{ boundingBox: DOMRectReadOnly }>>([])
+// Track active timers to clear on unmount (prevents memory leaks)
+const activeTimers: ReturnType<typeof setTimeout>[] = []
 
 // Camera constraints - prefer rear camera
 const constraints: MediaTrackConstraints = {
@@ -56,12 +56,8 @@ function onError(error: Error) {
 
 function onDetect(detectedCodes: Array<{ rawValue: string, format: string, boundingBox: DOMRectReadOnly }>) {
   if (detectedCodes.length === 0) {
-    detectedBarcodes.value = []
     return
   }
-
-  // Store bounding boxes for visual feedback
-  detectedBarcodes.value = detectedCodes.map(code => ({ boundingBox: code.boundingBox }))
 
   // Get the first detected barcode
   const code = detectedCodes[0]
@@ -80,17 +76,26 @@ function onDetect(detectedCodes: Array<{ rawValue: string, format: string, bound
   // In continuous mode, add a cooldown to prevent immediate re-detection
   if (props.continuous) {
     scanCooldown.value = true
-    setTimeout(() => {
+    const cooldownTimer = setTimeout(() => {
       scanCooldown.value = false
     }, 2000)
+    activeTimers.push(cooldownTimer)
+
     // Auto-hide the last scanned indicator after 3 seconds
-    setTimeout(() => {
+    const hideTimer = setTimeout(() => {
       if (lastScanned.value === isbn) {
         lastScanned.value = null
       }
     }, 3000)
+    activeTimers.push(hideTimer)
   }
 }
+
+// Cleanup timers on unmount to prevent memory leaks
+onUnmounted(() => {
+  activeTimers.forEach(timer => clearTimeout(timer))
+  activeTimers.length = 0
+})
 </script>
 
 <template>
@@ -176,7 +181,7 @@ function onDetect(detectedCodes: Array<{ rawValue: string, format: string, bound
         <!-- Last scanned indicator with fade animation -->
         <Transition name="fade">
           <div
-            v-if="lastScanned && continuous"
+            v-if="lastScanned && props.continuous"
             class="absolute bottom-4 left-1/2 -translate-x-1/2"
           >
             <UBadge
@@ -197,7 +202,7 @@ function onDetect(detectedCodes: Array<{ rawValue: string, format: string, bound
 
     <!-- Instructions -->
     <p class="text-center text-sm text-muted mt-3">
-      <template v-if="continuous">
+      <template v-if="props.continuous">
         Point camera at book barcodes to scan continuously
       </template>
       <template v-else>

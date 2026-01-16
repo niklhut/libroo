@@ -19,6 +19,16 @@ export function useIsbnScanner() {
   const isAddingBooks = ref(false)
 
   /**
+   * Extract error message from unknown error type
+   */
+  function getErrorMessage(err: unknown, fallback: string): string {
+    if (err instanceof Error) {
+      return err.message
+    }
+    return (err as { data?: { message?: string } })?.data?.message || fallback
+  }
+
+  /**
    * Add an ISBN to the queue and immediately look it up
    */
   async function addIsbn(rawIsbn: string) {
@@ -69,9 +79,7 @@ export function useIsbnScanner() {
       if (book) {
         book.status = 'error'
         book.selected = false
-        book.errorMessage = err instanceof Error
-          ? err.message
-          : (err as { data?: { message?: string } })?.data?.message || 'Lookup failed'
+        book.errorMessage = getErrorMessage(err, 'Lookup failed')
       }
     }
   }
@@ -99,10 +107,12 @@ export function useIsbnScanner() {
 
     isLookingUp.value = true
 
-    // Add all inputs in parallel - backend will validate each one
-    await Promise.all(inputs.map(isbn => addIsbn(isbn)))
-
-    isLookingUp.value = false
+    try {
+      // Add all inputs in parallel - backend will validate each one
+      await Promise.all(inputs.map(isbn => addIsbn(isbn)))
+    } finally {
+      isLookingUp.value = false
+    }
   }
 
   /**
@@ -214,9 +224,7 @@ export function useIsbnScanner() {
       return { success, failed }
     } catch (err: unknown) {
       isAddingBooks.value = false
-      const message = err instanceof Error
-        ? err.message
-        : (err as { data?: { message?: string } })?.data?.message || 'Failed to add books'
+      const message = getErrorMessage(err, 'Failed to add books')
       toast.add({
         title: 'Error',
         description: message,

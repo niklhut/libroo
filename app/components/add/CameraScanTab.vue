@@ -4,11 +4,7 @@ const toast = useToast()
 const continuousMode = ref(false)
 const showScanner = ref(false)
 
-const isLookingUp = ref(false)
-const isAdding = ref(false)
-const lookupResult = ref<BookLookupResult | null>(null)
-
-// Bulk scanner composable for continuous mode
+// Use composable for both single and continuous modes
 const {
   scannedBooks,
   isAddingBooks,
@@ -22,79 +18,46 @@ const {
   clearAll
 } = useIsbnScanner()
 
+// In single mode, the first scanned book is our current lookup result
+const singleScanBook = computed(() =>
+  !continuousMode.value && scannedBooks.value.length === 1
+    ? scannedBooks.value[0]
+    : null
+)
+
 // Handle scanned ISBN
-function onIsbnDetected(isbn: string) {
+async function onIsbnDetected(isbn: string) {
   if (continuousMode.value) {
     addIsbn(isbn)
   } else {
+    // Single mode: clear previous and add new
+    clearAll()
     showScanner.value = false
-    lookupSingleIsbn(isbn)
-  }
-}
+    await addIsbn(isbn)
 
-// Lookup single ISBN (for single scan mode)
-async function lookupSingleIsbn(isbn: string) {
-  isLookingUp.value = true
-  lookupResult.value = null
-
-  try {
-    const result = await $fetch<BookLookupResult>('/api/books/lookup', {
-      method: 'POST',
-      body: { isbn }
-    })
-    lookupResult.value = result
-
-    if (!result.found) {
+    // Show toast for not found
+    const book = scannedBooks.value[0]
+    if (book?.status === 'not_found') {
       toast.add({
         title: 'Book not found',
-        description: result.message || 'Could not find this book on OpenLibrary',
+        description: book.result?.message || 'Could not find this book on OpenLibrary',
         color: 'warning'
       })
+    } else if (book?.status === 'error') {
+      toast.add({
+        title: 'Lookup failed',
+        description: book.errorMessage || 'Failed to lookup book',
+        color: 'error'
+      })
     }
-  } catch (err: unknown) {
-    const message = err instanceof Error
-      ? err.message
-      : (err as { data?: { message?: string } })?.data?.message || 'Failed to lookup book'
-    toast.add({
-      title: 'Lookup failed',
-      description: message,
-      color: 'error'
-    })
-  } finally {
-    isLookingUp.value = false
   }
 }
 
-// Add book to library (single scan mode)
+// Add book to library (single scan mode) - uses composable's addSelectedToLibrary
 async function addBookToLibrary() {
-  if (!lookupResult.value?.found) return
-
-  isAdding.value = true
-
-  try {
-    await $fetch('/api/books', {
-      method: 'POST',
-      body: { isbn: lookupResult.value.isbn }
-    })
-
-    toast.add({
-      title: 'Book added!',
-      description: `${lookupResult.value.title} has been added to your library`,
-      color: 'success'
-    })
-
+  const result = await addSelectedToLibrary()
+  if (result.success.length > 0 && result.failed.length === 0) {
     navigateTo('/library')
-  } catch (err: unknown) {
-    const message = err instanceof Error
-      ? err.message
-      : (err as { data?: { message?: string } })?.data?.message || 'Failed to add book'
-    toast.add({
-      title: 'Failed to add book',
-      description: message,
-      color: 'error'
-    })
-  } finally {
-    isAdding.value = false
   }
 }
 
@@ -107,13 +70,13 @@ async function handleAddSelected() {
 }
 
 function resetLookup() {
-  lookupResult.value = null
+  clearAll()
   showScanner.value = true
 }
 
 function reset() {
-  lookupResult.value = null
   showScanner.value = false
+  clearAll()
 }
 
 defineExpose({ reset })
@@ -133,7 +96,7 @@ defineExpose({ reset })
 
         <!-- Continuous mode toggle (hide when showing single result) -->
         <div
-          v-if="!lookupResult?.found || continuousMode"
+          v-if="!singleScanBook?.result?.found || continuousMode"
           class="flex items-center gap-2"
         >
           <span class="text-sm text-muted">Continuous</span>
@@ -143,10 +106,10 @@ defineExpose({ reset })
     </template>
 
     <!-- Single scan result preview -->
-    <template v-if="!continuousMode && lookupResult?.found">
+    <template v-if="singleScanBook?.result?.found">
       <BookPreview
-        :book="lookupResult"
-        :is-adding="isAdding"
+        :book="singleScanBook.result"
+        :is-adding="isAddingBooks"
         back-label="Scan Again"
         back-icon="i-lucide-scan-barcode"
         @add="addBookToLibrary"
@@ -155,7 +118,7 @@ defineExpose({ reset })
     </template>
 
     <!-- Loading state for single scan -->
-    <template v-else-if="!continuousMode && isLookingUp">
+    <template v-else-if="singleScanBook?.status === 'loading'">
       <div class="text-center py-8">
         <UIcon
           name="i-lucide-loader-2"

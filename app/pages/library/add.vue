@@ -4,7 +4,7 @@ type InputMode = 'manual' | 'scan' | 'bulk'
 const inputMode = ref<InputMode>('manual')
 
 // Refs to child components for resetting state on tab change
-const isbnLookupRef = ref<{ resetLookup: () => void } | null>(null)
+const isbnLookupRef = ref<{ reset: () => void } | null>(null)
 const cameraScanRef = ref<{ reset: () => void } | null>(null)
 const bulkImportRef = ref<{ reset: () => void } | null>(null)
 
@@ -17,7 +17,7 @@ const modeItems = [
 
 // Reset child component state when switching modes
 watch(inputMode, () => {
-  isbnLookupRef.value?.resetLookup()
+  isbnLookupRef.value?.reset()
   cameraScanRef.value?.reset()
   bulkImportRef.value?.reset()
 })
@@ -73,8 +73,11 @@ watch(inputMode, () => {
             ref="bulkImportRef"
           />
 
-          <!-- Future: Manual entry option -->
-          <div class="mt-6 text-center">
+          <!-- Future: Manual entry option (only shown on ISBN lookup tab) -->
+          <div
+            v-if="inputMode === 'manual'"
+            class="mt-6 text-center"
+          >
             <p class="text-sm text-muted">
               Can't find your book? Manual entry coming soon.
             </p>
