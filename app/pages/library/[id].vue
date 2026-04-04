@@ -3,6 +3,7 @@ const route = useRoute()
 const toast = useToast()
 
 const userBookId = route.params.id as string
+const isDeleting = ref(false)
 
 // Fetch book details
 const { data: book, status } = await useFetch<BookDetails>(`/api/books/${userBookId}`, {
@@ -48,6 +49,8 @@ const formattedPublishDate = computed(() => formatDate(book.value?.publishDate ?
 
 // Remove book
 async function removeBook() {
+  isDeleting.value = true
+
   try {
     await $fetch(`/api/books/${userBookId}`, {
       method: 'DELETE'
@@ -69,6 +72,8 @@ async function removeBook() {
       description: message,
       color: 'error'
     })
+  } finally {
+    isDeleting.value = false
   }
 }
 </script>
@@ -114,8 +119,8 @@ async function removeBook() {
         class="md:flex md:gap-8"
       >
         <!-- Cover - Small centered on mobile, sticky on desktop -->
-        <div class="flex justify-center mb-6 md:mb-0 md:block md:shrink-0 md:w-[280px]">
-          <div class="w-40 md:w-[280px] md:sticky md:top-24 md:self-start">
+        <div class="flex justify-center mb-6 md:mb-0 md:block md:shrink-0 md:w-70">
+          <div class="w-40 md:w-70 md:sticky md:top-24 md:self-start">
             <div class="rounded-lg overflow-hidden shadow-lg">
               <NuxtImg
                 v-if="coverUrl"
@@ -127,7 +132,7 @@ async function removeBook() {
               />
               <div
                 v-else
-                class="w-full h-full flex items-center justify-center bg-muted aspect-[1/1.5]"
+                class="w-full h-full flex items-center justify-center bg-muted aspect-1/1.5"
               >
                 <UIcon
                   name="i-lucide-book"
@@ -241,14 +246,25 @@ async function removeBook() {
             >
               View Work
             </UButton>
-            <UButton
-              color="error"
-              variant="outline"
-              icon="i-lucide-trash-2"
-              @click="removeBook"
+            <DeleteConfirmDialog
+              title="Remove this book from your library?"
+              description="This will permanently delete the book from your library. You can add it again later if needed."
+              confirm-label="Remove from Library"
+              @confirm="removeBook"
             >
-              Remove from Library
-            </UButton>
+              <template #trigger="{ open }">
+                <UButton
+                  color="error"
+                  variant="outline"
+                  icon="i-lucide-trash-2"
+                  :loading="isDeleting"
+                  :disabled="isDeleting"
+                  @click="open"
+                >
+                  Remove from Library
+                </UButton>
+              </template>
+            </DeleteConfirmDialog>
           </div>
         </div>
       </div>
