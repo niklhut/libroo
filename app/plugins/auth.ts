@@ -11,7 +11,7 @@ export default defineNuxtPlugin(async () => {
 
     session = {
       data: ref(null),
-      error: ref(null),
+      error: ref(error),
       isPending: ref(false)
     }
   }
