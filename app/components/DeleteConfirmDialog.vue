@@ -42,7 +42,10 @@ function confirmDialog() {
     }"
   >
     <template #default>
-      <slot name="trigger" :open="openDialog" />
+      <slot
+        name="trigger"
+        :open="openDialog"
+      />
     </template>
 
     <template #footer>
