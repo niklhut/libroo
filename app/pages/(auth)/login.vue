@@ -80,7 +80,6 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
         description: 'You have been signed in successfully.',
         color: 'success'
       })
-      navigateTo(redirectPath.value)
     }
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : 'An unexpected error occurred'

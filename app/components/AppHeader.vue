@@ -4,9 +4,14 @@ import type { NavigationMenuItem } from '@nuxt/ui'
 const { user, signOut } = useAuth()
 
 async function handleSignOut() {
-  await signOut()
-  // Pass signout param so login page skips auto-redirect (race condition with stale user state)
-  navigateTo('/login?signout=true')
+  try {
+    await signOut()
+  } catch (error) {
+    console.error('Failed to sign out', error)
+  } finally {
+    // Pass signout param so login page skips auto-redirect (race condition with stale user state)
+    navigateTo('/login?signout=true')
+  }
 }
 
 // Logo destination based on auth status

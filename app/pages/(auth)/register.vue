@@ -6,20 +6,13 @@ definePageMeta({
   auth: false
 })
 
-const route = useRoute()
 const { signUp, user } = useAuth()
 const toast = useToast()
 
 const isLoading = ref(false)
 const error = ref('')
 
-// Redirect if already logged in (but not if we just signed out - race condition with stale state)
-const isFromSignout = computed(() => route.query.signout === 'true')
-
 watch(user, (newUser) => {
-  // Skip auto-redirect if we just came from sign-out (stale user state may still be present)
-  if (isFromSignout.value) return
-
   if (newUser) {
     navigateTo('/library')
   }
@@ -65,7 +58,7 @@ const schema = z.object({
   password: z.string({ error: 'Password is required' }).min(8, { error: 'Password must be at least 8 characters' }),
   confirmPassword: z.string({ error: 'Confirm Password is required' }).min(1, { error: 'Please confirm your password' })
 }).refine(data => data.password === data.confirmPassword, {
-  message: 'Passwords do not match',
+  error: 'Passwords do not match',
   path: ['confirmPassword']
 })
 
@@ -95,7 +88,6 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
         description: 'Welcome to Libroo.',
         color: 'success'
       })
-      navigateTo('/library')
     }
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : 'An unexpected error occurred'
