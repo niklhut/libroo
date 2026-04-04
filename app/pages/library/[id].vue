@@ -176,7 +176,7 @@ async function removeBook() {
             <!-- ISBN -->
             <div
               v-if="book.isbn"
-              class="justify-center md:justify-start text-sm text-muted"
+              class="text-sm text-muted text-center md:text-left"
             >
               ISBN: {{ book.isbn }}
             </div>
@@ -184,7 +184,7 @@ async function removeBook() {
             <!-- Added At -->
             <div
               v-if="formattedAddedAt"
-              class="justify-center md:justify-start text-sm text-muted"
+              class="text-sm text-muted text-center md:text-left"
             >
               Added: {{ formattedAddedAt }}
             </div>
