@@ -211,15 +211,24 @@ async function deleteSelected() {
             {{ selectedCount }} selected
           </span>
         </div>
-        <UButton
-          color="error"
-          :disabled="selectedCount === 0"
-          :loading="isDeleting"
-          icon="i-lucide-trash-2"
-          @click="deleteSelected"
+        <DeleteConfirmDialog
+          title="Delete selected books?"
+          :description="`This will permanently remove ${selectedCount} selected ${selectedCount === 1 ? 'book' : 'books'} from your library.`"
+          confirm-label="Delete Selected"
+          @confirm="deleteSelected"
         >
-          Delete Selected
-        </UButton>
+          <template #trigger="{ open }">
+            <UButton
+              color="error"
+              :disabled="selectedCount === 0 || isDeleting"
+              :loading="isDeleting"
+              icon="i-lucide-trash-2"
+              @click="open"
+            >
+              Delete Selected
+            </UButton>
+          </template>
+        </DeleteConfirmDialog>
       </div>
 
       <!-- Loading State -->
