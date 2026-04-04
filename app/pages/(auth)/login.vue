@@ -23,11 +23,14 @@ const redirectPath = computed(() => {
 })
 
 // Redirect if already logged in (but not if we just signed out - race condition with stale state)
-const isFromSignout = computed(() => route.query.signout === 'true')
+const isFromSignout = ref(route.query.signout === 'true')
 
 watch(user, (newUser) => {
   // Skip auto-redirect if we just came from sign-out (stale user state may still be present)
-  if (isFromSignout.value) return
+  if (isFromSignout.value) {
+    isFromSignout.value = false
+    return
+  }
 
   if (newUser) {
     navigateTo(redirectPath.value)
@@ -80,7 +83,6 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
         description: 'You have been signed in successfully.',
         color: 'success'
       })
-      navigateTo(redirectPath.value)
     }
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : 'An unexpected error occurred'

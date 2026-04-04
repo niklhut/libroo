@@ -65,7 +65,7 @@ const schema = z.object({
   password: z.string({ error: 'Password is required' }).min(8, { error: 'Password must be at least 8 characters' }),
   confirmPassword: z.string({ error: 'Confirm Password is required' }).min(1, { error: 'Please confirm your password' })
 }).refine(data => data.password === data.confirmPassword, {
-  message: 'Passwords do not match',
+  error: 'Passwords do not match',
   path: ['confirmPassword']
 })
 
@@ -95,7 +95,6 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
         description: 'Welcome to Libroo.',
         color: 'success'
       })
-      navigateTo('/library')
     }
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : 'An unexpected error occurred'

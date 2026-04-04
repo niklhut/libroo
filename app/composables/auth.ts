@@ -9,15 +9,15 @@ export const useAuth = () => {
   const session = $authSession
 
   // Derived computed refs for convenience
-  const user = computed(() => session.data.value?.user ?? null)
-  const userSession = computed(() => session.data.value?.session ?? null)
-  const isAuthenticated = computed(() => !!session.data.value?.user)
+  const user = computed(() => unref(session.data)?.user ?? null)
+  const userSession = computed(() => unref(session.data)?.session ?? null)
+  const isAuthenticated = computed(() => !!unref(session.data)?.user)
   const isPending = computed(() => {
     const pending = session.isPending
     // unref handles both Ref<boolean> and plain boolean
     return unref(pending) ?? true
   })
-  const error = computed(() => session.error.value ?? null)
+  const error = computed(() => unref(session.error) ?? null)
 
   const signIn = async (email: string, password: string) => {
     return authClient.signIn.email({
