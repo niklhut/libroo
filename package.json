@@ -20,7 +20,6 @@
     "@nuxt/hints": "1.0.3",
     "@nuxt/image": "2.0.0",
     "@nuxt/scripts": "0.13.2",
-    "@nuxt/test-utils": "4.0.0",
     "@nuxt/ui": "^4.6.1",
     "@nuxthub/core": "^0.10.7",
     "@unhead/vue": "^2.1.12",
@@ -34,6 +33,7 @@
   },
   "devDependencies": {
     "@nuxt/eslint": "^1.15.2",
+    "@nuxt/test-utils": "^4.0.0",
     "drizzle-kit": "^0.31.10",
     "eslint": "^10.2.0",
     "typescript": "^6.0.2",
