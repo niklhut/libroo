@@ -3,8 +3,27 @@ export interface NormalizedTag {
   displayName: string
 }
 
+export const TAG_INPUT_MIN_LENGTH = 2
+export const TAG_INPUT_MAX_LENGTH = 48
+export const TAG_INPUT_ALLOWED_CHARACTERS = /^[\p{L}\p{N}&'\-/. ]+$/u
+
+export const DEFAULT_VAGUE_GENERALITIES = new Set([
+  'general',
+  'miscellaneous',
+  'books',
+  'non-fiction',
+  'fiction',
+  'reference',
+  'textbook'
+])
+
 function collapseWhitespace(value: string): string {
   return value.replace(/\s+/g, ' ').trim()
+}
+
+export function normalizeTagInputText(input: string): string {
+  return collapseWhitespace(input)
+    .replace(/^[-,.;:!?()[\]{}"']+|[-,.;:!?()[\]{}"']+$/g, '')
 }
 
 function capitalizeWord(word: string): string {
@@ -31,8 +50,7 @@ export function toSensibleTitleCase(value: string): string {
 }
 
 export function normalizeTagInput(input: string): NormalizedTag | null {
-  const cleaned = collapseWhitespace(input)
-    .replace(/^[-,.;:!?()[\]{}"']+|[-,.;:!?()[\]{}"']+$/g, '')
+  const cleaned = normalizeTagInputText(input)
 
   if (!cleaned) return null
 
@@ -40,10 +58,10 @@ export function normalizeTagInput(input: string): NormalizedTag | null {
 
   if (lowered.startsWith('nyt:')) return null
   if (lowered.includes('http://') || lowered.includes('https://')) return null
-  if (cleaned.length < 2 || cleaned.length > 48) return null
+  if (cleaned.length < TAG_INPUT_MIN_LENGTH || cleaned.length > TAG_INPUT_MAX_LENGTH) return null
   if (/^\d+$/.test(cleaned)) return null
   if (!/[a-zA-Z]/.test(cleaned)) return null
-  if (!/^[\p{L}\p{N}&'\-/. ]+$/u.test(cleaned)) return null
+  if (!TAG_INPUT_ALLOWED_CHARACTERS.test(cleaned)) return null
 
   return {
     key: lowered,
@@ -62,9 +80,12 @@ function looksLikeLibraryCallNumber(value: string): boolean {
   return /^[A-Z]{1,3}\s*\d{1,4}(?:\.\d+)?(?:\s*\.[A-Z]\d*|\s+[A-Z]\d*|\s+[A-Z])?$/i.test(value)
 }
 
-export function normalizeSystemTagSegment(segment: string): NormalizedTag | null {
-  const cleaned = collapseWhitespace(segment)
-    .replace(/^[-,.;:!?()[\]{}"']+|[-,.;:!?()[\]{}"']+$/g, '')
+export interface TagIngestionOptions {
+  vagueGeneralities?: Set<string>
+}
+
+export function normalizeSystemTagSegment(segment: string, options?: TagIngestionOptions): NormalizedTag | null {
+  const cleaned = normalizeTagInputText(segment)
 
   if (!cleaned) return null
 
@@ -81,15 +102,9 @@ export function normalizeSystemTagSegment(segment: string): NormalizedTag | null
     'electronic resource'
   ]
 
-  const vagueGeneralities = new Set([
-    'general',
-    'miscellaneous',
-    'books',
-    'non-fiction',
-    'fiction',
-    'reference',
-    'textbook'
-  ])
+  // These are intentionally broad umbrella subjects that do not help shelf discovery.
+  // Callers can override the set via normalizeSystemTagSegment(..., { vagueGeneralities }).
+  const vagueGeneralities = options?.vagueGeneralities ?? DEFAULT_VAGUE_GENERALITIES
 
   const adminCodes = [
     'lcsh',
@@ -130,7 +145,7 @@ export function normalizeSystemTagSegment(segment: string): NormalizedTag | null
   }
 }
 
-export function normalizeSuggestedTags(values: string[] | undefined): NormalizedTag[] {
+export function normalizeSuggestedTags(values: string[] | undefined, options?: TagIngestionOptions): NormalizedTag[] {
   if (!values || values.length === 0) return []
 
   const seen = new Set<string>()
@@ -140,7 +155,7 @@ export function normalizeSuggestedTags(values: string[] | undefined): Normalized
     const segments = splitHierarchicalSubject(value)
 
     for (const segment of segments) {
-      const normalized = normalizeSystemTagSegment(segment)
+      const normalized = normalizeSystemTagSegment(segment, options)
       if (!normalized) continue
       if (seen.has(normalized.key)) continue
       seen.add(normalized.key)

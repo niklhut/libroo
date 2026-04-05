@@ -15,7 +15,7 @@ export default effectHandler((event, user) =>
 
     const body = yield* Effect.tryPromise({
       try: () => readValidatedBody(event, bookTagAddSchema.parse),
-      catch: e => createError({ statusCode: 400, message: 'Validation Error', data: e })
+      catch: () => createError({ statusCode: 400, message: 'Validation Error' })
     })
 
     const tag = yield* addUserTag(userBookId, user.id, body.name)

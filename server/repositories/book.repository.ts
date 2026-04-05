@@ -1,6 +1,6 @@
 import { Context, Effect, Layer, Data } from 'effect'
 import type { HttpClient } from '@effect/platform'
-import { eq, and, count, desc, inArray, or, sql, notInArray } from 'drizzle-orm'
+import { eq, and, count, desc, inArray, or, sql, notInArray, exists } from 'drizzle-orm'
 import type { InferSelectModel } from 'drizzle-orm'
 import { books, userBooks, tags, bookSystemTags, userBookTags } from 'hub:db:schema'
 import { normalizeTagInput, normalizeSuggestedTags } from '../../shared/utils/tag-ingestion'
@@ -110,6 +110,14 @@ export interface BookRepositoryInterface {
     name: string
   ) => Effect.Effect<BookTagRecord, BookNotFoundError | InvalidTagError | DatabaseError, DbService>
 
+  batchUpdateTags: (
+    userBookId: string,
+    userId: string,
+    deleteIds: string[],
+    promoteIds: string[],
+    createNames: string[]
+  ) => Effect.Effect<void, BookNotFoundError | InvalidTagError | DatabaseError, DbService>
+
   deleteTag: (
     userBookId: string,
     userId: string,
@@ -131,10 +139,10 @@ export const BookRepositoryLive = Layer.effect(
   Effect.gen(function* () {
     const dbService = yield* DbService
 
-    const resolveOrCreateTagId = (normalizedTag: { key: string, displayName: string }) =>
+    const resolveOrCreateTagId = (normalizedTag: { key: string, displayName: string }, client = dbService.db) =>
       Effect.gen(function* () {
         const existing = yield* Effect.tryPromise({
-          try: () => dbService.db
+          try: () => client
             .select({ id: tags.id })
             .from(tags)
             .where(sql`lower(${tags.name}) = ${normalizedTag.key}`)
@@ -153,7 +161,7 @@ export const BookRepositoryLive = Layer.effect(
         const newTagId = generateId()
 
         yield* Effect.tryPromise({
-          try: () => dbService.db
+          try: () => client
             .insert(tags)
             .values({
               id: newTagId,
@@ -169,7 +177,7 @@ export const BookRepositoryLive = Layer.effect(
         })
 
         const found = yield* Effect.tryPromise({
-          try: () => dbService.db
+          try: () => client
             .select({ id: tags.id })
             .from(tags)
             .where(sql`lower(${tags.name}) = ${normalizedTag.key}`)
@@ -191,9 +199,9 @@ export const BookRepositoryLive = Layer.effect(
         return tag.id
       })
 
-    const linkSystemTag = (bookId: string, tagId: string) =>
+    const linkSystemTag = (bookId: string, tagId: string, client = dbService.db) =>
       Effect.tryPromise({
-        try: () => dbService.db
+        try: () => client
           .insert(bookSystemTags)
           .values({
             bookId,
@@ -208,9 +216,9 @@ export const BookRepositoryLive = Layer.effect(
         })
       })
 
-    const linkUserTag = (userBookId: string, tagId: string) =>
+    const linkUserTag = (userBookId: string, tagId: string, client = dbService.db) =>
       Effect.tryPromise({
-        try: () => dbService.db
+        try: () => client
           .insert(userBookTags)
           .values({
             id: generateId(),
@@ -255,10 +263,10 @@ export const BookRepositoryLive = Layer.effect(
         return tagMap
       })
 
-    const getOwnedUserBookRef = (userBookId: string, userId: string) =>
+    const getOwnedUserBookRef = (userBookId: string, userId: string, client = dbService.db) =>
       Effect.gen(function* () {
         const row = yield* Effect.tryPromise({
-          try: () => dbService.db
+          try: () => client
             .select({
               userBookId: userBooks.id,
               bookId: userBooks.bookId
@@ -402,20 +410,20 @@ export const BookRepositoryLive = Layer.effect(
                 sql`lower(${books.title}) like ${likePattern}`,
                 sql`lower(${books.author}) like ${likePattern}`,
                 sql`lower(coalesce(${books.isbn}, '')) like ${likePattern}`,
-                sql`exists (
-                select 1
-                from user_book_tags ubt
-                inner join tags t on t.id = ubt.tag_id
-                where ubt.user_book_id = ${userBooks.id}
-                and lower(t.name) like ${likePattern}
-              )`,
-                sql`exists (
-                select 1
-                from book_system_tags bst
-                inner join tags t on t.id = bst.tag_id
-                where bst.book_id = ${books.id}
-                and lower(t.name) like ${likePattern}
-              )`
+                exists(
+                  dbService.db
+                    .select({ value: sql`1` })
+                    .from(userBookTags)
+                    .innerJoin(tags, eq(userBookTags.tagId, tags.id))
+                    .where(and(eq(userBookTags.userBookId, userBooks.id), sql`lower(${tags.name}) like ${likePattern}`))
+                ),
+                exists(
+                  dbService.db
+                    .select({ value: sql`1` })
+                    .from(bookSystemTags)
+                    .innerJoin(tags, eq(bookSystemTags.tagId, tags.id))
+                    .where(and(eq(bookSystemTags.bookId, books.id), sql`lower(${tags.name}) like ${likePattern}`))
+                )
               )
             : undefined
 
@@ -728,6 +736,125 @@ export const BookRepositoryLive = Layer.effect(
           return created
         }),
 
+      batchUpdateTags: (userBookId, userId, deleteIds, promoteIds, createNames) =>
+        Effect.tryPromise({
+          try: async () => {
+            await dbService.db.transaction(async (tx) => {
+              const ownedRows = await tx
+                .select({
+                  userBookId: userBooks.id,
+                  bookId: userBooks.bookId
+                })
+                .from(userBooks)
+                .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId)))
+                .limit(1)
+
+              const owned = ownedRows[0]
+              if (!owned) {
+                throw new BookNotFoundError({ bookId: userBookId })
+              }
+
+              const uniqueDeleteIds = [...new Set(deleteIds)]
+              const uniquePromoteIds = [...new Set(promoteIds)]
+              const uniqueCreateNames = [...new Set(createNames.map(name => name.trim()).filter(Boolean))]
+
+              for (const tagId of uniqueDeleteIds) {
+                await tx
+                  .delete(userBookTags)
+                  .where(and(eq(userBookTags.userBookId, owned.userBookId), eq(userBookTags.tagId, tagId)))
+              }
+
+              for (const tagId of uniquePromoteIds) {
+                const systemTag = await tx
+                  .select({ tagId: bookSystemTags.tagId })
+                  .from(bookSystemTags)
+                  .where(and(eq(bookSystemTags.bookId, owned.bookId), eq(bookSystemTags.tagId, tagId)))
+                  .limit(1)
+
+                if (!systemTag[0]) {
+                  throw new BookNotFoundError({ bookId: userBookId })
+                }
+
+                await tx
+                  .insert(userBookTags)
+                  .values({
+                    id: generateId(),
+                    userBookId: owned.userBookId,
+                    tagId,
+                    createdAt: new Date(),
+                    updatedAt: new Date()
+                  })
+                  .onConflictDoNothing()
+              }
+
+              for (const name of uniqueCreateNames) {
+                const normalized = normalizeTagInput(name)
+                if (!normalized) {
+                  throw new InvalidTagError({ message: 'Tag is empty or invalid' })
+                }
+
+                const existing = await tx
+                  .select({ id: tags.id })
+                  .from(tags)
+                  .where(sql`lower(${tags.name}) = ${normalized.key}`)
+                  .limit(1)
+
+                let tagId = existing[0]?.id ?? null
+
+                if (!tagId) {
+                  const newTagId = generateId()
+
+                  await tx
+                    .insert(tags)
+                    .values({
+                      id: newTagId,
+                      name: normalized.displayName,
+                      createdAt: new Date(),
+                      updatedAt: new Date()
+                    })
+                    .onConflictDoNothing()
+
+                  const found = await tx
+                    .select({ id: tags.id })
+                    .from(tags)
+                    .where(sql`lower(${tags.name}) = ${normalized.key}`)
+                    .limit(1)
+
+                  tagId = found[0]?.id ?? null
+                }
+
+                if (!tagId) {
+                  throw new DatabaseError({
+                    message: `Tag upsert failed for key: ${normalized.key}`,
+                    operation: 'batchUpdateTags.create'
+                  })
+                }
+
+                await tx
+                  .insert(userBookTags)
+                  .values({
+                    id: generateId(),
+                    userBookId: owned.userBookId,
+                    tagId,
+                    createdAt: new Date(),
+                    updatedAt: new Date()
+                  })
+                  .onConflictDoNothing()
+              }
+            })
+          },
+          catch: error => {
+            if (error instanceof BookNotFoundError || error instanceof InvalidTagError || error instanceof DatabaseError) {
+              return error
+            }
+
+            return new DatabaseError({
+              message: `Failed to batch update tags: ${error}`,
+              operation: 'batchUpdateTags'
+            })
+          }
+        }),
+
       deleteTag: (userBookId, userId, tagId) =>
         Effect.gen(function* () {
           const ref = yield* getOwnedUserBookRef(userBookId, userId)
@@ -744,7 +871,7 @@ export const BookRepositoryLive = Layer.effect(
           })
 
           if (deleted.length === 0) {
-            return yield* Effect.fail(new BookNotFoundError({ bookId: userBookId }))
+            return yield* Effect.succeed(undefined)
           }
 
           const userRefs = yield* Effect.tryPromise({

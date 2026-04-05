@@ -69,6 +69,14 @@ export interface BookServiceInterface {
     name: string
   ) => Effect.Effect<BookTag, BookNotFoundError | InvalidTagError | DatabaseError, DbService>
 
+  batchUpdateTags: (
+    userBookId: string,
+    userId: string,
+    deleteIds: string[],
+    promoteIds: string[],
+    createNames: string[]
+  ) => Effect.Effect<void, BookNotFoundError | InvalidTagError | DatabaseError, DbService>
+
   deleteTag: (
     userBookId: string,
     userId: string,
@@ -209,6 +217,9 @@ export const BookServiceLive = Layer.effect(
           return { id: tag.id, name: tag.name }
         }),
 
+      batchUpdateTags: (userBookId, userId, deleteIds, promoteIds, createNames) =>
+        bookRepo.batchUpdateTags(userBookId, userId, deleteIds, promoteIds, createNames),
+
       deleteTag: (userBookId, userId, tagId) =>
         bookRepo.deleteTag(userBookId, userId, tagId)
     }
@@ -240,6 +251,15 @@ export const promoteSuggestedTag = (userBookId: string, userId: string, tagId: s
 
 export const addUserTag = (userBookId: string, userId: string, name: string) =>
   Effect.flatMap(BookService, service => service.addUserTag(userBookId, userId, name))
+
+export const batchUpdateTags = (
+  userBookId: string,
+  userId: string,
+  deleteIds: string[],
+  promoteIds: string[],
+  createNames: string[]
+) =>
+  Effect.flatMap(BookService, service => service.batchUpdateTags(userBookId, userId, deleteIds, promoteIds, createNames))
 
 export const deleteTag = (userBookId: string, userId: string, tagId: string) =>
   Effect.flatMap(BookService, service => service.deleteTag(userBookId, userId, tagId))

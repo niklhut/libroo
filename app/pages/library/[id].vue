@@ -83,12 +83,24 @@ function openTagModal() {
 }
 
 async function onTagsSaved() {
-  await refresh()
-  toast.add({
-    title: 'Tags updated',
-    description: 'Your tag changes were saved successfully.',
-    color: 'success'
-  })
+  try {
+    await refresh()
+    toast.add({
+      title: 'Tags updated',
+      description: 'Your tag changes were saved successfully.',
+      color: 'success'
+    })
+  } catch (err: unknown) {
+    const message = err instanceof Error
+      ? err.message
+      : 'Failed to refresh page after saving tags.'
+
+    toast.add({
+      title: 'Error updating tags',
+      description: message,
+      color: 'error'
+    })
+  }
 }
 </script>
 

@@ -39,8 +39,7 @@ export const tags = sqliteTable('tags', {
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
 }, table => [
-  uniqueIndex('tags_name_unique').on(table.name),
-  index('tags_name_idx').on(table.name)
+  uniqueIndex('tags_name_unique').on(table.name)
 ])
 
 // Shared metadata tags attached to canonical books.
@@ -51,7 +50,6 @@ export const bookSystemTags = sqliteTable('book_system_tags', {
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
 }, table => [
   primaryKey({ columns: [table.bookId, table.tagId] }),
-  uniqueIndex('book_system_tags_book_id_tag_id_unique').on(table.bookId, table.tagId),
   index('book_system_tags_book_id_idx').on(table.bookId),
   index('book_system_tags_tag_id_idx').on(table.tagId)
 ])

@@ -129,24 +129,14 @@ async function saveChanges() {
       .filter(tag => tag.isCustom)
       .map(tag => tag.name)
 
-    for (const tagId of idsToDelete) {
-      await $fetch(`/api/books/${props.userBookId}/tags/${tagId}`, {
-        method: 'DELETE'
-      })
-    }
-
-    for (const tagId of idsToPromote) {
-      await $fetch(`/api/books/${props.userBookId}/tags/${tagId}/promote`, {
-        method: 'POST'
-      })
-    }
-
-    for (const name of customTagsToCreate) {
-      await $fetch(`/api/books/${props.userBookId}/tags`, {
-        method: 'POST',
-        body: { name }
-      })
-    }
+    await $fetch(`/api/books/${props.userBookId}/tags/batch`, {
+      method: 'POST',
+      body: {
+        deleteIds: idsToDelete,
+        promoteIds: idsToPromote,
+        createNames: customTagsToCreate
+      }
+    })
 
     emit('saved')
     modalOpen.value = false

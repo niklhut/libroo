@@ -6,6 +6,7 @@ import {
   toSensibleTitleCase,
   normalizeTagInput
 } from '../../shared/utils/tag-ingestion'
+import { bookTagAddSchema } from '../../shared/utils/schemas'
 
 describe('tag ingestion', () => {
   it('splits hierarchical subjects by slash, double-dash, and colon', () => {
@@ -61,5 +62,12 @@ describe('tag ingestion', () => {
     expect(result[0]?.displayName).toBe('Mystery')
     expect(result.length).toBe(20)
     expect(result.filter(tag => tag.key === 'mystery')).toHaveLength(1)
+  })
+
+  it('rejects the same invalid tag shapes at schema validation time', () => {
+    expect(bookTagAddSchema.safeParse({ name: ' a ' }).success).toBe(false)
+    expect(bookTagAddSchema.safeParse({ name: '12345' }).success).toBe(false)
+    expect(bookTagAddSchema.safeParse({ name: 'http://example.com' }).success).toBe(false)
+    expect(bookTagAddSchema.safeParse({ name: 'TRUE CRIME' }).success).toBe(true)
   })
 })
