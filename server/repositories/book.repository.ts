@@ -80,6 +80,11 @@ export interface BookRepositoryInterface {
 
   getBookById: (bookId: string) => Effect.Effect<Book, BookNotFoundError | DatabaseError, DbService>
 
+  hasBookInUserLibrary: (
+    userId: string,
+    isbn: string
+  ) => Effect.Effect<boolean, DatabaseError, DbService>
+
   removeFromLibrary: (
     userBookId: string,
     userId: string
@@ -538,6 +543,25 @@ export const BookRepositoryLive = Layer.effect(
             openLibraryKey: book.openLibraryKey,
             createdAt: book.createdAt instanceof Date ? book.createdAt : new Date(book.createdAt as unknown as string)
           }
+        }),
+
+      hasBookInUserLibrary: (userId, isbn) =>
+        Effect.gen(function* () {
+          const result = yield* Effect.tryPromise({
+            try: () =>
+              dbService.db
+                .select({ id: userBooks.id })
+                .from(userBooks)
+                .innerJoin(books, eq(userBooks.bookId, books.id))
+                .where(and(eq(userBooks.userId, userId), eq(books.isbn, isbn)))
+                .limit(1),
+            catch: error => new DatabaseError({
+              message: `Failed to check user library ownership: ${error}`,
+              operation: 'hasBookInUserLibrary'
+            })
+          })
+
+          return Boolean(result[0])
         }),
 
       removeFromLibrary: (userBookId, userId) =>

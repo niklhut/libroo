@@ -26,6 +26,7 @@ const isSaving = ref(false)
 
 const workingUserTags = ref<WorkingTag[]>([])
 const allSuggestedTags = ref<BookTag[]>([])
+const releasedSuggestedTags = ref<BookTag[]>([])
 
 const modalOpen = computed({
   get: () => props.open,
@@ -49,7 +50,10 @@ const hasChanges = computed(() => {
 })
 
 const availableSuggestedTags = computed(() => {
-  return getAvailableSuggestedTags(allSuggestedTags.value, workingUserTags.value)
+  return getAvailableSuggestedTags(
+    [...allSuggestedTags.value, ...releasedSuggestedTags.value],
+    workingUserTags.value
+  )
 })
 
 function normalizeTagName(name: string): string {
@@ -59,6 +63,7 @@ function normalizeTagName(name: string): string {
 function initializeState() {
   workingUserTags.value = props.userTags.map(tag => ({ ...tag }))
   allSuggestedTags.value = props.suggestedTags.map(tag => ({ ...tag }))
+  releasedSuggestedTags.value = []
   customTagInput.value = ''
 }
 
@@ -79,6 +84,10 @@ function addSuggestedTag(tag: BookTag) {
 
 function removeUserTag(tag: WorkingTag) {
   workingUserTags.value = workingUserTags.value.filter(item => item.id !== tag.id)
+
+  if (!tag.isCustom && !releasedSuggestedTags.value.some(item => item.id === tag.id)) {
+    releasedSuggestedTags.value.push({ id: tag.id, name: tag.name })
+  }
 }
 
 function addCustomTag() {
@@ -219,32 +228,23 @@ async function saveChanges() {
 
         <div>
           <h3 class="text-sm font-medium mb-2">
-            Preview User Tags
+            Selected Tags
           </h3>
           <div
             v-if="workingUserTags.length > 0"
             class="flex flex-wrap gap-2"
           >
-            <div
+            <UButton
               v-for="tag in workingUserTags"
               :key="tag.id"
-              class="inline-flex items-center gap-1"
+              color="primary"
+              variant="subtle"
+              size="xs"
+              trailing-icon="i-lucide-x"
+              @click="removeUserTag(tag)"
             >
-              <UBadge
-                color="primary"
-                variant="subtle"
-                size="md"
-              >
-                {{ tag.name }}
-              </UBadge>
-              <UButton
-                color="neutral"
-                variant="ghost"
-                size="xs"
-                icon="i-lucide-x"
-                @click="removeUserTag(tag)"
-              />
-            </div>
+              {{ tag.name }}
+            </UButton>
           </div>
           <p
             v-else
