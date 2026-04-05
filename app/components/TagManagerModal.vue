@@ -64,6 +64,10 @@ const availableSuggestedTags = computed(() => {
   )
 })
 
+const canAddCustomTag = computed(() => {
+  return normalizeTagInputText(customTagInput.value).length > 0
+})
+
 function normalizeTagName(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, ' ')
 }
@@ -99,10 +103,14 @@ function removeUserTag(tag: WorkingTag) {
 }
 
 function addCustomTag() {
-  const raw = customTagInput.value.trim()
-  if (!raw) return
+  const raw = customTagInput.value
+  const canonical = normalizeTagInputText(raw)
+  if (!canonical) {
+    customTagInput.value = ''
+    return
+  }
 
-  const normalized = normalizeTagName(raw)
+  const normalized = normalizeTagName(canonical)
   const alreadyInUserTags = workingUserTags.value.some(tag => normalizeTagName(tag.name) === normalized)
   if (alreadyInUserTags) {
     customTagInput.value = ''
@@ -116,7 +124,7 @@ function addCustomTag() {
     return
   }
 
-  const displayName = toSensibleTitleCase(normalizeTagInputText(raw))
+  const displayName = toSensibleTitleCase(canonical)
 
   workingUserTags.value.push({
     id: `custom:${crypto.randomUUID()}`,
@@ -226,7 +234,7 @@ async function saveChanges() {
             />
             <UButton
               icon="i-lucide-plus"
-              :disabled="!customTagInput.trim()"
+              :disabled="!canAddCustomTag"
               @click="addCustomTag"
             >
               Add
