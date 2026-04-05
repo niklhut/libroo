@@ -843,7 +843,7 @@ export const BookRepositoryLive = Layer.effect(
               }
             })
           },
-          catch: error => {
+          catch: (error) => {
             if (error instanceof BookNotFoundError || error instanceof InvalidTagError || error instanceof DatabaseError) {
               return error
             }
