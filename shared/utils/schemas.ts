@@ -116,3 +116,9 @@ export const bookBatchDeleteSchema = z.object({
 })
 
 export type BookBatchDeleteSchema = z.infer<typeof bookBatchDeleteSchema>
+
+export const bookTagAddSchema = z.object({
+  name: z.string({ error: 'Tag name is required' }).min(1, { error: 'Tag name is required' }).max(64)
+})
+
+export type BookTagAddSchema = z.infer<typeof bookTagAddSchema>

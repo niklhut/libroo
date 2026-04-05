@@ -85,28 +85,6 @@ defineEmits<{
       {{ book.description }}
     </div>
 
-    <!-- Subjects preview -->
-    <div
-      v-if="book.subjects && book.subjects.length > 0"
-      class="flex flex-wrap gap-2"
-    >
-      <UBadge
-        v-for="subject in book.subjects.slice(0, 5)"
-        :key="subject"
-        size="md"
-        color="secondary"
-        variant="subtle"
-      >
-        {{ subject }}
-      </UBadge>
-      <span
-        v-if="book.subjects.length > 5"
-        class="text-sm text-muted self-center"
-      >
-        +{{ book.subjects.length - 5 }} more
-      </span>
-    </div>
-
     <USeparator />
 
     <!-- Adding state -->

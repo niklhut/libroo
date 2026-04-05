@@ -1,14 +1,27 @@
 import { Context, Effect, Layer, Either } from 'effect'
 import type { HttpClient } from '@effect/platform'
-import type { UserBook } from '../repositories/book.repository'
 
-export const toLibraryBook = (userBook: UserBook): LibraryBook => ({
+interface UserBookViewModel {
+  id: string
+  bookId: string
+  book: {
+    title: string
+    author: string
+    isbn: string | null
+    coverPath: string | null
+  }
+  tags: string[]
+  addedAt: Date
+}
+
+export const toLibraryBook = (userBook: UserBookViewModel): LibraryBook => ({
   id: userBook.id,
   bookId: userBook.bookId,
   title: userBook.book.title,
   author: userBook.book.author,
   isbn: userBook.book.isbn,
   coverPath: userBook.book.coverPath,
+  tags: userBook.tags,
   addedAt: userBook.addedAt
 })
 
@@ -17,7 +30,7 @@ export const toLibraryBook = (userBook: UserBook): LibraryBook => ({
 export interface BookServiceInterface {
   getUserLibrary: (
     userId: string,
-    pagination: PaginationParams
+    pagination: PaginationParams & { search?: string }
   ) => Effect.Effect<PaginatedResult<LibraryBook>, DatabaseError, DbService>
 
   addBookToLibrary: (
@@ -43,6 +56,24 @@ export interface BookServiceInterface {
     userBookId: string,
     userId: string
   ) => Effect.Effect<BookDetails, BookNotFoundError | DatabaseError, DbService>
+
+  promoteSuggestedTag: (
+    userBookId: string,
+    userId: string,
+    tagId: string
+  ) => Effect.Effect<void, BookNotFoundError | DatabaseError, DbService>
+
+  addUserTag: (
+    userBookId: string,
+    userId: string,
+    name: string
+  ) => Effect.Effect<BookTag, BookNotFoundError | InvalidTagError | DatabaseError, DbService>
+
+  deleteTag: (
+    userBookId: string,
+    userId: string,
+    tagId: string
+  ) => Effect.Effect<void, BookNotFoundError | DatabaseError, DbService>
 
   lookupBook: (
     isbn: string
@@ -125,6 +156,8 @@ export const BookServiceLive = Layer.effect(
           const localBook = yield* bookRepo.findByIsbn(normalizedISBN)
 
           if (localBook) {
+            const bookTags = yield* bookRepo.getSystemTagsByBookId(localBook.id)
+
             return {
               found: true,
               isbn: localBook.isbn || normalizedISBN,
@@ -132,7 +165,7 @@ export const BookServiceLive = Layer.effect(
               author: localBook.author,
               coverUrl: localBook.coverPath ? `/api/blob/${localBook.coverPath}` : null,
               description: localBook.description ?? undefined,
-              subjects: localBook.subjects ? JSON.parse(localBook.subjects) : null,
+              subjects: bookTags.map(tag => tag.name),
               publishDate: localBook.publishDate ?? undefined,
               publishers: localBook.publishers ? localBook.publishers.split(', ') : null,
               numberOfPages: localBook.numberOfPages ?? undefined,
@@ -165,14 +198,26 @@ export const BookServiceLive = Layer.effect(
           )
 
           return yield* lookupEffect
-        })
+        }),
+
+      promoteSuggestedTag: (userBookId, userId, tagId) =>
+        bookRepo.promoteSuggestedTag(userBookId, userId, tagId),
+
+      addUserTag: (userBookId, userId, name) =>
+        Effect.gen(function* () {
+          const tag = yield* bookRepo.addUserTag(userBookId, userId, name)
+          return { id: tag.id, name: tag.name }
+        }),
+
+      deleteTag: (userBookId, userId, tagId) =>
+        bookRepo.deleteTag(userBookId, userId, tagId)
     }
   })
 )
 
 // ===== Helper Effects =====
 
-export const getUserLibrary = (userId: string, pagination: PaginationParams) =>
+export const getUserLibrary = (userId: string, pagination: PaginationParams & { search?: string }) =>
   Effect.flatMap(BookService, service => service.getUserLibrary(userId, pagination))
 
 export const addBookToLibrary = (userId: string, isbn: string) =>
@@ -189,3 +234,12 @@ export const getBookDetails = (userBookId: string, userId: string) =>
 
 export const lookupBook = (isbn: string) =>
   Effect.flatMap(BookService, service => service.lookupBook(isbn))
+
+export const promoteSuggestedTag = (userBookId: string, userId: string, tagId: string) =>
+  Effect.flatMap(BookService, service => service.promoteSuggestedTag(userBookId, userId, tagId))
+
+export const addUserTag = (userBookId: string, userId: string, name: string) =>
+  Effect.flatMap(BookService, service => service.addUserTag(userBookId, userId, name))
+
+export const deleteTag = (userBookId: string, userId: string, tagId: string) =>
+  Effect.flatMap(BookService, service => service.deleteTag(userBookId, userId, tagId))

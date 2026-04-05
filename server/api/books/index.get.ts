@@ -13,8 +13,9 @@ export default effectHandler((event, user) =>
       MAX_PAGE_SIZE,
       Math.max(1, parseInt(query.pageSize as string) || DEFAULT_PAGE_SIZE)
     )
+    const search = typeof query.search === 'string' ? query.search : undefined
 
     // Get user's library via BookService
-    return yield* getUserLibrary(user.id, { page, pageSize })
+    return yield* getUserLibrary(user.id, { page, pageSize, search })
   })
 )

@@ -5,7 +5,13 @@ export interface LibraryBook {
   author: string
   isbn: string | null
   coverPath: string | null
+  tags?: string[]
   addedAt: Date | string
+}
+
+export interface BookTag {
+  id: string
+  name: string
 }
 
 export interface BookLookupResult {
@@ -36,7 +42,8 @@ export interface BookDetails {
   isbn: string | null
   coverPath: string | null
   description: string | null
-  subjects: string[] | null
+  userTags: BookTag[]
+  suggestedTags: BookTag[]
   publishDate: string | null
   publishers: string | null
   numberOfPages: number | null

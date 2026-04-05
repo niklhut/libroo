@@ -337,29 +337,6 @@ function getStatusText(status: ScannedBook['status']) {
             </UBadge>
           </div>
 
-          <!-- Subjects -->
-          <div v-if="book.result.subjects && book.result.subjects.length > 0">
-            <p class="text-sm font-medium mb-2">
-              Subjects
-            </p>
-            <div class="flex flex-wrap gap-2">
-              <UBadge
-                v-for="subject in book.result.subjects.slice(0, 8)"
-                :key="subject"
-                color="secondary"
-                variant="subtle"
-                size="md"
-              >
-                {{ subject }}
-              </UBadge>
-              <span
-                v-if="book.result.subjects.length > 8"
-                class="text-sm text-muted self-center"
-              >
-                +{{ book.result.subjects.length - 8 }} more
-              </span>
-            </div>
-          </div>
         </div>
       </div>
     </div>

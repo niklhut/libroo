@@ -4,9 +4,10 @@ const toast = useToast()
 
 const userBookId = route.params.id as string
 const isDeleting = ref(false)
+const isTagModalOpen = ref(false)
 
 // Fetch book details
-const { data: book, status } = await useFetch<BookDetails>(`/api/books/${userBookId}`, {
+const { data: book, status, refresh } = await useFetch<BookDetails>(`/api/books/${userBookId}`, {
   headers: useRequestHeaders(['cookie'])
 })
 
@@ -75,6 +76,19 @@ async function removeBook() {
   } finally {
     isDeleting.value = false
   }
+}
+
+function openTagModal() {
+  isTagModalOpen.value = true
+}
+
+async function onTagsSaved() {
+  await refresh()
+  toast.add({
+    title: 'Tags updated',
+    description: 'Your tag changes were saved successfully.',
+    color: 'success'
+  })
 }
 </script>
 
@@ -205,21 +219,44 @@ async function removeBook() {
             </p>
           </div>
 
-          <!-- Subjects -->
-          <div v-if="book.subjects && book.subjects.length > 0">
-            <h2 class="text-lg font-semibold mb-2">
-              Subjects
-            </h2>
-            <div class="flex flex-wrap gap-2">
-              <UBadge
-                v-for="subject in book.subjects"
-                :key="subject"
-                color="secondary"
-                variant="subtle"
-                size="md"
+          <!-- Tags -->
+          <div class="space-y-4">
+            <div>
+              <div class="flex items-center justify-between gap-3 mb-2">
+                <h2 class="text-lg font-semibold">
+                  Tags
+                </h2>
+                <UButton
+                  color="neutral"
+                  variant="outline"
+                  size="sm"
+                  icon="i-lucide-tag"
+                  @click="openTagModal"
+                >
+                  Manage Tags
+                </UButton>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <div
+                  v-for="tag in book.userTags"
+                  :key="tag.id"
+                  class="inline-flex items-center gap-1"
+                >
+                  <UBadge
+                    color="primary"
+                    variant="subtle"
+                    size="md"
+                  >
+                    {{ tag.name }}
+                  </UBadge>
+                </div>
+              </div>
+              <p
+                v-if="book.userTags.length === 0"
+                class="text-sm text-muted"
               >
-                {{ subject }}
-              </UBadge>
+                Use Manage Tags to add from suggestions or create your own.
+              </p>
             </div>
           </div>
 
@@ -268,6 +305,15 @@ async function removeBook() {
           </div>
         </div>
       </div>
+
+      <TagManagerModal
+        v-if="book"
+        v-model:open="isTagModalOpen"
+        :user-book-id="userBookId"
+        :user-tags="book.userTags"
+        :suggested-tags="book.suggestedTags"
+        @saved="onTagsSaved"
+      />
     </UPageBody>
   </UContainer>
 </template>
