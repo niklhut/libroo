@@ -36,10 +36,12 @@ export const userBooks = sqliteTable('user_books', {
 export const tags = sqliteTable('tags', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
+  normalizedName: text('normalized_name').notNull(), // Normalized key for case-insensitive lookup (unique constraint)
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
 }, table => [
-  uniqueIndex('tags_name_unique').on(table.name)
+  uniqueIndex('tags_name_unique').on(table.name),
+  uniqueIndex('tags_normalized_name_unique').on(table.normalizedName)
 ])
 
 // Shared metadata tags attached to canonical books.

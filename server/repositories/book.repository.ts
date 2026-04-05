@@ -145,7 +145,7 @@ export const BookRepositoryLive = Layer.effect(
           try: () => client
             .select({ id: tags.id })
             .from(tags)
-            .where(sql`lower(${tags.name}) = ${normalizedTag.key}`)
+            .where(eq(tags.normalizedName, normalizedTag.key))
             .limit(1),
           catch: error => new DatabaseError({
             message: `Failed to find tag: ${error}`,
@@ -166,6 +166,7 @@ export const BookRepositoryLive = Layer.effect(
             .values({
               id: newTagId,
               name: normalizedTag.displayName,
+              normalizedName: normalizedTag.key,
               createdAt: now,
               updatedAt: now
             })
@@ -180,7 +181,7 @@ export const BookRepositoryLive = Layer.effect(
           try: () => client
             .select({ id: tags.id })
             .from(tags)
-            .where(sql`lower(${tags.name}) = ${normalizedTag.key}`)
+            .where(eq(tags.normalizedName, normalizedTag.key))
             .limit(1),
           catch: error => new DatabaseError({
             message: `Failed to resolve tag after insert: ${error}`,
@@ -214,6 +215,15 @@ export const BookRepositoryLive = Layer.effect(
           message: `Failed to link system tag to book: ${error}`,
           operation: 'linkSystemTag'
         })
+      })
+
+    const hydrateSystemTagsForBook = (bookId: string, subjects: string[]) =>
+      Effect.gen(function* () {
+        const suggestedTags = normalizeSuggestedTags(subjects)
+        for (const suggestedTag of suggestedTags) {
+          const tagId = yield* resolveOrCreateTagId(suggestedTag)
+          yield* linkSystemTag(bookId, tagId)
+        }
       })
 
     const linkUserTag = (userBookId: string, tagId: string, client = dbService.db) =>
@@ -325,10 +335,11 @@ export const BookRepositoryLive = Layer.effect(
           })
 
           let book = bookResult[0] || null
+          let openLibraryData
 
           // If book doesn't exist, fetch from OpenLibrary and create it
           if (!book) {
-            const openLibraryData = yield* lookupByISBN(isbn)
+            openLibraryData = yield* lookupByISBN(isbn)
 
             // Download cover to local storage
             const coverPath = yield* downloadCover(isbn, 'L')
@@ -356,13 +367,15 @@ export const BookRepositoryLive = Layer.effect(
               catch: error => new BookCreateError({ message: `Failed to insert book: ${error}` })
             })
 
-            const suggestedTags = normalizeSuggestedTags(openLibraryData.subjects)
-            for (const suggestedTag of suggestedTags) {
-              const tagId = yield* resolveOrCreateTagId(suggestedTag)
-              yield* linkSystemTag(newBookId, tagId)
-            }
+            // Hydrate system tags for newly-inserted book
+            yield* hydrateSystemTagsForBook(newBookId, openLibraryData.subjects || [])
 
             book = newBook
+          } else {
+            // Reusing existing book: fetch OpenLibrary data to ensure system tags are hydrated
+            openLibraryData = yield* lookupByISBN(isbn)
+            // Idempotently hydrate system tags for the existing book (safe if already linked via onConflictDoNothing)
+            yield* hydrateSystemTagsForBook(book.id, openLibraryData.subjects || [])
           }
 
           // Create userBooks entry
@@ -796,7 +809,7 @@ export const BookRepositoryLive = Layer.effect(
                 const existing = await tx
                   .select({ id: tags.id })
                   .from(tags)
-                  .where(sql`lower(${tags.name}) = ${normalized.key}`)
+                  .where(eq(tags.normalizedName, normalized.key))
                   .limit(1)
 
                 let tagId = existing[0]?.id ?? null
@@ -809,6 +822,7 @@ export const BookRepositoryLive = Layer.effect(
                     .values({
                       id: newTagId,
                       name: normalized.displayName,
+                      normalizedName: normalized.key,
                       createdAt: new Date(),
                       updatedAt: new Date()
                     })
@@ -817,7 +831,7 @@ export const BookRepositoryLive = Layer.effect(
                   const found = await tx
                     .select({ id: tags.id })
                     .from(tags)
-                    .where(sql`lower(${tags.name}) = ${normalized.key}`)
+                    .where(eq(tags.normalizedName, normalized.key))
                     .limit(1)
 
                   tagId = found[0]?.id ?? null
@@ -859,6 +873,7 @@ export const BookRepositoryLive = Layer.effect(
         Effect.gen(function* () {
           const ref = yield* getOwnedUserBookRef(userBookId, userId)
 
+          // Delete the user tag reference
           const deleted = yield* Effect.tryPromise({
             try: () => dbService.db
               .delete(userBookTags)
@@ -874,37 +889,26 @@ export const BookRepositoryLive = Layer.effect(
             return yield* Effect.succeed(undefined)
           }
 
-          const userRefs = yield* Effect.tryPromise({
-            try: () => dbService.db
-              .select({ count: count() })
-              .from(userBookTags)
-              .where(eq(userBookTags.tagId, tagId)),
+          // Atomically check for any remaining references and delete the tag if none exist
+          yield* Effect.tryPromise({
+            try: () =>
+              dbService.db.transaction(async (tx) => {
+                // Delete tag only if no references exist in either table (atomic operation)
+                await tx
+                  .delete(tags)
+                  .where(
+                    and(
+                      eq(tags.id, tagId),
+                      sql`NOT EXISTS (SELECT 1 FROM ${userBookTags} WHERE ${eq(userBookTags.tagId, tagId)})`,
+                      sql`NOT EXISTS (SELECT 1 FROM ${bookSystemTags} WHERE ${eq(bookSystemTags.tagId, tagId)})`
+                    )
+                  )
+              }),
             catch: error => new DatabaseError({
-              message: `Failed to check user tag references: ${error}`,
-              operation: 'deleteTag.userRefs'
+              message: `Failed to garbage collect tag: ${error}`,
+              operation: 'deleteTag.gc'
             })
           })
-
-          const systemRefs = yield* Effect.tryPromise({
-            try: () => dbService.db
-              .select({ count: count() })
-              .from(bookSystemTags)
-              .where(eq(bookSystemTags.tagId, tagId)),
-            catch: error => new DatabaseError({
-              message: `Failed to check system tag references: ${error}`,
-              operation: 'deleteTag.systemRefs'
-            })
-          })
-
-          if ((userRefs[0]?.count ?? 0) === 0 && (systemRefs[0]?.count ?? 0) === 0) {
-            yield* Effect.tryPromise({
-              try: () => dbService.db.delete(tags).where(eq(tags.id, tagId)),
-              catch: error => new DatabaseError({
-                message: `Failed to garbage collect tag: ${error}`,
-                operation: 'deleteTag.gc'
-              })
-            })
-          }
         })
     }
   })
