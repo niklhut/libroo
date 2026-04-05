@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { getAvailableSuggestedTags } from '../utils/tag-manager'
+import { normalizeTagInputText, toSensibleTitleCase } from '../../shared/utils/tag-ingestion'
 
 interface WorkingTag extends BookTag {
   isCustom?: boolean
@@ -108,9 +109,11 @@ function addCustomTag() {
     return
   }
 
+  const displayName = toSensibleTitleCase(normalizeTagInputText(raw))
+
   workingUserTags.value.push({
     id: `custom:${crypto.randomUUID()}`,
-    name: raw,
+    name: displayName,
     isCustom: true
   })
   customTagInput.value = ''
