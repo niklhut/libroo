@@ -51,8 +51,15 @@ const hasChanges = computed(() => {
 })
 
 const availableSuggestedTags = computed(() => {
+  const uniqueSuggestedById = new Map<string, BookTag>()
+  for (const tag of [...allSuggestedTags.value, ...releasedSuggestedTags.value]) {
+    if (!uniqueSuggestedById.has(tag.id)) {
+      uniqueSuggestedById.set(tag.id, tag)
+    }
+  }
+
   return getAvailableSuggestedTags(
-    [...allSuggestedTags.value, ...releasedSuggestedTags.value],
+    [...uniqueSuggestedById.values()],
     workingUserTags.value
   )
 })
