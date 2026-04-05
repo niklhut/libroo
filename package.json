@@ -9,7 +9,8 @@
     "postinstall": "nuxt prepare",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "typecheck": "nuxt typecheck"
+    "typecheck": "nuxt typecheck",
+    "test:unit": "vitest run"
   },
   "dependencies": {
     "@effect/platform": "^0.96.0",
@@ -37,6 +38,7 @@
     "drizzle-kit": "^0.31.10",
     "eslint": "^10.2.0",
     "typescript": "^6.0.2",
+    "vitest": "^4.0.2",
     "vue-tsc": "^3.2.6"
   },
   "packageManager": "pnpm@10.28.0"

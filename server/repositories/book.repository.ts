@@ -1,8 +1,9 @@
 import { Context, Effect, Layer, Data } from 'effect'
 import type { HttpClient } from '@effect/platform'
-import { eq, and, count, desc } from 'drizzle-orm'
+import { eq, and, count, desc, inArray, or, sql, notInArray, exists } from 'drizzle-orm'
 import type { InferSelectModel } from 'drizzle-orm'
-import { books, userBooks } from 'hub:db:schema'
+import { books, userBooks, tags, bookSystemTags, userBookTags } from 'hub:db:schema'
+import { normalizeTagInput, normalizeSuggestedTags } from '../../shared/utils/tag-ingestion'
 
 // Error types
 export class BookNotFoundError extends Data.TaggedError('BookNotFoundError')<{
@@ -23,6 +24,10 @@ export class DatabaseError extends Data.TaggedError('DatabaseError')<{
   operation: string
 }> { }
 
+export class InvalidTagError extends Data.TaggedError('InvalidTagError')<{
+  message: string
+}> { }
+
 // Output types
 export interface Book {
   id: string
@@ -33,7 +38,6 @@ export interface Book {
   openLibraryKey: string | null
   createdAt: Date
   description?: string | null
-  subjects?: string | null
   publishDate?: string | null
   publishers?: string | null
   numberOfPages?: number | null
@@ -44,7 +48,18 @@ export interface UserBook {
   id: string
   bookId: string
   book: Book
+  tags: string[]
   addedAt: Date
+}
+
+export interface BookTagRecord {
+  id: string
+  name: string
+}
+
+interface OwnedUserBookRef {
+  userBookId: string
+  bookId: string
 }
 
 // Service interface
@@ -60,7 +75,7 @@ export interface BookRepositoryInterface {
 
   getLibrary: (
     userId: string,
-    pagination: PaginationParams
+    pagination: PaginationParams & { search?: string }
   ) => Effect.Effect<PaginatedResult<UserBook>, DatabaseError, DbService>
 
   getBookById: (bookId: string) => Effect.Effect<Book, BookNotFoundError | DatabaseError, DbService>
@@ -74,10 +89,40 @@ export interface BookRepositoryInterface {
     isbn: string
   ) => Effect.Effect<InferSelectModel<typeof books> | null, DatabaseError, DbService>
 
+  getSystemTagsByBookId: (
+    bookId: string
+  ) => Effect.Effect<BookTagRecord[], DatabaseError, DbService>
+
   getUserBookWithDetails: (
     userBookId: string,
     userId: string
   ) => Effect.Effect<BookDetails, BookNotFoundError | DatabaseError, DbService>
+
+  promoteSuggestedTag: (
+    userBookId: string,
+    userId: string,
+    tagId: string
+  ) => Effect.Effect<void, BookNotFoundError | DatabaseError, DbService>
+
+  addUserTag: (
+    userBookId: string,
+    userId: string,
+    name: string
+  ) => Effect.Effect<BookTagRecord, BookNotFoundError | InvalidTagError | DatabaseError, DbService>
+
+  batchUpdateTags: (
+    userBookId: string,
+    userId: string,
+    deleteIds: string[],
+    promoteIds: string[],
+    createNames: string[]
+  ) => Effect.Effect<void, BookNotFoundError | InvalidTagError | DatabaseError, DbService>
+
+  deleteTag: (
+    userBookId: string,
+    userId: string,
+    tagId: string
+  ) => Effect.Effect<void, BookNotFoundError | DatabaseError, DbService>
 }
 
 // Service tag
@@ -93,6 +138,165 @@ export const BookRepositoryLive = Layer.effect(
   BookRepository,
   Effect.gen(function* () {
     const dbService = yield* DbService
+
+    const resolveOrCreateTagId = (normalizedTag: { key: string, displayName: string }, client = dbService.db) =>
+      Effect.gen(function* () {
+        const existing = yield* Effect.tryPromise({
+          try: () => client
+            .select({ id: tags.id })
+            .from(tags)
+            .where(eq(tags.normalizedName, normalizedTag.key))
+            .limit(1),
+          catch: error => new DatabaseError({
+            message: `Failed to find tag: ${error}`,
+            operation: 'resolveOrCreateTagId.find'
+          })
+        })
+
+        if (existing[0]) {
+          return existing[0].id
+        }
+
+        const now = new Date()
+        const newTagId = generateId()
+
+        yield* Effect.tryPromise({
+          try: () => client
+            .insert(tags)
+            .values({
+              id: newTagId,
+              name: normalizedTag.displayName,
+              normalizedName: normalizedTag.key,
+              createdAt: now,
+              updatedAt: now
+            })
+            .onConflictDoNothing(),
+          catch: error => new DatabaseError({
+            message: `Failed to create tag: ${error}`,
+            operation: 'resolveOrCreateTagId.create'
+          })
+        })
+
+        const found = yield* Effect.tryPromise({
+          try: () => client
+            .select({ id: tags.id })
+            .from(tags)
+            .where(eq(tags.normalizedName, normalizedTag.key))
+            .limit(1),
+          catch: error => new DatabaseError({
+            message: `Failed to resolve tag after insert: ${error}`,
+            operation: 'resolveOrCreateTagId.resolve'
+          })
+        })
+
+        const tag = found[0]
+        if (!tag) {
+          return yield* Effect.fail(new DatabaseError({
+            message: `Tag upsert failed for key: ${normalizedTag.key}`,
+            operation: 'resolveOrCreateTagId.final'
+          }))
+        }
+
+        return tag.id
+      })
+
+    const linkSystemTag = (bookId: string, tagId: string, client = dbService.db) =>
+      Effect.tryPromise({
+        try: () => client
+          .insert(bookSystemTags)
+          .values({
+            bookId,
+            tagId,
+            createdAt: new Date(),
+            updatedAt: new Date()
+          })
+          .onConflictDoNothing(),
+        catch: error => new DatabaseError({
+          message: `Failed to link system tag to book: ${error}`,
+          operation: 'linkSystemTag'
+        })
+      })
+
+    const hydrateSystemTagsForBook = (bookId: string, subjects: string[]) =>
+      Effect.gen(function* () {
+        const suggestedTags = normalizeSuggestedTags(subjects)
+        for (const suggestedTag of suggestedTags) {
+          const tagId = yield* resolveOrCreateTagId(suggestedTag)
+          yield* linkSystemTag(bookId, tagId)
+        }
+      })
+
+    const linkUserTag = (userBookId: string, tagId: string, client = dbService.db) =>
+      Effect.tryPromise({
+        try: () => client
+          .insert(userBookTags)
+          .values({
+            id: generateId(),
+            userBookId,
+            tagId,
+            createdAt: new Date(),
+            updatedAt: new Date()
+          })
+          .onConflictDoNothing(),
+        catch: error => new DatabaseError({
+          message: `Failed to link user tag to user book: ${error}`,
+          operation: 'linkUserTag'
+        })
+      })
+
+    const hydrateUserTagsByUserBookIds = (userBookIds: string[]) =>
+      Effect.gen(function* () {
+        if (userBookIds.length === 0) return new Map<string, string[]>()
+
+        const rows = yield* Effect.tryPromise({
+          try: () => dbService.db
+            .select({
+              userBookId: userBookTags.userBookId,
+              tagName: tags.name
+            })
+            .from(userBookTags)
+            .innerJoin(tags, eq(userBookTags.tagId, tags.id))
+            .where(inArray(userBookTags.userBookId, userBookIds)),
+          catch: error => new DatabaseError({
+            message: `Failed to load user tags: ${error}`,
+            operation: 'hydrateUserTagsByUserBookIds'
+          })
+        })
+
+        const tagMap = new Map<string, string[]>()
+        for (const row of rows) {
+          const list = tagMap.get(row.userBookId) || []
+          list.push(row.tagName)
+          tagMap.set(row.userBookId, list)
+        }
+
+        return tagMap
+      })
+
+    const getOwnedUserBookRef = (userBookId: string, userId: string, client = dbService.db) =>
+      Effect.gen(function* () {
+        const row = yield* Effect.tryPromise({
+          try: () => client
+            .select({
+              userBookId: userBooks.id,
+              bookId: userBooks.bookId
+            })
+            .from(userBooks)
+            .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId)))
+            .limit(1),
+          catch: error => new DatabaseError({
+            message: `Failed to validate user book ownership: ${error}`,
+            operation: 'getOwnedUserBookRef'
+          })
+        })
+
+        const owned = row[0]
+        if (!owned) {
+          return yield* Effect.fail(new BookNotFoundError({ bookId: userBookId }))
+        }
+
+        return owned as OwnedUserBookRef
+      })
 
     return {
       addBookByISBN: (userId, isbn) =>
@@ -131,10 +335,11 @@ export const BookRepositoryLive = Layer.effect(
           })
 
           let book = bookResult[0] || null
+          let openLibraryData
 
           // If book doesn't exist, fetch from OpenLibrary and create it
           if (!book) {
-            const openLibraryData = yield* lookupByISBN(isbn)
+            openLibraryData = yield* lookupByISBN(isbn)
 
             // Download cover to local storage
             const coverPath = yield* downloadCover(isbn, 'L')
@@ -151,7 +356,6 @@ export const BookRepositoryLive = Layer.effect(
               openLibraryKey: openLibraryData.openLibraryKey,
               workKey: openLibraryData.workKey || null,
               description: openLibraryData.description || null,
-              subjects: openLibraryData.subjects ? JSON.stringify(openLibraryData.subjects) : null,
               publishDate: openLibraryData.publishDate || null,
               publishers: openLibraryData.publishers?.join(', ') || null,
               numberOfPages: openLibraryData.numberOfPages || null,
@@ -163,7 +367,15 @@ export const BookRepositoryLive = Layer.effect(
               catch: error => new BookCreateError({ message: `Failed to insert book: ${error}` })
             })
 
+            // Hydrate system tags for newly-inserted book
+            yield* hydrateSystemTagsForBook(newBookId, openLibraryData.subjects || [])
+
             book = newBook
+          } else {
+            // Reusing existing book: fetch OpenLibrary data to ensure system tags are hydrated
+            openLibraryData = yield* lookupByISBN(isbn)
+            // Idempotently hydrate system tags for the existing book (safe if already linked via onConflictDoNothing)
+            yield* hydrateSystemTagsForBook(book.id, openLibraryData.subjects || [])
           }
 
           // Create userBooks entry
@@ -193,6 +405,7 @@ export const BookRepositoryLive = Layer.effect(
               openLibraryKey: book.openLibraryKey,
               createdAt: book.createdAt
             },
+            tags: [],
             addedAt
           }
         }),
@@ -201,6 +414,35 @@ export const BookRepositoryLive = Layer.effect(
         Effect.gen(function* () {
           const { page, pageSize } = pagination
           const offset = (page - 1) * pageSize
+          const normalizedSearch = pagination.search?.trim().toLowerCase()
+          const hasSearch = Boolean(normalizedSearch)
+          const likePattern = `%${normalizedSearch}%`
+
+          const searchCondition = hasSearch
+            ? or(
+                sql`lower(${books.title}) like ${likePattern}`,
+                sql`lower(${books.author}) like ${likePattern}`,
+                sql`lower(coalesce(${books.isbn}, '')) like ${likePattern}`,
+                exists(
+                  dbService.db
+                    .select({ value: sql`1` })
+                    .from(userBookTags)
+                    .innerJoin(tags, eq(userBookTags.tagId, tags.id))
+                    .where(and(eq(userBookTags.userBookId, userBooks.id), sql`lower(${tags.name}) like ${likePattern}`))
+                ),
+                exists(
+                  dbService.db
+                    .select({ value: sql`1` })
+                    .from(bookSystemTags)
+                    .innerJoin(tags, eq(bookSystemTags.tagId, tags.id))
+                    .where(and(eq(bookSystemTags.bookId, books.id), sql`lower(${tags.name}) like ${likePattern}`))
+                )
+              )
+            : undefined
+
+          const whereClause = hasSearch
+            ? and(eq(userBooks.userId, userId), searchCondition)
+            : eq(userBooks.userId, userId)
 
           // Get total count
           const countResult = yield* Effect.tryPromise({
@@ -208,7 +450,8 @@ export const BookRepositoryLive = Layer.effect(
               dbService.db
                 .select({ count: count() })
                 .from(userBooks)
-                .where(eq(userBooks.userId, userId)),
+                .innerJoin(books, eq(userBooks.bookId, books.id))
+                .where(whereClause),
             catch: error => new DatabaseError({
               message: `Failed to count library items: ${error}`,
               operation: 'getLibrary.count'
@@ -225,7 +468,7 @@ export const BookRepositoryLive = Layer.effect(
                 .select()
                 .from(userBooks)
                 .innerJoin(books, eq(userBooks.bookId, books.id))
-                .where(eq(userBooks.userId, userId))
+                .where(whereClause)
                 .orderBy(desc(userBooks.addedAt))
                 .limit(pageSize)
                 .offset(offset),
@@ -234,6 +477,9 @@ export const BookRepositoryLive = Layer.effect(
               operation: 'getLibrary.items'
             })
           })
+
+          const userBookIds = result.map(row => row.user_books.id)
+          const userTagsByUserBook = yield* hydrateUserTagsByUserBookIds(userBookIds)
 
           const items = result.map(row => ({
             id: row.user_books.id,
@@ -247,6 +493,7 @@ export const BookRepositoryLive = Layer.effect(
               openLibraryKey: row.books.openLibraryKey,
               createdAt: row.books.createdAt
             },
+            tags: userTagsByUserBook.get(row.user_books.id) || [],
             addedAt: row.user_books.addedAt
           }))
 
@@ -329,15 +576,38 @@ export const BookRepositoryLive = Layer.effect(
           return result[0] || null
         }),
 
+      getSystemTagsByBookId: bookId =>
+        Effect.gen(function* () {
+          const rows = yield* Effect.tryPromise({
+            try: () => dbService.db
+              .select({
+                id: tags.id,
+                name: tags.name
+              })
+              .from(bookSystemTags)
+              .innerJoin(tags, eq(bookSystemTags.tagId, tags.id))
+              .where(eq(bookSystemTags.bookId, bookId))
+              .orderBy(tags.name),
+            catch: error => new DatabaseError({
+              message: `Failed to get system tags: ${error}`,
+              operation: 'getSystemTagsByBookId'
+            })
+          })
+
+          return rows
+        }),
+
       getUserBookWithDetails: (userBookId, userId) =>
         Effect.gen(function* () {
+          const ref = yield* getOwnedUserBookRef(userBookId, userId)
+
           const result = yield* Effect.tryPromise({
             try: () =>
               dbService.db
                 .select()
                 .from(userBooks)
                 .innerJoin(books, eq(userBooks.bookId, books.id))
-                .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId)))
+                .where(and(eq(userBooks.id, ref.userBookId), eq(userBooks.userId, userId)))
                 .limit(1),
             catch: error => new DatabaseError({
               message: `Failed to get book details: ${error}`,
@@ -350,6 +620,54 @@ export const BookRepositoryLive = Layer.effect(
             return yield* Effect.fail(new BookNotFoundError({ bookId: userBookId }))
           }
 
+          const userTagRows = yield* Effect.tryPromise({
+            try: () => dbService.db
+              .select({
+                id: tags.id,
+                name: tags.name
+              })
+              .from(userBookTags)
+              .innerJoin(tags, eq(userBookTags.tagId, tags.id))
+              .where(eq(userBookTags.userBookId, ref.userBookId))
+              .orderBy(tags.name),
+            catch: error => new DatabaseError({
+              message: `Failed to load user tags: ${error}`,
+              operation: 'getUserBookWithDetails.userTags'
+            })
+          })
+
+          const userTagIds = userTagRows.map(tag => tag.id)
+
+          const suggestedRows = yield* Effect.tryPromise({
+            try: () => {
+              if (userTagIds.length === 0) {
+                return dbService.db
+                  .select({
+                    id: tags.id,
+                    name: tags.name
+                  })
+                  .from(bookSystemTags)
+                  .innerJoin(tags, eq(bookSystemTags.tagId, tags.id))
+                  .where(eq(bookSystemTags.bookId, ref.bookId))
+                  .orderBy(tags.name)
+              }
+
+              return dbService.db
+                .select({
+                  id: tags.id,
+                  name: tags.name
+                })
+                .from(bookSystemTags)
+                .innerJoin(tags, eq(bookSystemTags.tagId, tags.id))
+                .where(and(eq(bookSystemTags.bookId, ref.bookId), notInArray(bookSystemTags.tagId, userTagIds)))
+                .orderBy(tags.name)
+            },
+            catch: error => new DatabaseError({
+              message: `Failed to load suggested tags: ${error}`,
+              operation: 'getUserBookWithDetails.suggestedTags'
+            })
+          })
+
           const bookData = row.books
 
           return {
@@ -360,7 +678,8 @@ export const BookRepositoryLive = Layer.effect(
             isbn: bookData.isbn,
             coverPath: bookData.coverPath,
             description: bookData.description ?? null,
-            subjects: bookData.subjects ? JSON.parse(bookData.subjects) : null,
+            userTags: userTagRows,
+            suggestedTags: suggestedRows,
             publishDate: bookData.publishDate ?? null,
             publishers: bookData.publishers ?? null,
             numberOfPages: bookData.numberOfPages ?? null,
@@ -368,6 +687,228 @@ export const BookRepositoryLive = Layer.effect(
             workKey: bookData.workKey ?? null,
             addedAt: row.user_books.addedAt
           }
+        }),
+
+      promoteSuggestedTag: (userBookId, userId, tagId) =>
+        Effect.gen(function* () {
+          const ref = yield* getOwnedUserBookRef(userBookId, userId)
+
+          const exists = yield* Effect.tryPromise({
+            try: () => dbService.db
+              .select({
+                tagId: bookSystemTags.tagId
+              })
+              .from(bookSystemTags)
+              .where(and(eq(bookSystemTags.bookId, ref.bookId), eq(bookSystemTags.tagId, tagId)))
+              .limit(1),
+            catch: error => new DatabaseError({
+              message: `Failed to verify system tag: ${error}`,
+              operation: 'promoteSuggestedTag.exists'
+            })
+          })
+
+          if (!exists[0]) {
+            return yield* Effect.fail(new BookNotFoundError({ bookId: userBookId }))
+          }
+
+          yield* linkUserTag(ref.userBookId, tagId)
+        }),
+
+      addUserTag: (userBookId, userId, name) =>
+        Effect.gen(function* () {
+          const normalized = normalizeTagInput(name)
+          if (!normalized) {
+            return yield* Effect.fail(new InvalidTagError({ message: 'Tag is empty or invalid' }))
+          }
+
+          const ref = yield* getOwnedUserBookRef(userBookId, userId)
+          const tagId = yield* resolveOrCreateTagId(normalized)
+
+          yield* linkUserTag(ref.userBookId, tagId)
+
+          const result = yield* Effect.tryPromise({
+            try: () => dbService.db
+              .select({ id: tags.id, name: tags.name })
+              .from(tags)
+              .where(eq(tags.id, tagId))
+              .limit(1),
+            catch: error => new DatabaseError({
+              message: `Failed to load created tag: ${error}`,
+              operation: 'addUserTag.load'
+            })
+          })
+
+          const created = result[0]
+          if (!created) {
+            return yield* Effect.fail(new DatabaseError({
+              message: 'Tag created but not found afterwards',
+              operation: 'addUserTag.final'
+            }))
+          }
+
+          return created
+        }),
+
+      batchUpdateTags: (userBookId, userId, deleteIds, promoteIds, createNames) =>
+        Effect.tryPromise({
+          try: async () => {
+            await dbService.db.transaction(async (tx) => {
+              const ownedRows = await tx
+                .select({
+                  userBookId: userBooks.id,
+                  bookId: userBooks.bookId
+                })
+                .from(userBooks)
+                .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId)))
+                .limit(1)
+
+              const owned = ownedRows[0]
+              if (!owned) {
+                throw new BookNotFoundError({ bookId: userBookId })
+              }
+
+              const uniqueDeleteIds = [...new Set(deleteIds)]
+              const uniquePromoteIds = [...new Set(promoteIds)]
+              const uniqueCreateNames = [...new Set(createNames.map(name => name.trim()).filter(Boolean))]
+
+              for (const tagId of uniqueDeleteIds) {
+                await tx
+                  .delete(userBookTags)
+                  .where(and(eq(userBookTags.userBookId, owned.userBookId), eq(userBookTags.tagId, tagId)))
+              }
+
+              for (const tagId of uniquePromoteIds) {
+                const systemTag = await tx
+                  .select({ tagId: bookSystemTags.tagId })
+                  .from(bookSystemTags)
+                  .where(and(eq(bookSystemTags.bookId, owned.bookId), eq(bookSystemTags.tagId, tagId)))
+                  .limit(1)
+
+                if (!systemTag[0]) {
+                  throw new BookNotFoundError({ bookId: userBookId })
+                }
+
+                await tx
+                  .insert(userBookTags)
+                  .values({
+                    id: generateId(),
+                    userBookId: owned.userBookId,
+                    tagId,
+                    createdAt: new Date(),
+                    updatedAt: new Date()
+                  })
+                  .onConflictDoNothing()
+              }
+
+              for (const name of uniqueCreateNames) {
+                const normalized = normalizeTagInput(name)
+                if (!normalized) {
+                  throw new InvalidTagError({ message: 'Tag is empty or invalid' })
+                }
+
+                const existing = await tx
+                  .select({ id: tags.id })
+                  .from(tags)
+                  .where(eq(tags.normalizedName, normalized.key))
+                  .limit(1)
+
+                let tagId = existing[0]?.id ?? null
+
+                if (!tagId) {
+                  const newTagId = generateId()
+
+                  await tx
+                    .insert(tags)
+                    .values({
+                      id: newTagId,
+                      name: normalized.displayName,
+                      normalizedName: normalized.key,
+                      createdAt: new Date(),
+                      updatedAt: new Date()
+                    })
+                    .onConflictDoNothing()
+
+                  const found = await tx
+                    .select({ id: tags.id })
+                    .from(tags)
+                    .where(eq(tags.normalizedName, normalized.key))
+                    .limit(1)
+
+                  tagId = found[0]?.id ?? null
+                }
+
+                if (!tagId) {
+                  throw new DatabaseError({
+                    message: `Tag upsert failed for key: ${normalized.key}`,
+                    operation: 'batchUpdateTags.create'
+                  })
+                }
+
+                await tx
+                  .insert(userBookTags)
+                  .values({
+                    id: generateId(),
+                    userBookId: owned.userBookId,
+                    tagId,
+                    createdAt: new Date(),
+                    updatedAt: new Date()
+                  })
+                  .onConflictDoNothing()
+              }
+            })
+          },
+          catch: (error) => {
+            if (error instanceof BookNotFoundError || error instanceof InvalidTagError || error instanceof DatabaseError) {
+              return error
+            }
+
+            return new DatabaseError({
+              message: `Failed to batch update tags: ${error}`,
+              operation: 'batchUpdateTags'
+            })
+          }
+        }),
+
+      deleteTag: (userBookId, userId, tagId) =>
+        Effect.gen(function* () {
+          const ref = yield* getOwnedUserBookRef(userBookId, userId)
+
+          // Delete the user tag reference
+          const deleted = yield* Effect.tryPromise({
+            try: () => dbService.db
+              .delete(userBookTags)
+              .where(and(eq(userBookTags.userBookId, ref.userBookId), eq(userBookTags.tagId, tagId)))
+              .returning(),
+            catch: error => new DatabaseError({
+              message: `Failed to remove tag from user book: ${error}`,
+              operation: 'deleteTag.remove'
+            })
+          })
+
+          if (deleted.length === 0) {
+            return yield* Effect.succeed(undefined)
+          }
+
+          // Atomically check for any remaining references and delete the tag if none exist
+          yield* Effect.tryPromise({
+            try: () =>
+              dbService.db.transaction(async (tx) => {
+                // Delete tag only if no references exist in either table (atomic operation)
+                await tx
+                  .delete(tags)
+                  .where(
+                    and(
+                      eq(tags.id, tagId),
+                      sql`NOT EXISTS (SELECT 1 FROM ${userBookTags} WHERE ${eq(userBookTags.tagId, tagId)})`,
+                      sql`NOT EXISTS (SELECT 1 FROM ${bookSystemTags} WHERE ${eq(bookSystemTags.tagId, tagId)})`
+                    )
+                  )
+              }),
+            catch: error => new DatabaseError({
+              message: `Failed to garbage collect tag: ${error}`,
+              operation: 'deleteTag.gc'
+            })
+          })
         })
     }
   })
@@ -377,7 +918,7 @@ export const BookRepositoryLive = Layer.effect(
 export const addBookByISBN = (userId: string, isbn: string) =>
   Effect.flatMap(BookRepository, repo => repo.addBookByISBN(userId, isbn))
 
-export const getLibrary = (userId: string, pagination: PaginationParams) =>
+export const getLibrary = (userId: string, pagination: PaginationParams & { search?: string }) =>
   Effect.flatMap(BookRepository, repo => repo.getLibrary(userId, pagination))
 
 export const getBookById = (bookId: string) =>
@@ -388,6 +929,9 @@ export const removeFromLibrary = (userBookId: string, userId: string) =>
 
 export const findByIsbn = (isbn: string) =>
   Effect.flatMap(BookRepository, repo => repo.findByIsbn(isbn))
+
+export const getSystemTagsByBookId = (bookId: string) =>
+  Effect.flatMap(BookRepository, repo => repo.getSystemTagsByBookId(bookId))
 
 export const getUserBookWithDetails = (userBookId: string, userId: string) =>
   Effect.flatMap(BookRepository, repo => repo.getUserBookWithDetails(userBookId, userId))

@@ -60,6 +60,7 @@ const errorStatusCodes: Record<string, number> = {
   BookAlreadyOwnedError: 409,
   OpenLibraryApiError: 502,
   BookCreateError: 500,
+  InvalidTagError: 400,
   DatabaseError: 500,
   StorageError: 500
 }

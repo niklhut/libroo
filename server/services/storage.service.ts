@@ -1,4 +1,5 @@
 import { Context, Effect, Layer, Data } from 'effect'
+import { blob } from '@nuxthub/blob'
 
 // Error types
 export class StorageError extends Data.TaggedError('StorageError')<{

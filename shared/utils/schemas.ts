@@ -1,4 +1,10 @@
 import { z } from 'zod'
+import {
+  normalizeTagInputText,
+  TAG_INPUT_ALLOWED_CHARACTERS,
+  TAG_INPUT_MAX_LENGTH,
+  TAG_INPUT_MIN_LENGTH
+} from './tag-ingestion'
 
 /**
  * Validate ISBN-10 check digit
@@ -116,3 +122,20 @@ export const bookBatchDeleteSchema = z.object({
 })
 
 export type BookBatchDeleteSchema = z.infer<typeof bookBatchDeleteSchema>
+
+export const bookTagAddSchema = z.object({
+  name: z.string({ error: 'Tag name is required' })
+    .transform(value => normalizeTagInputText(value))
+    .pipe(
+      z.string()
+        .min(TAG_INPUT_MIN_LENGTH, { error: 'Tag name is too short' })
+        .max(TAG_INPUT_MAX_LENGTH, { error: 'Tag name is too long' })
+        .refine(value => !value.toLowerCase().startsWith('nyt:'), { error: 'Tag name is invalid' })
+        .refine(value => !value.toLowerCase().includes('http://') && !value.toLowerCase().includes('https://'), { error: 'Tag name is invalid' })
+        .refine(value => !/^\d+$/.test(value), { error: 'Tag name must contain a letter' })
+        .refine(value => /[a-zA-Z]/.test(value), { error: 'Tag name must contain a letter' })
+        .refine(value => TAG_INPUT_ALLOWED_CHARACTERS.test(value), { error: 'Tag name contains invalid characters' })
+    )
+})
+
+export type BookTagAddSchema = z.infer<typeof bookTagAddSchema>

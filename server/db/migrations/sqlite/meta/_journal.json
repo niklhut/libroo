@@ -22,6 +22,20 @@
       "when": 1767736034504,
       "tag": "0002_jazzy_gauntlet",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1775251200000,
+      "tag": "0003_relational_tags",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1775252100000,
+      "tag": "0004_user_private_tags",
+      "breakpoints": true
     }
   ]
 }
