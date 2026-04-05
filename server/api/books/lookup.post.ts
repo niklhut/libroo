@@ -1,6 +1,6 @@
 import { Effect } from 'effect'
 
-export default effectHandler((event, _user) =>
+export default effectHandler((event, user) =>
   Effect.gen(function* () {
     // Read request body
     const body = yield* Effect.tryPromise({
@@ -9,6 +9,6 @@ export default effectHandler((event, _user) =>
     })
 
     // Lookup book via BookService (handles local DB check and OpenLibrary fallback)
-    return yield* lookupBook(body.isbn)
+    return yield* lookupBook(user.id, body.isbn)
   })
 )

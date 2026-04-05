@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { getAvailableSuggestedTags } from '../utils/tag-manager'
+import { normalizeTagInputText, toSensibleTitleCase } from '../../shared/utils/tag-ingestion'
 
 interface WorkingTag extends BookTag {
   isCustom?: boolean
@@ -26,6 +27,7 @@ const isSaving = ref(false)
 
 const workingUserTags = ref<WorkingTag[]>([])
 const allSuggestedTags = ref<BookTag[]>([])
+const releasedSuggestedTags = ref<BookTag[]>([])
 
 const modalOpen = computed({
   get: () => props.open,
@@ -49,7 +51,21 @@ const hasChanges = computed(() => {
 })
 
 const availableSuggestedTags = computed(() => {
-  return getAvailableSuggestedTags(allSuggestedTags.value, workingUserTags.value)
+  const uniqueSuggestedById = new Map<string, BookTag>()
+  for (const tag of [...allSuggestedTags.value, ...releasedSuggestedTags.value]) {
+    if (!uniqueSuggestedById.has(tag.id)) {
+      uniqueSuggestedById.set(tag.id, tag)
+    }
+  }
+
+  return getAvailableSuggestedTags(
+    [...uniqueSuggestedById.values()],
+    workingUserTags.value
+  )
+})
+
+const canAddCustomTag = computed(() => {
+  return normalizeTagInputText(customTagInput.value).length > 0
 })
 
 function normalizeTagName(name: string): string {
@@ -59,6 +75,7 @@ function normalizeTagName(name: string): string {
 function initializeState() {
   workingUserTags.value = props.userTags.map(tag => ({ ...tag }))
   allSuggestedTags.value = props.suggestedTags.map(tag => ({ ...tag }))
+  releasedSuggestedTags.value = []
   customTagInput.value = ''
 }
 
@@ -79,13 +96,21 @@ function addSuggestedTag(tag: BookTag) {
 
 function removeUserTag(tag: WorkingTag) {
   workingUserTags.value = workingUserTags.value.filter(item => item.id !== tag.id)
+
+  if (!tag.isCustom && !releasedSuggestedTags.value.some(item => item.id === tag.id)) {
+    releasedSuggestedTags.value.push({ id: tag.id, name: tag.name })
+  }
 }
 
 function addCustomTag() {
-  const raw = customTagInput.value.trim()
-  if (!raw) return
+  const raw = customTagInput.value
+  const canonical = normalizeTagInputText(raw)
+  if (!canonical) {
+    customTagInput.value = ''
+    return
+  }
 
-  const normalized = normalizeTagName(raw)
+  const normalized = normalizeTagName(canonical)
   const alreadyInUserTags = workingUserTags.value.some(tag => normalizeTagName(tag.name) === normalized)
   if (alreadyInUserTags) {
     customTagInput.value = ''
@@ -99,9 +124,11 @@ function addCustomTag() {
     return
   }
 
+  const displayName = toSensibleTitleCase(canonical)
+
   workingUserTags.value.push({
     id: `custom:${crypto.randomUUID()}`,
-    name: raw,
+    name: displayName,
     isCustom: true
   })
   customTagInput.value = ''
@@ -207,7 +234,7 @@ async function saveChanges() {
             />
             <UButton
               icon="i-lucide-plus"
-              :disabled="!customTagInput.trim()"
+              :disabled="!canAddCustomTag"
               @click="addCustomTag"
             >
               Add
@@ -219,32 +246,23 @@ async function saveChanges() {
 
         <div>
           <h3 class="text-sm font-medium mb-2">
-            Preview User Tags
+            Selected Tags
           </h3>
           <div
             v-if="workingUserTags.length > 0"
             class="flex flex-wrap gap-2"
           >
-            <div
+            <UButton
               v-for="tag in workingUserTags"
               :key="tag.id"
-              class="inline-flex items-center gap-1"
+              color="primary"
+              variant="subtle"
+              size="xs"
+              trailing-icon="i-lucide-x"
+              @click="removeUserTag(tag)"
             >
-              <UBadge
-                color="primary"
-                variant="subtle"
-                size="md"
-              >
-                {{ tag.name }}
-              </UBadge>
-              <UButton
-                color="neutral"
-                variant="ghost"
-                size="xs"
-                icon="i-lucide-x"
-                @click="removeUserTag(tag)"
-              />
-            </div>
+              {{ tag.name }}
+            </UButton>
           </div>
           <p
             v-else

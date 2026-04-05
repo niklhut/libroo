@@ -84,6 +84,7 @@ export interface BookServiceInterface {
   ) => Effect.Effect<void, BookNotFoundError | DatabaseError, DbService>
 
   lookupBook: (
+    userId: string,
     isbn: string
   ) => Effect.Effect<
     BookLookupResult,
@@ -156,9 +157,10 @@ export const BookServiceLive = Layer.effect(
       getBookDetails: (userBookId, userId) =>
         bookRepo.getUserBookWithDetails(userBookId, userId),
 
-      lookupBook: isbn =>
+      lookupBook: (userId, isbn) =>
         Effect.gen(function* () {
           const normalizedISBN = isbn.replace(/[-\s]/g, '')
+          const existsInUserLibrary = yield* bookRepo.hasBookInUserLibrary(userId, normalizedISBN)
 
           // First check if book exists locally
           const localBook = yield* bookRepo.findByIsbn(normalizedISBN)
@@ -177,7 +179,7 @@ export const BookServiceLive = Layer.effect(
               publishDate: localBook.publishDate ?? undefined,
               publishers: localBook.publishers ? localBook.publishers.split(', ') : null,
               numberOfPages: localBook.numberOfPages ?? undefined,
-              existsLocally: true
+              existsLocally: existsInUserLibrary
             } satisfies BookLookupResult
           }
 
@@ -243,8 +245,8 @@ export const batchRemoveFromLibrary = (ids: string[], userId: string) =>
 export const getBookDetails = (userBookId: string, userId: string) =>
   Effect.flatMap(BookService, service => service.getBookDetails(userBookId, userId))
 
-export const lookupBook = (isbn: string) =>
-  Effect.flatMap(BookService, service => service.lookupBook(isbn))
+export const lookupBook = (userId: string, isbn: string) =>
+  Effect.flatMap(BookService, service => service.lookupBook(userId, isbn))
 
 export const promoteSuggestedTag = (userBookId: string, userId: string, tagId: string) =>
   Effect.flatMap(BookService, service => service.promoteSuggestedTag(userBookId, userId, tagId))
