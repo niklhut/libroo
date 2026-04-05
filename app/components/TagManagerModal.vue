@@ -16,7 +16,7 @@ const props = defineProps<Props>()
 
 const emit = defineEmits<{
   'update:open': [open: boolean]
-  saved: []
+  'saved': []
 }>()
 
 const toast = useToast()

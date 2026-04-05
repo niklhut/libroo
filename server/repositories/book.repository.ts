@@ -399,24 +399,24 @@ export const BookRepositoryLive = Layer.effect(
 
           const searchCondition = hasSearch
             ? or(
-              sql`lower(${books.title}) like ${likePattern}`,
-              sql`lower(${books.author}) like ${likePattern}`,
-              sql`lower(coalesce(${books.isbn}, '')) like ${likePattern}`,
-              sql`exists (
+                sql`lower(${books.title}) like ${likePattern}`,
+                sql`lower(${books.author}) like ${likePattern}`,
+                sql`lower(coalesce(${books.isbn}, '')) like ${likePattern}`,
+                sql`exists (
                 select 1
                 from user_book_tags ubt
                 inner join tags t on t.id = ubt.tag_id
                 where ubt.user_book_id = ${userBooks.id}
                 and lower(t.name) like ${likePattern}
               )`,
-              sql`exists (
+                sql`exists (
                 select 1
                 from book_system_tags bst
                 inner join tags t on t.id = bst.tag_id
                 where bst.book_id = ${books.id}
                 and lower(t.name) like ${likePattern}
               )`
-            )
+              )
             : undefined
 
           const whereClause = hasSearch

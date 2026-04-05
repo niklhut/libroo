@@ -336,7 +336,6 @@ function getStatusText(status: ScannedBook['status']) {
               {{ book.result.publishers.join(', ') }}
             </UBadge>
           </div>
-
         </div>
       </div>
     </div>

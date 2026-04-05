@@ -21,7 +21,7 @@ export function toSensibleTitleCase(value: string): string {
   return collapseWhitespace(value)
     .split(' ')
     .map((chunk) => {
-      const parts = chunk.split(/([\/-])/)
+      const parts = chunk.split(/([/-])/)
       return parts.map((part) => {
         if (part === '/' || part === '-') return part
         return capitalizeWord(part)
@@ -32,7 +32,7 @@ export function toSensibleTitleCase(value: string): string {
 
 export function normalizeTagInput(input: string): NormalizedTag | null {
   const cleaned = collapseWhitespace(input)
-    .replace(/^[-,.;:!?()\[\]{}"']+|[-,.;:!?()\[\]{}"']+$/g, '')
+    .replace(/^[-,.;:!?()[\]{}"']+|[-,.;:!?()[\]{}"']+$/g, '')
 
   if (!cleaned) return null
 
@@ -64,7 +64,7 @@ function looksLikeLibraryCallNumber(value: string): boolean {
 
 export function normalizeSystemTagSegment(segment: string): NormalizedTag | null {
   const cleaned = collapseWhitespace(segment)
-    .replace(/^[-,.;:!?()\[\]{}"']+|[-,.;:!?()\[\]{}"']+$/g, '')
+    .replace(/^[-,.;:!?()[\]{}"']+|[-,.;:!?()[\]{}"']+$/g, '')
 
   if (!cleaned) return null
 
