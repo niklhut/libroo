@@ -1,7 +1,7 @@
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
-import * as schema from 'hub:db:schema'
-import { db } from 'hub:db'
+import * as schema from '@nuxthub/db/schema'
+import { db } from '@nuxthub/db'
 
 interface EnvSecretOptions {
   envKey: string

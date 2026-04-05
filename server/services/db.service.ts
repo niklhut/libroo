@@ -1,5 +1,5 @@
 import { Context, Effect, Layer } from 'effect'
-import { db } from 'hub:db'
+import { db } from '@nuxthub/db'
 
 // Service interface
 export interface DbServiceInterface {
