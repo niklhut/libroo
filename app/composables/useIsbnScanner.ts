@@ -13,6 +13,7 @@ export interface ScannedBook {
 
 export function useIsbnScanner() {
   const toast = useToast()
+  const { getLoadedPages, markNeedsSync } = useLibraryDashboardState()
 
   const scannedBooks = ref<ScannedBook[]>([])
   const isLookingUp = ref(false)
@@ -219,6 +220,10 @@ export function useIsbnScanner() {
           description: `Could not add ${failed.length} book${failed.length > 1 ? 's' : ''}`,
           color: 'error'
         })
+      }
+
+      if (success.length > 0) {
+        markNeedsSync(getLoadedPages())
       }
 
       return { success, failed }

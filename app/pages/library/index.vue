@@ -14,40 +14,90 @@ interface PaginatedResponse {
 
 const toast = useToast()
 
+const {
+  page,
+  pageSize,
+  allBooks,
+  pagination: paginationState,
+  scrollY,
+  shouldRestoreScroll,
+  shouldSync,
+  syncTargetPages,
+  removeBooks,
+  getLoadedPages,
+  clearNeedsSync
+} = useLibraryDashboardState()
+
 // Pagination state
-const page = ref(1)
-const pageSize = ref(12)
 const isLoadingMore = ref(false)
 
 // Selection state
 const isSelectMode = ref(false)
 const selectedBooks = shallowRef<Set<string>>(new Set())
 
+const shouldFetchInitial = allBooks.value.length === 0 || !paginationState.value
+
 // Fetch books with pagination
 const { data, refresh, status } = await useFetch<PaginatedResponse>('/api/books', {
   headers: useRequestHeaders(['cookie']),
+  immediate: shouldFetchInitial,
   query: computed(() => ({
     page: page.value,
     pageSize: pageSize.value
   }))
 })
 
-// Accumulated books
-const allBooks = ref<LibraryBook[]>([])
-
 watch(data, (response) => {
   if (!response) return
+
+  paginationState.value = response.pagination
 
   if (page.value === 1) {
     allBooks.value = [...response.items]
   } else {
-    allBooks.value.push(...response.items)
+    const existingIds = new Set(allBooks.value.map(book => book.id))
+    const newItems = response.items.filter(book => !existingIds.has(book.id))
+    allBooks.value.push(...newItems)
   }
 }, { immediate: true })
 
+onMounted(() => {
+  const syncAndRestore = async () => {
+    if (shouldSync.value) {
+      await syncLoadedPages(syncTargetPages.value)
+
+      clearNeedsSync()
+    }
+
+    if (!shouldRestoreScroll.value) return
+
+    nextTick(() => {
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: scrollY.value, behavior: 'auto' })
+        shouldRestoreScroll.value = false
+      })
+    })
+  }
+
+  void syncAndRestore()
+})
+
+onBeforeRouteLeave((to) => {
+  const isOpeningBookDetails = /^\/library\/[^/]+$/.test(to.path)
+
+  if (isOpeningBookDetails) {
+    scrollY.value = window.scrollY
+    shouldRestoreScroll.value = true
+    return
+  }
+
+  scrollY.value = 0
+  shouldRestoreScroll.value = false
+})
+
 // Computed values
 const books = computed(() => allBooks.value)
-const pagination = computed(() => data.value?.pagination)
+const pagination = computed(() => paginationState.value)
 const hasBooks = computed(() => books.value.length > 0)
 const selectedCount = computed(() => selectedBooks.value.size)
 const allSelected = computed(() => books.value.length > 0 && selectedBooks.value.size === books.value.length)
@@ -90,6 +140,18 @@ async function loadMore() {
     } finally {
       isLoadingMore.value = false
     }
+  }
+}
+
+async function syncLoadedPages(targetPages: number) {
+  const normalizedTargetPages = Math.max(1, targetPages)
+  page.value = 1
+  await refresh()
+
+  for (let currentPage = 2; currentPage <= normalizedTargetPages; currentPage++) {
+    if (!paginationState.value?.hasMore) break
+    page.value = currentPage
+    await refresh()
   }
 }
 
@@ -140,11 +202,10 @@ async function deleteSelected() {
       })
     }
 
-    // Refresh if any changes made
-    // The user requested to call refresh() after handling partial results
+    // Keep dashboard state intact while removing deleted books from cache
     if (removedIds.length > 0) {
-      page.value = 1
-      await refresh()
+      removeBooks(removedIds)
+      await syncLoadedPages(getLoadedPages())
     }
   } catch (err: unknown) {
     const message = err instanceof Error
@@ -176,7 +237,7 @@ async function deleteSelected() {
           color="neutral"
           variant="outline"
           icon="i-lucide-check-square"
-          class="min-w-[100px]"
+          class="min-w-25"
           @click="toggleSelectMode"
         >
           {{ isSelectMode ? 'Cancel' : 'Select' }}

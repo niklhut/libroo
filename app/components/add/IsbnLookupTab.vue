@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import type { FormSubmitEvent } from '@nuxt/ui'
+import type { LibraryBook } from '~~/shared/types/book'
 
 const toast = useToast()
+const { addBook, getLoadedPages, markNeedsSync } = useLibraryDashboardState()
 
 const formState = reactive({
   isbn: ''
@@ -51,10 +53,15 @@ async function addBookToLibrary() {
   isAdding.value = true
 
   try {
-    await $fetch('/api/books', {
+    const loadedPagesBeforeAdd = getLoadedPages()
+
+    const addedBook = await $fetch<LibraryBook>('/api/books', {
       method: 'POST',
       body: { isbn: lookupResult.value.isbn }
     })
+
+    addBook(addedBook)
+    markNeedsSync(loadedPagesBeforeAdd)
 
     toast.add({
       title: 'Book added!',
