@@ -1,6 +1,7 @@
 <script setup lang="ts">
 const route = useRoute()
 const toast = useToast()
+const { removeBooks, getLoadedPages, markNeedsSync } = useLibraryDashboardState()
 
 const userBookId = route.params.id as string
 const isDeleting = ref(false)
@@ -56,6 +57,9 @@ async function removeBook() {
     await $fetch(`/api/books/${userBookId}`, {
       method: 'DELETE'
     })
+
+    removeBooks([userBookId])
+    markNeedsSync(getLoadedPages())
 
     toast.add({
       title: 'Book removed',
