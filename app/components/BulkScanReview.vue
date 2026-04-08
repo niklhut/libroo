@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ScannedBook } from '~/composables/useIsbnScanner'
+import type { ScannedBook } from '~/stores/isbnScanner'
 
 defineProps<{
   scannedBooks: ScannedBook[]

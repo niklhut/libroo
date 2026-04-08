@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import type { NavigationMenuItem } from '@nuxt/ui'
+import { storeToRefs } from 'pinia'
 
-const { user, signOut } = useAuth()
+const authStore = useAuthStore()
+const { user } = storeToRefs(authStore)
+const { signOut } = authStore
 
 async function handleSignOut() {
   try {

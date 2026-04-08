@@ -1,32 +1,28 @@
-import { createAuthClient } from 'better-auth/vue'
+import { defineStore } from 'pinia'
+import { computed, unref } from 'vue'
+import { authClient } from '~/utils/auth-client'
 
-export const authClient = createAuthClient()
-
-export const useAuth = () => {
-  // Get the session from the plugin via useNuxtApp()
-  // The plugin initializes useSession(useFetch) once at app startup and provides it
+export const useAuthStore = defineStore('auth', () => {
   const { $authSession } = useNuxtApp()
   const session = $authSession
 
-  // Derived computed refs for convenience
   const user = computed(() => unref(session.data)?.user ?? null)
   const userSession = computed(() => unref(session.data)?.session ?? null)
   const isAuthenticated = computed(() => !!unref(session.data)?.user)
   const isPending = computed(() => {
     const pending = session.isPending
-    // unref handles both Ref<boolean> and plain boolean
     return unref(pending) ?? true
   })
   const error = computed(() => unref(session.error) ?? null)
 
-  const signIn = async (email: string, password: string) => {
+  async function signIn(email: string, password: string) {
     return authClient.signIn.email({
       email,
       password
     })
   }
 
-  const signUp = async (email: string, password: string, name: string) => {
+  async function signUp(email: string, password: string, name: string) {
     return authClient.signUp.email({
       email,
       password,
@@ -34,7 +30,7 @@ export const useAuth = () => {
     })
   }
 
-  const signOut = async () => {
+  async function signOut() {
     await authClient.signOut()
   }
 
@@ -48,4 +44,4 @@ export const useAuth = () => {
     signUp,
     signOut
   }
-}
+})

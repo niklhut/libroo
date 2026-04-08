@@ -7,7 +7,9 @@ definePageMeta({
 })
 
 const route = useRoute()
-const { signUp, user } = useAuth()
+const authStore = useAuthStore()
+const { user } = storeToRefs(authStore)
+const { signUp } = authStore
 const toast = useToast()
 
 const isLoading = ref(false)

@@ -1,14 +1,20 @@
 <script setup lang="ts">
+import { storeToRefs } from 'pinia'
+
 const toast = useToast()
 
 const continuousMode = ref(false)
 const showScanner = ref(false)
 
 // Use composable for both single and continuous modes
+const scannerStore = useIsbnScannerStore()
 const {
   scannedBooks,
   isAddingBooks,
-  counts,
+  counts
+} = storeToRefs(scannerStore)
+
+const {
   addIsbn,
   removeIsbn,
   toggleSelection,
@@ -16,7 +22,7 @@ const {
   deselectAll,
   addSelectedToLibrary,
   clearAll
-} = useIsbnScanner()
+} = scannerStore
 
 // In single mode, the first scanned book is our current lookup result
 const singleScanBook = computed(() =>

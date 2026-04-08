@@ -1,6 +1,8 @@
 import type { LibraryBook } from '~~/shared/types/book'
+import { defineStore } from 'pinia'
+import { ref } from 'vue'
 
-interface DashboardPagination {
+export interface DashboardPagination {
   page: number
   pageSize: number
   totalItems: number
@@ -8,15 +10,15 @@ interface DashboardPagination {
   hasMore: boolean
 }
 
-export function useLibraryDashboardState() {
-  const page = useState<number>('library-dashboard-page', () => 1)
-  const pageSize = useState<number>('library-dashboard-page-size', () => 12)
-  const allBooks = useState<LibraryBook[]>('library-dashboard-books', () => [])
-  const pagination = useState<DashboardPagination | null>('library-dashboard-pagination', () => null)
-  const scrollY = useState<number>('library-dashboard-scroll-y', () => 0)
-  const shouldRestoreScroll = useState<boolean>('library-dashboard-restore-scroll', () => false)
-  const shouldSync = useState<boolean>('library-dashboard-should-sync', () => false)
-  const syncTargetPages = useState<number>('library-dashboard-sync-target-pages', () => 1)
+export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
+  const page = ref(1)
+  const pageSize = ref(12)
+  const allBooks = ref<LibraryBook[]>([])
+  const pagination = ref<DashboardPagination | null>(null)
+  const scrollY = ref(0)
+  const shouldRestoreScroll = ref(false)
+  const shouldSync = ref(false)
+  const syncTargetPages = ref(1)
 
   function getLoadedPages() {
     return Math.max(1, Math.ceil(allBooks.value.length / pageSize.value))
@@ -95,4 +97,4 @@ export function useLibraryDashboardState() {
     markNeedsSync,
     clearNeedsSync
   }
-}
+})

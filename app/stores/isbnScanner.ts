@@ -1,7 +1,7 @@
-/**
- * Composable for managing ISBN scanning and bulk lookup state
- */
-import { extractIsbn } from '~~/shared/utils/schemas'
+import { extractIsbn } from '../../shared/utils/schemas'
+import { defineStore } from 'pinia'
+import { computed, ref } from 'vue'
+import { useLibraryDashboardStore } from './libraryDashboard'
 
 export interface ScannedBook {
   isbn: string
@@ -11,17 +11,14 @@ export interface ScannedBook {
   errorMessage?: string
 }
 
-export function useIsbnScanner() {
+export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
   const toast = useToast()
-  const { getLoadedPages, markNeedsSync } = useLibraryDashboardState()
+  const dashboardStore = useLibraryDashboardStore()
 
   const scannedBooks = ref<ScannedBook[]>([])
   const isLookingUp = ref(false)
   const isAddingBooks = ref(false)
 
-  /**
-   * Extract error message from unknown error type
-   */
   function getErrorMessage(err: unknown, fallback: string): string {
     if (err instanceof Error) {
       return err.message
@@ -29,14 +26,9 @@ export function useIsbnScanner() {
     return (err as { data?: { message?: string } })?.data?.message || fallback
   }
 
-  /**
-   * Add an ISBN to the queue and immediately look it up
-   */
   async function addIsbn(rawIsbn: string) {
-    // Extract valid ISBN from barcode (handles price codes like "9781234567890 59099")
     const normalizedIsbn = extractIsbn(rawIsbn) || rawIsbn.replace(/[-\s]/g, '')
 
-    // Check if already in queue
     if (scannedBooks.value.some(book => book.isbn === normalizedIsbn)) {
       toast.add({
         title: 'Already scanned',
@@ -46,7 +38,6 @@ export function useIsbnScanner() {
       return
     }
 
-    // Add to queue with loading state - unshift to add newest at top
     const newBook: ScannedBook = {
       isbn: normalizedIsbn,
       status: 'loading',
@@ -54,7 +45,6 @@ export function useIsbnScanner() {
     }
     scannedBooks.value.unshift(newBook)
 
-    // Look up the book
     try {
       const result = await $fetch<BookLookupResult>('/api/books/lookup', {
         method: 'POST',
@@ -66,7 +56,6 @@ export function useIsbnScanner() {
         book.result = result
         if (result.found) {
           book.status = result.existsLocally ? 'already_owned' : 'found'
-          // Auto-deselect if already owned
           if (result.existsLocally) {
             book.selected = false
           }
@@ -85,13 +74,7 @@ export function useIsbnScanner() {
     }
   }
 
-  /**
-   * Add multiple ISBNs from text input (comma or newline separated)
-   * Let the backend handle validation - it's the single source of truth
-   */
   async function addMultipleIsbns(text: string) {
-    // Parse text into individual strings (comma, newline, or space separated)
-    // Remove hyphens/spaces but don't validate - backend will handle that
     const inputs = text
       .split(/[\n,\s]+/)
       .map(s => s.trim().replace(/[-\s]/g, ''))
@@ -109,16 +92,12 @@ export function useIsbnScanner() {
     isLookingUp.value = true
 
     try {
-      // Add all inputs in parallel - backend will validate each one
       await Promise.all(inputs.map(isbn => addIsbn(isbn)))
     } finally {
       isLookingUp.value = false
     }
   }
 
-  /**
-   * Remove an ISBN from the queue
-   */
   function removeIsbn(isbn: string) {
     const index = scannedBooks.value.findIndex(b => b.isbn === isbn)
     if (index !== -1) {
@@ -126,9 +105,6 @@ export function useIsbnScanner() {
     }
   }
 
-  /**
-   * Toggle selection of a book
-   */
   function toggleSelection(isbn: string) {
     const book = scannedBooks.value.find(b => b.isbn === isbn)
     if (book && book.status === 'found') {
@@ -136,9 +112,6 @@ export function useIsbnScanner() {
     }
   }
 
-  /**
-   * Select all available books
-   */
   function selectAll() {
     scannedBooks.value.forEach((book) => {
       if (book.status === 'found') {
@@ -147,18 +120,12 @@ export function useIsbnScanner() {
     })
   }
 
-  /**
-   * Deselect all books
-   */
   function deselectAll() {
     scannedBooks.value.forEach((book) => {
       book.selected = false
     })
   }
 
-  /**
-   * Add all selected books to the library
-   */
   async function addSelectedToLibrary(): Promise<{ success: string[], failed: string[] }> {
     const selectedBooks = scannedBooks.value.filter(
       book => book.selected && book.status === 'found'
@@ -175,7 +142,6 @@ export function useIsbnScanner() {
 
     isAddingBooks.value = true
 
-    // Use bulk-add endpoint with backend concurrency
     try {
       const isbns = selectedBooks.map(b => b.isbn)
       const result = await $fetch<{ added: Array<{ isbn: string }>, failed: Array<{ isbn: string, error: string }> }>('/api/books/bulk-add', {
@@ -186,10 +152,8 @@ export function useIsbnScanner() {
       const success = result.added.map(b => b.isbn)
       const failed = result.failed.map(b => b.isbn)
 
-      // Remove successful books from queue
       success.forEach(isbn => removeIsbn(isbn))
 
-      // Update failed books with error status
       result.failed.forEach((f) => {
         const book = scannedBooks.value.find(b => b.isbn === f.isbn)
         if (book) {
@@ -201,7 +165,6 @@ export function useIsbnScanner() {
 
       isAddingBooks.value = false
 
-      // Show summary toast
       if (success.length > 0 && failed.length === 0) {
         toast.add({
           title: 'Books added!',
@@ -223,7 +186,7 @@ export function useIsbnScanner() {
       }
 
       if (success.length > 0) {
-        markNeedsSync(getLoadedPages())
+        dashboardStore.markNeedsSync(dashboardStore.getLoadedPages())
       }
 
       return { success, failed }
@@ -239,16 +202,10 @@ export function useIsbnScanner() {
     }
   }
 
-  /**
-   * Clear all scanned books
-   */
   function clearAll() {
     scannedBooks.value = []
   }
 
-  /**
-   * Get counts for UI display
-   */
   const counts = computed(() => ({
     total: scannedBooks.value.length,
     selected: scannedBooks.value.filter(b => b.selected).length,
@@ -273,4 +230,4 @@ export function useIsbnScanner() {
     addSelectedToLibrary,
     clearAll
   }
-}
+})

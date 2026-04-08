@@ -1,5 +1,3 @@
-import { authClient } from '~/composables/auth'
-
 export default defineNuxtPlugin(async () => {
   let session
   try {
