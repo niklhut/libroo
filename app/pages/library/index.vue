@@ -63,20 +63,33 @@ watch(data, (response) => {
 
 onMounted(() => {
   const syncAndRestore = async () => {
-    if (shouldSync.value) {
-      await syncLoadedPages(syncTargetPages.value)
+    try {
+      if (shouldSync.value) {
+        await syncLoadedPages(syncTargetPages.value)
 
-      clearNeedsSync()
-    }
+        clearNeedsSync()
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error
+        ? err.message
+        : (err as { data?: { message?: string } })?.data?.message || 'Unable to refresh your library'
 
-    if (!shouldRestoreScroll.value) return
-
-    nextTick(() => {
-      requestAnimationFrame(() => {
-        window.scrollTo({ top: scrollY.value, behavior: 'auto' })
-        shouldRestoreScroll.value = false
+      console.error('Failed to sync library pages during mount', err)
+      toast.add({
+        title: 'Could not refresh library',
+        description: message,
+        color: 'error'
       })
-    })
+    } finally {
+      if (shouldRestoreScroll.value) {
+        nextTick(() => {
+          requestAnimationFrame(() => {
+            window.scrollTo({ top: scrollY.value, behavior: 'auto' })
+            shouldRestoreScroll.value = false
+          })
+        })
+      }
+    }
   }
 
   void syncAndRestore()
