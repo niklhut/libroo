@@ -41,6 +41,7 @@ const shouldFetchInitial = allBooks.value.length === 0 || !paginationState.value
 const { data, refresh, status } = await useFetch<PaginatedResponse>('/api/books', {
   headers: useRequestHeaders(['cookie']),
   immediate: shouldFetchInitial,
+  watch: false,
   query: computed(() => ({
     page: page.value,
     pageSize: pageSize.value
@@ -96,7 +97,7 @@ onMounted(() => {
 })
 
 onBeforeRouteLeave((to) => {
-  const isOpeningBookDetails = /^\/library\/[^/]+$/.test(to.path)
+  const isOpeningBookDetails = /^\/library\/(?!add$)[^/]+$/.test(to.path)
 
   if (isOpeningBookDetails) {
     scrollY.value = window.scrollY
@@ -158,13 +159,22 @@ async function loadMore() {
 
 async function syncLoadedPages(targetPages: number) {
   const normalizedTargetPages = Math.max(1, targetPages)
-  page.value = 1
-  await refresh()
+  const previousAllBooks = [...allBooks.value]
+  const previousPage = page.value
 
-  for (let currentPage = 2; currentPage <= normalizedTargetPages; currentPage++) {
-    if (!paginationState.value?.hasMore) break
-    page.value = currentPage
+  try {
+    page.value = 1
     await refresh()
+
+    for (let currentPage = 2; currentPage <= normalizedTargetPages; currentPage++) {
+      if (!paginationState.value?.hasMore) break
+      page.value = currentPage
+      await refresh()
+    }
+  } catch (error) {
+    allBooks.value = previousAllBooks
+    page.value = previousPage
+    throw error
   }
 }
 
