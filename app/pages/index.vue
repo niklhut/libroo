@@ -7,7 +7,8 @@ definePageMeta({
   auth: false
 })
 
-const { isAuthenticated, isPending } = useAuth()
+const authStore = useAuthStore()
+const { isAuthenticated, isPending } = storeToRefs(authStore)
 
 // Watch for auth state to be resolved, then redirect accordingly
 watch([isAuthenticated, isPending], ([authenticated, pending]) => {

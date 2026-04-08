@@ -3,7 +3,8 @@ import type { FormSubmitEvent } from '@nuxt/ui'
 import type { LibraryBook } from '~~/shared/types/book'
 
 const toast = useToast()
-const { addBook, getLoadedPages, markNeedsSync } = useLibraryDashboardState()
+const dashboardStore = useLibraryDashboardStore()
+const { addBook, getLoadedPages, markNeedsSync } = dashboardStore
 
 const formState = reactive({
   isbn: ''

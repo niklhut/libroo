@@ -1,7 +1,8 @@
 <script setup lang="ts">
 const route = useRoute()
 const toast = useToast()
-const { removeBooks, getLoadedPages, markNeedsSync } = useLibraryDashboardState()
+const dashboardStore = useLibraryDashboardStore()
+const { removeBooks, getLoadedPages, markNeedsSync } = dashboardStore
 
 const userBookId = route.params.id as string
 const isDeleting = ref(false)

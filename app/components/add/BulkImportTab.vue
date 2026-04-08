@@ -1,13 +1,19 @@
 <script setup lang="ts">
+import { storeToRefs } from 'pinia'
+
 const toast = useToast()
 
 const bulkIsbnText = ref('')
 
+const scannerStore = useIsbnScannerStore()
 const {
   scannedBooks,
   isLookingUp,
   isAddingBooks,
-  counts,
+  counts
+} = storeToRefs(scannerStore)
+
+const {
   addMultipleIsbns,
   removeIsbn,
   toggleSelection,
@@ -15,7 +21,7 @@ const {
   deselectAll,
   addSelectedToLibrary,
   clearAll
-} = useIsbnScanner()
+} = scannerStore
 
 async function handleBulkImport() {
   if (!bulkIsbnText.value.trim()) {

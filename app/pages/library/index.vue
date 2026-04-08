@@ -14,6 +14,7 @@ interface PaginatedResponse {
 
 const toast = useToast()
 
+const dashboardStore = useLibraryDashboardStore()
 const {
   page,
   pageSize,
@@ -22,11 +23,14 @@ const {
   scrollY,
   shouldRestoreScroll,
   shouldSync,
-  syncTargetPages,
-  removeBooks,
-  getLoadedPages,
-  clearNeedsSync
-} = useLibraryDashboardState()
+  syncTargetPages
+} = storeToRefs(dashboardStore)
+
+const {
+  removeBooks: removeBooksAction,
+  getLoadedPages: getLoadedPagesAction,
+  clearNeedsSync: clearNeedsSyncAction
+} = dashboardStore
 
 // Pagination state
 const isLoadingMore = ref(false)
@@ -68,7 +72,7 @@ onMounted(() => {
       if (shouldSync.value) {
         await syncLoadedPages(syncTargetPages.value)
 
-        clearNeedsSync()
+        clearNeedsSyncAction()
       }
     } catch (err: unknown) {
       const message = err instanceof Error
@@ -227,8 +231,8 @@ async function deleteSelected() {
 
     // Keep dashboard state intact while removing deleted books from cache
     if (removedIds.length > 0) {
-      removeBooks(removedIds)
-      await syncLoadedPages(getLoadedPages())
+      removeBooksAction(removedIds)
+      await syncLoadedPages(getLoadedPagesAction())
     }
   } catch (err: unknown) {
     const message = err instanceof Error
