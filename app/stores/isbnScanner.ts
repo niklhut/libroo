@@ -1,4 +1,4 @@
-import { extractIsbn } from '../../shared/utils/schemas'
+import { extractIsbn } from '~~/shared/utils/schemas'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { useLibraryDashboardStore } from './libraryDashboard'

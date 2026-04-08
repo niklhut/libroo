@@ -13,7 +13,7 @@ const createBook = (id: string): LibraryBook => ({
   addedAt: new Date().toISOString()
 })
 
-describe('useLibraryDashboardState', () => {
+describe('useLibraryDashboardStore', () => {
   let createStore: () => ReturnType<typeof useLibraryDashboardStore>
 
   beforeEach(() => {

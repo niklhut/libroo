@@ -1,7 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useIsbnScannerStore } from '../../app/stores/isbnScanner'
 import { useLibraryDashboardStore } from '../../app/stores/libraryDashboard'
+
+const _origUseToast = (globalThis as { useToast?: unknown }).useToast
+const _orig$fetch = (globalThis as { $fetch?: unknown }).$fetch
 
 interface ToastPayload {
   title: string
@@ -20,6 +23,20 @@ describe('useIsbnScannerStore', () => {
     ;(globalThis as unknown as { useToast: () => { add: typeof toastAdd } }).useToast = () => ({
       add: toastAdd
     })
+  })
+
+  afterEach(() => {
+    if (typeof _origUseToast === 'undefined') {
+      delete (globalThis as { useToast?: unknown }).useToast
+    } else {
+      ;(globalThis as { useToast?: unknown }).useToast = _origUseToast
+    }
+
+    if (typeof _orig$fetch === 'undefined') {
+      delete (globalThis as { $fetch?: unknown }).$fetch
+    } else {
+      ;(globalThis as { $fetch?: unknown }).$fetch = _orig$fetch
+    }
   })
 
   it('warns and skips duplicate ISBN entries', async () => {

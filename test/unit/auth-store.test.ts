@@ -1,8 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia, storeToRefs } from 'pinia'
 import { ref } from 'vue'
 
 import { useAuthStore } from '../../app/stores/auth'
+
+const _origUseNuxtApp = (globalThis as { useNuxtApp?: unknown }).useNuxtApp
 
 const authClientMocks = vi.hoisted(() => ({
   signInEmail: vi.fn(),
@@ -28,6 +30,15 @@ describe('useAuthStore', () => {
     authClientMocks.signInEmail.mockReset()
     authClientMocks.signUpEmail.mockReset()
     authClientMocks.signOut.mockReset()
+  })
+
+  afterEach(() => {
+    if (typeof _origUseNuxtApp === 'undefined') {
+      delete (globalThis as { useNuxtApp?: unknown }).useNuxtApp
+      return
+    }
+
+    ;(globalThis as { useNuxtApp?: unknown }).useNuxtApp = _origUseNuxtApp
   })
 
   it('derives auth state from the injected session', () => {
