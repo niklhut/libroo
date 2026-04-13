@@ -91,6 +91,18 @@ export interface BookServiceInterface {
     DatabaseError | OpenLibraryApiError,
     DbService | OpenLibraryRepository | HttpClient.HttpClient
   >
+
+  updateRating: (
+    userBookId: string,
+    userId: string,
+    rating: number | null
+  ) => Effect.Effect<void, BookNotFoundError | DatabaseError, DbService>
+
+  updateNote: (
+    userBookId: string,
+    userId: string,
+    note: string | null
+  ) => Effect.Effect<void, BookNotFoundError | DatabaseError, DbService>
 }
 
 // ===== Service Tag =====
@@ -223,7 +235,13 @@ export const BookServiceLive = Layer.effect(
         bookRepo.batchUpdateTags(userBookId, userId, deleteIds, promoteIds, createNames),
 
       deleteTag: (userBookId, userId, tagId) =>
-        bookRepo.deleteTag(userBookId, userId, tagId)
+        bookRepo.deleteTag(userBookId, userId, tagId),
+
+      updateRating: (userBookId, userId, rating) =>
+        bookRepo.updateRating(userBookId, userId, rating),
+
+      updateNote: (userBookId, userId, note) =>
+        bookRepo.updateNote(userBookId, userId, note)
     }
   })
 )
@@ -265,3 +283,9 @@ export const batchUpdateTags = (
 
 export const deleteTag = (userBookId: string, userId: string, tagId: string) =>
   Effect.flatMap(BookService, service => service.deleteTag(userBookId, userId, tagId))
+
+export const updateRating = (userBookId: string, userId: string, rating: number | null) =>
+  Effect.flatMap(BookService, service => service.updateRating(userBookId, userId, rating))
+
+export const updateNote = (userBookId: string, userId: string, note: string | null) =>
+  Effect.flatMap(BookService, service => service.updateNote(userBookId, userId, note))

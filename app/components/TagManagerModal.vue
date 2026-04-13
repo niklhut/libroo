@@ -88,6 +88,16 @@ watch(
   }
 )
 
+function handleKeydown(e: KeyboardEvent) {
+  if (e.metaKey && e.key === 'Enter' && props.open) {
+    e.preventDefault()
+    saveChanges()
+  }
+}
+
+onMounted(() => window.addEventListener('keydown', handleKeydown))
+onUnmounted(() => window.removeEventListener('keydown', handleKeydown))
+
 function addSuggestedTag(tag: BookTag) {
   if (workingUserTags.value.some(existing => existing.id === tag.id)) return
 

@@ -128,6 +128,18 @@ export interface BookRepositoryInterface {
     userId: string,
     tagId: string
   ) => Effect.Effect<void, BookNotFoundError | DatabaseError, DbService>
+
+  updateRating: (
+    userBookId: string,
+    userId: string,
+    rating: number | null
+  ) => Effect.Effect<void, BookNotFoundError | DatabaseError, DbService>
+
+  updateNote: (
+    userBookId: string,
+    userId: string,
+    note: string | null
+  ) => Effect.Effect<void, BookNotFoundError | DatabaseError, DbService>
 }
 
 // Service tag
@@ -702,6 +714,8 @@ export const BookRepositoryLive = Layer.effect(
             isbn: bookData.isbn,
             coverPath: bookData.coverPath,
             description: bookData.description ?? null,
+            rating: row.user_books.rating ?? null,
+            note: row.user_books.note ?? null,
             userTags: userTagRows,
             suggestedTags: suggestedRows,
             publishDate: bookData.publishDate ?? null,
@@ -931,6 +945,38 @@ export const BookRepositoryLive = Layer.effect(
             catch: error => new DatabaseError({
               message: `Failed to garbage collect tag: ${error}`,
               operation: 'deleteTag.gc'
+            })
+          })
+        }),
+
+      updateRating: (userBookId, userId, rating) =>
+        Effect.gen(function* () {
+          const ref = yield* getOwnedUserBookRef(userBookId, userId)
+
+          yield* Effect.tryPromise({
+            try: () => dbService.db
+              .update(userBooks)
+              .set({ rating })
+              .where(eq(userBooks.id, ref.userBookId)),
+            catch: error => new DatabaseError({
+              message: `Failed to update rating: ${error}`,
+              operation: 'updateRating'
+            })
+          })
+        }),
+
+      updateNote: (userBookId, userId, note) =>
+        Effect.gen(function* () {
+          const ref = yield* getOwnedUserBookRef(userBookId, userId)
+
+          yield* Effect.tryPromise({
+            try: () => dbService.db
+              .update(userBooks)
+              .set({ note })
+              .where(eq(userBooks.id, ref.userBookId)),
+            catch: error => new DatabaseError({
+              message: `Failed to update note: ${error}`,
+              operation: 'updateNote'
             })
           })
         })

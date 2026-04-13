@@ -107,6 +107,67 @@ async function onTagsSaved() {
     })
   }
 }
+
+// Rating
+async function saveRating(rating: number | null) {
+  const previousRating = book.value?.rating ?? null
+  // Optimistic update — replace object to trigger shallowRef reactivity
+  if (book.value) {
+    book.value = { ...book.value, rating }
+  }
+  try {
+    await $fetch(`/api/books/${userBookId}/rating`, {
+      method: 'PUT',
+      body: { rating }
+    })
+  } catch (err: unknown) {
+    // Revert on failure
+    if (book.value) {
+      book.value = { ...book.value, rating: previousRating }
+    }
+    const message = err instanceof Error
+      ? err.message
+      : (err as { data?: { message?: string } })?.data?.message || 'An error occurred'
+    toast.add({
+      title: 'Failed to save rating',
+      description: message,
+      color: 'error'
+    })
+  }
+}
+
+// Note
+async function saveNote(note: string | null) {
+  const previousNote = book.value?.note ?? null
+  // Optimistic update — replace object to trigger shallowRef reactivity
+  if (book.value) {
+    book.value = { ...book.value, note }
+  }
+  try {
+    await $fetch(`/api/books/${userBookId}/note`, {
+      method: 'PUT',
+      body: { note }
+    })
+    toast.add({
+      title: note ? 'Note saved' : 'Note removed',
+      description: note ? 'Your note has been saved.' : 'Your note has been removed.',
+      color: 'success'
+    })
+  } catch (err: unknown) {
+    // Revert on failure
+    if (book.value) {
+      book.value = { ...book.value, note: previousNote }
+    }
+    const message = err instanceof Error
+      ? err.message
+      : (err as { data?: { message?: string } })?.data?.message || 'An error occurred'
+    toast.add({
+      title: 'Failed to save note',
+      description: message,
+      color: 'error'
+    })
+  }
+}
 </script>
 
 <template>
@@ -235,6 +296,18 @@ async function onTagsSaved() {
               {{ book.description }}
             </p>
           </div>
+
+          <!-- Rating -->
+          <BookRating
+            :rating="book.rating"
+            @update:rating="saveRating"
+          />
+
+          <!-- Your Note -->
+          <BookNote
+            :note="book.note"
+            @update:note="saveNote"
+          />
 
           <!-- Tags -->
           <div class="space-y-4">
