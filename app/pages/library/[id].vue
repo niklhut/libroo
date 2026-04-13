@@ -109,15 +109,8 @@ async function onTagsSaved() {
 // Per-field request sequencing tokens to prevent stale rollbacks
 let ratingRequestId = 0
 let noteRequestId = 0
-let lastConfirmedRating: number | null = null
-let lastConfirmedNote: string | null = null
-
-watch(book, (currentBook) => {
-  if (currentBook) {
-    lastConfirmedRating = currentBook.rating ?? null
-    lastConfirmedNote = currentBook.note ?? null
-  }
-}, { immediate: true })
+let lastConfirmedRating: number | null = book.value?.rating ?? null
+let lastConfirmedNote: string | null = book.value?.note ?? null
 
 // Rating
 async function saveRating(rating: number | null) {
