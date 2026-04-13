@@ -70,9 +70,8 @@ async function removeBook() {
 
     navigateTo('/library')
   } catch (err: unknown) {
-    const message = err instanceof Error
-      ? err.message
-      : (err as { data?: { message?: string } })?.data?.message || 'An error occurred'
+    const message = (err as { data?: { message?: string } })?.data?.message
+      ?? (err instanceof Error ? err.message : 'An error occurred')
     toast.add({
       title: 'Failed to remove book',
       description: message,
@@ -96,9 +95,8 @@ async function onTagsSaved() {
       color: 'success'
     })
   } catch (err: unknown) {
-    const message = err instanceof Error
-      ? err.message
-      : 'Failed to refresh page after saving tags.'
+    const message = (err as { data?: { message?: string } })?.data?.message
+      ?? (err instanceof Error ? err.message : 'An error occurred')
 
     toast.add({
       title: 'Error updating tags',
@@ -111,10 +109,19 @@ async function onTagsSaved() {
 // Per-field request sequencing tokens to prevent stale rollbacks
 let ratingRequestId = 0
 let noteRequestId = 0
+let lastConfirmedRating: number | null = null
+let lastConfirmedNote: string | null = null
+
+watch(book, (currentBook) => {
+  if (currentBook) {
+    lastConfirmedRating = currentBook.rating ?? null
+    lastConfirmedNote = currentBook.note ?? null
+  }
+}, { immediate: true })
 
 // Rating
 async function saveRating(rating: number | null) {
-  const previousRating = book.value?.rating ?? null
+  const previousRating = lastConfirmedRating
   const currentRequestId = ++ratingRequestId
   // Optimistic update — replace object to trigger shallowRef reactivity
   if (book.value) {
@@ -125,14 +132,16 @@ async function saveRating(rating: number | null) {
       method: 'PUT',
       body: { rating }
     })
+    if (currentRequestId === ratingRequestId) {
+      lastConfirmedRating = rating
+    }
   } catch (err: unknown) {
     // Only revert if this is still the latest request
     if (currentRequestId === ratingRequestId && book.value) {
       book.value = { ...book.value, rating: previousRating }
     }
-    const message = err instanceof Error
-      ? err.message
-      : (err as { data?: { message?: string } })?.data?.message || 'An error occurred'
+    const message = (err as { data?: { message?: string } })?.data?.message
+      ?? (err instanceof Error ? err.message : 'An error occurred')
     toast.add({
       title: 'Failed to save rating',
       description: message,
@@ -143,7 +152,7 @@ async function saveRating(rating: number | null) {
 
 // Note
 async function saveNote(note: string | null) {
-  const previousNote = book.value?.note ?? null
+  const previousNote = lastConfirmedNote
   const currentRequestId = ++noteRequestId
   // Optimistic update — replace object to trigger shallowRef reactivity
   if (book.value) {
@@ -155,6 +164,7 @@ async function saveNote(note: string | null) {
       body: { note }
     })
     if (currentRequestId === noteRequestId) {
+      lastConfirmedNote = note
       toast.add({
         title: note ? 'Note saved' : 'Note removed',
         description: note ? 'Your note has been saved.' : 'Your note has been removed.',
@@ -166,9 +176,8 @@ async function saveNote(note: string | null) {
     if (currentRequestId === noteRequestId && book.value) {
       book.value = { ...book.value, note: previousNote }
     }
-    const message = err instanceof Error
-      ? err.message
-      : (err as { data?: { message?: string } })?.data?.message || 'An error occurred'
+    const message = (err as { data?: { message?: string } })?.data?.message
+      ?? (err instanceof Error ? err.message : 'An error occurred')
     toast.add({
       title: 'Failed to save note',
       description: message,
