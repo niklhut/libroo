@@ -40,6 +40,8 @@ function isStarFilled(star: number): boolean {
       </span>
     </div>
     <div
+      role="group"
+      :aria-label="`Book rating: ${rating ? `${rating} out of 5 stars` : 'unrated'}`"
       class="flex items-center gap-1"
       @mouseleave="hoveredStar = 0"
     >
@@ -48,7 +50,8 @@ function isStarFilled(star: number): boolean {
         :key="star"
         type="button"
         class="p-0.5 rounded-md transition-all duration-150 hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-        :aria-label="`Rate ${star} star${star > 1 ? 's' : ''}`"
+        :aria-label="rating === star ? `${star} star${star > 1 ? 's' : ''}, selected — click to clear` : `Rate ${star} star${star > 1 ? 's' : ''}`"
+        :aria-pressed="rating === star"
         @click="selectRating(star)"
         @mouseenter="hoveredStar = star"
       >

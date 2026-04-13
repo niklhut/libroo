@@ -951,34 +951,40 @@ export const BookRepositoryLive = Layer.effect(
 
       updateRating: (userBookId, userId, rating) =>
         Effect.gen(function* () {
-          const ref = yield* getOwnedUserBookRef(userBookId, userId)
-
-          yield* Effect.tryPromise({
+          const result = yield* Effect.tryPromise({
             try: () => dbService.db
               .update(userBooks)
               .set({ rating })
-              .where(eq(userBooks.id, ref.userBookId)),
+              .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId)))
+              .returning({ id: userBooks.id }),
             catch: error => new DatabaseError({
               message: `Failed to update rating: ${error}`,
               operation: 'updateRating'
             })
           })
+
+          if (result.length === 0) {
+            return yield* Effect.fail(new BookNotFoundError({ bookId: userBookId }))
+          }
         }),
 
       updateNote: (userBookId, userId, note) =>
         Effect.gen(function* () {
-          const ref = yield* getOwnedUserBookRef(userBookId, userId)
-
-          yield* Effect.tryPromise({
+          const result = yield* Effect.tryPromise({
             try: () => dbService.db
               .update(userBooks)
               .set({ note })
-              .where(eq(userBooks.id, ref.userBookId)),
+              .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId)))
+              .returning({ id: userBooks.id }),
             catch: error => new DatabaseError({
               message: `Failed to update note: ${error}`,
               operation: 'updateNote'
             })
           })
+
+          if (result.length === 0) {
+            return yield* Effect.fail(new BookNotFoundError({ bookId: userBookId }))
+          }
         })
     }
   })

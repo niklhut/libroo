@@ -91,6 +91,7 @@ watch(
 function handleKeydown(e: KeyboardEvent) {
   if (e.metaKey && e.key === 'Enter' && props.open) {
     e.preventDefault()
+    if (isSaving.value || !hasChanges.value) return
     saveChanges()
   }
 }

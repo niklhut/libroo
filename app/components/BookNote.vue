@@ -37,7 +37,6 @@ function clearNote() {
 }
 
 const characterCount = computed(() => editText.value.length)
-const maxLength = 5000
 </script>
 
 <template>
@@ -82,7 +81,6 @@ const maxLength = 5000
       <textarea
         ref="textareaRef"
         v-model="editText"
-        :maxlength="maxLength"
         rows="5"
         placeholder="Write your note here..."
         class="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-primary resize-y min-h-[100px]"
@@ -90,7 +88,7 @@ const maxLength = 5000
       />
       <div class="flex items-center justify-between">
         <span class="text-xs text-muted">
-          {{ characterCount }} / {{ maxLength }}
+          {{ characterCount }} characters
         </span>
         <div class="flex gap-2">
           <UButton

@@ -108,9 +108,14 @@ async function onTagsSaved() {
   }
 }
 
+// Per-field request sequencing tokens to prevent stale rollbacks
+let ratingRequestId = 0
+let noteRequestId = 0
+
 // Rating
 async function saveRating(rating: number | null) {
   const previousRating = book.value?.rating ?? null
+  const currentRequestId = ++ratingRequestId
   // Optimistic update — replace object to trigger shallowRef reactivity
   if (book.value) {
     book.value = { ...book.value, rating }
@@ -121,8 +126,8 @@ async function saveRating(rating: number | null) {
       body: { rating }
     })
   } catch (err: unknown) {
-    // Revert on failure
-    if (book.value) {
+    // Only revert if this is still the latest request
+    if (currentRequestId === ratingRequestId && book.value) {
       book.value = { ...book.value, rating: previousRating }
     }
     const message = err instanceof Error
@@ -139,6 +144,7 @@ async function saveRating(rating: number | null) {
 // Note
 async function saveNote(note: string | null) {
   const previousNote = book.value?.note ?? null
+  const currentRequestId = ++noteRequestId
   // Optimistic update — replace object to trigger shallowRef reactivity
   if (book.value) {
     book.value = { ...book.value, note }
@@ -148,14 +154,16 @@ async function saveNote(note: string | null) {
       method: 'PUT',
       body: { note }
     })
-    toast.add({
-      title: note ? 'Note saved' : 'Note removed',
-      description: note ? 'Your note has been saved.' : 'Your note has been removed.',
-      color: 'success'
-    })
+    if (currentRequestId === noteRequestId) {
+      toast.add({
+        title: note ? 'Note saved' : 'Note removed',
+        description: note ? 'Your note has been saved.' : 'Your note has been removed.',
+        color: 'success'
+      })
+    }
   } catch (err: unknown) {
-    // Revert on failure
-    if (book.value) {
+    // Only revert if this is still the latest request
+    if (currentRequestId === noteRequestId && book.value) {
       book.value = { ...book.value, note: previousNote }
     }
     const message = err instanceof Error

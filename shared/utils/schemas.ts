@@ -151,9 +151,16 @@ export const bookRatingSchema = z.object({
 export type BookRatingSchema = z.infer<typeof bookRatingSchema>
 
 export const bookNoteSchema = z.object({
-  note: z.string({ error: 'Note must be a string' })
-    .max(5000, { error: 'Note is too long (max 5000 characters)' })
-    .nullable()
+  note: z.preprocess(
+    (val) => {
+      if (typeof val === 'string') {
+        const trimmed = val.trim()
+        return trimmed === '' ? null : trimmed
+      }
+      return val
+    },
+    z.string({ error: 'Note must be a string' }).nullable()
+  )
 })
 
 export type BookNoteSchema = z.infer<typeof bookNoteSchema>

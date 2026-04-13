@@ -36,6 +36,27 @@
       "when": 1775252100000,
       "tag": "0004_user_private_tags",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1775411461000,
+      "tag": "0005_add_normalized_name_to_tags",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1776044409000,
+      "tag": "0006_add_rating_and_note",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1776054997000,
+      "tag": "0007_add_rating_check_constraint",
+      "breakpoints": true
     }
   ]
 }
