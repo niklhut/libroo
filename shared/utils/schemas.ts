@@ -139,3 +139,28 @@ export const bookTagAddSchema = z.object({
 })
 
 export type BookTagAddSchema = z.infer<typeof bookTagAddSchema>
+
+export const bookRatingSchema = z.object({
+  rating: z.number({ error: 'Rating must be a number' })
+    .int({ error: 'Rating must be a whole number' })
+    .min(1, { error: 'Rating must be at least 1' })
+    .max(5, { error: 'Rating must be at most 5' })
+    .nullable()
+})
+
+export type BookRatingSchema = z.infer<typeof bookRatingSchema>
+
+export const bookNoteSchema = z.object({
+  note: z.preprocess(
+    (val) => {
+      if (typeof val === 'string') {
+        const trimmed = val.trim()
+        return trimmed === '' ? null : trimmed
+      }
+      return val
+    },
+    z.string({ error: 'Note must be a string' }).nullable()
+  )
+})
+
+export type BookNoteSchema = z.infer<typeof bookNoteSchema>
