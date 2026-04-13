@@ -42,6 +42,8 @@ export interface BookDetails {
   isbn: string | null
   coverPath: string | null
   description: string | null
+  rating: number | null
+  note: string | null
   userTags: BookTag[]
   suggestedTags: BookTag[]
   publishDate: string | null

@@ -29,6 +29,8 @@ export const userBooks = sqliteTable('user_books', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
   bookId: text('book_id').notNull().references(() => books.id, { onDelete: 'cascade' }),
+  rating: integer('rating'), // 1–5 star rating, null = unrated
+  note: text('note'), // Private user note
   addedAt: integer('added_at', { mode: 'timestamp' }).notNull()
 })
 

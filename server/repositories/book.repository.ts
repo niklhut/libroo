@@ -128,6 +128,18 @@ export interface BookRepositoryInterface {
     userId: string,
     tagId: string
   ) => Effect.Effect<void, BookNotFoundError | DatabaseError, DbService>
+
+  updateRating: (
+    userBookId: string,
+    userId: string,
+    rating: number | null
+  ) => Effect.Effect<void, BookNotFoundError | DatabaseError, DbService>
+
+  updateNote: (
+    userBookId: string,
+    userId: string,
+    note: string | null
+  ) => Effect.Effect<void, BookNotFoundError | DatabaseError, DbService>
 }
 
 // Service tag
@@ -702,6 +714,8 @@ export const BookRepositoryLive = Layer.effect(
             isbn: bookData.isbn,
             coverPath: bookData.coverPath,
             description: bookData.description ?? null,
+            rating: row.user_books.rating ?? null,
+            note: row.user_books.note ?? null,
             userTags: userTagRows,
             suggestedTags: suggestedRows,
             publishDate: bookData.publishDate ?? null,
@@ -933,6 +947,44 @@ export const BookRepositoryLive = Layer.effect(
               operation: 'deleteTag.gc'
             })
           })
+        }),
+
+      updateRating: (userBookId, userId, rating) =>
+        Effect.gen(function* () {
+          const result = yield* Effect.tryPromise({
+            try: () => dbService.db
+              .update(userBooks)
+              .set({ rating })
+              .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId)))
+              .returning({ id: userBooks.id }),
+            catch: error => new DatabaseError({
+              message: `Failed to update rating: ${error}`,
+              operation: 'updateRating'
+            })
+          })
+
+          if (result.length === 0) {
+            return yield* Effect.fail(new BookNotFoundError({ bookId: userBookId }))
+          }
+        }),
+
+      updateNote: (userBookId, userId, note) =>
+        Effect.gen(function* () {
+          const result = yield* Effect.tryPromise({
+            try: () => dbService.db
+              .update(userBooks)
+              .set({ note })
+              .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId)))
+              .returning({ id: userBooks.id }),
+            catch: error => new DatabaseError({
+              message: `Failed to update note: ${error}`,
+              operation: 'updateNote'
+            })
+          })
+
+          if (result.length === 0) {
+            return yield* Effect.fail(new BookNotFoundError({ bookId: userBookId }))
+          }
         })
     }
   })
