@@ -1,4 +1,5 @@
-import { sqliteTable, text, integer, uniqueIndex, index, primaryKey } from 'drizzle-orm/sqlite-core'
+import { sql } from 'drizzle-orm'
+import { sqliteTable, text, integer, uniqueIndex, index, primaryKey, check } from 'drizzle-orm/sqlite-core'
 import { user } from './auth'
 
 // Domain tables for Libroo
@@ -32,7 +33,9 @@ export const userBooks = sqliteTable('user_books', {
   rating: integer('rating'), // 1–5 star rating, null = unrated
   note: text('note'), // Private user note
   addedAt: integer('added_at', { mode: 'timestamp' }).notNull()
-})
+}, table => [
+  check('user_books_rating_check', sql`${table.rating} IS NULL OR ${table.rating} BETWEEN 1 AND 5`)
+])
 
 // Global tag dictionary with case-insensitive uniqueness enforced in migration
 export const tags = sqliteTable('tags', {

@@ -8,7 +8,7 @@ CREATE TABLE user_books_new (
   id text PRIMARY KEY NOT NULL,
   user_id text NOT NULL REFERENCES user(id) ON DELETE CASCADE,
   book_id text NOT NULL REFERENCES books(id) ON DELETE CASCADE,
-  rating integer CHECK (rating IS NULL OR (rating >= 1 AND rating <= 5)),
+  rating integer CONSTRAINT user_books_rating_check CHECK (rating IS NULL OR rating BETWEEN 1 AND 5),
   note text,
   added_at integer NOT NULL
 );
