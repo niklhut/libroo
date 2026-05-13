@@ -7,6 +7,8 @@ defineProps<{
   isAdding?: boolean
   backLabel?: string
   backIcon?: string
+  addDisabled?: boolean
+  unavailableLabel?: string
 }>()
 
 defineEmits<{
@@ -47,6 +49,17 @@ defineEmits<{
           {{ book.author }}
         </p>
         <div class="flex flex-wrap gap-2">
+          <UBadge
+            v-if="book.existsLocally"
+            color="info"
+            variant="subtle"
+          >
+            <UIcon
+              name="i-lucide-book-check"
+              class="mr-1"
+            />
+            Already in library
+          </UBadge>
           <UBadge
             color="neutral"
             variant="subtle"
@@ -115,12 +128,24 @@ defineEmits<{
         {{ backLabel || 'Back' }}
       </UButton>
       <UButton
+        v-if="!addDisabled"
         icon="i-lucide-plus"
         size="lg"
         class="flex-1"
         @click="$emit('add')"
       >
         Add to Library
+      </UButton>
+      <UButton
+        v-else
+        icon="i-lucide-book-check"
+        size="lg"
+        color="neutral"
+        variant="soft"
+        class="flex-1"
+        disabled
+      >
+        {{ unavailableLabel || 'Already in Library' }}
       </UButton>
     </div>
   </div>
