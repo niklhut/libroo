@@ -14,6 +14,11 @@ const isLookingUp = ref(false)
 const isAdding = ref(false)
 const lookupResult = ref<BookLookupResult | null>(null)
 
+function getErrorMessage(err: unknown, fallback: string): string {
+  return (err as { data?: { message?: string } })?.data?.message
+    || (err instanceof Error ? err.message : fallback)
+}
+
 // Lookup book by ISBN
 async function lookupISBN(payload: FormSubmitEvent<BookIsbnSchema>) {
   isLookingUp.value = true
@@ -26,7 +31,13 @@ async function lookupISBN(payload: FormSubmitEvent<BookIsbnSchema>) {
     })
     lookupResult.value = result
 
-    if (!result.found) {
+    if (result.found && result.existsLocally) {
+      toast.add({
+        title: 'Already in library',
+        description: `${result.title || 'This book'} is already in your library`,
+        color: 'info'
+      })
+    } else if (!result.found) {
       toast.add({
         title: 'Book not found',
         description: result.message || 'Could not find this book on OpenLibrary',
@@ -34,9 +45,7 @@ async function lookupISBN(payload: FormSubmitEvent<BookIsbnSchema>) {
       })
     }
   } catch (err: unknown) {
-    const message = err instanceof Error
-      ? err.message
-      : (err as { data?: { message?: string } })?.data?.message || 'Failed to lookup book'
+    const message = getErrorMessage(err, 'Failed to lookup book')
     toast.add({
       title: 'Lookup failed',
       description: message,
@@ -49,7 +58,7 @@ async function lookupISBN(payload: FormSubmitEvent<BookIsbnSchema>) {
 
 // Add book to library
 async function addBookToLibrary() {
-  if (!lookupResult.value?.found) return
+  if (!lookupResult.value?.found || lookupResult.value.existsLocally) return
 
   isAdding.value = true
 
@@ -89,6 +98,9 @@ function reset() {
   lookupResult.value = null
   formState.isbn = ''
 }
+
+const previewTitle = computed(() => lookupResult.value?.existsLocally ? 'Already in Library' : 'Book Found')
+const previewIconClass = computed(() => lookupResult.value?.existsLocally ? 'text-lg text-info' : 'text-lg text-success')
 
 // Expose for parent to reset on tab change
 defineExpose({ reset })
@@ -150,9 +162,9 @@ defineExpose({ reset })
       <div class="flex items-center gap-2">
         <UIcon
           name="i-lucide-book-check"
-          class="text-lg text-success"
+          :class="previewIconClass"
         />
-        <span class="font-semibold">Book Found</span>
+        <span class="font-semibold">{{ previewTitle }}</span>
       </div>
     </template>
 
@@ -161,6 +173,8 @@ defineExpose({ reset })
       :is-adding="isAdding"
       back-label="Search Again"
       back-icon="i-lucide-arrow-left"
+      :add-disabled="lookupResult.existsLocally"
+      unavailable-label="Already in Library"
       @add="addBookToLibrary"
       @back="reset"
     />

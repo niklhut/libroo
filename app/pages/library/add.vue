@@ -1,7 +1,16 @@
 <script setup lang="ts">
 // Input mode tabs
 type InputMode = 'manual' | 'scan' | 'bulk'
-const inputMode = ref<InputMode>('manual')
+const route = useRoute()
+const router = useRouter()
+
+const validInputModes = ['manual', 'scan', 'bulk'] as const
+
+function isInputMode(value: unknown): value is InputMode {
+  return typeof value === 'string' && validInputModes.includes(value as InputMode)
+}
+
+const inputMode = ref<InputMode>(isInputMode(route.query.tab) ? route.query.tab : 'manual')
 
 // Refs to child components for resetting state on tab change
 const isbnLookupRef = ref<{ reset: () => void } | null>(null)
@@ -15,8 +24,28 @@ const modeItems = [
   { value: 'bulk', label: 'Bulk Import', icon: 'i-lucide-list' }
 ]
 
-// Reset child component state when switching modes
-watch(inputMode, () => {
+watch(
+  () => route.query.tab,
+  (tab) => {
+    if (isInputMode(tab) && tab !== inputMode.value) {
+      inputMode.value = tab
+    }
+  }
+)
+
+// Reset child component state when switching modes and persist the selected tab.
+watch(inputMode, (mode, previousMode) => {
+  if (mode !== route.query.tab) {
+    router.replace({
+      query: {
+        ...route.query,
+        tab: mode
+      }
+    })
+  }
+
+  if (!previousMode || mode === previousMode) return
+
   isbnLookupRef.value?.reset()
   cameraScanRef.value?.reset()
   bulkImportRef.value?.reset()
