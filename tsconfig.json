@@ -1,5 +1,11 @@
 {
   // https://nuxt.com/docs/guide/concepts/typescript
+  "compilerOptions": {
+    "strict": true,
+    "module": "ESNext",
+    "target": "ESNext",
+    "types": []
+  },
   "files": [],
   "references": [
     { "path": "./.nuxt/tsconfig.app.json" },

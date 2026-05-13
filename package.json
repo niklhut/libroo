@@ -13,35 +13,39 @@
     "test:unit": "vitest run"
   },
   "dependencies": {
-    "@effect/platform": "^0.96.0",
+    "@effect/platform": "^0.96.1",
     "@effect/platform-node": "^0.106.0",
-    "@iconify-json/lucide": "^1.2.101",
-    "@iconify-json/simple-icons": "^1.2.76",
-    "@libsql/client": "^0.17.2",
-    "@nuxt/hints": "1.0.3",
+    "@iconify-json/lucide": "^1.2.107",
+    "@iconify-json/simple-icons": "^1.2.82",
+    "@libsql/client": "^0.17.3",
+    "@nuxt/hints": "1.1.1",
     "@nuxt/image": "2.0.0",
-    "@nuxt/scripts": "0.13.2",
-    "@nuxt/ui": "^4.6.1",
+    "@nuxt/scripts": "1.0.6",
+    "@nuxt/ui": "^4.7.1",
     "@nuxthub/core": "^0.10.7",
     "@pinia/nuxt": "^0.11.3",
-    "@unhead/vue": "^2.1.12",
-    "better-auth": "^1.5.6",
+    "@unhead/vue": "^3.1.0",
+    "better-auth": "^1.6.11",
     "drizzle-orm": "^0.45.2",
-    "effect": "^3.21.0",
-    "nuxt": "^4.4.2",
+    "effect": "^3.21.2",
+    "nuxt": "^4.4.5",
     "pinia": "^3.0.4",
     "sharp": "^0.34.5",
+    "vue": "^3.5.34",
     "vue-qrcode-reader": "^5.7.3",
-    "zod": "^4.3.6"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@nuxt/eslint": "^1.15.2",
-    "@nuxt/test-utils": "^4.0.0",
+    "@nuxt/test-utils": "^4.0.3",
     "drizzle-kit": "^0.31.10",
-    "eslint": "^10.2.0",
-    "typescript": "^6.0.2",
-    "vitest": "^4.0.2",
-    "vue-tsc": "^3.2.6"
+    "eslint": "^10.3.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.6",
+    "vue-tsc": "^3.2.9"
   },
-  "packageManager": "pnpm@10.33.0+sha512.10568bb4a6afb58c9eb3630da90cc9516417abebd3fabbe6739f0ae795728da1491e9db5a544c76ad8eb7570f5c4bb3d6c637b2cb41bfdcdb47fa823c8649319"
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@11.1.1+sha512.d1fdf5f73c617b64fa1a56a81c3c8dfe0e966e33a6010aa256b517ae77be21d93e05affc0de1a83b0e4f29d569f68b446ae8f068cd7247c0bb3df0fb4d7bdf9a"
 }
