@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { getAvailableSuggestedTags } from '../utils/tag-manager'
-import { normalizeTagInputText, toSensibleTitleCase } from '../../shared/utils/tag-ingestion'
+import { normalizeTagInputText, toSensibleTitleCase } from '~~/shared/utils/tag-ingestion'
 
 interface WorkingTag extends BookTag {
   isCustom?: boolean
