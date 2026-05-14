@@ -42,6 +42,9 @@ async function loadMore() {
     try {
       page.value++
       await refresh()
+    } catch (error) {
+      page.value--
+      throw error
     } finally {
       isLoadingMore.value = false
     }
