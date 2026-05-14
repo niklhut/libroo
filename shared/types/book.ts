@@ -1,8 +1,14 @@
+export interface BookAuthor {
+  id: string
+  name: string
+}
+
 export interface LibraryBook {
   id: string
   bookId: string
   title: string
   author: string
+  authors?: BookAuthor[]
   isbn: string | null
   coverPath: string | null
   tags?: string[]
@@ -19,6 +25,7 @@ export interface BookLookupResult {
   isbn: string
   title?: string
   author?: string
+  authors?: string[]
   coverUrl?: string | null
   description?: string
   subjects?: string[] | null
@@ -39,6 +46,7 @@ export interface BookDetails {
   bookId: string
   title: string
   author: string
+  authors: BookAuthor[]
   isbn: string | null
   coverPath: string | null
   description: string | null
@@ -52,4 +60,16 @@ export interface BookDetails {
   openLibraryKey: string | null
   workKey: string | null
   addedAt: Date | string
+}
+
+export interface AuthorLibrary {
+  author: BookAuthor
+  items: LibraryBook[]
+  pagination: {
+    page: number
+    pageSize: number
+    totalItems: number
+    totalPages: number
+    hasMore: boolean
+  }
 }

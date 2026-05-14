@@ -252,9 +252,22 @@ async function saveNote(note: string | null) {
             <h1 class="text-3xl md:text-4xl font-bold tracking-tight">
               {{ book.title }}
             </h1>
-            <p class="text-lg text-muted mt-2">
-              {{ book.author }}
-            </p>
+            <div class="text-lg text-muted mt-2">
+              <template v-if="book.authors.length > 0">
+                <template
+                  v-for="(author, index) in book.authors"
+                  :key="author.id"
+                >
+                  <ULink
+                    :to="`/library/authors/${author.id}`"
+                    class="hover:text-primary"
+                  >
+                    {{ author.name }}
+                  </ULink><span v-if="index < book.authors.length - 1">, </span>
+                </template>
+              </template>
+              <span v-else>{{ book.author }}</span>
+            </div>
           </div>
 
           <!-- Metadata -->

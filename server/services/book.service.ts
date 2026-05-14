@@ -7,6 +7,7 @@ interface UserBookViewModel {
   book: {
     title: string
     author: string
+    authors?: BookAuthor[]
     isbn: string | null
     coverPath: string | null
   }
@@ -19,6 +20,7 @@ export const toLibraryBook = (userBook: UserBookViewModel): LibraryBook => ({
   bookId: userBook.bookId,
   title: userBook.book.title,
   author: userBook.book.author,
+  authors: userBook.book.authors,
   isbn: userBook.book.isbn,
   coverPath: userBook.book.coverPath,
   tags: userBook.tags,
@@ -32,6 +34,12 @@ export interface BookServiceInterface {
     userId: string,
     pagination: PaginationParams & { search?: string }
   ) => Effect.Effect<PaginatedResult<LibraryBook>, DatabaseError, DbService>
+
+  getAuthorLibrary: (
+    userId: string,
+    authorId: string,
+    pagination: PaginationParams
+  ) => Effect.Effect<AuthorLibrary, BookNotFoundError | DatabaseError, DbService>
 
   addBookToLibrary: (
     userId: string,
@@ -134,6 +142,17 @@ export const BookServiceLive = Layer.effect(
           return toLibraryBook(userBook)
         }),
 
+      getAuthorLibrary: (userId, authorId, pagination) =>
+        Effect.gen(function* () {
+          const result = yield* bookRepo.getLibraryByAuthor(userId, authorId, pagination)
+
+          return {
+            author: result.author,
+            items: result.items.map(toLibraryBook),
+            pagination: result.pagination
+          }
+        }),
+
       removeBookFromLibrary: (userBookId, userId) =>
         bookRepo.removeFromLibrary(userBookId, userId),
 
@@ -185,6 +204,7 @@ export const BookServiceLive = Layer.effect(
               isbn: localBook.isbn || normalizedISBN,
               title: localBook.title,
               author: localBook.author,
+              authors: localBook.authors.map(author => author.name),
               coverUrl: localBook.coverPath ? `/api/blob/${localBook.coverPath}` : null,
               description: localBook.description ?? undefined,
               subjects: bookTags.map(tag => tag.name),
@@ -202,6 +222,7 @@ export const BookServiceLive = Layer.effect(
               isbn: bookData.isbn,
               title: bookData.title,
               author: bookData.authors.join(', '),
+              authors: bookData.authors,
               coverUrl: bookData.coverUrl,
               description: bookData.description,
               subjects: bookData.subjects ?? null,
@@ -250,6 +271,9 @@ export const BookServiceLive = Layer.effect(
 
 export const getUserLibrary = (userId: string, pagination: PaginationParams & { search?: string }) =>
   Effect.flatMap(BookService, service => service.getUserLibrary(userId, pagination))
+
+export const getAuthorLibrary = (userId: string, authorId: string, pagination: PaginationParams) =>
+  Effect.flatMap(BookService, service => service.getAuthorLibrary(userId, authorId, pagination))
 
 export const addBookToLibrary = (userId: string, isbn: string) =>
   Effect.flatMap(BookService, service => service.addBookToLibrary(userId, isbn))

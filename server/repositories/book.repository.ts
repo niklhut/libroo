@@ -1,8 +1,7 @@
 import { Context, Effect, Layer, Data } from 'effect'
 import type { HttpClient } from '@effect/platform'
-import { eq, and, count, desc, inArray, or, sql, notInArray, exists } from 'drizzle-orm'
-import type { InferSelectModel } from 'drizzle-orm'
-import { books, userBooks, tags, bookSystemTags, userBookTags } from 'hub:db:schema'
+import { eq, and, count, desc, asc, inArray, or, sql, notInArray, exists } from 'drizzle-orm'
+import { books, authors, bookAuthors, userBooks, tags, bookSystemTags, userBookTags } from 'hub:db:schema'
 import { normalizeTagInput, normalizeSuggestedTags } from '../../shared/utils/tag-ingestion'
 
 // Error types
@@ -34,6 +33,7 @@ export interface Book {
   isbn: string | null
   title: string
   author: string
+  authors: RepositoryBookAuthor[]
   coverPath: string | null
   openLibraryKey: string | null
   createdAt: Date
@@ -57,6 +57,15 @@ export interface BookTagRecord {
   name: string
 }
 
+interface RepositoryBookAuthor {
+  id: string
+  name: string
+}
+
+export interface AuthorLibraryResult extends PaginatedResult<UserBook> {
+  author: RepositoryBookAuthor
+}
+
 interface OwnedUserBookRef {
   userBookId: string
   bookId: string
@@ -78,6 +87,12 @@ export interface BookRepositoryInterface {
     pagination: PaginationParams & { search?: string }
   ) => Effect.Effect<PaginatedResult<UserBook>, DatabaseError, DbService>
 
+  getLibraryByAuthor: (
+    userId: string,
+    authorId: string,
+    pagination: PaginationParams
+  ) => Effect.Effect<AuthorLibraryResult, BookNotFoundError | DatabaseError, DbService>
+
   getBookById: (bookId: string) => Effect.Effect<Book, BookNotFoundError | DatabaseError, DbService>
 
   hasBookInUserLibrary: (
@@ -92,7 +107,7 @@ export interface BookRepositoryInterface {
 
   findByIsbn: (
     isbn: string
-  ) => Effect.Effect<InferSelectModel<typeof books> | null, DatabaseError, DbService>
+  ) => Effect.Effect<Book | null, DatabaseError, DbService>
 
   getSystemTagsByBookId: (
     bookId: string
@@ -155,6 +170,158 @@ export const BookRepositoryLive = Layer.effect(
   BookRepository,
   Effect.gen(function* () {
     const dbService = yield* DbService
+
+    const normalizeAuthorName = (name: string) => name.trim().replace(/\s+/g, ' ').toLowerCase()
+    const formatAuthorList = (bookAuthorList: RepositoryBookAuthor[]) =>
+      bookAuthorList.length > 0 ? bookAuthorList.map(author => author.name).join(', ') : 'Unknown Author'
+
+    const toBookModel = (book: typeof books.$inferSelect, bookAuthorList: RepositoryBookAuthor[]): Book => ({
+      id: book.id,
+      isbn: book.isbn,
+      title: book.title,
+      author: formatAuthorList(bookAuthorList),
+      authors: bookAuthorList,
+      coverPath: book.coverPath,
+      openLibraryKey: book.openLibraryKey,
+      createdAt: book.createdAt instanceof Date ? book.createdAt : new Date(book.createdAt as unknown as string),
+      description: book.description,
+      publishDate: book.publishDate,
+      publishers: book.publishers,
+      numberOfPages: book.numberOfPages,
+      workKey: book.workKey
+    })
+
+    const hydrateAuthorsForBookIds = (bookIds: string[]) =>
+      Effect.gen(function* () {
+        if (bookIds.length === 0) return new Map<string, RepositoryBookAuthor[]>()
+
+        const rows = yield* Effect.tryPromise({
+          try: () => dbService.db
+            .select({
+              bookId: bookAuthors.bookId,
+              id: authors.id,
+              name: authors.name
+            })
+            .from(bookAuthors)
+            .innerJoin(authors, eq(bookAuthors.authorId, authors.id))
+            .where(inArray(bookAuthors.bookId, bookIds))
+            .orderBy(asc(bookAuthors.sortOrder), asc(authors.name)),
+          catch: error => new DatabaseError({
+            message: `Failed to load authors: ${error}`,
+            operation: 'hydrateAuthorsForBookIds'
+          })
+        })
+
+        const authorMap = new Map<string, RepositoryBookAuthor[]>()
+        for (const row of rows) {
+          const list = authorMap.get(row.bookId) || []
+          list.push({ id: row.id, name: row.name })
+          authorMap.set(row.bookId, list)
+        }
+
+        return authorMap
+      })
+
+    const resolveOrCreateAuthorId = (name: string, client = dbService.db) =>
+      Effect.gen(function* () {
+        const displayName = name.trim().replace(/\s+/g, ' ') || 'Unknown Author'
+        const normalizedName = normalizeAuthorName(displayName)
+
+        const existing = yield* Effect.tryPromise({
+          try: () => client
+            .select({ id: authors.id })
+            .from(authors)
+            .where(eq(authors.normalizedName, normalizedName))
+            .limit(1),
+          catch: error => new DatabaseError({
+            message: `Failed to find author: ${error}`,
+            operation: 'resolveOrCreateAuthorId.find'
+          })
+        })
+
+        if (existing[0]) {
+          return existing[0].id
+        }
+
+        const now = new Date()
+        const newAuthorId = generateId()
+
+        yield* Effect.tryPromise({
+          try: () => client
+            .insert(authors)
+            .values({
+              id: newAuthorId,
+              name: displayName,
+              normalizedName,
+              createdAt: now,
+              updatedAt: now
+            })
+            .onConflictDoNothing(),
+          catch: error => new DatabaseError({
+            message: `Failed to create author: ${error}`,
+            operation: 'resolveOrCreateAuthorId.create'
+          })
+        })
+
+        const found = yield* Effect.tryPromise({
+          try: () => client
+            .select({ id: authors.id })
+            .from(authors)
+            .where(eq(authors.normalizedName, normalizedName))
+            .limit(1),
+          catch: error => new DatabaseError({
+            message: `Failed to resolve author after insert: ${error}`,
+            operation: 'resolveOrCreateAuthorId.resolve'
+          })
+        })
+
+        const author = found[0]
+        if (!author) {
+          return yield* Effect.fail(new DatabaseError({
+            message: `Author upsert failed for name: ${displayName}`,
+            operation: 'resolveOrCreateAuthorId.final'
+          }))
+        }
+
+        return author.id
+      })
+
+    const linkBookAuthor = (bookId: string, authorId: string, sortOrder: number, client = dbService.db) =>
+      Effect.tryPromise({
+        try: () => client
+          .insert(bookAuthors)
+          .values({
+            bookId,
+            authorId,
+            sortOrder,
+            createdAt: new Date()
+          })
+          .onConflictDoNothing(),
+        catch: error => new DatabaseError({
+          message: `Failed to link author to book: ${error}`,
+          operation: 'linkBookAuthor'
+        })
+      })
+
+    const setBookAuthors = (bookId: string, authorNames: string[]) =>
+      Effect.gen(function* () {
+        const normalizedSeen = new Set<string>()
+        const uniqueNames = authorNames
+          .map(name => name.trim().replace(/\s+/g, ' '))
+          .filter((name) => {
+            const normalized = normalizeAuthorName(name)
+            if (!normalized || normalizedSeen.has(normalized)) return false
+            normalizedSeen.add(normalized)
+            return true
+          })
+
+        const names = uniqueNames.length > 0 ? uniqueNames : ['Unknown Author']
+
+        for (const [index, name] of names.entries()) {
+          const authorId = yield* resolveOrCreateAuthorId(name)
+          yield* linkBookAuthor(bookId, authorId, index)
+        }
+      })
 
     const resolveOrCreateTagId = (normalizedTag: { key: string, displayName: string }, client = dbService.db) =>
       Effect.gen(function* () {
@@ -368,7 +535,6 @@ export const BookRepositoryLive = Layer.effect(
               id: newBookId,
               isbn: openLibraryData.isbn,
               title: openLibraryData.title,
-              author: openLibraryData.authors.join(', '),
               coverPath,
               openLibraryKey: openLibraryData.openLibraryKey,
               workKey: openLibraryData.workKey || null,
@@ -383,6 +549,8 @@ export const BookRepositoryLive = Layer.effect(
               try: () => dbService.db.insert(books).values(newBook),
               catch: error => new BookCreateError({ message: `Failed to insert book: ${error}` })
             })
+
+            yield* setBookAuthors(newBookId, openLibraryData.authors)
 
             // Hydrate system tags for newly-inserted book
             yield* hydrateSystemTagsForBook(newBookId, openLibraryData.subjects || [])
@@ -410,18 +578,13 @@ export const BookRepositoryLive = Layer.effect(
             catch: error => new BookCreateError({ message: `Failed to add book to library: ${error}` })
           })
 
+          const authorMap = yield* hydrateAuthorsForBookIds([book.id])
+          const hydratedBook = toBookModel(book, authorMap.get(book.id) || [])
+
           return {
             id: userBookId,
             bookId: book.id,
-            book: {
-              id: book.id,
-              isbn: book.isbn,
-              title: book.title,
-              author: book.author,
-              coverPath: book.coverPath,
-              openLibraryKey: book.openLibraryKey,
-              createdAt: book.createdAt
-            },
+            book: hydratedBook,
             tags: [],
             addedAt
           }
@@ -438,8 +601,14 @@ export const BookRepositoryLive = Layer.effect(
           const searchCondition = hasSearch
             ? or(
                 sql`lower(${books.title}) like ${likePattern}`,
-                sql`lower(${books.author}) like ${likePattern}`,
                 sql`lower(coalesce(${books.isbn}, '')) like ${likePattern}`,
+                exists(
+                  dbService.db
+                    .select({ value: sql`1` })
+                    .from(bookAuthors)
+                    .innerJoin(authors, eq(bookAuthors.authorId, authors.id))
+                    .where(and(eq(bookAuthors.bookId, books.id), sql`lower(${authors.name}) like ${likePattern}`))
+                ),
                 exists(
                   dbService.db
                     .select({ value: sql`1` })
@@ -496,25 +665,102 @@ export const BookRepositoryLive = Layer.effect(
           })
 
           const userBookIds = result.map(row => row.user_books.id)
+          const bookIds = result.map(row => row.books.id)
           const userTagsByUserBook = yield* hydrateUserTagsByUserBookIds(userBookIds)
+          const authorsByBook = yield* hydrateAuthorsForBookIds(bookIds)
 
           const items = result.map(row => ({
             id: row.user_books.id,
             bookId: row.books.id,
-            book: {
-              id: row.books.id,
-              isbn: row.books.isbn,
-              title: row.books.title,
-              author: row.books.author,
-              coverPath: row.books.coverPath,
-              openLibraryKey: row.books.openLibraryKey,
-              createdAt: row.books.createdAt
-            },
+            book: toBookModel(row.books, authorsByBook.get(row.books.id) || []),
             tags: userTagsByUserBook.get(row.user_books.id) || [],
             addedAt: row.user_books.addedAt
           }))
 
           return {
+            items,
+            pagination: {
+              page,
+              pageSize,
+              totalItems,
+              totalPages,
+              hasMore: page < totalPages
+            }
+          }
+        }),
+
+      getLibraryByAuthor: (userId, authorId, pagination) =>
+        Effect.gen(function* () {
+          const authorRows = yield* Effect.tryPromise({
+            try: () => dbService.db
+              .select({ id: authors.id, name: authors.name })
+              .from(authors)
+              .where(eq(authors.id, authorId))
+              .limit(1),
+            catch: error => new DatabaseError({
+              message: `Failed to load author: ${error}`,
+              operation: 'getLibraryByAuthor.author'
+            })
+          })
+
+          const author = authorRows[0]
+          if (!author) {
+            return yield* Effect.fail(new BookNotFoundError({ bookId: authorId }))
+          }
+
+          const { page, pageSize } = pagination
+          const offset = (page - 1) * pageSize
+          const whereClause = and(eq(userBooks.userId, userId), eq(bookAuthors.authorId, authorId))
+
+          const countResult = yield* Effect.tryPromise({
+            try: () =>
+              dbService.db
+                .select({ count: count() })
+                .from(userBooks)
+                .innerJoin(books, eq(userBooks.bookId, books.id))
+                .innerJoin(bookAuthors, eq(bookAuthors.bookId, books.id))
+                .where(whereClause),
+            catch: error => new DatabaseError({
+              message: `Failed to count author library items: ${error}`,
+              operation: 'getLibraryByAuthor.count'
+            })
+          })
+
+          const totalItems = countResult[0]?.count ?? 0
+          const totalPages = Math.ceil(totalItems / pageSize)
+
+          const result = yield* Effect.tryPromise({
+            try: () =>
+              dbService.db
+                .select()
+                .from(userBooks)
+                .innerJoin(books, eq(userBooks.bookId, books.id))
+                .innerJoin(bookAuthors, eq(bookAuthors.bookId, books.id))
+                .where(whereClause)
+                .orderBy(desc(userBooks.addedAt))
+                .limit(pageSize)
+                .offset(offset),
+            catch: error => new DatabaseError({
+              message: `Failed to get author library items: ${error}`,
+              operation: 'getLibraryByAuthor.items'
+            })
+          })
+
+          const userBookIds = result.map(row => row.user_books.id)
+          const bookIds = result.map(row => row.books.id)
+          const userTagsByUserBook = yield* hydrateUserTagsByUserBookIds(userBookIds)
+          const authorsByBook = yield* hydrateAuthorsForBookIds(bookIds)
+
+          const items = result.map(row => ({
+            id: row.user_books.id,
+            bookId: row.books.id,
+            book: toBookModel(row.books, authorsByBook.get(row.books.id) || []),
+            tags: userTagsByUserBook.get(row.user_books.id) || [],
+            addedAt: row.user_books.addedAt
+          }))
+
+          return {
+            author,
             items,
             pagination: {
               page,
@@ -546,15 +792,8 @@ export const BookRepositoryLive = Layer.effect(
             return yield* Effect.fail(new BookNotFoundError({ bookId }))
           }
 
-          return {
-            id: book.id,
-            isbn: book.isbn,
-            title: book.title,
-            author: book.author,
-            coverPath: book.coverPath,
-            openLibraryKey: book.openLibraryKey,
-            createdAt: book.createdAt instanceof Date ? book.createdAt : new Date(book.createdAt as unknown as string)
-          }
+          const authorMap = yield* hydrateAuthorsForBookIds([book.id])
+          return toBookModel(book, authorMap.get(book.id) || [])
         }),
 
       hasBookInUserLibrary: (userId, isbn) =>
@@ -609,7 +848,11 @@ export const BookRepositoryLive = Layer.effect(
               operation: 'findByIsbn'
             })
           })
-          return result[0] || null
+          const book = result[0]
+          if (!book) return null
+
+          const authorMap = yield* hydrateAuthorsForBookIds([book.id])
+          return toBookModel(book, authorMap.get(book.id) || [])
         }),
 
       getSystemTagsByBookId: bookId =>
@@ -705,12 +948,15 @@ export const BookRepositoryLive = Layer.effect(
           })
 
           const bookData = row.books
+          const authorsByBook = yield* hydrateAuthorsForBookIds([bookData.id])
+          const bookAuthorList = authorsByBook.get(bookData.id) || []
 
           return {
             id: row.user_books.id,
             bookId: bookData.id,
             title: bookData.title,
-            author: bookData.author,
+            author: formatAuthorList(bookAuthorList),
+            authors: bookAuthorList,
             isbn: bookData.isbn,
             coverPath: bookData.coverPath,
             description: bookData.description ?? null,
@@ -996,6 +1242,9 @@ export const addBookByISBN = (userId: string, isbn: string) =>
 
 export const getLibrary = (userId: string, pagination: PaginationParams & { search?: string }) =>
   Effect.flatMap(BookRepository, repo => repo.getLibrary(userId, pagination))
+
+export const getLibraryByAuthor = (userId: string, authorId: string, pagination: PaginationParams) =>
+  Effect.flatMap(BookRepository, repo => repo.getLibraryByAuthor(userId, authorId, pagination))
 
 export const getBookById = (bookId: string) =>
   Effect.flatMap(BookRepository, repo => repo.getBookById(bookId))
