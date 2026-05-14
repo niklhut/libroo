@@ -10,7 +10,6 @@ export const books = sqliteTable('books', {
   id: text('id').primaryKey(),
   isbn: text('isbn').unique(), // Unique constraint for deduplication
   title: text('title').notNull(),
-  author: text('author').notNull(),
   coverPath: text('cover_path'), // Local blob storage path
   openLibraryKey: text('open_library_key'), // OpenLibrary edition key
   workKey: text('work_key'), // OpenLibrary works key (for description)
@@ -23,6 +22,30 @@ export const books = sqliteTable('books', {
 
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull()
 })
+
+// Global author dictionary. Books link to authors through book_authors.
+export const authors = sqliteTable('authors', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  normalizedName: text('normalized_name').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
+}, table => [
+  uniqueIndex('authors_normalized_name_unique').on(table.normalizedName),
+  index('authors_name_idx').on(table.name)
+])
+
+// Ordered many-to-many relation between books and authors.
+export const bookAuthors = sqliteTable('book_authors', {
+  bookId: text('book_id').notNull().references(() => books.id, { onDelete: 'cascade' }),
+  authorId: text('author_id').notNull().references(() => authors.id, { onDelete: 'cascade' }),
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull()
+}, table => [
+  primaryKey({ columns: [table.bookId, table.authorId] }),
+  index('book_authors_book_id_idx').on(table.bookId),
+  index('book_authors_author_id_idx').on(table.authorId)
+])
 
 // User's book ownership (junction table)
 // Links users to books they own

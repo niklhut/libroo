@@ -57,6 +57,13 @@
       "when": 1776054997000,
       "tag": "0007_add_rating_check_constraint",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1776258000000,
+      "tag": "0008_normalized_authors",
+      "breakpoints": true
     }
   ]
 }
