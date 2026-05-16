@@ -61,6 +61,7 @@ const errorStatusCodes: Record<string, number> = {
   OpenLibraryApiError: 502,
   BookCreateError: 500,
   InvalidTagError: 400,
+  InvalidReadingProgressError: 400,
   DatabaseError: 500,
   StorageError: 500
 }

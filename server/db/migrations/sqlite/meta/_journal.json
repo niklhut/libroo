@@ -64,6 +64,13 @@
       "when": 1776258000000,
       "tag": "0008_normalized_authors",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1778763600000,
+      "tag": "0009_add_reading_progress",
+      "breakpoints": true
     }
   ]
 }

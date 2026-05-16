@@ -20,6 +20,16 @@ export interface BookTag {
   name: string
 }
 
+export type ReadingStatus = 'unread' | 'reading' | 'read'
+
+export interface ReadingProgress {
+  status: ReadingStatus
+  currentPage: number | null
+  progressPercent: number | null
+  startedAt: Date | string | null
+  finishedAt: Date | string | null
+}
+
 export interface BookLookupResult {
   found: boolean
   isbn: string
@@ -52,6 +62,7 @@ export interface BookDetails {
   description: string | null
   rating: number | null
   note: string | null
+  readingProgress: ReadingProgress
   userTags: BookTag[]
   suggestedTags: BookTag[]
   publishDate: string | null

@@ -55,9 +55,17 @@ export const userBooks = sqliteTable('user_books', {
   bookId: text('book_id').notNull().references(() => books.id, { onDelete: 'cascade' }),
   rating: integer('rating'), // 1–5 star rating, null = unrated
   note: text('note'), // Private user note
+  readingStatus: text('reading_status', { enum: ['unread', 'reading', 'read'] }).notNull().default('unread'),
+  currentPage: integer('current_page'),
+  progressPercent: integer('progress_percent'),
+  startedAt: integer('started_at', { mode: 'timestamp' }),
+  finishedAt: integer('finished_at', { mode: 'timestamp' }),
   addedAt: integer('added_at', { mode: 'timestamp' }).notNull()
 }, table => [
-  check('user_books_rating_check', sql`${table.rating} IS NULL OR ${table.rating} BETWEEN 1 AND 5`)
+  check('user_books_rating_check', sql`${table.rating} IS NULL OR ${table.rating} BETWEEN 1 AND 5`),
+  check('user_books_reading_status_check', sql`${table.readingStatus} IN ('unread', 'reading', 'read')`),
+  check('user_books_current_page_check', sql`${table.currentPage} IS NULL OR ${table.currentPage} >= 0`),
+  check('user_books_progress_percent_check', sql`${table.progressPercent} IS NULL OR ${table.progressPercent} BETWEEN 0 AND 100`)
 ])
 
 // Global tag dictionary with case-insensitive uniqueness enforced in migration

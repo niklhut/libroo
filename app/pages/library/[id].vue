@@ -7,6 +7,8 @@ const { removeBooks, getLoadedPages, markNeedsSync } = dashboardStore
 const userBookId = route.params.id as string
 const isDeleting = ref(false)
 const isTagModalOpen = ref(false)
+const isReadingModalOpen = ref(false)
+const isSavingReadingProgress = ref(false)
 
 // Fetch book details
 const { data: book, status, refresh } = await useFetch<BookDetails>(`/api/books/${userBookId}`, {
@@ -109,8 +111,12 @@ async function onTagsSaved() {
 // Per-field request sequencing tokens to prevent stale rollbacks
 let ratingRequestId = 0
 let noteRequestId = 0
+let readingRequestId = 0
 let lastConfirmedRating: number | null = book.value?.rating ?? null
 let lastConfirmedNote: string | null = book.value?.note ?? null
+let lastConfirmedReadingProgress: ReadingProgress | null = book.value?.readingProgress
+  ? { ...book.value.readingProgress }
+  : null
 
 // Rating
 async function saveRating(rating: number | null) {
@@ -176,6 +182,57 @@ async function saveNote(note: string | null) {
       description: message,
       color: 'error'
     })
+  }
+}
+
+async function saveReadingProgress(progress: {
+  status: ReadingStatus
+  currentPage: number | null
+  progressPercent: number | null
+  startedAt: string | null
+  finishedAt: string | null
+}) {
+  const previousProgress = lastConfirmedReadingProgress
+  const currentRequestId = ++readingRequestId
+  isSavingReadingProgress.value = true
+
+  if (book.value) {
+    book.value = { ...book.value, readingProgress: progress }
+  }
+
+  try {
+    const result = await $fetch<{ readingProgress: ReadingProgress }>(`/api/books/${userBookId}/reading`, {
+      method: 'PUT',
+      body: progress
+    })
+
+    if (currentRequestId === readingRequestId) {
+      if (book.value) {
+        book.value = { ...book.value, readingProgress: result.readingProgress }
+      }
+      lastConfirmedReadingProgress = { ...result.readingProgress }
+      toast.add({
+        title: 'Progress saved',
+        description: 'Your reading progress has been updated.',
+        color: 'success'
+      })
+      isReadingModalOpen.value = false
+    }
+  } catch (err: unknown) {
+    if (currentRequestId === readingRequestId && book.value && previousProgress) {
+      book.value = { ...book.value, readingProgress: previousProgress }
+    }
+    const message = (err as { data?: { message?: string } })?.data?.message
+      ?? (err instanceof Error ? err.message : 'An error occurred')
+    toast.add({
+      title: 'Failed to save progress',
+      description: message,
+      color: 'error'
+    })
+  } finally {
+    if (currentRequestId === readingRequestId) {
+      isSavingReadingProgress.value = false
+    }
   }
 }
 </script>
@@ -326,6 +383,13 @@ async function saveNote(note: string | null) {
             @update:rating="saveRating"
           />
 
+          <!-- Reading Progress -->
+          <BookReadingProgress
+            :progress="book.readingProgress"
+            :total-pages="book.numberOfPages"
+            @edit="isReadingModalOpen = true"
+          />
+
           <!-- Your Note -->
           <BookNote
             :note="book.note"
@@ -426,6 +490,15 @@ async function saveNote(note: string | null) {
         :user-tags="book.userTags"
         :suggested-tags="book.suggestedTags"
         @saved="onTagsSaved"
+      />
+
+      <BookReadingProgressModal
+        v-if="book"
+        v-model:open="isReadingModalOpen"
+        :progress="book.readingProgress"
+        :total-pages="book.numberOfPages"
+        :saving="isSavingReadingProgress"
+        @save:progress="saveReadingProgress"
       />
     </UPageBody>
   </UContainer>

@@ -21,7 +21,17 @@ describe('server/api/books/[id]/index.get', () => {
 
   it('gets one book by id', async () => {
     mockLoggedInUser()
-    const book = { id: 'ub-1', title: 'A Book' }
+    const book = {
+      id: 'ub-1',
+      title: 'A Book',
+      readingProgress: {
+        status: 'reading',
+        currentPage: 50,
+        progressPercent: 25,
+        startedAt: '2026-05-01T00:00:00.000Z',
+        finishedAt: null
+      }
+    }
     serviceMocks.getBookDetails.mockReturnValueOnce(Effect.succeed(book))
     const handler = await importRoute(route)
 
