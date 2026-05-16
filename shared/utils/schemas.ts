@@ -164,3 +164,38 @@ export const bookNoteSchema = z.object({
 })
 
 export type BookNoteSchema = z.infer<typeof bookNoteSchema>
+
+const nullableDateSchema = z.preprocess(
+  (val) => {
+    if (val === '' || val === undefined) return val
+    if (val === null || val instanceof Date) return val
+    if (typeof val === 'string') {
+      const date = new Date(val)
+      return Number.isNaN(date.getTime()) ? val : date
+    }
+    return val
+  },
+  z.date({ error: 'Date must be valid' }).nullable().optional()
+)
+
+export const bookReadingProgressSchema = z.object({
+  status: z.enum(['unread', 'reading', 'read'], { error: 'Reading status is invalid' }).optional(),
+  currentPage: z.number({ error: 'Current page must be a number' })
+    .int({ error: 'Current page must be a whole number' })
+    .min(0, { error: 'Current page cannot be negative' })
+    .nullable()
+    .optional(),
+  progressPercent: z.number({ error: 'Progress must be a number' })
+    .int({ error: 'Progress must be a whole number' })
+    .min(0, { error: 'Progress cannot be negative' })
+    .max(100, { error: 'Progress cannot be greater than 100' })
+    .nullable()
+    .optional(),
+  startedAt: nullableDateSchema,
+  finishedAt: nullableDateSchema
+}).refine(
+  value => Object.values(value).some(item => item !== undefined),
+  { error: 'At least one reading progress field is required' }
+)
+
+export type BookReadingProgressSchema = z.infer<typeof bookReadingProgressSchema>

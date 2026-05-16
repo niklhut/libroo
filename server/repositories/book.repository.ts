@@ -155,6 +155,12 @@ export interface BookRepositoryInterface {
     userId: string,
     note: string | null
   ) => Effect.Effect<void, BookNotFoundError | DatabaseError, DbService>
+
+  updateReadingProgress: (
+    userBookId: string,
+    userId: string,
+    progress: ReadingProgress
+  ) => Effect.Effect<void, BookNotFoundError | DatabaseError, DbService>
 }
 
 // Service tag
@@ -962,6 +968,13 @@ export const BookRepositoryLive = Layer.effect(
             description: bookData.description ?? null,
             rating: row.user_books.rating ?? null,
             note: row.user_books.note ?? null,
+            readingProgress: {
+              status: row.user_books.readingStatus,
+              currentPage: row.user_books.currentPage ?? null,
+              progressPercent: row.user_books.progressPercent ?? null,
+              startedAt: row.user_books.startedAt ?? null,
+              finishedAt: row.user_books.finishedAt ?? null
+            },
             userTags: userTagRows,
             suggestedTags: suggestedRows,
             publishDate: bookData.publishDate ?? null,
@@ -1225,6 +1238,31 @@ export const BookRepositoryLive = Layer.effect(
             catch: error => new DatabaseError({
               message: `Failed to update note: ${error}`,
               operation: 'updateNote'
+            })
+          })
+
+          if (result.length === 0) {
+            return yield* Effect.fail(new BookNotFoundError({ bookId: userBookId }))
+          }
+        }),
+
+      updateReadingProgress: (userBookId, userId, progress) =>
+        Effect.gen(function* () {
+          const result = yield* Effect.tryPromise({
+            try: () => dbService.db
+              .update(userBooks)
+              .set({
+                readingStatus: progress.status,
+                currentPage: progress.currentPage,
+                progressPercent: progress.progressPercent,
+                startedAt: progress.startedAt ? new Date(progress.startedAt) : null,
+                finishedAt: progress.finishedAt ? new Date(progress.finishedAt) : null
+              })
+              .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId)))
+              .returning({ id: userBooks.id }),
+            catch: error => new DatabaseError({
+              message: `Failed to update reading progress: ${error}`,
+              operation: 'updateReadingProgress'
             })
           })
 

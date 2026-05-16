@@ -1,5 +1,6 @@
-import { Context, Effect, Layer, Either } from 'effect'
+import { Context, Effect, Layer, Either, Data } from 'effect'
 import type { HttpClient } from '@effect/platform'
+import { normalizeReadingProgress } from '../../shared/utils/reading-progress'
 
 interface UserBookViewModel {
   id: string
@@ -14,6 +15,10 @@ interface UserBookViewModel {
   tags: string[]
   addedAt: Date
 }
+
+export class InvalidReadingProgressError extends Data.TaggedError('InvalidReadingProgressError')<{
+  message: string
+}> { }
 
 export const toLibraryBook = (userBook: UserBookViewModel): LibraryBook => ({
   id: userBook.id,
@@ -111,6 +116,12 @@ export interface BookServiceInterface {
     userId: string,
     note: string | null
   ) => Effect.Effect<void, BookNotFoundError | DatabaseError, DbService>
+
+  updateReadingProgress: (
+    userBookId: string,
+    userId: string,
+    progress: BookReadingProgressSchema
+  ) => Effect.Effect<ReadingProgress, BookNotFoundError | InvalidReadingProgressError | DatabaseError, DbService>
 }
 
 // ===== Service Tag =====
@@ -123,6 +134,17 @@ export const BookServiceLive = Layer.effect(
   BookService,
   Effect.gen(function* () {
     const bookRepo = yield* BookRepository
+
+    const normalizeProgress = (
+      details: BookDetails,
+      input: BookReadingProgressSchema
+    ): Effect.Effect<ReadingProgress, InvalidReadingProgressError> =>
+      Effect.try({
+        try: () => normalizeReadingProgress(details, input),
+        catch: error => new InvalidReadingProgressError({
+          message: error instanceof Error ? error.message : 'Invalid reading progress'
+        })
+      })
 
     return {
       getUserLibrary: (userId, pagination) =>
@@ -262,7 +284,15 @@ export const BookServiceLive = Layer.effect(
         bookRepo.updateRating(userBookId, userId, rating),
 
       updateNote: (userBookId, userId, note) =>
-        bookRepo.updateNote(userBookId, userId, note)
+        bookRepo.updateNote(userBookId, userId, note),
+
+      updateReadingProgress: (userBookId, userId, progress) =>
+        Effect.gen(function* () {
+          const details = yield* bookRepo.getUserBookWithDetails(userBookId, userId)
+          const normalized = yield* normalizeProgress(details, progress)
+          yield* bookRepo.updateReadingProgress(userBookId, userId, normalized)
+          return normalized
+        })
     }
   })
 )
@@ -313,3 +343,10 @@ export const updateRating = (userBookId: string, userId: string, rating: number 
 
 export const updateNote = (userBookId: string, userId: string, note: string | null) =>
   Effect.flatMap(BookService, service => service.updateNote(userBookId, userId, note))
+
+export const updateReadingProgress = (
+  userBookId: string,
+  userId: string,
+  progress: BookReadingProgressSchema
+) =>
+  Effect.flatMap(BookService, service => service.updateReadingProgress(userBookId, userId, progress))

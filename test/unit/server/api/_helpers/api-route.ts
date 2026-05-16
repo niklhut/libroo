@@ -92,6 +92,7 @@ interface ApiRouteTestGlobals {
   getBookDetails: (...args: unknown[]) => unknown
   updateNote: (...args: unknown[]) => unknown
   updateRating: (...args: unknown[]) => unknown
+  updateReadingProgress: (...args: unknown[]) => unknown
   addUserTag: (...args: unknown[]) => unknown
   batchUpdateTags: (...args: unknown[]) => unknown
   deleteTag: (...args: unknown[]) => unknown
@@ -120,6 +121,7 @@ export const serviceMocks = {
   getBookDetails: vi.fn(),
   updateNote: vi.fn(),
   updateRating: vi.fn(),
+  updateReadingProgress: vi.fn(),
   addUserTag: vi.fn(),
   batchUpdateTags: vi.fn(),
   deleteTag: vi.fn(),
@@ -150,6 +152,7 @@ const originalGlobals = {
   getBookDetails: testGlobal.getBookDetails,
   updateNote: testGlobal.updateNote,
   updateRating: testGlobal.updateRating,
+  updateReadingProgress: testGlobal.updateReadingProgress,
   addUserTag: testGlobal.addUserTag,
   batchUpdateTags: testGlobal.batchUpdateTags,
   deleteTag: testGlobal.deleteTag,
@@ -218,6 +221,7 @@ export async function setupApiRouteTest() {
   testGlobal.getBookDetails = (...args: unknown[]) => serviceMocks.getBookDetails(...args)
   testGlobal.updateNote = (...args: unknown[]) => serviceMocks.updateNote(...args)
   testGlobal.updateRating = (...args: unknown[]) => serviceMocks.updateRating(...args)
+  testGlobal.updateReadingProgress = (...args: unknown[]) => serviceMocks.updateReadingProgress(...args)
   testGlobal.addUserTag = (...args: unknown[]) => serviceMocks.addUserTag(...args)
   testGlobal.batchUpdateTags = (...args: unknown[]) => serviceMocks.batchUpdateTags(...args)
   testGlobal.deleteTag = (...args: unknown[]) => serviceMocks.deleteTag(...args)
