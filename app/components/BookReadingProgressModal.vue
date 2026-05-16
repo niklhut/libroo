@@ -233,11 +233,17 @@ function saveProgress() {
             </UButton>
           </div>
 
-          <div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_8rem] sm:items-end">
-            <UFormField
-              v-if="progressMode === 'pages' && totalPages"
-              :label="`Current page of ${totalPages}`"
-            >
+          <div class="space-y-2">
+            <div class="flex items-center justify-between gap-3 text-sm font-medium">
+              <span>
+                {{ progressMode === 'pages' && totalPages ? `Current page of ${totalPages}` : 'Percent complete' }}
+              </span>
+              <span class="font-normal text-muted">
+                {{ displayedPercent }}% done
+              </span>
+            </div>
+
+            <template v-if="progressMode === 'pages' && totalPages">
               <UInput
                 v-model="currentPage"
                 type="number"
@@ -249,12 +255,9 @@ function saveProgress() {
                 @keydown.meta.enter="saveProgress"
                 @keydown.ctrl.enter="saveProgress"
               />
-            </UFormField>
+            </template>
 
-            <UFormField
-              v-else
-              label="Percent complete"
-            >
+            <template v-else>
               <UInput
                 v-model="progressPercent"
                 type="number"
@@ -266,11 +269,7 @@ function saveProgress() {
                 @keydown.meta.enter="saveProgress"
                 @keydown.ctrl.enter="saveProgress"
               />
-            </UFormField>
-
-            <div class="text-sm text-muted sm:text-right">
-              {{ displayedPercent }}% done
-            </div>
+            </template>
           </div>
         </div>
 
