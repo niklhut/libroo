@@ -35,7 +35,9 @@ export function normalizeReadingProgress(
     throw new Error(`Current page cannot exceed ${totalPages}`)
   }
 
-  if (currentPage !== null && totalPages !== null && totalPages > 0) {
+  if (hasExplicitPercent && progressPercent !== null) {
+    progressPercent = Math.min(100, Math.max(0, Math.round(progressPercent)))
+  } else if (currentPage !== null && totalPages !== null && totalPages > 0) {
     progressPercent = Math.min(100, Math.round((currentPage / totalPages) * 100))
   }
 

@@ -114,9 +114,6 @@ let noteRequestId = 0
 let readingRequestId = 0
 let lastConfirmedRating: number | null = book.value?.rating ?? null
 let lastConfirmedNote: string | null = book.value?.note ?? null
-let lastConfirmedReadingProgress: ReadingProgress | null = book.value?.readingProgress
-  ? { ...book.value.readingProgress }
-  : null
 
 // Rating
 async function saveRating(rating: number | null) {
@@ -192,7 +189,6 @@ async function saveReadingProgress(progress: {
   startedAt: string | null
   finishedAt: string | null
 }) {
-  const previousProgress = lastConfirmedReadingProgress
   const currentRequestId = ++readingRequestId
   isSavingReadingProgress.value = true
 
@@ -210,7 +206,6 @@ async function saveReadingProgress(progress: {
       if (book.value) {
         book.value = { ...book.value, readingProgress: result.readingProgress }
       }
-      lastConfirmedReadingProgress = { ...result.readingProgress }
       toast.add({
         title: 'Progress saved',
         description: 'Your reading progress has been updated.',
@@ -219,9 +214,19 @@ async function saveReadingProgress(progress: {
       isReadingModalOpen.value = false
     }
   } catch (err: unknown) {
-    if (currentRequestId === readingRequestId && book.value && previousProgress) {
-      book.value = { ...book.value, readingProgress: previousProgress }
+    if (currentRequestId !== readingRequestId) {
+      return
     }
+
+    try {
+      const details = await $fetch<BookDetails>(`/api/books/${userBookId}`)
+      if (book.value) {
+        book.value = { ...book.value, readingProgress: details.readingProgress }
+      }
+    } catch {
+      await refresh()
+    }
+
     const message = (err as { data?: { message?: string } })?.data?.message
       ?? (err instanceof Error ? err.message : 'An error occurred')
     toast.add({

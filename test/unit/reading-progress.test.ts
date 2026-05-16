@@ -81,4 +81,31 @@ describe('normalizeReadingProgress', () => {
       finishedAt: now
     })
   })
+
+  it('preserves explicit percent-only updates when current page already exists', () => {
+    const readingProgress: ReadingProgress = {
+      status: 'reading',
+      currentPage: 120,
+      progressPercent: 60,
+      startedAt: '2026-05-01T00:00:00.000Z',
+      finishedAt: null
+    }
+
+    expect(normalizeReadingProgress(
+      {
+        numberOfPages: 200,
+        readingProgress
+      },
+      {
+        progressPercent: 75
+      },
+      now
+    )).toEqual({
+      status: 'reading',
+      currentPage: 120,
+      progressPercent: 75,
+      startedAt: '2026-05-01T00:00:00.000Z',
+      finishedAt: null
+    })
+  })
 })

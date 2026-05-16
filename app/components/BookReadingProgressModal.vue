@@ -103,6 +103,16 @@ function parseOptionalNumber(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value))
+}
+
+function normalizeOptionalNumber(value: unknown, max: number): number | null {
+  const parsed = parseOptionalNumber(value)
+  if (parsed === null) return null
+  return clamp(Math.round(parsed), 0, max)
+}
+
 function selectStatus(nextStatus: ReadingStatus) {
   status.value = nextStatus
   if (nextStatus === 'unread') {
@@ -150,8 +160,12 @@ function saveProgress() {
 
   emit('save:progress', {
     status: status.value,
-    currentPage: progressMode.value === 'pages' ? parseOptionalNumber(currentPage.value) : null,
-    progressPercent: progressMode.value === 'percent' ? parseOptionalNumber(progressPercent.value) : null,
+    currentPage: progressMode.value === 'pages'
+      ? normalizeOptionalNumber(currentPage.value, props.totalPages ?? Number.MAX_SAFE_INTEGER)
+      : null,
+    progressPercent: progressMode.value === 'percent'
+      ? normalizeOptionalNumber(progressPercent.value, 100)
+      : null,
     startedAt: startedAt.value || null,
     finishedAt: finishedAt.value || null
   })
