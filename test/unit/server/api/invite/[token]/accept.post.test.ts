@@ -40,4 +40,15 @@ describe('server/api/invite/[token]/accept.post', () => {
     await expect(handler(makeEvent({ params: { token: 'token-1' } }))).resolves.toEqual(borrowed)
     expect(serviceMocks.acceptBookInvite).toHaveBeenCalledWith('token-1', 'user-1')
   })
+
+  it('rejects missing invite tokens', async () => {
+    mockLoggedInUser()
+    const handler = await importRoute(route)
+
+    await expect(handler(makeEvent())).rejects.toMatchObject({
+      statusCode: 400,
+      message: 'Invitation token is required'
+    })
+    expect(serviceMocks.acceptBookInvite).not.toHaveBeenCalled()
+  })
 })

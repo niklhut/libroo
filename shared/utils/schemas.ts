@@ -178,6 +178,25 @@ const nullableDateSchema = z.preprocess(
   z.date({ error: 'Date must be valid' }).nullable().optional()
 )
 
+const localNullableDateSchema = z.preprocess(
+  (val) => {
+    if (val === '' || val === undefined) return val
+    if (val === null || val instanceof Date) return val
+    if (typeof val === 'string') {
+      const date = /^\d{4}-\d{2}-\d{2}$/.test(val)
+        ? new Date(`${val}T00:00:00`)
+        : new Date(val)
+      return Number.isNaN(date.getTime()) ? val : date
+    }
+    return val
+  },
+  z.date({ error: 'Date must be valid' }).nullable().optional()
+)
+
+function toLocalDateKey(date: Date): number {
+  return date.getFullYear() * 10000 + (date.getMonth() + 1) * 100 + date.getDate()
+}
+
 export const bookReadingProgressSchema = z.object({
   status: z.enum(['unread', 'reading', 'read'], { error: 'Reading status is invalid' }).optional(),
   currentPage: z.number({ error: 'Current page must be a number' })
@@ -222,13 +241,11 @@ export const createLoanSchema = z.object({
     },
     z.email({ error: 'Borrower email must be valid' }).nullable().optional()
   ),
-  dueAt: nullableDateSchema,
+  dueAt: localNullableDateSchema,
   ownerNote: optionalTrimmedString
 }).refine((value) => {
   if (!value.dueAt) return true
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  return value.dueAt >= today
+  return toLocalDateKey(value.dueAt) >= toLocalDateKey(new Date())
 }, {
   path: ['dueAt'],
   error: 'Due date cannot be in the past'

@@ -45,7 +45,6 @@ async function acceptBook() {
       title: 'Added to borrowed books',
       color: 'success'
     })
-    isAccepting.value = false
     await navigateTo({ path: '/library/loans', query: { view: 'borrowed' } })
   } catch (err: unknown) {
     const message = (err as { data?: { message?: string } })?.data?.message

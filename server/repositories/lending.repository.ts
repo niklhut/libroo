@@ -1,5 +1,5 @@
 import { Context, Data, Effect, Layer } from 'effect'
-import { and, desc, eq, isNotNull, isNull, not } from 'drizzle-orm'
+import { and, desc, eq, exists, isNotNull, isNull, not, sql } from 'drizzle-orm'
 import { authors, bookAuthors, books, loans, user, userBooks } from 'hub:db:schema'
 import { BookNotFoundError, DatabaseError } from './book.repository'
 
@@ -56,6 +56,14 @@ export class LendingRepository extends Context.Tag('LendingRepository')<LendingR
 
 function generateId(): string {
   return crypto.randomUUID()
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+  return message.includes('SQLITE_CONSTRAINT')
+    || message.includes('UNIQUE constraint failed')
+    || message.includes('loans_active_user_book_unique')
+    || message.includes('loans_accept_token_hash_unique')
 }
 
 export const LendingRepositoryLive = Layer.effect(
@@ -179,10 +187,12 @@ export const LendingRepositoryLive = Layer.effect(
 
           const inserted = yield* Effect.tryPromise({
             try: () => dbService.db.insert(loans).values(loan).returning(),
-            catch: error => new DatabaseError({
-              message: `Failed to create loan: ${error}`,
-              operation: 'createLoan.insert'
-            })
+            catch: error => isUniqueConstraintError(error)
+              ? new ActiveLoanExistsError({ userBookId: input.userBookId })
+              : new DatabaseError({
+                  message: `Failed to create loan: ${error}`,
+                  operation: 'createLoan.insert'
+                })
           })
 
           return toOwnerLoan(inserted[0]!)
@@ -322,8 +332,12 @@ export const LendingRepositoryLive = Layer.effect(
         Effect.gen(function* () {
           const rows = yield* Effect.tryPromise({
             try: () => dbService.db
-              .select()
+              .select({
+                loan: loans,
+                ownerRemovedAt: userBooks.removedAt
+              })
               .from(loans)
+              .innerJoin(userBooks, and(eq(loans.userBookId, userBooks.id), eq(loans.ownerUserId, userBooks.userId)))
               .where(eq(loans.acceptTokenHash, tokenHash))
               .limit(1),
             catch: error => new DatabaseError({
@@ -332,11 +346,12 @@ export const LendingRepositoryLive = Layer.effect(
             })
           })
 
-          const loan = rows[0]
-          if (!loan) {
+          const row = rows[0]
+          if (!row || row.ownerRemovedAt) {
             return yield* Effect.fail(new InvalidInviteError({ message: 'This invitation is no longer available.' }))
           }
 
+          const loan = row.loan
           const isOwnInvite = Boolean(viewerUserId && viewerUserId === loan.ownerUserId)
           const canAccept = loan.status === 'active' && !loan.borrowerUserId && !loan.acceptedAt && !isOwnInvite
           return {
@@ -363,7 +378,23 @@ export const LendingRepositoryLive = Layer.effect(
                 acceptTokenHash: null,
                 updatedAt: now
               })
-              .where(and(eq(loans.acceptTokenHash, tokenHash), eq(loans.status, 'active'), isNull(loans.borrowerUserId), isNull(loans.acceptedAt), not(eq(loans.ownerUserId, borrowerUserId))))
+              .where(and(
+                eq(loans.acceptTokenHash, tokenHash),
+                eq(loans.status, 'active'),
+                isNull(loans.borrowerUserId),
+                isNull(loans.acceptedAt),
+                not(eq(loans.ownerUserId, borrowerUserId)),
+                exists(
+                  dbService.db
+                    .select({ value: sql`1` })
+                    .from(userBooks)
+                    .where(and(
+                      eq(userBooks.id, loans.userBookId),
+                      eq(userBooks.userId, loans.ownerUserId),
+                      isNull(userBooks.removedAt)
+                    ))
+                )
+              ))
               .returning(),
             catch: error => new DatabaseError({
               message: `Failed to accept invite: ${error}`,
