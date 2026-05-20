@@ -13,6 +13,7 @@ export interface LibraryBook {
   coverPath: string | null
   tags?: string[]
   addedAt: Date | string
+  activeLoan?: ActiveLoanSummary | null
 }
 
 export interface BookTag {
@@ -71,6 +72,56 @@ export interface BookDetails {
   openLibraryKey: string | null
   workKey: string | null
   addedAt: Date | string
+  activeLoan: ActiveLoanSummary | null
+}
+
+export type LoanStatus = 'active' | 'returned' | 'canceled'
+
+export interface ActiveLoanSummary {
+  id: string
+  borrowerDisplayName: string
+  acceptedByName: string | null
+  loanedAt: Date | string
+  dueAt: Date | string | null
+  acceptedAt: Date | string | null
+}
+
+export interface OwnerLoan extends ActiveLoanSummary {
+  userBookId: string
+  status: LoanStatus
+  returnedAt: Date | string | null
+  canceledAt: Date | string | null
+  book: {
+    title: string
+    author: string
+    coverPath: string | null
+  }
+  inviteUrl: string | null
+}
+
+export interface BorrowedBook {
+  id: string
+  status: LoanStatus
+  title: string
+  author: string
+  coverPath: string | null
+  ownerName: string
+  loanedAt: Date | string
+  dueAt: Date | string | null
+  returnedAt: Date | string | null
+  acceptedAt: Date | string
+  ownerRemoved: boolean
+}
+
+export interface InvitePreview {
+  title: string
+  author: string
+  coverPath: string | null
+  ownerName: string
+  dueAt: Date | string | null
+  canAccept: boolean
+  isOwnInvite: boolean
+  status: 'available' | 'already_accepted' | 'unavailable'
 }
 
 export interface AuthorLibrary {

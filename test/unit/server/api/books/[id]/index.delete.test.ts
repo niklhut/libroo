@@ -25,7 +25,19 @@ describe('server/api/books/[id]/index.delete', () => {
     const handler = await importRoute(route)
 
     await expect(handler(makeEvent({ params: { id: 'ub-1' } }))).resolves.toEqual({ success: true })
-    expect(serviceMocks.removeBookFromLibrary).toHaveBeenCalledWith('ub-1', 'user-1')
+    expect(serviceMocks.removeBookFromLibrary).toHaveBeenCalledWith('ub-1', 'user-1', { confirmActiveLoan: false })
+  })
+
+  it('passes active-loan removal confirmation', async () => {
+    mockLoggedInUser()
+    serviceMocks.removeBookFromLibrary.mockReturnValueOnce(Effect.succeed(undefined))
+    const handler = await importRoute(route)
+
+    await expect(handler(makeEvent({
+      params: { id: 'ub-1' },
+      query: { confirmActiveLoan: 'true' }
+    }))).resolves.toEqual({ success: true })
+    expect(serviceMocks.removeBookFromLibrary).toHaveBeenCalledWith('ub-1', 'user-1', { confirmActiveLoan: true })
   })
 
   it('rejects missing book ids', async () => {

@@ -97,10 +97,18 @@ interface ApiRouteTestGlobals {
   batchUpdateTags: (...args: unknown[]) => unknown
   deleteTag: (...args: unknown[]) => unknown
   promoteSuggestedTag: (...args: unknown[]) => unknown
+  createLoanForBook: (...args: unknown[]) => unknown
+  returnLoanForOwner: (...args: unknown[]) => unknown
+  cancelLoanForOwner: (...args: unknown[]) => unknown
+  listLoansForOwner: (...args: unknown[]) => unknown
+  listBooksLentToUser: (...args: unknown[]) => unknown
+  getInvitePreview: (...args: unknown[]) => unknown
+  acceptBookInvite: (...args: unknown[]) => unknown
   getBlob: (...args: unknown[]) => unknown
   bookIsbnSchema: unknown
   bookBatchDeleteSchema: unknown
   bookTagAddSchema: unknown
+  createLoanSchema: unknown
 }
 
 const testGlobal = globalThis as typeof globalThis & Partial<ApiRouteTestGlobals>
@@ -126,6 +134,13 @@ export const serviceMocks = {
   batchUpdateTags: vi.fn(),
   deleteTag: vi.fn(),
   promoteSuggestedTag: vi.fn(),
+  createLoanForBook: vi.fn(),
+  returnLoanForOwner: vi.fn(),
+  cancelLoanForOwner: vi.fn(),
+  listLoansForOwner: vi.fn(),
+  listBooksLentToUser: vi.fn(),
+  getInvitePreview: vi.fn(),
+  acceptBookInvite: vi.fn(),
   getBlob: vi.fn()
 }
 
@@ -157,10 +172,18 @@ const originalGlobals = {
   batchUpdateTags: testGlobal.batchUpdateTags,
   deleteTag: testGlobal.deleteTag,
   promoteSuggestedTag: testGlobal.promoteSuggestedTag,
+  createLoanForBook: testGlobal.createLoanForBook,
+  returnLoanForOwner: testGlobal.returnLoanForOwner,
+  cancelLoanForOwner: testGlobal.cancelLoanForOwner,
+  listLoansForOwner: testGlobal.listLoansForOwner,
+  listBooksLentToUser: testGlobal.listBooksLentToUser,
+  getInvitePreview: testGlobal.getInvitePreview,
+  acceptBookInvite: testGlobal.acceptBookInvite,
   getBlob: testGlobal.getBlob,
   bookIsbnSchema: testGlobal.bookIsbnSchema,
   bookBatchDeleteSchema: testGlobal.bookBatchDeleteSchema,
-  bookTagAddSchema: testGlobal.bookTagAddSchema
+  bookTagAddSchema: testGlobal.bookTagAddSchema,
+  createLoanSchema: testGlobal.createLoanSchema
 }
 
 const createHttpError: HttpErrorFactory = (input) => {
@@ -226,12 +249,20 @@ export async function setupApiRouteTest() {
   testGlobal.batchUpdateTags = (...args: unknown[]) => serviceMocks.batchUpdateTags(...args)
   testGlobal.deleteTag = (...args: unknown[]) => serviceMocks.deleteTag(...args)
   testGlobal.promoteSuggestedTag = (...args: unknown[]) => serviceMocks.promoteSuggestedTag(...args)
+  testGlobal.createLoanForBook = (...args: unknown[]) => serviceMocks.createLoanForBook(...args)
+  testGlobal.returnLoanForOwner = (...args: unknown[]) => serviceMocks.returnLoanForOwner(...args)
+  testGlobal.cancelLoanForOwner = (...args: unknown[]) => serviceMocks.cancelLoanForOwner(...args)
+  testGlobal.listLoansForOwner = (...args: unknown[]) => serviceMocks.listLoansForOwner(...args)
+  testGlobal.listBooksLentToUser = (...args: unknown[]) => serviceMocks.listBooksLentToUser(...args)
+  testGlobal.getInvitePreview = (...args: unknown[]) => serviceMocks.getInvitePreview(...args)
+  testGlobal.acceptBookInvite = (...args: unknown[]) => serviceMocks.acceptBookInvite(...args)
   testGlobal.getBlob = (...args: unknown[]) => serviceMocks.getBlob(...args)
 
   const schemas = await import('../../../../../shared/utils/schemas')
   testGlobal.bookIsbnSchema = schemas.bookIsbnSchema
   testGlobal.bookBatchDeleteSchema = schemas.bookBatchDeleteSchema
   testGlobal.bookTagAddSchema = schemas.bookTagAddSchema
+  testGlobal.createLoanSchema = schemas.createLoanSchema
 
   for (const mock of Object.values(serviceMocks)) {
     mock.mockReset()

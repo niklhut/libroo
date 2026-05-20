@@ -199,3 +199,45 @@ export const bookReadingProgressSchema = z.object({
 )
 
 export type BookReadingProgressSchema = z.infer<typeof bookReadingProgressSchema>
+
+const optionalTrimmedString = z.preprocess(
+  (val) => {
+    if (typeof val !== 'string') return val
+    const trimmed = val.trim()
+    return trimmed === '' ? null : trimmed
+  },
+  z.string().nullable().optional()
+)
+
+export const createLoanSchema = z.object({
+  borrowerDisplayName: z.string({ error: 'Borrower name is required' })
+    .trim()
+    .min(1, { error: 'Borrower name is required' })
+    .max(120, { error: 'Borrower name is too long' }),
+  borrowerEmail: z.preprocess(
+    (val) => {
+      if (typeof val !== 'string') return val
+      const trimmed = val.trim()
+      return trimmed === '' ? null : trimmed
+    },
+    z.email({ error: 'Borrower email must be valid' }).nullable().optional()
+  ),
+  dueAt: nullableDateSchema,
+  ownerNote: optionalTrimmedString
+}).refine((value) => {
+  if (!value.dueAt) return true
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  return value.dueAt >= today
+}, {
+  path: ['dueAt'],
+  error: 'Due date cannot be in the past'
+})
+
+export type CreateLoanSchema = z.infer<typeof createLoanSchema>
+
+export const removeBookSchema = z.object({
+  confirmActiveLoan: z.boolean().optional().default(false)
+})
+
+export type RemoveBookSchema = z.infer<typeof removeBookSchema>
