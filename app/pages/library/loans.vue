@@ -82,6 +82,10 @@ function borrowerLabel(loan: OwnerLoan) {
   return `${loan.acceptedByName} · entered as ${loan.borrowerDisplayName}`
 }
 
+function openOwnerBook(loan: OwnerLoan) {
+  return navigateTo(`/library/${loan.userBookId}`)
+}
+
 async function returnLoan(loan: OwnerLoan) {
   if (returningLoanId.value) return
 
@@ -192,22 +196,31 @@ async function returnLoan(loan: OwnerLoan) {
                 v-for="loan in activeOwnerLoans"
                 :key="loan.id"
                 variant="subtle"
+                class="group cursor-pointer transition hover:ring-1 hover:ring-primary/30"
+                role="link"
+                tabindex="0"
+                :aria-label="`Open ${loanTitle(loan)}`"
+                @click="openOwnerBook(loan)"
+                @keydown.enter.prevent="openOwnerBook(loan)"
+                @keydown.space.prevent="openOwnerBook(loan)"
               >
                 <div class="flex gap-4">
-                  <NuxtImg
-                    v-if="coverUrl(loan)"
-                    :src="coverUrl(loan)!"
-                    :alt="loanTitle(loan)"
-                    class="h-28 w-19 object-cover rounded"
-                  />
-                  <div
-                    v-else
-                    class="h-28 w-19 rounded bg-muted flex items-center justify-center"
-                  >
-                    <UIcon
-                      name="i-lucide-book"
-                      class="text-3xl text-muted"
+                  <div class="shrink-0">
+                    <NuxtImg
+                      v-if="coverUrl(loan)"
+                      :src="coverUrl(loan)!"
+                      :alt="loanTitle(loan)"
+                      class="h-28 w-19 object-cover rounded"
                     />
+                    <div
+                      v-else
+                      class="h-28 w-19 rounded bg-muted flex items-center justify-center"
+                    >
+                      <UIcon
+                        name="i-lucide-book"
+                        class="text-3xl text-muted"
+                      />
+                    </div>
                   </div>
                   <div class="min-w-0 flex-1">
                     <UBadge
@@ -217,7 +230,7 @@ async function returnLoan(loan: OwnerLoan) {
                     >
                       Lent out
                     </UBadge>
-                    <h3 class="font-semibold line-clamp-2">
+                    <h3 class="font-semibold line-clamp-2 transition-colors group-hover:text-primary">
                       {{ loanTitle(loan) }}
                     </h3>
                     <p class="text-sm text-muted line-clamp-1">
@@ -240,7 +253,7 @@ async function returnLoan(loan: OwnerLoan) {
                       icon="i-lucide-undo-2"
                       :loading="returningLoanId === loan.id"
                       :disabled="Boolean(returningLoanId)"
-                      @click="returnLoan(loan)"
+                      @click.stop="returnLoan(loan)"
                     >
                       Mark returned
                     </UButton>
@@ -268,26 +281,35 @@ async function returnLoan(loan: OwnerLoan) {
                 v-for="loan in ownerLoanHistory"
                 :key="loan.id"
                 variant="subtle"
+                class="group cursor-pointer transition hover:ring-1 hover:ring-primary/30"
+                role="link"
+                tabindex="0"
+                :aria-label="`Open ${loanTitle(loan)}`"
+                @click="openOwnerBook(loan)"
+                @keydown.enter.prevent="openOwnerBook(loan)"
+                @keydown.space.prevent="openOwnerBook(loan)"
               >
                 <div class="flex items-center justify-between gap-4">
                   <div class="flex min-w-0 items-center gap-3">
-                    <NuxtImg
-                      v-if="coverUrl(loan)"
-                      :src="coverUrl(loan)!"
-                      :alt="loanTitle(loan)"
-                      class="h-18 w-12 shrink-0 rounded object-cover"
-                    />
-                    <div
-                      v-else
-                      class="h-18 w-12 shrink-0 rounded bg-muted flex items-center justify-center"
-                    >
-                      <UIcon
-                        name="i-lucide-book"
-                        class="text-xl text-muted"
+                    <div class="shrink-0">
+                      <NuxtImg
+                        v-if="coverUrl(loan)"
+                        :src="coverUrl(loan)!"
+                        :alt="loanTitle(loan)"
+                        class="h-18 w-12 rounded object-cover"
                       />
+                      <div
+                        v-else
+                        class="h-18 w-12 rounded bg-muted flex items-center justify-center"
+                      >
+                        <UIcon
+                          name="i-lucide-book"
+                          class="text-xl text-muted"
+                        />
+                      </div>
                     </div>
                     <div class="min-w-0">
-                      <h3 class="font-semibold truncate">
+                      <h3 class="font-semibold truncate transition-colors group-hover:text-primary">
                         {{ loanTitle(loan) }}
                       </h3>
                       <p class="text-sm text-muted truncate">

@@ -108,11 +108,11 @@ export const LendingRepositoryLive = Layer.effect(
         } satisfies LoanSnapshotSource
       })
 
-    const toOwnerLoan = (row: typeof loans.$inferSelect): OwnerLoan => ({
+    const toOwnerLoan = (row: typeof loans.$inferSelect & { acceptedByName?: string | null }): OwnerLoan => ({
       id: row.id,
       userBookId: row.userBookId,
       borrowerDisplayName: row.borrowerDisplayName,
-      acceptedByName: null,
+      acceptedByName: row.acceptedByName ?? null,
       status: row.status,
       loanedAt: row.loanedAt,
       dueAt: row.dueAt ?? null,
@@ -273,8 +273,31 @@ export const LendingRepositoryLive = Layer.effect(
         Effect.gen(function* () {
           const rows = yield* Effect.tryPromise({
             try: () => dbService.db
-              .select()
+              .select({
+                id: loans.id,
+                ownerUserId: loans.ownerUserId,
+                userBookId: loans.userBookId,
+                borrowerUserId: loans.borrowerUserId,
+                borrowerDisplayName: loans.borrowerDisplayName,
+                borrowerEmail: loans.borrowerEmail,
+                status: loans.status,
+                loanedAt: loans.loanedAt,
+                dueAt: loans.dueAt,
+                returnedAt: loans.returnedAt,
+                canceledAt: loans.canceledAt,
+                ownerNote: loans.ownerNote,
+                snapshotBookTitle: loans.snapshotBookTitle,
+                snapshotBookAuthor: loans.snapshotBookAuthor,
+                snapshotCoverPath: loans.snapshotCoverPath,
+                snapshotOwnerName: loans.snapshotOwnerName,
+                acceptTokenHash: loans.acceptTokenHash,
+                acceptedAt: loans.acceptedAt,
+                createdAt: loans.createdAt,
+                updatedAt: loans.updatedAt,
+                acceptedByName: user.name
+              })
               .from(loans)
+              .leftJoin(user, eq(loans.borrowerUserId, user.id))
               .where(eq(loans.ownerUserId, ownerUserId))
               .orderBy(desc(loans.loanedAt)),
             catch: error => new DatabaseError({
