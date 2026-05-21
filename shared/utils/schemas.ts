@@ -180,7 +180,8 @@ const nullableDateSchema = z.preprocess(
 
 const localNullableDateSchema = z.preprocess(
   (val) => {
-    if (val === '' || val === undefined) return val
+    if (val === '') return undefined
+    if (val === undefined) return val
     if (val === null || val instanceof Date) return val
     if (typeof val === 'string') {
       const date = /^\d{4}-\d{2}-\d{2}$/.test(val)
