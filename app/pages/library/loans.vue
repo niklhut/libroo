@@ -201,8 +201,8 @@ async function returnLoan(loan: OwnerLoan) {
                 tabindex="0"
                 :aria-label="`Open ${loanTitle(loan)}`"
                 @click="openOwnerBook(loan)"
-                @keydown.enter.prevent.stop="openOwnerBook(loan)"
-                @keydown.space.prevent.stop="openOwnerBook(loan)"
+                @keydown.enter.self.prevent.stop="openOwnerBook(loan)"
+                @keydown.space.self.prevent.stop="openOwnerBook(loan)"
               >
                 <div class="flex gap-4">
                   <div class="shrink-0">
@@ -286,8 +286,8 @@ async function returnLoan(loan: OwnerLoan) {
                 tabindex="0"
                 :aria-label="`Open ${loanTitle(loan)}`"
                 @click="openOwnerBook(loan)"
-                @keydown.enter.prevent.stop="openOwnerBook(loan)"
-                @keydown.space.prevent.stop="openOwnerBook(loan)"
+                @keydown.enter.self.prevent.stop="openOwnerBook(loan)"
+                @keydown.space.self.prevent.stop="openOwnerBook(loan)"
               >
                 <div class="flex items-center justify-between gap-4">
                   <div class="flex min-w-0 items-center gap-3">

@@ -255,7 +255,7 @@ export const createLoanSchema = z.object({
 export type CreateLoanSchema = z.infer<typeof createLoanSchema>
 
 export const removeBookSchema = z.object({
-  confirmActiveLoan: z.boolean().optional().default(false)
+  confirmActiveLoan: z.boolean().default(false).optional()
 })
 
 export type RemoveBookSchema = z.infer<typeof removeBookSchema>
