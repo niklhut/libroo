@@ -28,6 +28,11 @@ function formatDate(value: Date | string | null): string | null {
   })
 }
 
+function returnedLabel(value: Date | string | null): string {
+  const formatted = formatDate(value)
+  return formatted ? `Returned ${formatted}` : 'Returned'
+}
+
 function borrowerLabel(loan: OwnerLoan) {
   if (!loan.acceptedByName || loan.acceptedByName === loan.borrowerDisplayName) {
     return loan.borrowerDisplayName
@@ -193,7 +198,7 @@ function openBook(loan: OwnerLoan) {
                   {{ loan.book.author }} · {{ borrowerLabel(loan) }}
                 </p>
                 <p class="text-sm text-muted">
-                  {{ loan.status === 'returned' ? `Returned ${formatDate(loan.returnedAt)}` : 'Canceled' }}
+                  {{ loan.status === 'returned' ? returnedLabel(loan.returnedAt) : 'Canceled' }}
                 </p>
               </div>
             </div>

@@ -22,6 +22,11 @@ function formatDate(value: Date | string | null): string | null {
     day: 'numeric'
   })
 }
+
+function returnedLabel(value: Date | string | null): string {
+  const formatted = formatDate(value)
+  return formatted ? `Returned ${formatted}` : 'Returned'
+}
 </script>
 
 <template>
@@ -147,7 +152,7 @@ function formatDate(value: Date | string | null): string | null {
                   {{ book.author }} · Lent by {{ book.ownerName }}
                 </p>
                 <p class="text-sm text-muted">
-                  {{ book.status === 'returned' ? `Returned ${formatDate(book.returnedAt)}` : 'No longer active' }}
+                  {{ book.status === 'returned' ? returnedLabel(book.returnedAt) : 'No longer active' }}
                 </p>
               </div>
             </div>
