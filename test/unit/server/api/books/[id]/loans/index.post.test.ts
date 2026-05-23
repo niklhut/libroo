@@ -42,13 +42,12 @@ describe('server/api/books/[id]/loans/index.post', () => {
 
     await expect(handler(makeEvent({
       params: { id: 'ub-1' },
-      body: { borrowerDisplayName: 'Grace', borrowerEmail: '', dueAt: null, ownerNote: '' }
+      body: { borrowerDisplayName: 'Grace', borrowerEmail: '', dueAt: null }
     }))).resolves.toEqual(result)
     expect(serviceMocks.createLoanForBook).toHaveBeenCalledWith('ub-1', 'user-1', {
       borrowerDisplayName: 'Grace',
       borrowerEmail: null,
-      dueAt: null,
-      ownerNote: null
+      dueAt: null
     })
   })
 

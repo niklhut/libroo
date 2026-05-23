@@ -220,15 +220,6 @@ export const bookReadingProgressSchema = z.object({
 
 export type BookReadingProgressSchema = z.infer<typeof bookReadingProgressSchema>
 
-const optionalTrimmedString = z.preprocess(
-  (val) => {
-    if (typeof val !== 'string') return val
-    const trimmed = val.trim()
-    return trimmed === '' ? null : trimmed
-  },
-  z.string().nullable().optional()
-)
-
 export const createLoanSchema = z.object({
   borrowerDisplayName: z.string({ error: 'Borrower name is required' })
     .trim()
@@ -242,8 +233,7 @@ export const createLoanSchema = z.object({
     },
     z.email({ error: 'Borrower email must be valid' }).nullable().optional()
   ),
-  dueAt: localNullableDateSchema,
-  ownerNote: optionalTrimmedString
+  dueAt: localNullableDateSchema
 }).refine((value) => {
   if (!value.dueAt) return true
   return toLocalDateKey(value.dueAt) >= toLocalDateKey(new Date())

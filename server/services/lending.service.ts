@@ -8,7 +8,6 @@ interface CreateLoanInput {
   borrowerDisplayName: string
   borrowerEmail?: string | null
   dueAt?: Date | null
-  ownerNote?: string | null
 }
 
 interface CreateLoanResult {
@@ -66,7 +65,6 @@ export const LendingServiceLive = Layer.effect(
             borrowerDisplayName: input.borrowerDisplayName,
             borrowerEmail: input.borrowerEmail ?? null,
             dueAt: input.dueAt ?? null,
-            ownerNote: input.ownerNote ?? null,
             acceptTokenHash
           })
 

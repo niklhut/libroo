@@ -25,7 +25,6 @@ export interface LoanCreateInput {
   borrowerDisplayName: string
   borrowerEmail: string | null
   dueAt: Date | null
-  ownerNote: string | null
   acceptTokenHash: string
 }
 
@@ -174,7 +173,6 @@ export const LendingRepositoryLive = Layer.effect(
             dueAt: input.dueAt,
             returnedAt: null,
             canceledAt: null,
-            ownerNote: input.ownerNote,
             snapshotBookTitle: snapshot.title,
             snapshotBookAuthor: snapshot.author,
             snapshotCoverPath: snapshot.coverPath,
@@ -285,7 +283,6 @@ export const LendingRepositoryLive = Layer.effect(
                 dueAt: loans.dueAt,
                 returnedAt: loans.returnedAt,
                 canceledAt: loans.canceledAt,
-                ownerNote: loans.ownerNote,
                 snapshotBookTitle: loans.snapshotBookTitle,
                 snapshotBookAuthor: loans.snapshotBookAuthor,
                 snapshotCoverPath: loans.snapshotCoverPath,

@@ -119,7 +119,6 @@ export const loans = sqliteTable('loans', {
   dueAt: integer('due_at', { mode: 'timestamp' }),
   returnedAt: integer('returned_at', { mode: 'timestamp' }),
   canceledAt: integer('canceled_at', { mode: 'timestamp' }),
-  ownerNote: text('owner_note'),
   snapshotBookTitle: text('snapshot_book_title').notNull(),
   snapshotBookAuthor: text('snapshot_book_author').notNull(),
   snapshotCoverPath: text('snapshot_cover_path'),
