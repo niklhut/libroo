@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { OwnerLoan } from '~~/shared/types/book'
+import { formatDate, returnedLabel } from '~/utils/loan-date-helpers'
 
 const props = defineProps<{
   loans: OwnerLoan[]
@@ -15,22 +16,6 @@ const loanHistory = computed(() => props.loans.filter(loan => loan.status !== 'a
 
 function coverUrl(loan: OwnerLoan) {
   return loan.book.coverPath ? `/api/blob/${loan.book.coverPath}` : null
-}
-
-function formatDate(value: Date | string | null): string | null {
-  if (!value) return null
-  const date = value instanceof Date ? value : new Date(value)
-  if (Number.isNaN(date.getTime())) return null
-  return date.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  })
-}
-
-function returnedLabel(value: Date | string | null): string {
-  const formatted = formatDate(value)
-  return formatted ? `Returned ${formatted}` : 'Returned'
 }
 
 function borrowerLabel(loan: OwnerLoan) {
