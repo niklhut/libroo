@@ -15,6 +15,14 @@ const toast = useToast()
 const isLoading = ref(false)
 const error = ref('')
 
+const redirectPath = computed(() => {
+  const redirect = route.query.redirect
+  if (typeof redirect === 'string' && /^\/(?!\/)/.test(redirect)) {
+    return redirect
+  }
+  return '/library'
+})
+
 // Redirect if already logged in (but not if we just signed out - race condition with stale state)
 const isFromSignout = computed(() => route.query.signout === 'true')
 
@@ -23,7 +31,7 @@ watch(user, (newUser) => {
   if (isFromSignout.value) return
 
   if (newUser) {
-    navigateTo('/library')
+    navigateTo(redirectPath.value)
   }
 }, { immediate: true })
 
@@ -126,7 +134,7 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
         <template #description>
           Already have an account?
           <ULink
-            to="/login"
+            :to="{ path: '/login', query: route.query.redirect ? { redirect: route.query.redirect } : undefined }"
             class="text-primary font-medium"
           >
             Sign in

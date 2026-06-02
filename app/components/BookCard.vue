@@ -7,6 +7,7 @@ interface Props {
   isbn?: string | null
   coverPath?: string | null
   addedAt?: string | Date
+  activeLoan?: ActiveLoanSummary | null
   selected?: boolean
   selectable?: boolean
 }
@@ -69,6 +70,15 @@ function handleClick(e: MouseEvent) {
               class="text-4xl text-muted"
             />
           </div>
+          <UBadge
+            v-if="activeLoan"
+            color="warning"
+            variant="solid"
+            size="sm"
+            class="absolute top-2 left-2"
+          >
+            Lent out
+          </UBadge>
         </div>
       </template>
 
@@ -111,6 +121,15 @@ function handleClick(e: MouseEvent) {
             name="i-lucide-book"
             class="text-4xl text-muted"
           />
+          <UBadge
+            v-if="activeLoan"
+            color="warning"
+            variant="solid"
+            size="sm"
+            class="absolute top-2 left-2"
+          >
+            Lent out
+          </UBadge>
 
           <!-- Selection indicator -->
           <div class="absolute top-2 right-2">

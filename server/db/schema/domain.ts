@@ -60,7 +60,8 @@ export const userBooks = sqliteTable('user_books', {
   progressPercent: integer('progress_percent'),
   startedAt: integer('started_at', { mode: 'timestamp' }),
   finishedAt: integer('finished_at', { mode: 'timestamp' }),
-  addedAt: integer('added_at', { mode: 'timestamp' }).notNull()
+  addedAt: integer('added_at', { mode: 'timestamp' }).notNull(),
+  removedAt: integer('removed_at', { mode: 'timestamp' })
 }, table => [
   check('user_books_rating_check', sql`${table.rating} IS NULL OR ${table.rating} BETWEEN 1 AND 5`),
   check('user_books_reading_status_check', sql`${table.readingStatus} IN ('unread', 'reading', 'read')`),
@@ -108,9 +109,29 @@ export const userBookTags = sqliteTable('user_book_tags', {
 // Loans track when a user's book is lent out
 export const loans = sqliteTable('loans', {
   id: text('id').primaryKey(),
+  ownerUserId: text('owner_user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
   userBookId: text('user_book_id').notNull().references(() => userBooks.id, { onDelete: 'cascade' }),
-  borrowerName: text('borrower_name').notNull(),
-  dateLoaned: integer('date_loaned', { mode: 'timestamp' }).notNull(),
-  dateReturned: integer('date_returned', { mode: 'timestamp' }),
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull()
-})
+  borrowerUserId: text('borrower_user_id').references(() => user.id, { onDelete: 'set null' }),
+  borrowerDisplayName: text('borrower_display_name').notNull(),
+  borrowerEmail: text('borrower_email'),
+  status: text('status', { enum: ['active', 'returned', 'canceled'] }).notNull().default('active'),
+  loanedAt: integer('loaned_at', { mode: 'timestamp' }).notNull(),
+  dueAt: integer('due_at', { mode: 'timestamp' }),
+  returnedAt: integer('returned_at', { mode: 'timestamp' }),
+  canceledAt: integer('canceled_at', { mode: 'timestamp' }),
+  snapshotBookTitle: text('snapshot_book_title').notNull(),
+  snapshotBookAuthor: text('snapshot_book_author').notNull(),
+  snapshotCoverPath: text('snapshot_cover_path'),
+  snapshotOwnerName: text('snapshot_owner_name').notNull(),
+  acceptTokenHash: text('accept_token_hash'),
+  acceptedAt: integer('accepted_at', { mode: 'timestamp' }),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
+}, table => [
+  check('loans_status_check', sql`${table.status} IN ('active', 'returned', 'canceled')`),
+  index('loans_owner_user_id_idx').on(table.ownerUserId),
+  index('loans_user_book_id_idx').on(table.userBookId),
+  index('loans_borrower_user_id_idx').on(table.borrowerUserId),
+  uniqueIndex('loans_active_user_book_unique').on(table.userBookId).where(sql`${table.status} = 'active'`),
+  uniqueIndex('loans_accept_token_hash_unique').on(table.acceptTokenHash).where(sql`${table.acceptTokenHash} IS NOT NULL`)
+])

@@ -8,7 +8,10 @@ const userBookId = route.params.id as string
 const isDeleting = ref(false)
 const isTagModalOpen = ref(false)
 const isReadingModalOpen = ref(false)
+const isLendingModalOpen = ref(false)
+const isLoanRemovalDialogOpen = ref(false)
 const isSavingReadingProgress = ref(false)
+const isReturningLoan = ref(false)
 
 // Fetch book details
 const { data: book, status, refresh } = await useFetch<BookDetails>(`/api/books/${userBookId}`, {
@@ -53,12 +56,13 @@ const formattedAddedAt = computed(() => formatDate(book.value?.addedAt ?? null))
 const formattedPublishDate = computed(() => formatDate(book.value?.publishDate ?? null))
 
 // Remove book
-async function removeBook() {
+async function removeBook(confirmActiveLoan = false) {
   isDeleting.value = true
 
   try {
     await $fetch(`/api/books/${userBookId}`, {
-      method: 'DELETE'
+      method: 'DELETE',
+      query: confirmActiveLoan ? { confirmActiveLoan: 'true' } : undefined
     })
 
     removeBooks([userBookId])
@@ -74,6 +78,14 @@ async function removeBook() {
   } catch (err: unknown) {
     const message = (err as { data?: { message?: string } })?.data?.message
       ?? (err instanceof Error ? err.message : 'An error occurred')
+    const statusCode = (err as { statusCode?: number, data?: { statusCode?: number } })?.statusCode
+      ?? (err as { data?: { statusCode?: number } })?.data?.statusCode
+
+    if (statusCode === 409 && book.value?.activeLoan && !confirmActiveLoan) {
+      isLoanRemovalDialogOpen.value = true
+      return
+    }
+
     toast.add({
       title: 'Failed to remove book',
       description: message,
@@ -81,6 +93,38 @@ async function removeBook() {
     })
   } finally {
     isDeleting.value = false
+  }
+}
+
+async function onLoanSaved() {
+  await refresh()
+  markNeedsSync(getLoadedPages())
+}
+
+async function returnActiveLoan() {
+  if (!book.value?.activeLoan || isReturningLoan.value) return
+
+  isReturningLoan.value = true
+  try {
+    await $fetch(`/api/loans/${book.value.activeLoan.id}/return`, {
+      method: 'POST'
+    })
+    await refresh()
+    markNeedsSync(getLoadedPages())
+    toast.add({
+      title: 'Book marked as returned',
+      color: 'success'
+    })
+  } catch (err: unknown) {
+    const message = (err as { data?: { message?: string } })?.data?.message
+      ?? (err instanceof Error ? err.message : 'Unable to mark returned')
+    toast.add({
+      title: 'Could not update lending status',
+      description: message,
+      color: 'error'
+    })
+  } finally {
+    isReturningLoan.value = false
   }
 }
 
@@ -395,6 +439,51 @@ async function saveReadingProgress(progress: {
             @edit="isReadingModalOpen = true"
           />
 
+          <div
+            v-if="book.activeLoan"
+            class="space-y-2"
+          >
+            <div class="flex items-center justify-between gap-3">
+              <div class="min-w-0">
+                <div class="flex flex-wrap items-center gap-2">
+                  <h2 class="text-lg font-semibold">
+                    Loan
+                  </h2>
+                  <UBadge
+                    color="warning"
+                    variant="subtle"
+                  >
+                    Lent out
+                  </UBadge>
+                </div>
+                <p class="text-sm text-muted">
+                  {{ book.activeLoan.acceptedByName || book.activeLoan.borrowerDisplayName }} has this book
+                  <template v-if="book.activeLoan.acceptedByName && book.activeLoan.acceptedByName !== book.activeLoan.borrowerDisplayName">
+                    · entered as {{ book.activeLoan.borrowerDisplayName }}
+                  </template>
+                  · Lent {{ formatDate(book.activeLoan.loanedAt) }}
+                </p>
+                <p
+                  v-if="book.activeLoan.dueAt"
+                  class="text-sm text-muted"
+                >
+                  Due {{ formatDate(book.activeLoan.dueAt) }}
+                </p>
+              </div>
+              <UButton
+                color="neutral"
+                variant="outline"
+                size="sm"
+                icon="i-lucide-undo-2"
+                :loading="isReturningLoan"
+                :disabled="isReturningLoan"
+                @click="returnActiveLoan"
+              >
+                Mark returned
+              </UButton>
+            </div>
+          </div>
+
           <!-- Your Note -->
           <BookNote
             :note="book.note"
@@ -446,6 +535,15 @@ async function saveReadingProgress(progress: {
           <USeparator />
           <div class="flex flex-wrap gap-3">
             <UButton
+              v-if="!book.activeLoan"
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-handshake"
+              @click="isLendingModalOpen = true"
+            >
+              Record loan
+            </UButton>
+            <UButton
               v-if="book.openLibraryKey"
               color="neutral"
               variant="outline"
@@ -467,9 +565,9 @@ async function saveReadingProgress(progress: {
             </UButton>
             <DeleteConfirmDialog
               title="Remove this book from your library?"
-              description="This will permanently delete the book from your library. You can add it again later if needed."
+              description="This will remove the book from your library. Lending history is kept when it exists."
               confirm-label="Remove from Library"
-              @confirm="removeBook"
+              @confirm="removeBook(false)"
             >
               <template #trigger="{ open }">
                 <UButton
@@ -505,6 +603,38 @@ async function saveReadingProgress(progress: {
         :saving="isSavingReadingProgress"
         @save:progress="saveReadingProgress"
       />
+
+      <BookLendingModal
+        v-if="book"
+        v-model:open="isLendingModalOpen"
+        :user-book-id="userBookId"
+        @saved="onLoanSaved"
+      />
+
+      <UModal
+        v-model:open="isLoanRemovalDialogOpen"
+        title="Remove a lent-out book?"
+        description="This book will leave your library, but the active lending record and borrower history will remain."
+        :ui="{ footer: 'justify-end gap-3' }"
+      >
+        <template #footer>
+          <UButton
+            color="neutral"
+            variant="soft"
+            @click="isLoanRemovalDialogOpen = false"
+          >
+            Cancel
+          </UButton>
+          <UButton
+            color="error"
+            icon="i-lucide-trash-2"
+            :loading="isDeleting"
+            @click="removeBook(true)"
+          >
+            Remove from Library
+          </UButton>
+        </template>
+      </UModal>
     </UPageBody>
   </UContainer>
 </template>

@@ -281,6 +281,20 @@ async function deleteSelected() {
 
     <!-- Page Body -->
     <UPageBody>
+      <div
+        v-if="allBooks.length > 0"
+        class="mb-6 flex justify-end"
+      >
+        <UButton
+          to="/library/loans"
+          color="neutral"
+          variant="outline"
+          icon="i-lucide-handshake"
+        >
+          Loans
+        </UButton>
+      </div>
+
       <!-- Selection toolbar -->
       <div
         v-if="isSelectMode && hasBooks"
@@ -367,6 +381,7 @@ async function deleteSelected() {
             :isbn="book.isbn"
             :cover-path="book.coverPath"
             :added-at="book.addedAt"
+            :active-loan="book.activeLoan"
             :selectable="isSelectMode"
             :selected="selectedBooks.has(book.id)"
             @select="toggleBookSelection"

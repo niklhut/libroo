@@ -113,7 +113,7 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
         <template #description>
           Don't have an account?
           <ULink
-            to="/register"
+            :to="{ path: '/register', query: route.query.redirect ? { redirect: route.query.redirect } : undefined }"
             class="text-primary font-medium"
           >
             Sign up

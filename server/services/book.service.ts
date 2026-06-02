@@ -14,6 +14,7 @@ interface UserBookViewModel {
   }
   tags: string[]
   addedAt: Date
+  activeLoan: ActiveLoanSummary | null
 }
 
 export class InvalidReadingProgressError extends Data.TaggedError('InvalidReadingProgressError')<{
@@ -29,7 +30,8 @@ export const toLibraryBook = (userBook: UserBookViewModel): LibraryBook => ({
   isbn: userBook.book.isbn,
   coverPath: userBook.book.coverPath,
   tags: userBook.tags,
-  addedAt: userBook.addedAt
+  addedAt: userBook.addedAt,
+  activeLoan: userBook.activeLoan
 })
 
 // ===== Service Interface =====
@@ -57,8 +59,9 @@ export interface BookServiceInterface {
 
   removeBookFromLibrary: (
     userBookId: string,
-    userId: string
-  ) => Effect.Effect<void, BookNotFoundError | DatabaseError, DbService>
+    userId: string,
+    options?: { confirmActiveLoan?: boolean }
+  ) => Effect.Effect<void, BookNotFoundError | ActiveLoanRemovalError | DatabaseError, DbService>
 
   batchRemoveFromLibrary: (
     ids: string[],
@@ -175,8 +178,8 @@ export const BookServiceLive = Layer.effect(
           }
         }),
 
-      removeBookFromLibrary: (userBookId, userId) =>
-        bookRepo.removeFromLibrary(userBookId, userId),
+      removeBookFromLibrary: (userBookId, userId, options) =>
+        bookRepo.removeFromLibrary(userBookId, userId, options),
 
       batchRemoveFromLibrary: (ids, userId) =>
         Effect.gen(function* () {
@@ -308,8 +311,12 @@ export const getAuthorLibrary = (userId: string, authorId: string, pagination: P
 export const addBookToLibrary = (userId: string, isbn: string) =>
   Effect.flatMap(BookService, service => service.addBookToLibrary(userId, isbn))
 
-export const removeBookFromLibrary = (userBookId: string, userId: string) =>
-  Effect.flatMap(BookService, service => service.removeBookFromLibrary(userBookId, userId))
+export const removeBookFromLibrary = (
+  userBookId: string,
+  userId: string,
+  options?: { confirmActiveLoan?: boolean }
+) =>
+  Effect.flatMap(BookService, service => service.removeBookFromLibrary(userBookId, userId, options))
 
 export const batchRemoveFromLibrary = (ids: string[], userId: string) =>
   Effect.flatMap(BookService, service => service.batchRemoveFromLibrary(ids, userId))

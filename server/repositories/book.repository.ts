@@ -1,7 +1,7 @@
 import { Context, Effect, Layer, Data } from 'effect'
 import type { HttpClient } from '@effect/platform'
-import { eq, and, count, desc, asc, inArray, or, sql, notInArray, exists } from 'drizzle-orm'
-import { books, authors, bookAuthors, userBooks, tags, bookSystemTags, userBookTags } from 'hub:db:schema'
+import { eq, and, count, desc, asc, inArray, or, sql, notInArray, exists, isNull } from 'drizzle-orm'
+import { books, authors, bookAuthors, userBooks, tags, bookSystemTags, userBookTags, loans, user } from 'hub:db:schema'
 import { normalizeTagInput, normalizeSuggestedTags } from '../../shared/utils/tag-ingestion'
 
 // Error types
@@ -27,6 +27,11 @@ export class InvalidTagError extends Data.TaggedError('InvalidTagError')<{
   message: string
 }> { }
 
+export class ActiveLoanRemovalError extends Data.TaggedError('ActiveLoanRemovalError')<{
+  userBookId: string
+  borrowerDisplayName: string
+}> { }
+
 // Output types
 export interface Book {
   id: string
@@ -50,6 +55,7 @@ export interface UserBook {
   book: Book
   tags: string[]
   addedAt: Date
+  activeLoan: ActiveLoanSummary | null
 }
 
 export interface BookTagRecord {
@@ -102,8 +108,9 @@ export interface BookRepositoryInterface {
 
   removeFromLibrary: (
     userBookId: string,
-    userId: string
-  ) => Effect.Effect<void, BookNotFoundError | DatabaseError, DbService>
+    userId: string,
+    options?: { confirmActiveLoan?: boolean }
+  ) => Effect.Effect<void, BookNotFoundError | ActiveLoanRemovalError | DatabaseError, DbService>
 
   findByIsbn: (
     isbn: string
@@ -472,7 +479,7 @@ export const BookRepositoryLive = Layer.effect(
               bookId: userBooks.bookId
             })
             .from(userBooks)
-            .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId)))
+            .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId), isNull(userBooks.removedAt)))
             .limit(1),
           catch: error => new DatabaseError({
             message: `Failed to validate user book ownership: ${error}`,
@@ -488,6 +495,40 @@ export const BookRepositoryLive = Layer.effect(
         return owned as OwnedUserBookRef
       })
 
+    const hydrateActiveLoansByUserBookIds = (userBookIds: string[]) =>
+      Effect.gen(function* () {
+        if (userBookIds.length === 0) return new Map<string, ActiveLoanSummary>()
+
+        const rows = yield* Effect.tryPromise({
+          try: () => dbService.db
+            .select({
+              userBookId: loans.userBookId,
+              id: loans.id,
+              borrowerDisplayName: loans.borrowerDisplayName,
+              acceptedByName: user.name,
+              loanedAt: loans.loanedAt,
+              dueAt: loans.dueAt,
+              acceptedAt: loans.acceptedAt
+            })
+            .from(loans)
+            .leftJoin(user, eq(loans.borrowerUserId, user.id))
+            .where(and(inArray(loans.userBookId, userBookIds), eq(loans.status, 'active'))),
+          catch: error => new DatabaseError({
+            message: `Failed to load active loans: ${error}`,
+            operation: 'hydrateActiveLoansByUserBookIds'
+          })
+        })
+
+        return new Map(rows.map(row => [row.userBookId, {
+          id: row.id,
+          borrowerDisplayName: row.borrowerDisplayName,
+          acceptedByName: row.acceptedByName ?? null,
+          loanedAt: row.loanedAt,
+          dueAt: row.dueAt ?? null,
+          acceptedAt: row.acceptedAt ?? null
+        }]))
+      })
+
     return {
       addBookByISBN: (userId, isbn) =>
         Effect.gen(function* () {
@@ -498,7 +539,7 @@ export const BookRepositoryLive = Layer.effect(
                 .select()
                 .from(userBooks)
                 .innerJoin(books, eq(userBooks.bookId, books.id))
-                .where(and(eq(userBooks.userId, userId), eq(books.isbn, isbn)))
+                .where(and(eq(userBooks.userId, userId), eq(books.isbn, isbn), isNull(userBooks.removedAt)))
                 .limit(1),
             catch: error => new DatabaseError({
               message: `Failed to check existing ownership: ${error}`,
@@ -592,7 +633,8 @@ export const BookRepositoryLive = Layer.effect(
             bookId: book.id,
             book: hydratedBook,
             tags: [],
-            addedAt
+            addedAt,
+            activeLoan: null
           }
         }),
 
@@ -633,8 +675,8 @@ export const BookRepositoryLive = Layer.effect(
             : undefined
 
           const whereClause = hasSearch
-            ? and(eq(userBooks.userId, userId), searchCondition)
-            : eq(userBooks.userId, userId)
+            ? and(eq(userBooks.userId, userId), isNull(userBooks.removedAt), searchCondition)
+            : and(eq(userBooks.userId, userId), isNull(userBooks.removedAt))
 
           // Get total count
           const countResult = yield* Effect.tryPromise({
@@ -674,13 +716,15 @@ export const BookRepositoryLive = Layer.effect(
           const bookIds = result.map(row => row.books.id)
           const userTagsByUserBook = yield* hydrateUserTagsByUserBookIds(userBookIds)
           const authorsByBook = yield* hydrateAuthorsForBookIds(bookIds)
+          const activeLoansByUserBook = yield* hydrateActiveLoansByUserBookIds(userBookIds)
 
           const items = result.map(row => ({
             id: row.user_books.id,
             bookId: row.books.id,
             book: toBookModel(row.books, authorsByBook.get(row.books.id) || []),
             tags: userTagsByUserBook.get(row.user_books.id) || [],
-            addedAt: row.user_books.addedAt
+            addedAt: row.user_books.addedAt,
+            activeLoan: activeLoansByUserBook.get(row.user_books.id) ?? null
           }))
 
           return {
@@ -716,7 +760,7 @@ export const BookRepositoryLive = Layer.effect(
 
           const { page, pageSize } = pagination
           const offset = (page - 1) * pageSize
-          const whereClause = and(eq(userBooks.userId, userId), eq(bookAuthors.authorId, authorId))
+          const whereClause = and(eq(userBooks.userId, userId), isNull(userBooks.removedAt), eq(bookAuthors.authorId, authorId))
 
           const countResult = yield* Effect.tryPromise({
             try: () =>
@@ -756,13 +800,15 @@ export const BookRepositoryLive = Layer.effect(
           const bookIds = result.map(row => row.books.id)
           const userTagsByUserBook = yield* hydrateUserTagsByUserBookIds(userBookIds)
           const authorsByBook = yield* hydrateAuthorsForBookIds(bookIds)
+          const activeLoansByUserBook = yield* hydrateActiveLoansByUserBookIds(userBookIds)
 
           const items = result.map(row => ({
             id: row.user_books.id,
             bookId: row.books.id,
             book: toBookModel(row.books, authorsByBook.get(row.books.id) || []),
             tags: userTagsByUserBook.get(row.user_books.id) || [],
-            addedAt: row.user_books.addedAt
+            addedAt: row.user_books.addedAt,
+            activeLoan: activeLoansByUserBook.get(row.user_books.id) ?? null
           }))
 
           return {
@@ -810,7 +856,7 @@ export const BookRepositoryLive = Layer.effect(
                 .select({ id: userBooks.id })
                 .from(userBooks)
                 .innerJoin(books, eq(userBooks.bookId, books.id))
-                .where(and(eq(userBooks.userId, userId), eq(books.isbn, isbn)))
+                .where(and(eq(userBooks.userId, userId), eq(books.isbn, isbn), isNull(userBooks.removedAt)))
                 .limit(1),
             catch: error => new DatabaseError({
               message: `Failed to check user library ownership: ${error}`,
@@ -821,13 +867,37 @@ export const BookRepositoryLive = Layer.effect(
           return Boolean(result[0])
         }),
 
-      removeFromLibrary: (userBookId, userId) =>
+      removeFromLibrary: (userBookId, userId, options = {}) =>
         Effect.gen(function* () {
+          yield* getOwnedUserBookRef(userBookId, userId)
+
+          if (!options.confirmActiveLoan) {
+            const activeLoan = yield* Effect.tryPromise({
+              try: () => dbService.db
+                .select({ borrowerDisplayName: loans.borrowerDisplayName })
+                .from(loans)
+                .where(and(eq(loans.userBookId, userBookId), eq(loans.ownerUserId, userId), eq(loans.status, 'active')))
+                .limit(1),
+              catch: error => new DatabaseError({
+                message: `Failed to check active loan: ${error}`,
+                operation: 'removeFromLibrary.checkActiveLoan'
+              })
+            })
+
+            if (activeLoan[0]) {
+              return yield* Effect.fail(new ActiveLoanRemovalError({
+                userBookId,
+                borrowerDisplayName: activeLoan[0].borrowerDisplayName
+              }))
+            }
+          }
+
           const result = yield* Effect.tryPromise({
             try: () =>
               dbService.db
-                .delete(userBooks)
-                .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId)))
+                .update(userBooks)
+                .set({ removedAt: new Date() })
+                .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId), isNull(userBooks.removedAt)))
                 .returning(),
             catch: error => new DatabaseError({
               message: `Failed to remove book from library: ${error}`,
@@ -892,7 +962,7 @@ export const BookRepositoryLive = Layer.effect(
                 .select()
                 .from(userBooks)
                 .innerJoin(books, eq(userBooks.bookId, books.id))
-                .where(and(eq(userBooks.id, ref.userBookId), eq(userBooks.userId, userId)))
+                .where(and(eq(userBooks.id, ref.userBookId), eq(userBooks.userId, userId), isNull(userBooks.removedAt)))
                 .limit(1),
             catch: error => new DatabaseError({
               message: `Failed to get book details: ${error}`,
@@ -956,6 +1026,7 @@ export const BookRepositoryLive = Layer.effect(
           const bookData = row.books
           const authorsByBook = yield* hydrateAuthorsForBookIds([bookData.id])
           const bookAuthorList = authorsByBook.get(bookData.id) || []
+          const activeLoansByUserBook = yield* hydrateActiveLoansByUserBookIds([ref.userBookId])
 
           return {
             id: row.user_books.id,
@@ -982,7 +1053,8 @@ export const BookRepositoryLive = Layer.effect(
             numberOfPages: bookData.numberOfPages ?? null,
             openLibraryKey: bookData.openLibraryKey,
             workKey: bookData.workKey ?? null,
-            addedAt: row.user_books.addedAt
+            addedAt: row.user_books.addedAt,
+            activeLoan: activeLoansByUserBook.get(ref.userBookId) ?? null
           }
         }),
 
@@ -1287,8 +1359,12 @@ export const getLibraryByAuthor = (userId: string, authorId: string, pagination:
 export const getBookById = (bookId: string) =>
   Effect.flatMap(BookRepository, repo => repo.getBookById(bookId))
 
-export const removeFromLibrary = (userBookId: string, userId: string) =>
-  Effect.flatMap(BookRepository, repo => repo.removeFromLibrary(userBookId, userId))
+export const removeFromLibrary = (
+  userBookId: string,
+  userId: string,
+  options?: { confirmActiveLoan?: boolean }
+) =>
+  Effect.flatMap(BookRepository, repo => repo.removeFromLibrary(userBookId, userId, options))
 
 export const findByIsbn = (isbn: string) =>
   Effect.flatMap(BookRepository, repo => repo.findByIsbn(isbn))

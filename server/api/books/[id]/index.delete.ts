@@ -14,8 +14,11 @@ export default effectHandler((event, user) =>
       )
     }
 
+    const query = getQuery(event)
+    const confirmActiveLoan = query.confirmActiveLoan === 'true'
+
     // Remove book from user's library via BookService
-    yield* removeBookFromLibrary(userBookId, user.id)
+    yield* removeBookFromLibrary(userBookId, user.id, { confirmActiveLoan })
 
     return { success: true }
   })

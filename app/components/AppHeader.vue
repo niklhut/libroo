@@ -23,13 +23,25 @@ const logoTo = computed(() => user.value ? '/library' : '/login')
 // Navigation links - only show Sign Out when logged in
 const links = computed<NavigationMenuItem[]>(() => {
   if (user.value) {
-    return [{
-      label: 'Sign Out',
-      icon: 'i-lucide-log-out',
-      color: 'neutral' as const,
-      variant: 'ghost' as const,
-      onClick: handleSignOut
-    }]
+    return [
+      {
+        label: 'Library',
+        icon: 'i-lucide-library',
+        to: '/library'
+      },
+      {
+        label: 'Loans',
+        icon: 'i-lucide-handshake',
+        to: '/library/loans'
+      },
+      {
+        label: 'Sign Out',
+        icon: 'i-lucide-log-out',
+        color: 'neutral' as const,
+        variant: 'ghost' as const,
+        onClick: handleSignOut
+      }
+    ]
   }
   return []
 })

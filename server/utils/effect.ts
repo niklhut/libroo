@@ -21,13 +21,13 @@ const BaseServicesLive = Layer.mergeAll(
 
 // Repository layer (depends on base services)
 const RepositoriesLive = Layer.provideMerge(
-  Layer.mergeAll(BookRepositoryLive, OpenLibraryRepositoryLive),
+  Layer.mergeAll(BookRepositoryLive, OpenLibraryRepositoryLive, LendingRepositoryLive),
   BaseServicesLive
 )
 
 // Service layer (depends on repositories)
 const ServicesLive = Layer.provideMerge(
-  BookServiceLive,
+  Layer.mergeAll(BookServiceLive, LendingServiceLive),
   RepositoriesLive
 )
 
@@ -41,7 +41,9 @@ export type MainServices
     | AuthService
     | BookRepository
     | OpenLibraryRepository
+    | LendingRepository
     | BookService
+    | LendingService
     | HttpClient.HttpClient
 
 // Helper to safely get property from unknown object
@@ -58,10 +60,15 @@ const errorStatusCodes: Record<string, number> = {
   BookNotFoundError: 404,
   OpenLibraryBookNotFoundError: 404,
   BookAlreadyOwnedError: 409,
+  ActiveLoanRemovalError: 409,
   OpenLibraryApiError: 502,
   BookCreateError: 500,
   InvalidTagError: 400,
   InvalidReadingProgressError: 400,
+  ActiveLoanExistsError: 409,
+  LoanNotFoundError: 404,
+  InvalidInviteError: 400,
+  LoanUnavailableError: 409,
   DatabaseError: 500,
   StorageError: 500
 }
@@ -75,6 +82,15 @@ const errorMessageFormatters: Record<string, (error: unknown) => string> = {
   BookAlreadyOwnedError: (error) => {
     const isbn = getProp<string>(error, 'isbn')
     return `You already have this book (ISBN: ${isbn || 'unknown'}) in your library`
+  },
+  ActiveLoanRemovalError: (error) => {
+    const borrower = getProp<string>(error, 'borrowerDisplayName')
+    return borrower
+      ? `This book is currently lent to ${borrower}. Confirm removal to remove it from your library while keeping lending history.`
+      : 'This book is currently lent out. Confirm removal to remove it from your library while keeping lending history.'
+  },
+  ActiveLoanExistsError: () => {
+    return 'This book is already lent out.'
   }
 }
 
