@@ -17,6 +17,13 @@ type SetRoleBody = {
   role?: string | string[]
 }
 
+type UpdateUserBody = {
+  userId?: string
+  data?: {
+    role?: string | string[]
+  }
+}
+
 const roleIncludesAdmin = (role: string | null | undefined) =>
   (role ?? 'user').split(',').map(part => part.trim()).includes('admin')
 
@@ -55,9 +62,10 @@ export const librooAdminPolicyPlugin = (): BetterAuthPlugin => ({
   hooks: {
     before: [
       {
-        matcher: context => context.path === '/admin/set-role',
+        matcher: context => context.path === '/admin/set-role' || context.path === '/admin/update-user',
         handler: createAuthMiddleware(async (ctx) => {
-          const body = ctx.body as SetRoleBody
+          const body = normalizeAdminRoleMutationBody(ctx.path, ctx.body)
+          if (!body) return
 
           const session = await getSessionFromCtx(ctx)
           if (!session?.user) {
@@ -75,6 +83,22 @@ export const librooAdminPolicyPlugin = (): BetterAuthPlugin => ({
     ]
   }
 })
+
+export function normalizeAdminRoleMutationBody(path: string | undefined, body: unknown): SetRoleBody | undefined {
+  if (path === '/admin/set-role') {
+    return body as SetRoleBody
+  }
+
+  if (path === '/admin/update-user') {
+    const updateBody = body as UpdateUserBody
+    if (!updateBody.data || !('role' in updateBody.data)) return undefined
+
+    return {
+      userId: updateBody.userId,
+      role: updateBody.data.role
+    }
+  }
+}
 
 export async function enforceSetRolePolicy(input: {
   body: SetRoleBody

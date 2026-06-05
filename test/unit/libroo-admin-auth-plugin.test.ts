@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bootstrapFirstUserRole, enforceSetRolePolicy } from '../../server/utils/libroo-admin-auth-plugin'
+import { bootstrapFirstUserRole, enforceSetRolePolicy, normalizeAdminRoleMutationBody } from '../../server/utils/libroo-admin-auth-plugin'
 
 describe('librooAdminPolicyPlugin', () => {
   it('allows promotions to pass through to Better Auth', async () => {
@@ -37,6 +37,23 @@ describe('librooAdminPolicyPlugin', () => {
         code: 'LAST_ADMIN_DEMOTION'
       }
     })
+  })
+
+  it('normalizes Better Auth update-user role changes into the same policy input', async () => {
+    expect(normalizeAdminRoleMutationBody('/admin/update-user', {
+      userId: 'admin-1',
+      data: { role: 'user' }
+    })).toEqual({
+      userId: 'admin-1',
+      role: 'user'
+    })
+  })
+
+  it('ignores Better Auth update-user changes that do not touch roles', async () => {
+    expect(normalizeAdminRoleMutationBody('/admin/update-user', {
+      userId: 'admin-1',
+      data: { name: 'Ada' }
+    })).toBeUndefined()
   })
 
   it('assigns admin role to the first created user', async () => {
