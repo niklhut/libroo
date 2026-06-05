@@ -23,7 +23,7 @@ import { requireAuth } from '../services/auth.service'
 export function effectHandler<A, E>(
   handler: (
     event: H3Event,
-    user: { id: string, name: string, email: string }
+    user: { id: string, name: string, email: string, role?: string | null }
   ) => Effect.Effect<A, E, MainServices>
 ) {
   return defineEventHandler(async (event) => {

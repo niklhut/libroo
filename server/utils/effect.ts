@@ -21,13 +21,13 @@ const BaseServicesLive = Layer.mergeAll(
 
 // Repository layer (depends on base services)
 const RepositoriesLive = Layer.provideMerge(
-  Layer.mergeAll(BookRepositoryLive, OpenLibraryRepositoryLive, LendingRepositoryLive),
+  Layer.mergeAll(BookRepositoryLive, OpenLibraryRepositoryLive, LendingRepositoryLive, AdminRepositoryLive),
   BaseServicesLive
 )
 
 // Service layer (depends on repositories)
 const ServicesLive = Layer.provideMerge(
-  Layer.mergeAll(BookServiceLive, LendingServiceLive),
+  Layer.mergeAll(BookServiceLive, LendingServiceLive, AdminServiceLive),
   RepositoriesLive
 )
 
@@ -42,8 +42,10 @@ export type MainServices
     | BookRepository
     | OpenLibraryRepository
     | LendingRepository
+    | AdminRepository
     | BookService
     | LendingService
+    | AdminService
     | HttpClient.HttpClient
 
 // Helper to safely get property from unknown object
@@ -69,6 +71,8 @@ const errorStatusCodes: Record<string, number> = {
   LoanNotFoundError: 404,
   InvalidInviteError: 400,
   LoanUnavailableError: 409,
+  AdminForbiddenError: 403,
+  InvalidAdminRequestError: 400,
   DatabaseError: 500,
   StorageError: 500
 }

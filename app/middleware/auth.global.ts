@@ -14,4 +14,12 @@ export default defineNuxtRouteMiddleware(async (to) => {
       query: { redirect: to.fullPath }
     })
   }
+
+  if (to.path.startsWith('/admin')) {
+    const role = session.value.user.role
+    const roles = typeof role === 'string' ? role.split(',').map(part => part.trim()) : []
+    if (!roles.includes('admin')) {
+      return navigateTo('/library')
+    }
+  }
 })

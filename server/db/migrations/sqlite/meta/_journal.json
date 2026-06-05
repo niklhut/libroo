@@ -92,6 +92,13 @@
       "when": 1779559200000,
       "tag": "0012_remove_loan_owner_note",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1780372800000,
+      "tag": "0013_better_auth_admin",
+      "breakpoints": true
     }
   ]
 }

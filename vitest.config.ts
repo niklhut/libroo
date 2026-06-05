@@ -10,7 +10,8 @@ export default defineConfig({
       '~': appDir,
       '~~': rootDir,
       '@': appDir,
-      '@@': rootDir
+      '@@': rootDir,
+      'hub:db:schema': fileURLToPath(new URL('./server/db/schema/index.ts', import.meta.url))
     }
   }
 })
