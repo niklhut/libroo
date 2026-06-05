@@ -9,12 +9,6 @@ type UserWithRole = {
   role?: string | null
 }
 
-type UserWhere = {
-  field: string
-  operator: 'contains' | 'eq'
-  value: string
-}
-
 type SetRoleBody = {
   userId?: string
   role?: string | string[]
@@ -42,7 +36,7 @@ const parseRoleValues = (role: string | string[] | null | undefined): string[] =
   return values.flatMap(value => value.split(',')).map(part => part.trim()).filter(Boolean)
 }
 
-const roleIncludesAdmin = (role: string | null | undefined) =>
+export const roleIncludesAdmin = (role: string | string[] | null | undefined) =>
   parseRoleValues(role).includes('admin')
 
 const isEffectiveAdmin = (user: UserWithRole) =>
@@ -85,7 +79,7 @@ export const librooAdminPolicyPlugin = (): BetterAuthPlugin => ({
             body,
             actorUserId: session.user.id,
             findUserById: userId => ctx.context.internalAdapter.findUserById(userId) as Promise<UserWithRole | null>,
-            countAdmins: () => ctx.context.internalAdapter.countTotalUsers(adminRoleWhere)
+            countAdmins: countAdminUsersInDatabase
           })
         })
       }
@@ -154,15 +148,24 @@ async function assignFirstAdminRoleInDatabase(userId: string) {
         SELECT 1
         FROM ${user}
         WHERE ${user.id} <> ${userId}
-          AND ${user.role} LIKE ${'%admin%'}
+          AND ${adminRoleTokenPredicate()}
       )
   `)
+}
+
+async function countAdminUsersInDatabase() {
+  const rows = await db
+    .select({ count: sql<number | string | bigint>`count(*)` })
+    .from(user)
+    .where(adminRoleTokenPredicate())
+
+  return Number(rows[0]?.count ?? 0)
+}
+
+function adminRoleTokenPredicate() {
+  return sql`(',' || replace(${user.role}, ' ', '') || ',') LIKE ${'%,admin,%'}`
 }
 
 function getAffectedRowCount(result: RunResult | undefined) {
   return result?.changes ?? result?.rowsAffected ?? result?.rowCount ?? 0
 }
-
-const adminRoleWhere: UserWhere[] = [
-  { field: 'role', operator: 'contains', value: 'admin' }
-]

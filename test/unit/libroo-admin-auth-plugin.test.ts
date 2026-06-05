@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { assignFirstAdminRole, enforceSetRolePolicy, normalizeAdminRoleMutationBody } from '../../server/utils/libroo-admin-auth-plugin'
+import { assignFirstAdminRole, enforceSetRolePolicy, normalizeAdminRoleMutationBody, roleIncludesAdmin } from '../../server/utils/libroo-admin-auth-plugin'
 
 describe('librooAdminPolicyPlugin', () => {
   it('allows promotions to pass through to Better Auth', async () => {
@@ -20,6 +20,12 @@ describe('librooAdminPolicyPlugin', () => {
       findUserById,
       countAdmins: async () => 1
     })).resolves.toBeUndefined()
+  })
+
+  it('does not treat admin substrings as admin roles', () => {
+    expect(roleIncludesAdmin('notadmin')).toBe(false)
+    expect(roleIncludesAdmin('superadmin')).toBe(false)
+    expect(roleIncludesAdmin('user, admin')).toBe(true)
   })
 
   it('blocks admins from demoting themselves on the real Better Auth set-role endpoint', async () => {
