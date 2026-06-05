@@ -1,5 +1,8 @@
 import { APIError, createAuthMiddleware, getSessionFromCtx } from 'better-auth/api'
 import type { BetterAuthPlugin } from 'better-auth/types'
+import { sql } from 'drizzle-orm'
+import { db } from '@nuxthub/db'
+import { user } from '@nuxthub/db/schema'
 
 type UserWithRole = {
   id: string
@@ -24,16 +27,29 @@ type UpdateUserBody = {
   }
 }
 
+type CreateUser = {
+  id?: string
+}
+
+type RunResult = {
+  changes?: number
+  rowsAffected?: number
+  rowCount?: number
+}
+
+const parseRoleValues = (role: string | string[] | null | undefined): string[] => {
+  const values = Array.isArray(role) ? role : [role ?? 'user']
+  return values.flatMap(value => value.split(',')).map(part => part.trim()).filter(Boolean)
+}
+
 const roleIncludesAdmin = (role: string | null | undefined) =>
-  (role ?? 'user').split(',').map(part => part.trim()).includes('admin')
+  parseRoleValues(role).includes('admin')
 
 const isEffectiveAdmin = (user: UserWithRole) =>
   roleIncludesAdmin(user.role)
 
-const nextRoleIncludesAdmin = (role: string | string[] | undefined) => {
-  const roles = Array.isArray(role) ? role : [role]
-  return roles.some(value => value === 'admin')
-}
+const nextRoleIncludesAdmin = (role: string | string[] | undefined) =>
+  parseRoleValues(role).includes('admin')
 
 export const librooAdminPolicyPlugin = (): BetterAuthPlugin => ({
   id: 'libroo-admin-policy',
@@ -43,15 +59,8 @@ export const librooAdminPolicyPlugin = (): BetterAuthPlugin => ({
         databaseHooks: {
           user: {
             create: {
-              before: async (_user, ctx) => {
-                if (!ctx) return
-
-                const role = await bootstrapFirstUserRole(() => ctx.context.internalAdapter.countTotalUsers())
-                if (!role) return
-
-                return {
-                  data: { role }
-                }
+              after: async (createdUser) => {
+                await assignFirstAdminRole((createdUser as CreateUser).id)
               }
             }
           }
@@ -100,6 +109,16 @@ export function normalizeAdminRoleMutationBody(path: string | undefined, body: u
   }
 }
 
+export async function assignFirstAdminRole(
+  userId: string | undefined,
+  runAtomicAssignment: (userId: string) => Promise<RunResult | undefined> = assignFirstAdminRoleInDatabase
+) {
+  if (!userId) return false
+
+  const result = await runAtomicAssignment(userId)
+  return getAffectedRowCount(result) > 0
+}
+
 export async function enforceSetRolePolicy(input: {
   body: SetRoleBody
   actorUserId: string
@@ -126,8 +145,22 @@ export async function enforceSetRolePolicy(input: {
   }
 }
 
-export async function bootstrapFirstUserRole(countUsers: () => Promise<number>) {
-  return (await countUsers()) === 0 ? 'admin' : undefined
+async function assignFirstAdminRoleInDatabase(userId: string) {
+  return db.run(sql`
+    UPDATE ${user}
+    SET role = 'admin'
+    WHERE ${user.id} = ${userId}
+      AND NOT EXISTS (
+        SELECT 1
+        FROM ${user}
+        WHERE ${user.id} <> ${userId}
+          AND ${user.role} LIKE ${'%admin%'}
+      )
+  `)
+}
+
+function getAffectedRowCount(result: RunResult | undefined) {
+  return result?.changes ?? result?.rowsAffected ?? result?.rowCount ?? 0
 }
 
 const adminRoleWhere: UserWhere[] = [

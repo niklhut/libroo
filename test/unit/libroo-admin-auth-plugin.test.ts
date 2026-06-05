@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bootstrapFirstUserRole, enforceSetRolePolicy, normalizeAdminRoleMutationBody } from '../../server/utils/libroo-admin-auth-plugin'
+import { assignFirstAdminRole, enforceSetRolePolicy, normalizeAdminRoleMutationBody } from '../../server/utils/libroo-admin-auth-plugin'
 
 describe('librooAdminPolicyPlugin', () => {
   it('allows promotions to pass through to Better Auth', async () => {
@@ -7,6 +7,17 @@ describe('librooAdminPolicyPlugin', () => {
       body: { userId: 'user-2', role: 'admin' },
       actorUserId: 'admin-1',
       findUserById: async () => ({ id: 'user-2', role: 'user' }),
+      countAdmins: async () => 1
+    })).resolves.toBeUndefined()
+  })
+
+  it('allows comma-separated role updates that keep admin access', async () => {
+    const findUserById = async () => ({ id: 'admin-1', role: 'admin' })
+
+    await expect(enforceSetRolePolicy({
+      body: { userId: 'admin-1', role: 'user,admin' },
+      actorUserId: 'admin-1',
+      findUserById,
       countAdmins: async () => 1
     })).resolves.toBeUndefined()
   })
@@ -56,11 +67,15 @@ describe('librooAdminPolicyPlugin', () => {
     })).toBeUndefined()
   })
 
-  it('assigns admin role to the first created user', async () => {
-    await expect(bootstrapFirstUserRole(async () => 0)).resolves.toBe('admin')
+  it('reports when the first-admin atomic assignment wins', async () => {
+    await expect(assignFirstAdminRole('user-1', async () => ({ changes: 1 }))).resolves.toBe(true)
   })
 
-  it('leaves later created users on Better Auth defaults', async () => {
-    await expect(bootstrapFirstUserRole(async () => 1)).resolves.toBeUndefined()
+  it('reports when another user already claimed first-admin assignment', async () => {
+    await expect(assignFirstAdminRole('user-2', async () => ({ changes: 0 }))).resolves.toBe(false)
+  })
+
+  it('skips first-admin assignment when Better Auth does not return a user id', async () => {
+    await expect(assignFirstAdminRole(undefined, async () => ({ changes: 1 }))).resolves.toBe(false)
   })
 })

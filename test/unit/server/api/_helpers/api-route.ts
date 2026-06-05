@@ -35,13 +35,15 @@ vi.mock('../../../../../server/utils/effect', async () => {
             ? 401
             : tag === 'AdminForbiddenError'
               ? 403
-              : tag === 'AdminUserNotFoundError'
-                ? 404
-                : tag === 'SelfAdminDemotionError' || tag === 'InvalidAdminRoleError'
-                  ? 400
-                  : tag === 'LastAdminDemotionError'
-                    ? 409
-                    : 500
+              : tag === 'InvalidAdminRequestError'
+                ? 400
+                : tag === 'AdminUserNotFoundError'
+                  ? 404
+                  : tag === 'SelfAdminDemotionError' || tag === 'InvalidAdminRoleError'
+                    ? 400
+                    : tag === 'LastAdminDemotionError'
+                      ? 409
+                      : 500
           const message = typeof error === 'object' && error && 'message' in error
             ? String(error.message)
             : 'Internal Server Error'

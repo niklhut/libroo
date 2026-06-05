@@ -1,6 +1,7 @@
 import { Effect, Layer } from 'effect'
 import { describe, expect, it, vi } from 'vitest'
 import { AdminRepository } from '../../../../server/repositories/admin.repository'
+import { DatabaseError } from '../../../../server/repositories/book.repository'
 import { AdminForbiddenError, AdminService, AdminServiceLive } from '../../../../server/services/admin.service'
 
 const authMock = vi.hoisted(() => ({
@@ -29,6 +30,26 @@ describe('AdminService', () => {
 
     expect(result._tag).toBe('Left')
     expect(result.left).toBeInstanceOf(AdminForbiddenError)
+    expect(listLastActiveByUserIds).not.toHaveBeenCalled()
+  })
+
+  it('maps Better Auth server failures as server-side errors', async () => {
+    const listLastActiveByUserIds = vi.fn()
+    authMock.listUsers.mockRejectedValueOnce({ statusCode: 500, message: 'upstream unavailable' })
+
+    const result = await runAdminService(
+      Effect.either(Effect.flatMap(AdminService, service =>
+        service.listUsers({ headers: new Headers(), page: 1, pageSize: 25 })
+      )),
+      listLastActiveByUserIds
+    )
+
+    expect(result._tag).toBe('Left')
+    expect(result.left).toBeInstanceOf(DatabaseError)
+    expect(result.left).toMatchObject({
+      operation: 'admin.listUsers',
+      message: 'upstream unavailable'
+    })
     expect(listLastActiveByUserIds).not.toHaveBeenCalled()
   })
 

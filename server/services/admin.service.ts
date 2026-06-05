@@ -1,7 +1,7 @@
 import { Context, Data, Effect, Layer } from 'effect'
 import type { AdminUser, AdminUsersPage } from '~~/shared/types/admin'
 import { AdminRepository } from '../repositories/admin.repository'
-import type { DatabaseError } from '../repositories/book.repository'
+import { DatabaseError } from '../repositories/book.repository'
 import { auth } from '../utils/auth'
 
 const DEFAULT_ADMIN_PAGE_SIZE = 25
@@ -118,7 +118,24 @@ function mapBetterAuthError(error: unknown) {
     return new AdminForbiddenError({ message: 'Admin access required' })
   }
 
+  if (statusCode && statusCode >= 500) {
+    return new DatabaseError({
+      message: getBetterAuthErrorMessage(error),
+      operation: 'admin.listUsers'
+    })
+  }
+
   return new InvalidAdminRequestError({
-    message: error instanceof Error ? error.message : 'Unable to list users'
+    message: getBetterAuthErrorMessage(error)
   })
+}
+
+function getBetterAuthErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message
+
+  if (typeof error === 'object' && error && 'message' in error) {
+    return String(error.message)
+  }
+
+  return 'Unable to list users'
 }

@@ -43,14 +43,16 @@ export const AdminRepositoryLive = Layer.effect(
   })
 )
 
-function normalizeTimestamp(value: Date | number | string | null): Date | null {
-  if (!value) return null
-  if (value instanceof Date) return value
+function normalizeTimestamp(value: Date | number | string | null | undefined): Date | null {
+  if (value === null || value === undefined || value === '') return null
+  if (value instanceof Date) return Number.isFinite(value.getTime()) ? value : null
 
   const numericValue = typeof value === 'number' ? value : Number(value)
   if (Number.isFinite(numericValue)) {
-    return new Date(numericValue < 100000000000 ? numericValue * 1000 : numericValue)
+    const date = new Date(numericValue < 100000000000 ? numericValue * 1000 : numericValue)
+    return Number.isFinite(date.getTime()) ? date : null
   }
 
-  return new Date(value)
+  const date = new Date(value)
+  return Number.isFinite(date.getTime()) ? date : null
 }
