@@ -225,11 +225,16 @@ async function assignFirstAdminRoleInDatabase(userId: string) {
     UPDATE ${user}
     SET role = 'admin'
     WHERE ${user.id} = ${userId}
+      AND ${user.id} = (
+        SELECT ${user.id}
+        FROM ${user}
+        ORDER BY ${user.createdAt} ASC, ${user.id} ASC
+        LIMIT 1
+      )
       AND NOT EXISTS (
         SELECT 1
         FROM ${user}
-        WHERE ${user.id} <> ${userId}
-          AND ${adminRoleTokenPredicate()}
+        WHERE ${adminRoleTokenPredicate()}
       )
   `)
 }
