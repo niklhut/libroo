@@ -99,8 +99,9 @@ export const librooAdminPolicyPlugin = (): BetterAuthPlugin => ({
 
           await enforceBanUserPolicy({
             body: banBody,
+            actorUserId: session.user.id,
             findUserById,
-            countAdmins
+            reserveAdminBan: reserveAdminBanInDatabase
           })
         })
       }
@@ -124,7 +125,7 @@ export function normalizeAdminRoleMutationBody(path: string | undefined, body: u
   }
 }
 
-export function normalizeAdminBanMutationBody(path: string | undefined, body: unknown): SetRoleBody | undefined {
+export function normalizeAdminBanMutationBody(path: string | undefined, body: unknown): BanUserBody | undefined {
   if (path === '/admin/ban-user') {
     return {
       userId: (body as BanUserBody).userId
@@ -179,15 +180,23 @@ export async function enforceSetRolePolicy(input: {
 
 export async function enforceBanUserPolicy(input: {
   body: BanUserBody
+  actorUserId: string
   findUserById: (userId: string) => Promise<UserWithRole | null>
-  countAdmins: () => Promise<number>
+  reserveAdminBan: (userId: string) => Promise<boolean>
 }) {
   if (!input.body.userId) return
 
   const targetUser = await input.findUserById(input.body.userId)
   if (!targetUser || !isEffectiveAdmin(targetUser) || targetUser.banned) return
 
-  if (await input.countAdmins() <= 1) {
+  if (input.actorUserId === input.body.userId) {
+    throw APIError.from('BAD_REQUEST', {
+      message: 'You cannot ban yourself',
+      code: 'SELF_ADMIN_BAN'
+    })
+  }
+
+  if (!await input.reserveAdminBan(input.body.userId)) {
     throw APIError.from('CONFLICT', {
       message: 'Cannot ban the last remaining unbanned admin',
       code: 'LAST_ADMIN_BAN'
@@ -209,11 +218,30 @@ async function assignFirstAdminRoleInDatabase(userId: string) {
   `)
 }
 
+async function reserveAdminBanInDatabase(userId: string) {
+  const result = await db.run(sql`
+    UPDATE ${user}
+    SET banned = true
+    WHERE ${user.id} = ${userId}
+      AND ${adminRoleTokenPredicate()}
+      AND COALESCE(${user.banned}, false) = false
+      AND (
+        SELECT count(*)
+        FROM ${user}
+        WHERE ${user.id} <> ${userId}
+          AND ${adminRoleTokenPredicate()}
+          AND COALESCE(${user.banned}, false) = false
+      ) > 0
+  `)
+
+  return getAffectedRowCount(result) > 0
+}
+
 async function countUnbannedAdminUsersInDatabase() {
   const rows = await db
     .select({ count: sql<number | string | bigint>`count(*)` })
     .from(user)
-    .where(sql`${adminRoleTokenPredicate()} AND ${user.banned} = false`)
+    .where(sql`${adminRoleTokenPredicate()} AND COALESCE(${user.banned}, false) = false`)
 
   return Number(rows[0]?.count ?? 0)
 }

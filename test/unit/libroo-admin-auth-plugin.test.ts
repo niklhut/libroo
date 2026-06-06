@@ -59,8 +59,9 @@ describe('librooAdminPolicyPlugin', () => {
   it('blocks banning the last remaining unbanned admin', async () => {
     await expect(enforceBanUserPolicy({
       body: { userId: 'admin-1' },
+      actorUserId: 'admin-2',
       findUserById: async () => ({ id: 'admin-1', role: 'admin', banned: false }),
-      countAdmins: async () => 1
+      reserveAdminBan: async () => false
     })).rejects.toMatchObject({
       statusCode: 409,
       body: {
@@ -69,12 +70,39 @@ describe('librooAdminPolicyPlugin', () => {
     })
   })
 
-  it('allows banning an admin when another unbanned admin remains', async () => {
+  it('blocks admins from banning themselves before reserving the ban', async () => {
+    let reserveCalled = false
+
     await expect(enforceBanUserPolicy({
       body: { userId: 'admin-1' },
+      actorUserId: 'admin-1',
       findUserById: async () => ({ id: 'admin-1', role: 'admin', banned: false }),
-      countAdmins: async () => 2
+      reserveAdminBan: async () => {
+        reserveCalled = true
+        return true
+      }
+    })).rejects.toMatchObject({
+      statusCode: 400,
+      body: {
+        code: 'SELF_ADMIN_BAN'
+      }
+    })
+    expect(reserveCalled).toBe(false)
+  })
+
+  it('allows banning an admin when another unbanned admin remains', async () => {
+    let reservedUserId: string | null = null
+
+    await expect(enforceBanUserPolicy({
+      body: { userId: 'admin-1' },
+      actorUserId: 'admin-2',
+      findUserById: async () => ({ id: 'admin-1', role: 'admin', banned: false }),
+      reserveAdminBan: async (userId) => {
+        reservedUserId = userId
+        return true
+      }
     })).resolves.toBeUndefined()
+    expect(reservedUserId).toBe('admin-1')
   })
 
   it('normalizes Better Auth ban mutations into policy input', async () => {
