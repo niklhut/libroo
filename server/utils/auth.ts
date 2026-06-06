@@ -1,7 +1,9 @@
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
+import { admin } from 'better-auth/plugins'
 import * as schema from '@nuxthub/db/schema'
 import { db } from '@nuxthub/db'
+import { librooAdminPolicyPlugin } from './libroo-admin-auth-plugin'
 
 interface EnvSecretOptions {
   envKey: string
@@ -90,7 +92,11 @@ export const auth = betterAuth({
     //   clientId: process.env.GITHUB_CLIENT_ID!,
     //   clientSecret: process.env.GITHUB_CLIENT_SECRET!
     // }
-  }
+  },
+  plugins: [
+    admin(),
+    librooAdminPolicyPlugin()
+  ]
 })
 
 export type Auth = typeof auth

@@ -20,10 +20,14 @@ async function handleSignOut() {
 // Logo destination based on auth status
 const logoTo = computed(() => user.value ? '/library' : '/login')
 
+function roleIncludesAdmin(role: string | null | undefined) {
+  return (role ?? 'user').split(',').map(part => part.trim()).includes('admin')
+}
+
 // Navigation links - only show Sign Out when logged in
 const links = computed<NavigationMenuItem[]>(() => {
   if (user.value) {
-    return [
+    const authenticatedLinks: NavigationMenuItem[] = [
       {
         label: 'Library',
         icon: 'i-lucide-library',
@@ -42,6 +46,16 @@ const links = computed<NavigationMenuItem[]>(() => {
         onClick: handleSignOut
       }
     ]
+
+    if (roleIncludesAdmin(user.value.role)) {
+      authenticatedLinks.splice(2, 0, {
+        label: 'Admin',
+        icon: 'i-lucide-shield',
+        to: '/admin/users'
+      })
+    }
+
+    return authenticatedLinks
   }
   return []
 })
