@@ -82,6 +82,10 @@ function canDemote(user: AdminUser) {
   return user.isAdmin && user.id !== currentUser.value?.id
 }
 
+function canBan(user: AdminUser) {
+  return user.status === 'active' && user.id !== currentUser.value?.id
+}
+
 function originalUser(row: TableRow<AdminUser>) {
   return row.original
 }
@@ -120,6 +124,79 @@ async function setRole(user: AdminUser, role: AdminUser['role']) {
   }
 }
 
+async function banUser(user: AdminUser) {
+  if (updatingUserId.value) return
+
+  updatingUserId.value = user.id
+  try {
+    const response = await unwrapAuthResponse(adminAuth.admin.banUser({
+      userId: user.id,
+      banReason: 'Account disabled by an administrator'
+    }))
+    updateUserStatus(user.id, response.user)
+    toast.add({
+      title: 'Account banned',
+      color: 'success'
+    })
+  } catch (err: unknown) {
+    showStatusError(err, 'Could not ban account')
+  } finally {
+    updatingUserId.value = null
+  }
+}
+
+async function unbanUser(user: AdminUser) {
+  if (updatingUserId.value) return
+
+  updatingUserId.value = user.id
+  try {
+    const response = await unwrapAuthResponse(adminAuth.admin.unbanUser({
+      userId: user.id
+    }))
+    updateUserStatus(user.id, response.user)
+    toast.add({
+      title: 'Account unbanned',
+      color: 'success'
+    })
+  } catch (err: unknown) {
+    showStatusError(err, 'Could not unban account')
+  } finally {
+    updatingUserId.value = null
+  }
+}
+
+function updateUserStatus(userId: string, betterAuthUser: {
+  banned?: boolean | null
+  banReason?: string | null
+  banExpires?: string | Date | null
+  updatedAt?: string | Date
+}) {
+  usersPage.value = {
+    ...usersPage.value,
+    users: users.value.map(item =>
+      item.id === userId
+        ? {
+            ...item,
+            updatedAt: betterAuthUser.updatedAt ?? item.updatedAt,
+            status: betterAuthUser.banned ? 'banned' : 'active',
+            banReason: betterAuthUser.banReason ?? null,
+            banExpires: betterAuthUser.banExpires ?? null
+          }
+        : item
+    )
+  }
+}
+
+function showStatusError(err: unknown, title: string) {
+  const message = (err as { data?: { message?: string } })?.data?.message
+    ?? (err instanceof Error ? err.message : 'Unable to update account status')
+  toast.add({
+    title,
+    description: message,
+    color: 'error'
+  })
+}
+
 async function loadUsers(pageNumber: number): Promise<AdminUsersPage> {
   return requestFetch('/api/admin/users', {
     query: {
@@ -151,10 +228,10 @@ function pageQuery(page: number) {
   }
 }
 
-async function unwrapAuthResponse<T>(promise: Promise<{ data: T | null, error: { message?: string } | null }>) {
+async function unwrapAuthResponse<T>(promise: Promise<{ data: T | null, error: { message?: string, statusText?: string } | null }>) {
   const { data, error } = await promise
   if (error || !data) {
-    throw new Error(error?.message ?? 'Request failed')
+    throw new Error(error?.message ?? error?.statusText ?? 'Request failed')
   }
   return data
 }
@@ -235,7 +312,7 @@ async function unwrapAuthResponse<T>(promise: Promise<{ data: T | null, error: {
           </template>
 
           <template #actions-cell="{ row }">
-            <div class="flex justify-end">
+            <div class="flex justify-end gap-1">
               <UButton
                 v-if="originalUser(row).isAdmin"
                 size="sm"
@@ -258,6 +335,30 @@ async function unwrapAuthResponse<T>(promise: Promise<{ data: T | null, error: {
                 @click="setRole(originalUser(row), 'admin')"
               >
                 Promote
+              </UButton>
+
+              <UButton
+                v-if="originalUser(row).status === 'banned'"
+                size="sm"
+                color="neutral"
+                variant="ghost"
+                icon="i-lucide-user-check"
+                :loading="updatingUserId === originalUser(row).id"
+                @click="unbanUser(originalUser(row))"
+              >
+                Unban
+              </UButton>
+              <UButton
+                v-else
+                size="sm"
+                color="neutral"
+                variant="ghost"
+                icon="i-lucide-user-x"
+                :disabled="!canBan(originalUser(row))"
+                :loading="updatingUserId === originalUser(row).id"
+                @click="banUser(originalUser(row))"
+              >
+                Ban
               </UButton>
             </div>
           </template>

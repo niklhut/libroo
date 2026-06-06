@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   cleanupApiRouteTest,
   importRoute,
+  itRejectsBannedUsers,
   itRequiresAuth,
   makeEvent,
   mockLoggedInUser,
@@ -18,6 +19,7 @@ describe('server/api/books/index.get', () => {
   afterEach(cleanupApiRouteTest)
 
   itRequiresAuth(route)
+  itRejectsBannedUsers(route)
 
   it('lists the user library with sanitized pagination and search query', async () => {
     mockLoggedInUser()

@@ -1,3 +1,5 @@
+import { isActiveBan } from '~~/shared/utils/auth-status'
+
 export default defineNuxtRouteMiddleware(async (to) => {
   // Skip auth check for pages explicitly marked as public
   const isAuthRequired = to.meta.auth !== false
@@ -13,6 +15,12 @@ export default defineNuxtRouteMiddleware(async (to) => {
       path: '/login',
       query: { redirect: to.fullPath }
     })
+  }
+
+  if (isActiveBan(session.value.user)) {
+    await authClient.signOut().catch(() => undefined)
+    session.value = null
+    return navigateTo('/login')
   }
 
   if (to.path.startsWith('/admin')) {

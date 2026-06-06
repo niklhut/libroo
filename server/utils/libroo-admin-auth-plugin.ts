@@ -1,12 +1,15 @@
 import { APIError, createAuthMiddleware, getSessionFromCtx } from 'better-auth/api'
 import type { BetterAuthPlugin } from 'better-auth/types'
 import { sql } from 'drizzle-orm'
+import { isActiveBan } from '~~/shared/utils/auth-status'
 import { db } from '@nuxthub/db'
 import { user } from '@nuxthub/db/schema'
 
 type UserWithRole = {
   id: string
   role?: string | null
+  banned?: boolean | null
+  banExpires?: string | Date | null
 }
 
 type SetRoleBody = {
@@ -18,7 +21,12 @@ type UpdateUserBody = {
   userId?: string
   data?: {
     role?: string | string[]
+    banned?: boolean | null
   }
+}
+
+type BanUserBody = {
+  userId?: string
 }
 
 type CreateUser = {
@@ -30,6 +38,10 @@ type RunResult = {
   rowsAffected?: number
   rowCount?: number
 }
+
+type BanReservationResult
+  = | { reserved: true }
+    | { reserved: false, reason: 'last_admin' | 'concurrent' }
 
 const parseRoleValues = (role: string | string[] | null | undefined): string[] => {
   const values = Array.isArray(role) ? role : [role ?? 'user']
@@ -65,21 +77,37 @@ export const librooAdminPolicyPlugin = (): BetterAuthPlugin => ({
   hooks: {
     before: [
       {
-        matcher: context => context.path === '/admin/set-role' || context.path === '/admin/update-user',
+        matcher: context => context.path === '/admin/set-role'
+          || context.path === '/admin/update-user'
+          || context.path === '/admin/ban-user',
         handler: createAuthMiddleware(async (ctx) => {
-          const body = normalizeAdminRoleMutationBody(ctx.path, ctx.body)
-          if (!body) return
-
           const session = await getSessionFromCtx(ctx)
           if (!session?.user) {
             throw APIError.from('UNAUTHORIZED', { message: 'Unauthorized', code: 'UNAUTHORIZED' })
           }
 
-          await enforceSetRolePolicy({
-            body,
+          const findUserById = (userId: string) =>
+            ctx.context.internalAdapter.findUserById(userId) as Promise<UserWithRole | null>
+          const countAdmins = countUnbannedAdminUsersInDatabase
+
+          const body = normalizeAdminRoleMutationBody(ctx.path, ctx.body)
+          if (body) {
+            await enforceSetRolePolicy({
+              body,
+              actorUserId: session.user.id,
+              findUserById,
+              countAdmins
+            })
+          }
+
+          const banBody = normalizeAdminBanMutationBody(ctx.path, ctx.body)
+          if (!banBody) return
+
+          await enforceBanUserPolicy({
+            body: banBody,
             actorUserId: session.user.id,
-            findUserById: userId => ctx.context.internalAdapter.findUserById(userId) as Promise<UserWithRole | null>,
-            countAdmins: countAdminUsersInDatabase
+            findUserById,
+            reserveAdminBan: reserveAdminBanInDatabase
           })
         })
       }
@@ -103,6 +131,23 @@ export function normalizeAdminRoleMutationBody(path: string | undefined, body: u
   }
 }
 
+export function normalizeAdminBanMutationBody(path: string | undefined, body: unknown): BanUserBody | undefined {
+  if (path === '/admin/ban-user') {
+    return {
+      userId: (body as BanUserBody).userId
+    }
+  }
+
+  if (path === '/admin/update-user') {
+    const updateBody = body as UpdateUserBody
+    if (!updateBody.data || updateBody.data.banned !== true) return undefined
+
+    return {
+      userId: updateBody.userId
+    }
+  }
+}
+
 export async function assignFirstAdminRole(
   userId: string | undefined,
   runAtomicAssignment: (userId: string) => Promise<RunResult | undefined> = assignFirstAdminRoleInDatabase
@@ -122,7 +167,7 @@ export async function enforceSetRolePolicy(input: {
   if (!input.body.userId || nextRoleIncludesAdmin(input.body.role)) return
 
   const targetUser = await input.findUserById(input.body.userId)
-  if (!targetUser || !isEffectiveAdmin(targetUser)) return
+  if (!targetUser || !isEffectiveAdmin(targetUser) || isActiveBan(targetUser)) return
 
   if (input.actorUserId === input.body.userId) {
     throw APIError.from('BAD_REQUEST', {
@@ -135,6 +180,42 @@ export async function enforceSetRolePolicy(input: {
     throw APIError.from('CONFLICT', {
       message: 'Cannot remove admin rights from the last remaining admin',
       code: 'LAST_ADMIN_DEMOTION'
+    })
+  }
+}
+
+export async function enforceBanUserPolicy(input: {
+  body: BanUserBody
+  actorUserId: string
+  findUserById: (userId: string) => Promise<UserWithRole | null>
+  reserveAdminBan: (userId: string) => Promise<BanReservationResult>
+}) {
+  if (!input.body.userId) return
+
+  const targetUser = await input.findUserById(input.body.userId)
+  if (!targetUser || !isEffectiveAdmin(targetUser) || isActiveBan(targetUser)) return
+
+  if (input.actorUserId === input.body.userId) {
+    throw APIError.from('BAD_REQUEST', {
+      message: 'You cannot ban yourself',
+      code: 'SELF_ADMIN_BAN'
+    })
+  }
+
+  const reservation = await input.reserveAdminBan(input.body.userId)
+  if (reservation.reserved) return
+
+  if (reservation.reason === 'concurrent') {
+    throw APIError.from('CONFLICT', {
+      message: 'Account status changed while banning admin',
+      code: 'ADMIN_BAN_CONFLICT'
+    })
+  }
+
+  if (reservation.reason === 'last_admin') {
+    throw APIError.from('CONFLICT', {
+      message: 'Cannot ban the last remaining unbanned admin',
+      code: 'LAST_ADMIN_BAN'
     })
   }
 }
@@ -153,17 +234,65 @@ async function assignFirstAdminRoleInDatabase(userId: string) {
   `)
 }
 
-async function countAdminUsersInDatabase() {
+async function reserveAdminBanInDatabase(userId: string): Promise<BanReservationResult> {
+  const result = await db.run(sql`
+    UPDATE ${user}
+    SET banned = true
+    WHERE ${user.id} = ${userId}
+      AND ${adminRoleTokenPredicate()}
+      AND ${inactiveBanPredicate()}
+      AND (
+        SELECT count(*)
+        FROM ${user}
+        WHERE ${user.id} <> ${userId}
+          AND ${adminRoleTokenPredicate()}
+          AND ${inactiveBanPredicate()}
+      ) > 0
+  `)
+
+  if (getAffectedRowCount(result) > 0) {
+    return { reserved: true }
+  }
+
+  const targetRows = await db
+    .select({
+      id: user.id,
+      role: user.role,
+      banned: user.banned,
+      banExpires: user.banExpires
+    })
+    .from(user)
+    .where(sql`${user.id} = ${userId}`)
+
+  const targetUser = targetRows[0]
+  if (!targetUser || !isEffectiveAdmin(targetUser) || isActiveBan(targetUser)) {
+    return { reserved: false, reason: 'concurrent' }
+  }
+
+  return {
+    reserved: false,
+    reason: await countUnbannedAdminUsersInDatabase() <= 1 ? 'last_admin' : 'concurrent'
+  }
+}
+
+async function countUnbannedAdminUsersInDatabase() {
   const rows = await db
     .select({ count: sql<number | string | bigint>`count(*)` })
     .from(user)
-    .where(adminRoleTokenPredicate())
+    .where(sql`${adminRoleTokenPredicate()} AND ${inactiveBanPredicate()}`)
 
   return Number(rows[0]?.count ?? 0)
 }
 
 function adminRoleTokenPredicate() {
   return sql`(',' || replace(${user.role}, ' ', '') || ',') LIKE ${'%,admin,%'}`
+}
+
+function inactiveBanPredicate() {
+  return sql`(
+    COALESCE(${user.banned}, false) = false
+    OR (${user.banExpires} IS NOT NULL AND ${user.banExpires} <= ${new Date()})
+  )`
 }
 
 function getAffectedRowCount(result: RunResult | undefined) {

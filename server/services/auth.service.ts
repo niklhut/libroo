@@ -1,6 +1,7 @@
 import { Context, Effect, Layer, Data } from 'effect'
 import type { H3Event } from 'h3'
 import type { User } from 'better-auth/types'
+import { isActiveBan } from '~~/shared/utils/auth-status'
 import { auth } from '../utils/auth'
 
 // Error types
@@ -31,6 +32,10 @@ const fetchSession = (event: H3Event): Effect.Effect<SessionData, UnauthorizedEr
 
     if (!session) {
       return yield* Effect.fail(new UnauthorizedError({ message: 'No active session' }))
+    }
+
+    if (isActiveBan(session.user)) {
+      return yield* Effect.fail(new UnauthorizedError({ message: 'Account is banned' }))
     }
 
     return session

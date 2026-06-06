@@ -301,3 +301,23 @@ export function itRequiresAuth(path: string, event: Partial<TestEvent> = {}) {
     expectNoServiceCalls()
   })
 }
+
+export function itRejectsBannedUsers(path: string, event: Partial<TestEvent> = {}) {
+  it('rejects active banned sessions', async () => {
+    authMock.getSession.mockResolvedValueOnce({
+      user: {
+        ...testUser,
+        banned: true,
+        banExpires: null
+      },
+      session: { id: 'session-1' }
+    })
+    const handler = await importRoute(path)
+
+    await expect(handler(makeEvent(event))).rejects.toMatchObject({
+      statusCode: 401,
+      message: 'Account is banned'
+    })
+    expectNoServiceCalls()
+  })
+}
