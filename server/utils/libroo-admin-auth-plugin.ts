@@ -1,6 +1,7 @@
 import { APIError, createAuthMiddleware, getSessionFromCtx } from 'better-auth/api'
 import type { BetterAuthPlugin } from 'better-auth/types'
 import { sql } from 'drizzle-orm'
+import { isActiveBan } from '~~/shared/utils/auth-status'
 import { db } from '@nuxthub/db'
 import { user } from '@nuxthub/db/schema'
 
@@ -8,6 +9,7 @@ type UserWithRole = {
   id: string
   role?: string | null
   banned?: boolean | null
+  banExpires?: string | Date | null
 }
 
 type SetRoleBody = {
@@ -36,6 +38,10 @@ type RunResult = {
   rowsAffected?: number
   rowCount?: number
 }
+
+type BanReservationResult
+  = | { reserved: true }
+    | { reserved: false, reason: 'last_admin' | 'concurrent' }
 
 const parseRoleValues = (role: string | string[] | null | undefined): string[] => {
   const values = Array.isArray(role) ? role : [role ?? 'user']
@@ -161,7 +167,7 @@ export async function enforceSetRolePolicy(input: {
   if (!input.body.userId || nextRoleIncludesAdmin(input.body.role)) return
 
   const targetUser = await input.findUserById(input.body.userId)
-  if (!targetUser || !isEffectiveAdmin(targetUser) || targetUser.banned) return
+  if (!targetUser || !isEffectiveAdmin(targetUser) || isActiveBan(targetUser)) return
 
   if (input.actorUserId === input.body.userId) {
     throw APIError.from('BAD_REQUEST', {
@@ -182,12 +188,12 @@ export async function enforceBanUserPolicy(input: {
   body: BanUserBody
   actorUserId: string
   findUserById: (userId: string) => Promise<UserWithRole | null>
-  reserveAdminBan: (userId: string) => Promise<boolean>
+  reserveAdminBan: (userId: string) => Promise<BanReservationResult>
 }) {
   if (!input.body.userId) return
 
   const targetUser = await input.findUserById(input.body.userId)
-  if (!targetUser || !isEffectiveAdmin(targetUser) || targetUser.banned) return
+  if (!targetUser || !isEffectiveAdmin(targetUser) || isActiveBan(targetUser)) return
 
   if (input.actorUserId === input.body.userId) {
     throw APIError.from('BAD_REQUEST', {
@@ -196,7 +202,17 @@ export async function enforceBanUserPolicy(input: {
     })
   }
 
-  if (!await input.reserveAdminBan(input.body.userId)) {
+  const reservation = await input.reserveAdminBan(input.body.userId)
+  if (reservation.reserved) return
+
+  if (reservation.reason === 'concurrent') {
+    throw APIError.from('CONFLICT', {
+      message: 'Account status changed while banning admin',
+      code: 'ADMIN_BAN_CONFLICT'
+    })
+  }
+
+  if (reservation.reason === 'last_admin') {
     throw APIError.from('CONFLICT', {
       message: 'Cannot ban the last remaining unbanned admin',
       code: 'LAST_ADMIN_BAN'
@@ -218,36 +234,65 @@ async function assignFirstAdminRoleInDatabase(userId: string) {
   `)
 }
 
-async function reserveAdminBanInDatabase(userId: string) {
+async function reserveAdminBanInDatabase(userId: string): Promise<BanReservationResult> {
   const result = await db.run(sql`
     UPDATE ${user}
     SET banned = true
     WHERE ${user.id} = ${userId}
       AND ${adminRoleTokenPredicate()}
-      AND COALESCE(${user.banned}, false) = false
+      AND ${inactiveBanPredicate()}
       AND (
         SELECT count(*)
         FROM ${user}
         WHERE ${user.id} <> ${userId}
           AND ${adminRoleTokenPredicate()}
-          AND COALESCE(${user.banned}, false) = false
+          AND ${inactiveBanPredicate()}
       ) > 0
   `)
 
-  return getAffectedRowCount(result) > 0
+  if (getAffectedRowCount(result) > 0) {
+    return { reserved: true }
+  }
+
+  const targetRows = await db
+    .select({
+      id: user.id,
+      role: user.role,
+      banned: user.banned,
+      banExpires: user.banExpires
+    })
+    .from(user)
+    .where(sql`${user.id} = ${userId}`)
+
+  const targetUser = targetRows[0]
+  if (!targetUser || !isEffectiveAdmin(targetUser) || isActiveBan(targetUser)) {
+    return { reserved: false, reason: 'concurrent' }
+  }
+
+  return {
+    reserved: false,
+    reason: await countUnbannedAdminUsersInDatabase() <= 1 ? 'last_admin' : 'concurrent'
+  }
 }
 
 async function countUnbannedAdminUsersInDatabase() {
   const rows = await db
     .select({ count: sql<number | string | bigint>`count(*)` })
     .from(user)
-    .where(sql`${adminRoleTokenPredicate()} AND COALESCE(${user.banned}, false) = false`)
+    .where(sql`${adminRoleTokenPredicate()} AND ${inactiveBanPredicate()}`)
 
   return Number(rows[0]?.count ?? 0)
 }
 
 function adminRoleTokenPredicate() {
   return sql`(',' || replace(${user.role}, ' ', '') || ',') LIKE ${'%,admin,%'}`
+}
+
+function inactiveBanPredicate() {
+  return sql`(
+    COALESCE(${user.banned}, false) = false
+    OR (${user.banExpires} IS NOT NULL AND ${user.banExpires} <= ${new Date()})
+  )`
 }
 
 function getAffectedRowCount(result: RunResult | undefined) {

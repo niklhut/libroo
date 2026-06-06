@@ -56,12 +56,31 @@ describe('librooAdminPolicyPlugin', () => {
     })
   })
 
+  it('treats expired bans as inactive when checking admin demotion safety', async () => {
+    await expect(enforceSetRolePolicy({
+      body: { userId: 'admin-1', role: 'user' },
+      actorUserId: 'admin-2',
+      findUserById: async () => ({
+        id: 'admin-1',
+        role: 'admin',
+        banned: true,
+        banExpires: new Date('2020-01-01T00:00:00.000Z')
+      }),
+      countAdmins: async () => 1
+    })).rejects.toMatchObject({
+      statusCode: 409,
+      body: {
+        code: 'LAST_ADMIN_DEMOTION'
+      }
+    })
+  })
+
   it('blocks banning the last remaining unbanned admin', async () => {
     await expect(enforceBanUserPolicy({
       body: { userId: 'admin-1' },
       actorUserId: 'admin-2',
       findUserById: async () => ({ id: 'admin-1', role: 'admin', banned: false }),
-      reserveAdminBan: async () => false
+      reserveAdminBan: async () => ({ reserved: false, reason: 'last_admin' })
     })).rejects.toMatchObject({
       statusCode: 409,
       body: {
@@ -79,7 +98,7 @@ describe('librooAdminPolicyPlugin', () => {
       findUserById: async () => ({ id: 'admin-1', role: 'admin', banned: false }),
       reserveAdminBan: async () => {
         reserveCalled = true
-        return true
+        return { reserved: true }
       }
     })).rejects.toMatchObject({
       statusCode: 400,
@@ -88,6 +107,20 @@ describe('librooAdminPolicyPlugin', () => {
       }
     })
     expect(reserveCalled).toBe(false)
+  })
+
+  it('reports a concurrent admin ban conflict separately from last-admin protection', async () => {
+    await expect(enforceBanUserPolicy({
+      body: { userId: 'admin-1' },
+      actorUserId: 'admin-2',
+      findUserById: async () => ({ id: 'admin-1', role: 'admin', banned: false }),
+      reserveAdminBan: async () => ({ reserved: false, reason: 'concurrent' })
+    })).rejects.toMatchObject({
+      statusCode: 409,
+      body: {
+        code: 'ADMIN_BAN_CONFLICT'
+      }
+    })
   })
 
   it('allows banning an admin when another unbanned admin remains', async () => {
@@ -99,7 +132,27 @@ describe('librooAdminPolicyPlugin', () => {
       findUserById: async () => ({ id: 'admin-1', role: 'admin', banned: false }),
       reserveAdminBan: async (userId) => {
         reservedUserId = userId
-        return true
+        return { reserved: true }
+      }
+    })).resolves.toBeUndefined()
+    expect(reservedUserId).toBe('admin-1')
+  })
+
+  it('allows reserving bans for admins with expired temporary bans', async () => {
+    let reservedUserId: string | null = null
+
+    await expect(enforceBanUserPolicy({
+      body: { userId: 'admin-1' },
+      actorUserId: 'admin-2',
+      findUserById: async () => ({
+        id: 'admin-1',
+        role: 'admin',
+        banned: true,
+        banExpires: new Date('2020-01-01T00:00:00.000Z')
+      }),
+      reserveAdminBan: async (userId) => {
+        reservedUserId = userId
+        return { reserved: true }
       }
     })).resolves.toBeUndefined()
     expect(reservedUserId).toBe('admin-1')

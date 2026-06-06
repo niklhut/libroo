@@ -1,3 +1,5 @@
+import { isActiveBan } from '~~/shared/utils/auth-status'
+
 export default defineNuxtRouteMiddleware(async (to) => {
   // Skip auth check for pages explicitly marked as public
   const isAuthRequired = to.meta.auth !== false
@@ -29,11 +31,3 @@ export default defineNuxtRouteMiddleware(async (to) => {
     }
   }
 })
-
-function isActiveBan(user: { banned?: boolean | null, banExpires?: string | Date | null }) {
-  if (!user.banned) return false
-  if (!user.banExpires) return true
-
-  const banExpires = user.banExpires instanceof Date ? user.banExpires : new Date(user.banExpires)
-  return !Number.isFinite(banExpires.getTime()) || banExpires.getTime() > Date.now()
-}
