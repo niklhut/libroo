@@ -15,6 +15,12 @@ export default defineNuxtRouteMiddleware(async (to) => {
     })
   }
 
+  if (isActiveBan(session.value.user)) {
+    await authClient.signOut().catch(() => undefined)
+    session.value = null
+    return navigateTo('/login')
+  }
+
   if (to.path.startsWith('/admin')) {
     const role = session.value.user.role
     const roles = typeof role === 'string' ? role.split(',').map(part => part.trim()) : []
@@ -23,3 +29,11 @@ export default defineNuxtRouteMiddleware(async (to) => {
     }
   }
 })
+
+function isActiveBan(user: { banned?: boolean | null, banExpires?: string | Date | null }) {
+  if (!user.banned) return false
+  if (!user.banExpires) return true
+
+  const banExpires = user.banExpires instanceof Date ? user.banExpires : new Date(user.banExpires)
+  return !Number.isFinite(banExpires.getTime()) || banExpires.getTime() > Date.now()
+}

@@ -11,6 +11,10 @@ export class UnauthorizedError extends Data.TaggedError('UnauthorizedError')<{
 // Type for the complete session data returned by auth.api.getSession
 // Inferred from the actual return type to ensure it stays in sync with Better Auth
 export type SessionData = NonNullable<Awaited<ReturnType<typeof auth.api.getSession>>>
+type SessionUser = SessionData['user'] & {
+  banned?: boolean | null
+  banExpires?: string | Date | null
+}
 
 // Service interface
 export interface AuthServiceInterface {
@@ -33,8 +37,20 @@ const fetchSession = (event: H3Event): Effect.Effect<SessionData, UnauthorizedEr
       return yield* Effect.fail(new UnauthorizedError({ message: 'No active session' }))
     }
 
+    if (isActiveBan(session.user as SessionUser)) {
+      return yield* Effect.fail(new UnauthorizedError({ message: 'Account is banned' }))
+    }
+
     return session
   })
+
+function isActiveBan(user: SessionUser) {
+  if (!user.banned) return false
+  if (!user.banExpires) return true
+
+  const banExpires = user.banExpires instanceof Date ? user.banExpires : new Date(user.banExpires)
+  return !Number.isFinite(banExpires.getTime()) || banExpires.getTime() > Date.now()
+}
 
 // Live implementation
 export const AuthServiceLive = Layer.succeed(AuthService, {

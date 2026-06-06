@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { assignFirstAdminRole, enforceSetRolePolicy, normalizeAdminRoleMutationBody, roleIncludesAdmin } from '../../server/utils/libroo-admin-auth-plugin'
+import { assignFirstAdminRole, enforceBanUserPolicy, enforceSetRolePolicy, normalizeAdminBanMutationBody, normalizeAdminRoleMutationBody, roleIncludesAdmin } from '../../server/utils/libroo-admin-auth-plugin'
 
 describe('librooAdminPolicyPlugin', () => {
   it('allows promotions to pass through to Better Auth', async () => {
@@ -53,6 +53,45 @@ describe('librooAdminPolicyPlugin', () => {
       body: {
         code: 'LAST_ADMIN_DEMOTION'
       }
+    })
+  })
+
+  it('blocks banning the last remaining unbanned admin', async () => {
+    await expect(enforceBanUserPolicy({
+      body: { userId: 'admin-1' },
+      findUserById: async () => ({ id: 'admin-1', role: 'admin', banned: false }),
+      countAdmins: async () => 1
+    })).rejects.toMatchObject({
+      statusCode: 409,
+      body: {
+        code: 'LAST_ADMIN_BAN'
+      }
+    })
+  })
+
+  it('allows banning an admin when another unbanned admin remains', async () => {
+    await expect(enforceBanUserPolicy({
+      body: { userId: 'admin-1' },
+      findUserById: async () => ({ id: 'admin-1', role: 'admin', banned: false }),
+      countAdmins: async () => 2
+    })).resolves.toBeUndefined()
+  })
+
+  it('normalizes Better Auth ban mutations into policy input', async () => {
+    expect(normalizeAdminBanMutationBody('/admin/ban-user', {
+      userId: 'admin-1',
+      banReason: 'test'
+    })).toEqual({
+      userId: 'admin-1'
+    })
+  })
+
+  it('normalizes Better Auth update-user ban changes into policy input', async () => {
+    expect(normalizeAdminBanMutationBody('/admin/update-user', {
+      userId: 'admin-1',
+      data: { banned: true }
+    })).toEqual({
+      userId: 'admin-1'
     })
   })
 
