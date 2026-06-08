@@ -1,25 +1,27 @@
 <script setup lang="ts">
 // Input mode tabs
-type InputMode = 'manual' | 'scan' | 'bulk'
+type InputMode = 'isbn' | 'manual' | 'scan' | 'bulk'
 const route = useRoute()
 const router = useRouter()
 
-const validInputModes = ['manual', 'scan', 'bulk'] as const
+const validInputModes = ['isbn', 'manual', 'scan', 'bulk'] as const
 
 function isInputMode(value: unknown): value is InputMode {
   return typeof value === 'string' && validInputModes.includes(value as InputMode)
 }
 
-const inputMode = ref<InputMode>(isInputMode(route.query.tab) ? route.query.tab : 'manual')
+const inputMode = ref<InputMode>(isInputMode(route.query.tab) ? route.query.tab : 'isbn')
 
 // Refs to child components for resetting state on tab change
 const isbnLookupRef = ref<{ reset: () => void } | null>(null)
+const manualEntryRef = ref<{ reset: () => void } | null>(null)
 const cameraScanRef = ref<{ reset: () => void } | null>(null)
 const bulkImportRef = ref<{ reset: () => void } | null>(null)
 
 // Tab items
 const modeItems = [
-  { value: 'manual', label: 'ISBN Lookup', icon: 'i-lucide-keyboard' },
+  { value: 'isbn', label: 'ISBN Lookup', icon: 'i-lucide-keyboard' },
+  { value: 'manual', label: 'Manual Entry', icon: 'i-lucide-pencil-line' },
   { value: 'scan', label: 'Camera Scan', icon: 'i-lucide-scan-barcode' },
   { value: 'bulk', label: 'Bulk Import', icon: 'i-lucide-list' }
 ]
@@ -47,6 +49,7 @@ watch(inputMode, (mode, previousMode) => {
   if (!previousMode || mode === previousMode) return
 
   isbnLookupRef.value?.reset()
+  manualEntryRef.value?.reset()
   cameraScanRef.value?.reset()
   bulkImportRef.value?.reset()
 })
@@ -57,7 +60,7 @@ watch(inputMode, (mode, previousMode) => {
     <!-- Page Header -->
     <UPageHeader
       title="Add Book"
-      description="Add books to your library by entering an ISBN, scanning a barcode, or importing multiple books at once."
+      description="Add books to your library by entering details manually, looking up an ISBN, scanning a barcode, or importing multiple books at once."
     >
       <template #links>
         <UButton
@@ -86,8 +89,14 @@ watch(inputMode, (mode, previousMode) => {
 
           <!-- ISBN Lookup Mode -->
           <AddIsbnLookupTab
-            v-if="inputMode === 'manual'"
+            v-if="inputMode === 'isbn'"
             ref="isbnLookupRef"
+          />
+
+          <!-- Manual Entry Mode -->
+          <AddManualEntryTab
+            v-else-if="inputMode === 'manual'"
+            ref="manualEntryRef"
           />
 
           <!-- Camera Scan Mode -->
@@ -101,16 +110,6 @@ watch(inputMode, (mode, previousMode) => {
             v-else-if="inputMode === 'bulk'"
             ref="bulkImportRef"
           />
-
-          <!-- Future: Manual entry option (only shown on ISBN lookup tab) -->
-          <div
-            v-if="inputMode === 'manual'"
-            class="mt-6 text-center"
-          >
-            <p class="text-sm text-muted">
-              Can't find your book? Manual entry coming soon.
-            </p>
-          </div>
         </div>
       </div>
     </UPageBody>

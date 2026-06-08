@@ -2,7 +2,6 @@ import { Context, Effect, Layer, Data, Duration } from 'effect'
 import { HttpClient } from '@effect/platform'
 import * as HCError from '@effect/platform/HttpClientError'
 import type { HttpClient as HttpClientType } from '@effect/platform'
-import sharp from 'sharp'
 
 // Error types
 export class OpenLibraryBookNotFoundError extends Data.TaggedError('OpenLibraryBookNotFoundError')<{
@@ -251,19 +250,10 @@ export const OpenLibraryRepositoryLive = Layer.succeed(OpenLibraryRepository, {
         return null
       }
 
-      // Convert to WebP using sharp
-      const webpBuffer = yield* Effect.tryPromise({
-        try: () => sharp(Buffer.from(imageBuffer)).webp({ quality: 85 }).toBuffer(),
-        catch: error => new OpenLibraryCoverError({
-          message: `Failed to convert cover to WebP: ${error}`,
-          isbn: normalizedISBN
-        })
-      })
-
       const pathname = `covers/${normalizedISBN}.webp`
 
       // Store in blob storage, return null if storage fails
-      return yield* putBlob(pathname, webpBuffer, { contentType: 'image/webp' }).pipe(
+      return yield* putCoverImage(pathname, imageBuffer).pipe(
         Effect.map(blobMetadata => blobMetadata.pathname),
         Effect.catchAll(error =>
           Effect.logWarning(`Failed to store cover in blob storage: ${error}`).pipe(
