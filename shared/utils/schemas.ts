@@ -228,7 +228,6 @@ export const manualBookCreateSchema = z.object({
       .int({ error: 'Cover image size must be a whole number' })
       .min(1, { error: 'Cover image is empty' })
       .max(MANUAL_COVER_MAX_BYTES, { error: 'Cover image is too large' })
-      .optional()
   }).nullable().optional().default(null),
   publishDate: trimmedNullableString(120, 'Publish date').default(null),
   publisher: trimmedNullableString(240, 'Publisher').default(null),

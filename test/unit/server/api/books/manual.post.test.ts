@@ -100,6 +100,25 @@ describe('server/api/books/manual.post', () => {
     })
   })
 
+  it('rejects cover images without a size', async () => {
+    mockLoggedInUser()
+    const handler = await importRoute(route)
+
+    await expect(handler(makeEvent({
+      body: {
+        title: 'Manual Book',
+        authors: ['Ada Lovelace'],
+        coverImage: {
+          data: 'data:image/png;base64,aGVsbG8=',
+          contentType: 'image/png'
+        }
+      }
+    }))).rejects.toMatchObject({
+      statusCode: 400,
+      message: 'Validation Error'
+    })
+  })
+
   it('rejects invalid manual payloads', async () => {
     mockLoggedInUser()
     const handler = await importRoute(route)

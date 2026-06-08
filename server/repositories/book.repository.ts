@@ -696,12 +696,13 @@ export const BookRepositoryLive = Layer.effect(
                 await tx.insert(books).values(newBook)
 
                 const normalizedSeen = new Set<string>()
-                const authorNames = input.authors.filter((name) => {
+                const manualAuthorNames = input.authors.filter((name) => {
                   const normalized = normalizeAuthorName(name)
                   if (!normalized || normalizedSeen.has(normalized)) return false
                   normalizedSeen.add(normalized)
                   return true
                 })
+                const authorNames = manualAuthorNames.length > 0 ? manualAuthorNames : ['Unknown Author']
 
                 for (const [index, authorName] of authorNames.entries()) {
                   const authorId = await (async () => {
@@ -823,10 +824,43 @@ export const BookRepositoryLive = Layer.effect(
                     .onConflictDoNothing()
                 }
 
+                const createdRows = await tx
+                  .select()
+                  .from(books)
+                  .where(eq(books.id, bookId))
+                  .limit(1)
+
+                const createdBook = createdRows[0]
+                if (!createdBook) {
+                  throw new DatabaseError({
+                    message: 'Manual book created but not found afterwards',
+                    operation: 'createManualBook.loadBook'
+                  })
+                }
+
+                const authorRows = await tx
+                  .select({
+                    id: authors.id,
+                    name: authors.name
+                  })
+                  .from(bookAuthors)
+                  .innerJoin(authors, eq(bookAuthors.authorId, authors.id))
+                  .where(eq(bookAuthors.bookId, bookId))
+                  .orderBy(asc(bookAuthors.sortOrder), asc(authors.name))
+
+                const userTagRows = await tx
+                  .select({ name: tags.name })
+                  .from(userBookTags)
+                  .innerJoin(tags, eq(userBookTags.tagId, tags.id))
+                  .where(eq(userBookTags.userBookId, userBookId))
+
                 return {
-                  userBookId,
+                  id: userBookId,
                   bookId,
-                  addedAt: now
+                  book: toBookModel(createdBook, authorRows),
+                  tags: userTagRows.map(tag => tag.name),
+                  addedAt: now,
+                  activeLoan: null
                 }
               })
             },
@@ -838,37 +872,7 @@ export const BookRepositoryLive = Layer.effect(
               return new BookCreateError({ message: `Failed to create manual book: ${error}` })
             }
           })
-
-          const book = yield* Effect.gen(function* () {
-            const rows = yield* Effect.tryPromise({
-              try: () => dbService.db.select().from(books).where(eq(books.id, result.bookId)).limit(1),
-              catch: error => new DatabaseError({
-                message: `Failed to load created manual book: ${error}`,
-                operation: 'createManualBook.loadBook'
-              })
-            })
-            const createdBook = rows[0]
-            if (!createdBook) {
-              return yield* Effect.fail(new DatabaseError({
-                message: 'Manual book created but not found afterwards',
-                operation: 'createManualBook.loadBook'
-              }))
-            }
-
-            const authorMap = yield* hydrateAuthorsForBookIds([createdBook.id])
-            return toBookModel(createdBook, authorMap.get(createdBook.id) || [])
-          })
-
-          const tagMap = yield* hydrateUserTagsByUserBookIds([result.userBookId])
-
-          return {
-            id: result.userBookId,
-            bookId: result.bookId,
-            book,
-            tags: tagMap.get(result.userBookId) || [],
-            addedAt: result.addedAt,
-            activeLoan: null
-          }
+          return result
         }),
 
       getLibrary: (userId, pagination) =>

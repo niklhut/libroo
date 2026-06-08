@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { FormSubmitEvent } from '@nuxt/ui'
 import type { LibraryBook, ReadingStatus } from '~~/shared/types/book'
-import { MANUAL_COVER_MAX_BYTES } from '~~/shared/utils/schemas'
+import { MANUAL_COVER_MAX_BYTES, manualBookCreateSchema, type ManualBookCreateSchema } from '~~/shared/utils/schemas'
 
 const toast = useToast()
 const dashboardStore = useLibraryDashboardStore()
@@ -16,7 +16,7 @@ const formState = reactive({
   title: '',
   authors: [''],
   isbn: '',
-  coverImage: null as { data: string, contentType: string, size?: number } | null,
+  coverImage: null as { data: string, contentType: string, size: number } | null,
   publishDate: '',
   publisher: '',
   numberOfPages: null as number | null,
@@ -78,6 +78,21 @@ function clearCover() {
   }
 }
 
+function readCoverFile(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result)
+        return
+      }
+      reject(new Error('Cover image could not be read.'))
+    }
+    reader.onerror = () => reject(new Error('Cover image could not be read.'))
+    reader.readAsDataURL(file)
+  })
+}
+
 async function prepareCover(file: File | null) {
   formState.coverImage = null
   if (coverPreviewUrl.value) {
@@ -106,12 +121,7 @@ async function prepareCover(file: File | null) {
     return
   }
 
-  const data = await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result))
-    reader.onerror = () => reject(reader.error)
-    reader.readAsDataURL(file)
-  })
+  const data = await readCoverFile(file)
 
   formState.coverImage = {
     data,
@@ -121,7 +131,16 @@ async function prepareCover(file: File | null) {
   coverPreviewUrl.value = URL.createObjectURL(file)
 }
 
-watch(coverFile, file => void prepareCover(file))
+watch(coverFile, (file) => {
+  prepareCover(file).catch((err: unknown) => {
+    coverFile.value = null
+    toast.add({
+      title: 'Could not read cover',
+      description: err instanceof Error ? err.message : 'Choose a different image file.',
+      color: 'error'
+    })
+  })
+})
 
 onUnmounted(() => {
   if (coverPreviewUrl.value) {
