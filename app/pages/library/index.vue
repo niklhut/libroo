@@ -380,6 +380,7 @@ async function deleteSelected() {
             :author="book.author"
             :isbn="book.isbn"
             :cover-path="book.coverPath"
+            :location="book.location"
             :added-at="book.addedAt"
             :active-loan="book.activeLoan"
             :selectable="isSelectMode"

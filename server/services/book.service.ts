@@ -13,6 +13,7 @@ interface UserBookViewModel {
     isbn: string | null
     coverPath: string | null
   }
+  location: BookLocation | null
   tags: string[]
   addedAt: Date
   activeLoan: ActiveLoanSummary | null
@@ -35,6 +36,7 @@ export const toLibraryBook = (userBook: UserBookViewModel): LibraryBook => ({
   isbn: userBook.book.isbn,
   coverPath: userBook.book.coverPath,
   tags: userBook.tags,
+  location: userBook.location,
   addedAt: userBook.addedAt,
   activeLoan: userBook.activeLoan
 })
@@ -134,6 +136,12 @@ export interface BookServiceInterface {
     note: string | null
   ) => Effect.Effect<void, BookNotFoundError | DatabaseError, DbService>
 
+  updateLocation: (
+    userBookId: string,
+    userId: string,
+    locationId: string | null
+  ) => Effect.Effect<BookLocation | null, BookNotFoundError | LocationNotFoundError | DatabaseError, DbService>
+
   updateReadingProgress: (
     userBookId: string,
     userId: string,
@@ -151,6 +159,7 @@ export const BookServiceLive = Layer.effect(
   BookService,
   Effect.gen(function* () {
     const bookRepo = yield* BookRepository
+    const locationRepo = yield* LocationRepository
 
     const normalizeProgress = (
       details: BookDetails,
@@ -368,6 +377,15 @@ export const BookServiceLive = Layer.effect(
       updateNote: (userBookId, userId, note) =>
         bookRepo.updateNote(userBookId, userId, note),
 
+      updateLocation: (userBookId, userId, locationId) =>
+        Effect.gen(function* () {
+          const location = locationId
+            ? yield* locationRepo.getLocationById(userId, locationId)
+            : null
+          yield* bookRepo.updateLocation(userBookId, userId, location?.id ?? null)
+          return location
+        }),
+
       updateReadingProgress: (userBookId, userId, progress) =>
         Effect.gen(function* () {
           const details = yield* bookRepo.getUserBookWithDetails(userBookId, userId)
@@ -432,6 +450,9 @@ export const updateRating = (userBookId: string, userId: string, rating: number 
 
 export const updateNote = (userBookId: string, userId: string, note: string | null) =>
   Effect.flatMap(BookService, service => service.updateNote(userBookId, userId, note))
+
+export const updateLocation = (userBookId: string, userId: string, locationId: string | null) =>
+  Effect.flatMap(BookService, service => service.updateLocation(userBookId, userId, locationId))
 
 export const updateReadingProgress = (
   userBookId: string,

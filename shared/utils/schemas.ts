@@ -5,6 +5,12 @@ import {
   TAG_INPUT_MAX_LENGTH,
   TAG_INPUT_MIN_LENGTH
 } from './tag-ingestion'
+import {
+  BOOK_LOCATION_MAX_LENGTH,
+  BOOK_LOCATION_NAME_MAX_LENGTH,
+  normalizeBookLocationName,
+  normalizeBookLocationPath
+} from './book-location'
 
 /**
  * Validate ISBN-10 check digit
@@ -164,6 +170,48 @@ export const bookNoteSchema = z.object({
 })
 
 export type BookNoteSchema = z.infer<typeof bookNoteSchema>
+
+export const bookLocationSchema = z.object({
+  locationId: z.string({ error: 'Location ID must be a string' }).nullable()
+})
+
+export type BookLocationSchema = z.infer<typeof bookLocationSchema>
+
+export const locationCreateSchema = z.object({
+  name: z.preprocess(
+    (val) => {
+      if (typeof val === 'string') {
+        return normalizeBookLocationName(val)
+      }
+      return val
+    },
+    z.string({ error: 'Location name must be a string' })
+      .min(1, { error: 'Location name is required' })
+      .max(BOOK_LOCATION_NAME_MAX_LENGTH, { error: 'Location name is too long' })
+  ),
+  parentLocationId: z.string({ error: 'Parent location ID must be a string' }).nullable().optional().default(null)
+})
+
+export type LocationCreateSchema = z.infer<typeof locationCreateSchema>
+
+export const locationPathSchema = z.object({
+  path: z.preprocess(
+    (val) => {
+      if (Array.isArray(val) && val.every(item => typeof item === 'string')) {
+        return normalizeBookLocationPath(val)
+      }
+      if (typeof val === 'string') {
+        return normalizeBookLocationPath(val)
+      }
+      return val
+    },
+    z.string({ error: 'Location path must be a string' })
+      .min(1, { error: 'Location path is required' })
+      .max(BOOK_LOCATION_MAX_LENGTH, { error: 'Location path is too long' })
+  )
+})
+
+export type LocationPathSchema = z.infer<typeof locationPathSchema>
 
 export const MANUAL_COVER_MAX_BYTES = 2 * 1024 * 1024
 
