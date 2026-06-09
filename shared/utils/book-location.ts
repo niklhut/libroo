@@ -22,7 +22,7 @@ export function normalizeBookLocationPath(input: string | string[] | null | unde
 
   const parts = Array.isArray(input)
     ? input
-    : input.split(/\s+[-–—]\s+|[/>]/g)
+    : input.split(BOOK_LOCATION_PATH_SEPARATOR_PATTERN)
 
   const normalizedParts = parts
     .map(part => normalizeBookLocationName(part))
