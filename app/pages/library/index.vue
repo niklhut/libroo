@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { LibraryBook, BatchDeleteResult } from '~~/shared/types/book'
+import { buildLibraryRouteQuery, normalizeLibraryQuery } from '~~/shared/utils/library-query'
 
 interface PaginatedResponse {
   items: LibraryBook[]
@@ -13,6 +14,7 @@ interface PaginatedResponse {
 }
 
 const toast = useToast()
+const route = useRoute()
 
 const dashboardStore = useLibraryDashboardStore()
 const {
@@ -20,6 +22,11 @@ const {
   pageSize,
   allBooks,
   pagination: paginationState,
+  search,
+  loanStatus,
+  readingStatus,
+  tag,
+  location,
   scrollY,
   shouldRestoreScroll,
   shouldSync,
@@ -29,11 +36,35 @@ const {
 const {
   removeBooks: removeBooksAction,
   getLoadedPages: getLoadedPagesAction,
-  clearNeedsSync: clearNeedsSyncAction
+  clearNeedsSync: clearNeedsSyncAction,
+  resetResults: resetResultsAction
 } = dashboardStore
+
+const routeState = normalizeLibraryQuery(route.query)
+const hasRouteStateMismatch = pageSize.value !== routeState.pageSize
+  || search.value !== (routeState.search ?? '')
+  || loanStatus.value !== (routeState.loanStatus ?? 'all')
+  || readingStatus.value !== (routeState.readingStatus ?? 'all')
+  || tag.value !== (routeState.tag ?? '')
+  || location.value !== (routeState.location ?? '')
+
+if (hasRouteStateMismatch) {
+  resetResultsAction()
+}
+
+if (hasRouteStateMismatch) {
+  page.value = 1
+}
+pageSize.value = routeState.pageSize
+search.value = routeState.search ?? ''
+loanStatus.value = routeState.loanStatus ?? 'all'
+readingStatus.value = routeState.readingStatus ?? 'all'
+tag.value = routeState.tag ?? ''
+location.value = routeState.location ?? ''
 
 // Pagination state
 const isLoadingMore = ref(false)
+const filterRefreshTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 
 // Selection state
 const isSelectMode = ref(false)
@@ -48,7 +79,12 @@ const { data, refresh, status } = await useFetch<PaginatedResponse>('/api/books'
   watch: false,
   query: computed(() => ({
     page: page.value,
-    pageSize: pageSize.value
+    pageSize: pageSize.value,
+    search: search.value || undefined,
+    loanStatus: loanStatus.value === 'all' ? undefined : loanStatus.value,
+    readingStatus: readingStatus.value === 'all' ? undefined : readingStatus.value,
+    tag: tag.value || undefined,
+    location: location.value || undefined
   }))
 })
 
@@ -100,6 +136,10 @@ onMounted(() => {
   void syncAndRestore()
 })
 
+onBeforeUnmount(() => {
+  if (filterRefreshTimer.value) clearTimeout(filterRefreshTimer.value)
+})
+
 onBeforeRouteLeave((to) => {
   const isOpeningBookDetails = /^\/library\/(?!add$)[^/]+$/.test(to.path)
 
@@ -117,8 +157,70 @@ onBeforeRouteLeave((to) => {
 const books = computed(() => allBooks.value)
 const pagination = computed(() => paginationState.value)
 const hasBooks = computed(() => books.value.length > 0)
+const hasActiveFilters = computed(() =>
+  Boolean(search.value.trim())
+  || loanStatus.value !== 'all'
+  || readingStatus.value !== 'all'
+  || Boolean(tag.value.trim())
+  || Boolean(location.value.trim())
+)
 const selectedCount = computed(() => selectedBooks.value.size)
 const allSelected = computed(() => books.value.length > 0 && selectedBooks.value.size === books.value.length)
+const loanStatusItems = [
+  { label: 'All loans', value: 'all' },
+  { label: 'Available', value: 'available' },
+  { label: 'Loaned out', value: 'loaned' }
+]
+const readingStatusItems = [
+  { label: 'All reading', value: 'all' },
+  { label: 'Unread', value: 'unread' },
+  { label: 'Reading', value: 'reading' },
+  { label: 'Read', value: 'read' }
+]
+
+watch([search, loanStatus, readingStatus, tag, location], () => {
+  if (filterRefreshTimer.value) clearTimeout(filterRefreshTimer.value)
+
+  filterRefreshTimer.value = setTimeout(() => {
+    void applyFilters()
+  }, 250)
+})
+
+async function applyFilters() {
+  resetResultsAction()
+  selectedBooks.value = new Set()
+  isSelectMode.value = false
+
+  updateBrowserQuery({
+    page: 1,
+    pageSize: pageSize.value,
+    search: search.value.trim() || undefined,
+    loanStatus: loanStatus.value,
+    readingStatus: readingStatus.value,
+    tag: tag.value.trim() || undefined,
+    location: location.value.trim() || undefined
+  })
+
+  await refresh()
+}
+
+function updateBrowserQuery(state: Parameters<typeof buildLibraryRouteQuery>[0]) {
+  if (!import.meta.client) return
+
+  const params = new URLSearchParams(buildLibraryRouteQuery(state))
+  const queryString = params.toString()
+  const nextUrl = queryString ? `${route.path}?${queryString}` : route.path
+
+  window.history.replaceState(window.history.state, '', nextUrl)
+}
+
+function clearFilters() {
+  search.value = ''
+  loanStatus.value = 'all'
+  readingStatus.value = 'all'
+  tag.value = ''
+  location.value = ''
+}
 
 // Toggle select mode
 function toggleSelectMode() {
@@ -281,18 +383,51 @@ async function deleteSelected() {
 
     <!-- Page Body -->
     <UPageBody>
-      <div
-        v-if="allBooks.length > 0"
-        class="mb-6 flex justify-end"
-      >
-        <UButton
-          to="/library/loans"
-          color="neutral"
-          variant="outline"
-          icon="i-lucide-handshake"
+      <div class="mb-6 space-y-3">
+        <UInput
+          v-model="search"
+          icon="i-lucide-search"
+          size="lg"
+          placeholder="Search title, author, ISBN, tag, or location"
+          class="w-full"
+        />
+
+        <div class="grid gap-3 md:grid-cols-4">
+          <USelect
+            v-model="loanStatus"
+            :items="loanStatusItems"
+            class="w-full"
+          />
+          <USelect
+            v-model="readingStatus"
+            :items="readingStatusItems"
+            class="w-full"
+          />
+          <UInput
+            v-model="tag"
+            icon="i-lucide-tag"
+            placeholder="Filter tag"
+          />
+          <UInput
+            v-model="location"
+            icon="i-lucide-map-pin"
+            placeholder="Filter location"
+          />
+        </div>
+
+        <div
+          v-if="hasActiveFilters"
+          class="flex justify-end"
         >
-          Loans
-        </UButton>
+          <UButton
+            color="neutral"
+            variant="ghost"
+            icon="i-lucide-x"
+            @click="clearFilters"
+          >
+            Clear filters
+          </UButton>
+        </div>
       </div>
 
       <!-- Selection toolbar -->
@@ -346,7 +481,7 @@ async function deleteSelected() {
 
       <!-- Empty State -->
       <UCard
-        v-else-if="!hasBooks"
+        v-else-if="!hasBooks && !hasActiveFilters"
         class="text-center py-12"
       >
         <UIcon
@@ -365,6 +500,30 @@ async function deleteSelected() {
           to="/library/add"
         >
           Add Your First Book
+        </UButton>
+      </UCard>
+
+      <UCard
+        v-else-if="!hasBooks"
+        class="text-center py-12"
+      >
+        <UIcon
+          name="i-lucide-search-x"
+          class="text-6xl text-muted mx-auto mb-4"
+        />
+        <h2 class="text-xl font-semibold mb-2">
+          No books found
+        </h2>
+        <p class="text-muted mb-6">
+          Try a different title, author, ISBN, tag, or shelf location.
+        </p>
+        <UButton
+          color="neutral"
+          variant="outline"
+          icon="i-lucide-x"
+          @click="clearFilters"
+        >
+          Clear filters
         </UButton>
       </UCard>
 

@@ -21,13 +21,31 @@ describe('server/api/books/index.get', () => {
   itRequiresAuth(route)
   itRejectsBannedUsers(route)
 
-  it('lists the user library with sanitized pagination and search query', async () => {
+  it('lists the user library with sanitized pagination, search, and filters', async () => {
     mockLoggedInUser()
     const result = { items: [], pagination: { page: 1, pageSize: 100, total: 0, totalPages: 0 } }
     serviceMocks.getUserLibrary.mockReturnValueOnce(Effect.succeed(result))
     const handler = await importRoute(route)
 
-    await expect(handler(makeEvent({ query: { page: '-2', pageSize: '500', search: '  dune  ' } }))).resolves.toBe(result)
-    expect(serviceMocks.getUserLibrary).toHaveBeenCalledWith('user-1', { page: 1, pageSize: 100, search: 'dune' })
+    await expect(handler(makeEvent({
+      query: {
+        page: '-2',
+        pageSize: '500',
+        search: '  dune  ',
+        loanStatus: 'loaned',
+        readingStatus: 'read',
+        tag: ' classic ',
+        location: ' Shelf B '
+      }
+    }))).resolves.toBe(result)
+    expect(serviceMocks.getUserLibrary).toHaveBeenCalledWith('user-1', {
+      page: 1,
+      pageSize: 100,
+      search: 'dune',
+      loanStatus: 'loaned',
+      readingStatus: 'read',
+      tag: 'classic',
+      location: 'Shelf B'
+    })
   })
 })

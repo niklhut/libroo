@@ -146,4 +146,25 @@ describe('useLibraryDashboardStore', () => {
     expect(shouldSync.value).toBe(false)
     expect(syncTargetPages.value).toBe(1)
   })
+
+  it('resets paged results when query state changes', () => {
+    const store = createStore()
+    const { page, allBooks, pagination } = storeToRefs(store)
+
+    page.value = 3
+    allBooks.value = [createBook('1'), createBook('2')]
+    pagination.value = {
+      page: 3,
+      pageSize: 12,
+      totalItems: 26,
+      totalPages: 3,
+      hasMore: false
+    }
+
+    store.resetResults()
+
+    expect(page.value).toBe(1)
+    expect(allBooks.value).toEqual([])
+    expect(pagination.value).toBeNull()
+  })
 })
