@@ -47,6 +47,8 @@ export interface Book {
   publishers?: string | null
   numberOfPages?: number | null
   workKey?: string | null
+  source: 'open_library' | 'manual'
+  createdByUserId: string | null
 }
 
 export interface UserBook {
@@ -77,6 +79,22 @@ interface OwnedUserBookRef {
   bookId: string
 }
 
+export interface ManualBookRepositoryInput {
+  title: string
+  authors: string[]
+  isbn: string | null
+  coverPath: string | null
+  publishDate: string | null
+  publisher: string | null
+  numberOfPages: number | null
+  rating: number | null
+  note: string | null
+  readingStatus: ReadingStatus
+  currentPage: number | null
+  progressPercent: number | null
+  tags: string[]
+}
+
 // Service interface
 export interface BookRepositoryInterface {
   addBookByISBN: (
@@ -87,6 +105,11 @@ export interface BookRepositoryInterface {
     BookCreateError | BookAlreadyOwnedError | OpenLibraryBookNotFoundError | OpenLibraryApiError | DatabaseError,
     DbService | StorageService | OpenLibraryRepository | HttpClient.HttpClient
   >
+
+  createManualBook: (
+    userId: string,
+    input: ManualBookRepositoryInput
+  ) => Effect.Effect<UserBook, BookCreateError | DatabaseError, DbService>
 
   getLibrary: (
     userId: string,
@@ -201,7 +224,9 @@ export const BookRepositoryLive = Layer.effect(
       publishDate: book.publishDate,
       publishers: book.publishers,
       numberOfPages: book.numberOfPages,
-      workKey: book.workKey
+      workKey: book.workKey,
+      source: book.source,
+      createdByUserId: book.createdByUserId
     })
 
     const hydrateAuthorsForBookIds = (bookIds: string[]) =>
@@ -539,7 +564,12 @@ export const BookRepositoryLive = Layer.effect(
                 .select()
                 .from(userBooks)
                 .innerJoin(books, eq(userBooks.bookId, books.id))
-                .where(and(eq(userBooks.userId, userId), eq(books.isbn, isbn), isNull(userBooks.removedAt)))
+                .where(and(
+                  eq(userBooks.userId, userId),
+                  eq(books.isbn, isbn),
+                  eq(books.source, 'open_library'),
+                  isNull(userBooks.removedAt)
+                ))
                 .limit(1),
             catch: error => new DatabaseError({
               message: `Failed to check existing ownership: ${error}`,
@@ -557,7 +587,7 @@ export const BookRepositoryLive = Layer.effect(
               dbService.db
                 .select()
                 .from(books)
-                .where(eq(books.isbn, isbn))
+                .where(and(eq(books.isbn, isbn), eq(books.source, 'open_library')))
                 .limit(1),
             catch: error => new DatabaseError({
               message: `Failed to find existing book: ${error}`,
@@ -589,6 +619,8 @@ export const BookRepositoryLive = Layer.effect(
               publishDate: openLibraryData.publishDate || null,
               publishers: openLibraryData.publishers?.join(', ') || null,
               numberOfPages: openLibraryData.numberOfPages || null,
+              source: 'open_library' as const,
+              createdByUserId: null,
               createdAt: now
             }
 
@@ -636,6 +668,211 @@ export const BookRepositoryLive = Layer.effect(
             addedAt,
             activeLoan: null
           }
+        }),
+
+      createManualBook: (userId, input) =>
+        Effect.gen(function* () {
+          const result = yield* Effect.tryPromise({
+            try: async () => {
+              return dbService.db.transaction(async (tx) => {
+                const now = new Date()
+                const bookId = generateId()
+                const newBook = {
+                  id: bookId,
+                  isbn: input.isbn,
+                  title: input.title,
+                  coverPath: input.coverPath,
+                  openLibraryKey: null,
+                  workKey: null,
+                  description: null,
+                  publishDate: input.publishDate,
+                  publishers: input.publisher,
+                  numberOfPages: input.numberOfPages,
+                  source: 'manual' as const,
+                  createdByUserId: userId,
+                  createdAt: now
+                }
+
+                await tx.insert(books).values(newBook)
+
+                const normalizedSeen = new Set<string>()
+                const manualAuthorNames = input.authors.filter((name) => {
+                  const normalized = normalizeAuthorName(name)
+                  if (!normalized || normalizedSeen.has(normalized)) return false
+                  normalizedSeen.add(normalized)
+                  return true
+                })
+                const authorNames = manualAuthorNames.length > 0 ? manualAuthorNames : ['Unknown Author']
+
+                for (const [index, authorName] of authorNames.entries()) {
+                  const authorId = await (async () => {
+                    const displayName = authorName.trim().replace(/\s+/g, ' ')
+                    const normalizedName = normalizeAuthorName(displayName)
+                    const existing = await tx
+                      .select({ id: authors.id })
+                      .from(authors)
+                      .where(eq(authors.normalizedName, normalizedName))
+                      .limit(1)
+
+                    if (existing[0]) return existing[0].id
+
+                    const newAuthorId = generateId()
+                    await tx
+                      .insert(authors)
+                      .values({
+                        id: newAuthorId,
+                        name: displayName,
+                        normalizedName,
+                        createdAt: now,
+                        updatedAt: now
+                      })
+                      .onConflictDoNothing()
+
+                    const found = await tx
+                      .select({ id: authors.id })
+                      .from(authors)
+                      .where(eq(authors.normalizedName, normalizedName))
+                      .limit(1)
+
+                    const foundAuthor = found[0]
+                    if (!foundAuthor) {
+                      throw new DatabaseError({
+                        message: `Author upsert failed for name: ${displayName}`,
+                        operation: 'createManualBook.author'
+                      })
+                    }
+
+                    return foundAuthor.id
+                  })()
+
+                  await tx
+                    .insert(bookAuthors)
+                    .values({
+                      bookId,
+                      authorId,
+                      sortOrder: index,
+                      createdAt: now
+                    })
+                    .onConflictDoNothing()
+                }
+
+                const userBookId = generateId()
+                await tx.insert(userBooks).values({
+                  id: userBookId,
+                  userId,
+                  bookId,
+                  rating: input.rating,
+                  note: input.note,
+                  readingStatus: input.readingStatus,
+                  currentPage: input.currentPage,
+                  progressPercent: input.progressPercent,
+                  addedAt: now
+                })
+
+                const uniqueTagNames = [...new Set(input.tags.map(tag => tag.trim()).filter(Boolean))]
+
+                for (const tagName of uniqueTagNames) {
+                  const normalized = normalizeTagInput(tagName)
+                  if (!normalized) continue
+
+                  const existing = await tx
+                    .select({ id: tags.id })
+                    .from(tags)
+                    .where(eq(tags.normalizedName, normalized.key))
+                    .limit(1)
+
+                  let tagId = existing[0]?.id ?? null
+
+                  if (!tagId) {
+                    const newTagId = generateId()
+                    await tx
+                      .insert(tags)
+                      .values({
+                        id: newTagId,
+                        name: normalized.displayName,
+                        normalizedName: normalized.key,
+                        createdAt: now,
+                        updatedAt: now
+                      })
+                      .onConflictDoNothing()
+
+                    const found = await tx
+                      .select({ id: tags.id })
+                      .from(tags)
+                      .where(eq(tags.normalizedName, normalized.key))
+                      .limit(1)
+
+                    tagId = found[0]?.id ?? null
+                  }
+
+                  if (!tagId) {
+                    throw new DatabaseError({
+                      message: `Tag upsert failed for key: ${normalized.key}`,
+                      operation: 'createManualBook.tag'
+                    })
+                  }
+
+                  await tx
+                    .insert(userBookTags)
+                    .values({
+                      id: generateId(),
+                      userBookId,
+                      tagId,
+                      createdAt: now,
+                      updatedAt: now
+                    })
+                    .onConflictDoNothing()
+                }
+
+                const createdRows = await tx
+                  .select()
+                  .from(books)
+                  .where(eq(books.id, bookId))
+                  .limit(1)
+
+                const createdBook = createdRows[0]
+                if (!createdBook) {
+                  throw new DatabaseError({
+                    message: 'Manual book created but not found afterwards',
+                    operation: 'createManualBook.loadBook'
+                  })
+                }
+
+                const authorRows = await tx
+                  .select({
+                    id: authors.id,
+                    name: authors.name
+                  })
+                  .from(bookAuthors)
+                  .innerJoin(authors, eq(bookAuthors.authorId, authors.id))
+                  .where(eq(bookAuthors.bookId, bookId))
+                  .orderBy(asc(bookAuthors.sortOrder), asc(authors.name))
+
+                const userTagRows = await tx
+                  .select({ name: tags.name })
+                  .from(userBookTags)
+                  .innerJoin(tags, eq(userBookTags.tagId, tags.id))
+                  .where(eq(userBookTags.userBookId, userBookId))
+
+                return {
+                  id: userBookId,
+                  bookId,
+                  book: toBookModel(createdBook, authorRows),
+                  tags: userTagRows.map(tag => tag.name),
+                  addedAt: now,
+                  activeLoan: null
+                }
+              })
+            },
+            catch: (error) => {
+              if (error instanceof DatabaseError) {
+                return error
+              }
+
+              return new BookCreateError({ message: `Failed to create manual book: ${error}` })
+            }
+          })
+          return result
         }),
 
       getLibrary: (userId, pagination) =>
@@ -856,7 +1093,12 @@ export const BookRepositoryLive = Layer.effect(
                 .select({ id: userBooks.id })
                 .from(userBooks)
                 .innerJoin(books, eq(userBooks.bookId, books.id))
-                .where(and(eq(userBooks.userId, userId), eq(books.isbn, isbn), isNull(userBooks.removedAt)))
+                .where(and(
+                  eq(userBooks.userId, userId),
+                  eq(books.isbn, isbn),
+                  eq(books.source, 'open_library'),
+                  isNull(userBooks.removedAt)
+                ))
                 .limit(1),
             catch: error => new DatabaseError({
               message: `Failed to check user library ownership: ${error}`,
@@ -917,7 +1159,7 @@ export const BookRepositoryLive = Layer.effect(
               dbService.db
                 .select()
                 .from(books)
-                .where(eq(books.isbn, isbn))
+                .where(and(eq(books.isbn, isbn), eq(books.source, 'open_library')))
                 .limit(1),
             catch: error => new DatabaseError({
               message: `Failed to find book by ISBN: ${error}`,
@@ -1128,7 +1370,7 @@ export const BookRepositoryLive = Layer.effect(
                   bookId: userBooks.bookId
                 })
                 .from(userBooks)
-                .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId)))
+                .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId), isNull(userBooks.removedAt)))
                 .limit(1)
 
               const owned = ownedRows[0]
@@ -1286,7 +1528,7 @@ export const BookRepositoryLive = Layer.effect(
             try: () => dbService.db
               .update(userBooks)
               .set({ rating })
-              .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId)))
+              .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId), isNull(userBooks.removedAt)))
               .returning({ id: userBooks.id }),
             catch: error => new DatabaseError({
               message: `Failed to update rating: ${error}`,
@@ -1305,7 +1547,7 @@ export const BookRepositoryLive = Layer.effect(
             try: () => dbService.db
               .update(userBooks)
               .set({ note })
-              .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId)))
+              .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId), isNull(userBooks.removedAt)))
               .returning({ id: userBooks.id }),
             catch: error => new DatabaseError({
               message: `Failed to update note: ${error}`,
@@ -1330,7 +1572,7 @@ export const BookRepositoryLive = Layer.effect(
                 startedAt: progress.startedAt ? new Date(progress.startedAt) : null,
                 finishedAt: progress.finishedAt ? new Date(progress.finishedAt) : null
               })
-              .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId)))
+              .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId), isNull(userBooks.removedAt)))
               .returning({ id: userBooks.id }),
             catch: error => new DatabaseError({
               message: `Failed to update reading progress: ${error}`,
@@ -1349,6 +1591,9 @@ export const BookRepositoryLive = Layer.effect(
 // Helper effects
 export const addBookByISBN = (userId: string, isbn: string) =>
   Effect.flatMap(BookRepository, repo => repo.addBookByISBN(userId, isbn))
+
+export const createManualBookRecord = (userId: string, input: ManualBookRepositoryInput) =>
+  Effect.flatMap(BookRepository, repo => repo.createManualBook(userId, input))
 
 export const getLibrary = (userId: string, pagination: PaginationParams & { search?: string }) =>
   Effect.flatMap(BookRepository, repo => repo.getLibrary(userId, pagination))

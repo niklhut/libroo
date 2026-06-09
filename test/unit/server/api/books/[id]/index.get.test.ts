@@ -39,6 +39,20 @@ describe('server/api/books/[id]/index.get', () => {
     expect(serviceMocks.getBookDetails).toHaveBeenCalledWith('ub-1', 'user-1')
   })
 
+  it('returns not found when the user cannot access the book id', async () => {
+    mockLoggedInUser()
+    serviceMocks.getBookDetails.mockReturnValueOnce(Effect.fail({
+      _tag: 'BookNotFoundError',
+      bookId: 'ub-other-user'
+    }))
+    const handler = await importRoute(route)
+
+    await expect(handler(makeEvent({ params: { id: 'ub-other-user' } }))).rejects.toMatchObject({
+      statusCode: 404
+    })
+    expect(serviceMocks.getBookDetails).toHaveBeenCalledWith('ub-other-user', 'user-1')
+  })
+
   it('rejects missing book ids', async () => {
     mockLoggedInUser()
     const handler = await importRoute(route)

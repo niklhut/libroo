@@ -39,11 +39,15 @@ vi.mock('../../../../../server/utils/effect', async () => {
                 ? 400
                 : tag === 'AdminUserNotFoundError'
                   ? 404
-                  : tag === 'SelfAdminDemotionError' || tag === 'InvalidAdminRoleError'
-                    ? 400
-                    : tag === 'LastAdminDemotionError'
-                      ? 409
-                      : 500
+                  : tag === 'BookAlreadyOwnedError'
+                    ? 409
+                    : tag === 'BookNotFoundError'
+                      ? 404
+                      : tag === 'SelfAdminDemotionError' || tag === 'InvalidAdminRoleError'
+                        ? 400
+                        : tag === 'LastAdminDemotionError'
+                          ? 409
+                          : 500
           const message = typeof error === 'object' && error && 'message' in error
             ? String(error.message)
             : 'Internal Server Error'
@@ -96,6 +100,7 @@ interface ApiRouteTestGlobals {
   setHeader: (event: TestEvent, key: string, value: string) => void
   effectHandler: unknown
   addBookToLibrary: (...args: unknown[]) => unknown
+  createManualBook: (...args: unknown[]) => unknown
   getUserLibrary: (...args: unknown[]) => unknown
   getAuthorLibrary: (...args: unknown[]) => unknown
   lookupBook: (...args: unknown[]) => unknown
@@ -121,6 +126,7 @@ interface ApiRouteTestGlobals {
   bookBatchDeleteSchema: unknown
   bookTagAddSchema: unknown
   createLoanSchema: unknown
+  manualBookCreateSchema: unknown
 }
 
 const testGlobal = globalThis as typeof globalThis & Partial<ApiRouteTestGlobals>
@@ -133,6 +139,7 @@ export const testUser = {
 
 export const serviceMocks = {
   addBookToLibrary: vi.fn(),
+  createManualBook: vi.fn(),
   getUserLibrary: vi.fn(),
   getAuthorLibrary: vi.fn(),
   lookupBook: vi.fn(),
@@ -171,6 +178,7 @@ const originalGlobals = {
   setHeader: testGlobal.setHeader,
   effectHandler: testGlobal.effectHandler,
   addBookToLibrary: testGlobal.addBookToLibrary,
+  createManualBook: testGlobal.createManualBook,
   getUserLibrary: testGlobal.getUserLibrary,
   getAuthorLibrary: testGlobal.getAuthorLibrary,
   lookupBook: testGlobal.lookupBook,
@@ -195,7 +203,8 @@ const originalGlobals = {
   bookIsbnSchema: testGlobal.bookIsbnSchema,
   bookBatchDeleteSchema: testGlobal.bookBatchDeleteSchema,
   bookTagAddSchema: testGlobal.bookTagAddSchema,
-  createLoanSchema: testGlobal.createLoanSchema
+  createLoanSchema: testGlobal.createLoanSchema,
+  manualBookCreateSchema: testGlobal.manualBookCreateSchema
 }
 
 const createHttpError: HttpErrorFactory = (input) => {
@@ -248,6 +257,7 @@ export async function setupApiRouteTest() {
   testGlobal.effectHandler = effectHandler
 
   testGlobal.addBookToLibrary = (...args: unknown[]) => serviceMocks.addBookToLibrary(...args)
+  testGlobal.createManualBook = (...args: unknown[]) => serviceMocks.createManualBook(...args)
   testGlobal.getUserLibrary = (...args: unknown[]) => serviceMocks.getUserLibrary(...args)
   testGlobal.getAuthorLibrary = (...args: unknown[]) => serviceMocks.getAuthorLibrary(...args)
   testGlobal.lookupBook = (...args: unknown[]) => serviceMocks.lookupBook(...args)
@@ -275,6 +285,7 @@ export async function setupApiRouteTest() {
   testGlobal.bookBatchDeleteSchema = schemas.bookBatchDeleteSchema
   testGlobal.bookTagAddSchema = schemas.bookTagAddSchema
   testGlobal.createLoanSchema = schemas.createLoanSchema
+  testGlobal.manualBookCreateSchema = schemas.manualBookCreateSchema
 
   for (const mock of Object.values(serviceMocks)) {
     mock.mockReset()

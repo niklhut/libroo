@@ -1,10 +1,11 @@
 import { Context, Effect, Layer, Data } from 'effect'
 import { blob } from '@nuxthub/blob'
+import sharp from 'sharp'
 
 // Error types
 export class StorageError extends Data.TaggedError('StorageError')<{
   message: string
-  operation: 'put' | 'get' | 'delete' | 'list'
+  operation: 'put' | 'convertCoverImage' | 'putCoverImage' | 'get' | 'delete' | 'list'
 }> { }
 
 // Types for blob operations
@@ -23,6 +24,7 @@ export interface BlobMetadata {
 // Service interface
 export interface StorageServiceInterface {
   put: (pathname: string, data: Buffer | Blob | ArrayBuffer, options?: BlobPutOptions) => Effect.Effect<BlobMetadata, StorageError>
+  putCoverImage: (pathname: string, data: Buffer | ArrayBuffer) => Effect.Effect<BlobMetadata, StorageError>
   get: (pathname: string) => Effect.Effect<Blob | null, StorageError>
   delete: (pathname: string) => Effect.Effect<void, StorageError>
   list: (prefix?: string) => Effect.Effect<BlobMetadata[], StorageError>
@@ -43,6 +45,32 @@ export const StorageServiceLive = Layer.succeed(StorageService, {
         catch: error => new StorageError({
           message: `Failed to put blob: ${error}`,
           operation: 'put'
+        })
+      })
+      return {
+        pathname: result.pathname,
+        contentType: result.contentType,
+        size: result.size,
+        uploadedAt: new Date(result.uploadedAt)
+      }
+    }),
+
+  putCoverImage: (pathname, data) =>
+    Effect.gen(function* () {
+      const inputBuffer = Buffer.isBuffer(data) ? data : Buffer.from(new Uint8Array(data))
+      const webpBuffer = yield* Effect.tryPromise({
+        try: () => sharp(inputBuffer).webp({ quality: 85 }).toBuffer(),
+        catch: error => new StorageError({
+          message: `Failed to convert cover image to WebP: ${error}`,
+          operation: 'convertCoverImage'
+        })
+      })
+
+      const result = yield* Effect.tryPromise({
+        try: () => blob.put(pathname, webpBuffer, { contentType: 'image/webp' }),
+        catch: error => new StorageError({
+          message: `Failed to put cover image blob: ${error}`,
+          operation: 'putCoverImage'
         })
       })
       return {
@@ -96,6 +124,9 @@ export const StorageServiceLive = Layer.succeed(StorageService, {
 // Helper effects
 export const putBlob = (pathname: string, data: Buffer | Blob | ArrayBuffer, options?: BlobPutOptions) =>
   Effect.flatMap(StorageService, service => service.put(pathname, data, options))
+
+export const putCoverImage = (pathname: string, data: Buffer | ArrayBuffer) =>
+  Effect.flatMap(StorageService, service => service.putCoverImage(pathname, data))
 
 export const getBlob = (pathname: string) =>
   Effect.flatMap(StorageService, service => service.get(pathname))

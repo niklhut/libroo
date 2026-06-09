@@ -165,6 +165,106 @@ export const bookNoteSchema = z.object({
 
 export type BookNoteSchema = z.infer<typeof bookNoteSchema>
 
+export const MANUAL_COVER_MAX_BYTES = 2 * 1024 * 1024
+
+const trimmedNullableString = (maxLength: number, fieldName: string) =>
+  z.preprocess(
+    (val) => {
+      if (val === undefined || val === null) return null
+      if (typeof val === 'string') {
+        const trimmed = val.trim().replace(/\s+/g, ' ')
+        return trimmed === '' ? null : trimmed
+      }
+      return val
+    },
+    z.string({ error: `${fieldName} must be a string` })
+      .max(maxLength, { error: `${fieldName} is too long` })
+      .nullable()
+  )
+
+const optionalManualIsbnSchema = z.preprocess(
+  (val) => {
+    if (val === undefined || val === null) return null
+    if (typeof val === 'string') {
+      const trimmed = val.trim()
+      return trimmed === '' ? null : trimmed
+    }
+    return val
+  },
+  z.union([bookIsbnSchema.shape.isbn, z.null()])
+)
+
+export const manualBookCreateSchema = z.object({
+  title: z.string({ error: 'Title is required' })
+    .trim()
+    .transform(value => value.replace(/\s+/g, ' '))
+    .pipe(
+      z.string()
+        .min(1, { error: 'Title is required' })
+        .max(300, { error: 'Title is too long' })
+    ),
+  authors: z.array(
+    z.string({ error: 'Author must be a string' })
+      .trim()
+      .transform(value => value.replace(/\s+/g, ' '))
+      .pipe(z.string().min(1, { error: 'Author is required' }).max(200, { error: 'Author is too long' }))
+  )
+    .transform((values) => {
+      const seen = new Set<string>()
+      return values.filter((value) => {
+        const key = value.toLowerCase()
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+    })
+    .pipe(z.array(z.string()).min(1, { error: 'At least one author is required' }).max(20, { error: 'Too many authors' })),
+  isbn: optionalManualIsbnSchema,
+  coverImage: z.object({
+    data: z.string({ error: 'Cover image data is required' }).min(1, { error: 'Cover image data is required' }),
+    contentType: z.string({ error: 'Cover image content type is required' })
+      .refine(value => value.startsWith('image/'), { error: 'Cover image must be an image' }),
+    size: z.number({ error: 'Cover image size must be a number' })
+      .int({ error: 'Cover image size must be a whole number' })
+      .min(1, { error: 'Cover image is empty' })
+      .max(MANUAL_COVER_MAX_BYTES, { error: 'Cover image is too large' })
+  }).nullable().optional().default(null),
+  publishDate: trimmedNullableString(120, 'Publish date').default(null),
+  publisher: trimmedNullableString(240, 'Publisher').default(null),
+  numberOfPages: z.number({ error: 'Page count must be a number' })
+    .int({ error: 'Page count must be a whole number' })
+    .min(1, { error: 'Page count must be at least 1' })
+    .max(100000, { error: 'Page count is too large' })
+    .nullable()
+    .optional()
+    .default(null),
+  tags: z.array(bookTagAddSchema.shape.name).max(50, { error: 'Too many tags' }).optional().default([]),
+  rating: bookRatingSchema.shape.rating.optional().default(null),
+  note: bookNoteSchema.shape.note.optional().default(null),
+  readingStatus: z.enum(['unread', 'reading', 'read'], { error: 'Reading status is invalid' }).optional().default('unread'),
+  currentPage: z.number({ error: 'Current page must be a number' })
+    .int({ error: 'Current page must be a whole number' })
+    .min(0, { error: 'Current page cannot be negative' })
+    .nullable()
+    .optional()
+    .default(null),
+  progressPercent: z.number({ error: 'Progress must be a number' })
+    .int({ error: 'Progress must be a whole number' })
+    .min(0, { error: 'Progress cannot be negative' })
+    .max(100, { error: 'Progress cannot be greater than 100' })
+    .nullable()
+    .optional()
+    .default(null)
+}).refine((value) => {
+  if (!value.currentPage || !value.numberOfPages) return true
+  return value.currentPage <= value.numberOfPages
+}, {
+  path: ['currentPage'],
+  error: 'Current page cannot exceed page count'
+})
+
+export type ManualBookCreateSchema = z.infer<typeof manualBookCreateSchema>
+
 const nullableDateSchema = z.preprocess(
   (val) => {
     if (val === '' || val === undefined) return val

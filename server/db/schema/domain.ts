@@ -4,11 +4,11 @@ import { user } from './auth'
 
 // Domain tables for Libroo
 
-// Shared book metadata (deduplicated by ISBN)
-// Multiple users can reference the same book entry
+// Book metadata. Open Library rows are deduplicated by ISBN; manual rows are private candidates
+// and may share an ISBN with other manual rows or the shared Open Library row.
 export const books = sqliteTable('books', {
   id: text('id').primaryKey(),
-  isbn: text('isbn').unique(), // Unique constraint for deduplication
+  isbn: text('isbn'),
   title: text('title').notNull(),
   coverPath: text('cover_path'), // Local blob storage path
   openLibraryKey: text('open_library_key'), // OpenLibrary edition key
@@ -19,9 +19,16 @@ export const books = sqliteTable('books', {
   publishDate: text('publish_date'),
   publishers: text('publishers'),
   numberOfPages: integer('number_of_pages'),
+  source: text('source', { enum: ['open_library', 'manual'] }).notNull().default('open_library'),
+  createdByUserId: text('created_by_user_id').references(() => user.id, { onDelete: 'set null' }),
 
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull()
-})
+}, table => [
+  index('books_isbn_idx').on(table.isbn),
+  uniqueIndex('books_open_library_isbn_unique')
+    .on(table.isbn)
+    .where(sql`${table.source} = 'open_library' AND ${table.isbn} IS NOT NULL`)
+])
 
 // Global author dictionary. Books link to authors through book_authors.
 export const authors = sqliteTable('authors', {

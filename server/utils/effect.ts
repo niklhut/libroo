@@ -67,6 +67,7 @@ const errorStatusCodes: Record<string, number> = {
   BookCreateError: 500,
   InvalidTagError: 400,
   InvalidReadingProgressError: 400,
+  InvalidManualCoverError: 400,
   ActiveLoanExistsError: 409,
   LoanNotFoundError: 404,
   InvalidInviteError: 400,

@@ -1,6 +1,7 @@
 import { Context, Effect, Layer, Either, Data } from 'effect'
 import type { HttpClient } from '@effect/platform'
 import { normalizeReadingProgress } from '../../shared/utils/reading-progress'
+import { MANUAL_COVER_MAX_BYTES } from '../../shared/utils/schemas'
 
 interface UserBookViewModel {
   id: string
@@ -18,6 +19,10 @@ interface UserBookViewModel {
 }
 
 export class InvalidReadingProgressError extends Data.TaggedError('InvalidReadingProgressError')<{
+  message: string
+}> { }
+
+export class InvalidManualCoverError extends Data.TaggedError('InvalidManualCoverError')<{
   message: string
 }> { }
 
@@ -55,6 +60,15 @@ export interface BookServiceInterface {
     LibraryBook,
     BookCreateError | BookAlreadyOwnedError | OpenLibraryBookNotFoundError | OpenLibraryApiError | DatabaseError,
     DbService | StorageService | OpenLibraryRepository | HttpClient.HttpClient
+  >
+
+  createManualBook: (
+    userId: string,
+    input: ManualBookCreateSchema
+  ) => Effect.Effect<
+    LibraryBook,
+    BookCreateError | InvalidManualCoverError | StorageError | DatabaseError,
+    DbService | StorageService
   >
 
   removeBookFromLibrary: (
@@ -149,6 +163,24 @@ export const BookServiceLive = Layer.effect(
         })
       })
 
+    const decodeCoverImage = (data: string): Effect.Effect<Buffer, InvalidManualCoverError> =>
+      Effect.try({
+        try: () => {
+          const base64 = data.includes(',') ? data.split(',').at(-1)! : data
+          const buffer = Buffer.from(base64, 'base64')
+          if (buffer.length === 0) {
+            throw new Error('Cover image is empty')
+          }
+          if (buffer.length > MANUAL_COVER_MAX_BYTES) {
+            throw new Error('Cover image is too large')
+          }
+          return buffer
+        },
+        catch: error => new InvalidManualCoverError({
+          message: error instanceof Error ? error.message : 'Cover image is invalid'
+        })
+      })
+
     return {
       getUserLibrary: (userId, pagination) =>
         Effect.gen(function* () {
@@ -163,6 +195,53 @@ export const BookServiceLive = Layer.effect(
       addBookToLibrary: (userId, isbn) =>
         Effect.gen(function* () {
           const userBook = yield* bookRepo.addBookByISBN(userId, isbn)
+
+          return toLibraryBook(userBook)
+        }),
+
+      createManualBook: (userId, input) =>
+        Effect.gen(function* () {
+          let coverPath: string | null = null
+          if (input.coverImage) {
+            const coverBuffer = yield* decodeCoverImage(input.coverImage.data)
+            const pathname = `covers/manual/${userId}/${crypto.randomUUID()}.webp`
+            const metadata = yield* putCoverImage(pathname, coverBuffer).pipe(
+              Effect.mapError((error) => {
+                if (error.operation === 'convertCoverImage') {
+                  return new InvalidManualCoverError({ message: 'Cover image is invalid or unsupported' })
+                }
+                return error
+              })
+            )
+            coverPath = metadata.pathname
+          }
+
+          const userBook = yield* bookRepo.createManualBook(userId, {
+            title: input.title,
+            authors: input.authors,
+            isbn: input.isbn,
+            coverPath,
+            publishDate: input.publishDate,
+            publisher: input.publisher,
+            numberOfPages: input.numberOfPages,
+            rating: input.rating,
+            note: input.note,
+            readingStatus: input.readingStatus,
+            currentPage: input.currentPage,
+            progressPercent: input.progressPercent,
+            tags: input.tags
+          }).pipe(
+            Effect.tapError(error =>
+              coverPath
+                ? deleteBlob(coverPath).pipe(
+                    Effect.catchAll(cleanupError =>
+                      Effect.logWarning(`Failed to clean up manual cover ${coverPath}: ${cleanupError}`)
+                    ),
+                    Effect.zipRight(Effect.fail(error))
+                  )
+                : Effect.fail(error)
+            )
+          )
 
           return toLibraryBook(userBook)
         }),
@@ -310,6 +389,9 @@ export const getAuthorLibrary = (userId: string, authorId: string, pagination: P
 
 export const addBookToLibrary = (userId: string, isbn: string) =>
   Effect.flatMap(BookService, service => service.addBookToLibrary(userId, isbn))
+
+export const createManualBook = (userId: string, input: ManualBookCreateSchema) =>
+  Effect.flatMap(BookService, service => service.createManualBook(userId, input))
 
 export const removeBookFromLibrary = (
   userBookId: string,
