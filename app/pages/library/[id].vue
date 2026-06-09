@@ -9,6 +9,7 @@ const isDeleting = ref(false)
 const isTagModalOpen = ref(false)
 const isReadingModalOpen = ref(false)
 const isLendingModalOpen = ref(false)
+const isLocationModalOpen = ref(false)
 const isLoanRemovalDialogOpen = ref(false)
 const isSavingReadingProgress = ref(false)
 const isReturningLoan = ref(false)
@@ -226,6 +227,17 @@ async function saveNote(note: string | null) {
   }
 }
 
+function onLocationSaved(location: BookLocation | null) {
+  if (book.value) {
+    book.value = { ...book.value, location }
+  }
+  markNeedsSync(getLoadedPages())
+  toast.add({
+    title: location ? 'Location saved' : 'Location cleared',
+    color: 'success'
+  })
+}
+
 async function saveReadingProgress(progress: {
   status: ReadingStatus
   currentPage: number | null
@@ -413,6 +425,36 @@ async function saveReadingProgress(progress: {
               class="text-sm text-muted text-center md:text-left"
             >
               Added: {{ formattedAddedAt }}
+            </div>
+          </div>
+
+          <!-- Physical Location -->
+          <div class="space-y-3">
+            <div class="flex items-center justify-between gap-3">
+              <div>
+                <h2 class="text-lg font-semibold">
+                  Location
+                </h2>
+                <div
+                  class="mt-1 flex items-center gap-2 text-sm"
+                  :class="book.location ? 'text-highlighted' : 'text-muted'"
+                >
+                  <UIcon
+                    name="i-lucide-map-pin"
+                    class="size-4 shrink-0"
+                  />
+                  <span>{{ book.location?.path || 'No location set' }}</span>
+                </div>
+              </div>
+              <UButton
+                color="neutral"
+                variant="outline"
+                size="sm"
+                icon="i-lucide-pencil"
+                @click="isLocationModalOpen = true"
+              >
+                Manage
+              </UButton>
             </div>
           </div>
 
@@ -609,6 +651,14 @@ async function saveReadingProgress(progress: {
         v-model:open="isLendingModalOpen"
         :user-book-id="userBookId"
         @saved="onLoanSaved"
+      />
+
+      <BookLocationModal
+        v-if="book"
+        v-model:open="isLocationModalOpen"
+        :user-book-id="userBookId"
+        :current-location="book.location"
+        @saved="onLocationSaved"
       />
 
       <UModal

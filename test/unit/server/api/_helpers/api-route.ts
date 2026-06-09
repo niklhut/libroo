@@ -108,8 +108,11 @@ interface ApiRouteTestGlobals {
   removeBookFromLibrary: (...args: unknown[]) => unknown
   getBookDetails: (...args: unknown[]) => unknown
   updateNote: (...args: unknown[]) => unknown
+  updateLocation: (...args: unknown[]) => unknown
   updateRating: (...args: unknown[]) => unknown
   updateReadingProgress: (...args: unknown[]) => unknown
+  listLocations: (...args: unknown[]) => unknown
+  createLocation: (...args: unknown[]) => unknown
   addUserTag: (...args: unknown[]) => unknown
   batchUpdateTags: (...args: unknown[]) => unknown
   deleteTag: (...args: unknown[]) => unknown
@@ -127,6 +130,7 @@ interface ApiRouteTestGlobals {
   bookTagAddSchema: unknown
   createLoanSchema: unknown
   manualBookCreateSchema: unknown
+  locationCreateSchema: unknown
 }
 
 const testGlobal = globalThis as typeof globalThis & Partial<ApiRouteTestGlobals>
@@ -147,8 +151,11 @@ export const serviceMocks = {
   removeBookFromLibrary: vi.fn(),
   getBookDetails: vi.fn(),
   updateNote: vi.fn(),
+  updateLocation: vi.fn(),
   updateRating: vi.fn(),
   updateReadingProgress: vi.fn(),
+  listLocations: vi.fn(),
+  createLocation: vi.fn(),
   addUserTag: vi.fn(),
   batchUpdateTags: vi.fn(),
   deleteTag: vi.fn(),
@@ -186,8 +193,11 @@ const originalGlobals = {
   removeBookFromLibrary: testGlobal.removeBookFromLibrary,
   getBookDetails: testGlobal.getBookDetails,
   updateNote: testGlobal.updateNote,
+  updateLocation: testGlobal.updateLocation,
   updateRating: testGlobal.updateRating,
   updateReadingProgress: testGlobal.updateReadingProgress,
+  listLocations: testGlobal.listLocations,
+  createLocation: testGlobal.createLocation,
   addUserTag: testGlobal.addUserTag,
   batchUpdateTags: testGlobal.batchUpdateTags,
   deleteTag: testGlobal.deleteTag,
@@ -204,7 +214,8 @@ const originalGlobals = {
   bookBatchDeleteSchema: testGlobal.bookBatchDeleteSchema,
   bookTagAddSchema: testGlobal.bookTagAddSchema,
   createLoanSchema: testGlobal.createLoanSchema,
-  manualBookCreateSchema: testGlobal.manualBookCreateSchema
+  manualBookCreateSchema: testGlobal.manualBookCreateSchema,
+  locationCreateSchema: testGlobal.locationCreateSchema
 }
 
 const createHttpError: HttpErrorFactory = (input) => {
@@ -265,8 +276,11 @@ export async function setupApiRouteTest() {
   testGlobal.removeBookFromLibrary = (...args: unknown[]) => serviceMocks.removeBookFromLibrary(...args)
   testGlobal.getBookDetails = (...args: unknown[]) => serviceMocks.getBookDetails(...args)
   testGlobal.updateNote = (...args: unknown[]) => serviceMocks.updateNote(...args)
+  testGlobal.updateLocation = (...args: unknown[]) => serviceMocks.updateLocation(...args)
   testGlobal.updateRating = (...args: unknown[]) => serviceMocks.updateRating(...args)
   testGlobal.updateReadingProgress = (...args: unknown[]) => serviceMocks.updateReadingProgress(...args)
+  testGlobal.listLocations = (...args: unknown[]) => serviceMocks.listLocations(...args)
+  testGlobal.createLocation = (...args: unknown[]) => serviceMocks.createLocation(...args)
   testGlobal.addUserTag = (...args: unknown[]) => serviceMocks.addUserTag(...args)
   testGlobal.batchUpdateTags = (...args: unknown[]) => serviceMocks.batchUpdateTags(...args)
   testGlobal.deleteTag = (...args: unknown[]) => serviceMocks.deleteTag(...args)
@@ -286,6 +300,7 @@ export async function setupApiRouteTest() {
   testGlobal.bookTagAddSchema = schemas.bookTagAddSchema
   testGlobal.createLoanSchema = schemas.createLoanSchema
   testGlobal.manualBookCreateSchema = schemas.manualBookCreateSchema
+  testGlobal.locationCreateSchema = schemas.locationCreateSchema
 
   for (const mock of Object.values(serviceMocks)) {
     mock.mockReset()

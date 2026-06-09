@@ -6,6 +6,7 @@ interface Props {
   author: string
   isbn?: string | null
   coverPath?: string | null
+  location?: BookLocation | null
   addedAt?: string | Date
   activeLoan?: ActiveLoanSummary | null
   selected?: boolean
@@ -89,6 +90,16 @@ function handleClick(e: MouseEvent) {
         <p class="text-xs text-muted line-clamp-1">
           {{ author }}
         </p>
+        <div
+          v-if="location"
+          class="flex items-center gap-1 text-xs text-muted"
+        >
+          <UIcon
+            name="i-lucide-map-pin"
+            class="size-3 shrink-0"
+          />
+          <span class="line-clamp-1">{{ location.path }}</span>
+        </div>
       </div>
     </UCard>
   </NuxtLink>
@@ -157,6 +168,16 @@ function handleClick(e: MouseEvent) {
         <p class="text-xs text-muted line-clamp-1">
           {{ author }}
         </p>
+        <div
+          v-if="location"
+          class="flex items-center gap-1 text-xs text-muted"
+        >
+          <UIcon
+            name="i-lucide-map-pin"
+            class="size-3 shrink-0"
+          />
+          <span class="line-clamp-1">{{ location.path }}</span>
+        </div>
       </div>
     </UCard>
   </div>

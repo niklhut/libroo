@@ -1,7 +1,7 @@
 import { Context, Effect, Layer, Data } from 'effect'
 import type { HttpClient } from '@effect/platform'
 import { eq, and, count, desc, asc, inArray, or, sql, notInArray, exists, isNull } from 'drizzle-orm'
-import { books, authors, bookAuthors, userBooks, tags, bookSystemTags, userBookTags, loans, user } from 'hub:db:schema'
+import { books, authors, bookAuthors, userBooks, tags, bookSystemTags, userBookTags, loans, user, locations } from 'hub:db:schema'
 import { normalizeTagInput, normalizeSuggestedTags } from '../../shared/utils/tag-ingestion'
 
 // Error types
@@ -55,6 +55,7 @@ export interface UserBook {
   id: string
   bookId: string
   book: Book
+  location: BookLocation | null
   tags: string[]
   addedAt: Date
   activeLoan: ActiveLoanSummary | null
@@ -186,6 +187,12 @@ export interface BookRepositoryInterface {
     note: string | null
   ) => Effect.Effect<void, BookNotFoundError | DatabaseError, DbService>
 
+  updateLocation: (
+    userBookId: string,
+    userId: string,
+    locationId: string | null
+  ) => Effect.Effect<void, BookNotFoundError | DatabaseError, DbService>
+
   updateReadingProgress: (
     userBookId: string,
     userId: string,
@@ -228,6 +235,18 @@ export const BookRepositoryLive = Layer.effect(
       source: book.source,
       createdByUserId: book.createdByUserId
     })
+
+    const toLocationModel = (location: typeof locations.$inferSelect | null): BookLocation | null => {
+      if (!location) return null
+
+      return {
+        id: location.id,
+        name: location.name,
+        parentLocationId: location.parentLocationId ?? null,
+        path: location.path,
+        depth: location.depth
+      }
+    }
 
     const hydrateAuthorsForBookIds = (bookIds: string[]) =>
       Effect.gen(function* () {
@@ -664,6 +683,7 @@ export const BookRepositoryLive = Layer.effect(
             id: userBookId,
             bookId: book.id,
             book: hydratedBook,
+            location: null,
             tags: [],
             addedAt,
             activeLoan: null
@@ -858,6 +878,7 @@ export const BookRepositoryLive = Layer.effect(
                   id: userBookId,
                   bookId,
                   book: toBookModel(createdBook, authorRows),
+                  location: null,
                   tags: userTagRows.map(tag => tag.name),
                   addedAt: now,
                   activeLoan: null
@@ -887,6 +908,7 @@ export const BookRepositoryLive = Layer.effect(
             ? or(
                 sql`lower(${books.title}) like ${likePattern}`,
                 sql`lower(coalesce(${books.isbn}, '')) like ${likePattern}`,
+                sql`lower(coalesce(${locations.path}, '')) like ${likePattern}`,
                 exists(
                   dbService.db
                     .select({ value: sql`1` })
@@ -922,6 +944,7 @@ export const BookRepositoryLive = Layer.effect(
                 .select({ count: count() })
                 .from(userBooks)
                 .innerJoin(books, eq(userBooks.bookId, books.id))
+                .leftJoin(locations, eq(userBooks.locationId, locations.id))
                 .where(whereClause),
             catch: error => new DatabaseError({
               message: `Failed to count library items: ${error}`,
@@ -939,6 +962,7 @@ export const BookRepositoryLive = Layer.effect(
                 .select()
                 .from(userBooks)
                 .innerJoin(books, eq(userBooks.bookId, books.id))
+                .leftJoin(locations, eq(userBooks.locationId, locations.id))
                 .where(whereClause)
                 .orderBy(desc(userBooks.addedAt))
                 .limit(pageSize)
@@ -959,6 +983,7 @@ export const BookRepositoryLive = Layer.effect(
             id: row.user_books.id,
             bookId: row.books.id,
             book: toBookModel(row.books, authorsByBook.get(row.books.id) || []),
+            location: toLocationModel(row.locations),
             tags: userTagsByUserBook.get(row.user_books.id) || [],
             addedAt: row.user_books.addedAt,
             activeLoan: activeLoansByUserBook.get(row.user_books.id) ?? null
@@ -1023,6 +1048,7 @@ export const BookRepositoryLive = Layer.effect(
                 .from(userBooks)
                 .innerJoin(books, eq(userBooks.bookId, books.id))
                 .innerJoin(bookAuthors, eq(bookAuthors.bookId, books.id))
+                .leftJoin(locations, eq(userBooks.locationId, locations.id))
                 .where(whereClause)
                 .orderBy(desc(userBooks.addedAt))
                 .limit(pageSize)
@@ -1043,6 +1069,7 @@ export const BookRepositoryLive = Layer.effect(
             id: row.user_books.id,
             bookId: row.books.id,
             book: toBookModel(row.books, authorsByBook.get(row.books.id) || []),
+            location: toLocationModel(row.locations),
             tags: userTagsByUserBook.get(row.user_books.id) || [],
             addedAt: row.user_books.addedAt,
             activeLoan: activeLoansByUserBook.get(row.user_books.id) ?? null
@@ -1204,6 +1231,7 @@ export const BookRepositoryLive = Layer.effect(
                 .select()
                 .from(userBooks)
                 .innerJoin(books, eq(userBooks.bookId, books.id))
+                .leftJoin(locations, eq(userBooks.locationId, locations.id))
                 .where(and(eq(userBooks.id, ref.userBookId), eq(userBooks.userId, userId), isNull(userBooks.removedAt)))
                 .limit(1),
             catch: error => new DatabaseError({
@@ -1281,6 +1309,7 @@ export const BookRepositoryLive = Layer.effect(
             description: bookData.description ?? null,
             rating: row.user_books.rating ?? null,
             note: row.user_books.note ?? null,
+            location: toLocationModel(row.locations),
             readingProgress: {
               status: row.user_books.readingStatus,
               currentPage: row.user_books.currentPage ?? null,
@@ -1552,6 +1581,28 @@ export const BookRepositoryLive = Layer.effect(
             catch: error => new DatabaseError({
               message: `Failed to update note: ${error}`,
               operation: 'updateNote'
+            })
+          })
+
+          if (result.length === 0) {
+            return yield* Effect.fail(new BookNotFoundError({ bookId: userBookId }))
+          }
+        }),
+
+      updateLocation: (userBookId, userId, locationId) =>
+        Effect.gen(function* () {
+          yield* getOwnedUserBookRef(userBookId, userId)
+
+          const result = yield* Effect.tryPromise({
+            try: () =>
+              dbService.db
+                .update(userBooks)
+                .set({ locationId })
+                .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId), isNull(userBooks.removedAt)))
+                .returning(),
+            catch: error => new DatabaseError({
+              message: `Failed to update location: ${error}`,
+              operation: 'updateLocation'
             })
           })
 

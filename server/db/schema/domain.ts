@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm'
 import { sqliteTable, text, integer, uniqueIndex, index, primaryKey, check } from 'drizzle-orm/sqlite-core'
+import type { AnySQLiteColumn } from 'drizzle-orm/sqlite-core'
 import { user } from './auth'
 
 // Domain tables for Libroo
@@ -54,12 +55,36 @@ export const bookAuthors = sqliteTable('book_authors', {
   index('book_authors_author_id_idx').on(table.authorId)
 ])
 
+// User-defined physical locations form a tree of arbitrary depth.
+export const locations = sqliteTable('locations', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  parentLocationId: text('parent_location_id').references((): AnySQLiteColumn => locations.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  normalizedName: text('normalized_name').notNull(),
+  path: text('path').notNull(),
+  depth: integer('depth').notNull().default(0),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
+}, table => [
+  uniqueIndex('locations_user_parent_name_unique')
+    .on(table.userId, table.parentLocationId, table.normalizedName)
+    .where(sql`${table.parentLocationId} IS NOT NULL`),
+  uniqueIndex('locations_user_root_name_unique')
+    .on(table.userId, table.normalizedName)
+    .where(sql`${table.parentLocationId} IS NULL`),
+  index('locations_user_id_idx').on(table.userId),
+  index('locations_parent_location_id_idx').on(table.parentLocationId),
+  index('locations_path_idx').on(table.path)
+])
+
 // User's book ownership (junction table)
 // Links users to books they own
 export const userBooks = sqliteTable('user_books', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
   bookId: text('book_id').notNull().references(() => books.id, { onDelete: 'cascade' }),
+  locationId: text('location_id').references(() => locations.id, { onDelete: 'set null' }),
   rating: integer('rating'), // 1–5 star rating, null = unrated
   note: text('note'), // Private user note
   readingStatus: text('reading_status', { enum: ['unread', 'reading', 'read'] }).notNull().default('unread'),

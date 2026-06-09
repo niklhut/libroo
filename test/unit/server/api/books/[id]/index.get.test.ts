@@ -24,6 +24,7 @@ describe('server/api/books/[id]/index.get', () => {
     const book = {
       id: 'ub-1',
       title: 'A Book',
+      location: { id: 'loc-1', name: 'Shelf-B', parentLocationId: 'loc-0', path: 'Living Room - Shelf-B', depth: 1 },
       readingProgress: {
         status: 'reading',
         currentPage: 50,

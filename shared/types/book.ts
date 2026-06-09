@@ -11,6 +11,7 @@ export interface LibraryBook {
   authors?: BookAuthor[]
   isbn: string | null
   coverPath: string | null
+  location: BookLocation | null
   tags?: string[]
   addedAt: Date | string
   activeLoan?: ActiveLoanSummary | null
@@ -19,6 +20,18 @@ export interface LibraryBook {
 export interface BookTag {
   id: string
   name: string
+}
+
+export interface BookLocation {
+  id: string
+  name: string
+  parentLocationId: string | null
+  path: string
+  depth: number
+}
+
+export interface BookLocationWithCount extends BookLocation {
+  bookCount: number
 }
 
 export type ReadingStatus = 'unread' | 'reading' | 'read'
@@ -63,6 +76,7 @@ export interface BookDetails {
   description: string | null
   rating: number | null
   note: string | null
+  location: BookLocation | null
   readingProgress: ReadingProgress
   userTags: BookTag[]
   suggestedTags: BookTag[]
