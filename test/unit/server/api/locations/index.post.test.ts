@@ -37,5 +37,28 @@ describe('server/api/locations/index.post', () => {
       statusCode: 400,
       message: 'Invalid location'
     })
+    expect(serviceMocks.createLocation).not.toHaveBeenCalled()
+  })
+
+  it('rejects empty parent location ids', async () => {
+    mockLoggedInUser()
+    const handler = await importRoute(route)
+
+    await expect(handler(makeEvent({ body: { name: 'Shelf B', parentLocationId: '' } }))).rejects.toMatchObject({
+      statusCode: 400,
+      message: 'Invalid location'
+    })
+    expect(serviceMocks.createLocation).not.toHaveBeenCalled()
+  })
+
+  it('rejects reserved path separators in location names', async () => {
+    mockLoggedInUser()
+    const handler = await importRoute(route)
+
+    await expect(handler(makeEvent({ body: { name: 'Shelf - A', parentLocationId: null } }))).rejects.toMatchObject({
+      statusCode: 400,
+      message: 'Invalid location'
+    })
+    expect(serviceMocks.createLocation).not.toHaveBeenCalled()
   })
 })

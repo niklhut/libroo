@@ -8,6 +8,7 @@ import {
 import {
   BOOK_LOCATION_MAX_LENGTH,
   BOOK_LOCATION_NAME_MAX_LENGTH,
+  BOOK_LOCATION_PATH_SEPARATOR_PATTERN,
   normalizeBookLocationName,
   normalizeBookLocationPath
 } from './book-location'
@@ -188,8 +189,20 @@ export const locationCreateSchema = z.object({
     z.string({ error: 'Location name must be a string' })
       .min(1, { error: 'Location name is required' })
       .max(BOOK_LOCATION_NAME_MAX_LENGTH, { error: 'Location name is too long' })
+      .refine(value => !BOOK_LOCATION_PATH_SEPARATOR_PATTERN.test(value), {
+        error: 'Location name contains reserved path separators'
+      })
   ),
-  parentLocationId: z.string({ error: 'Parent location ID must be a string' }).nullable().optional().default(null)
+  parentLocationId: z.preprocess(
+    (val) => {
+      if (val === undefined || val === null) return null
+      if (typeof val === 'string') return val.trim()
+      return val
+    },
+    z.string({ error: 'Parent location ID must be a string' })
+      .min(1, { error: 'Parent location ID is required' })
+      .nullable()
+  ).default(null)
 })
 
 export type LocationCreateSchema = z.infer<typeof locationCreateSchema>

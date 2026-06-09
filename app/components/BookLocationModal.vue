@@ -89,7 +89,7 @@ async function createLocation() {
 }
 
 async function saveLocation() {
-  if (isSavingAssignment.value) return
+  if (isSavingAssignment.value || isCreatingLocation.value) return
 
   isSavingAssignment.value = true
   try {
@@ -185,7 +185,7 @@ async function saveLocation() {
       <UButton
         icon="i-lucide-save"
         :loading="isSavingAssignment"
-        :disabled="isSavingAssignment"
+        :disabled="isSavingAssignment || isCreatingLocation"
         @click="saveLocation"
       >
         Save location

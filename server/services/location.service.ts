@@ -38,7 +38,7 @@ export const LocationServiceLive = Layer.effect(
             return yield* Effect.fail(new InvalidLocationError({ message: 'Location name is required' }))
           }
 
-          const parent = input.parentLocationId
+          const parent = input.parentLocationId !== null
             ? yield* locationRepo.getLocationById(userId, input.parentLocationId)
             : null
 

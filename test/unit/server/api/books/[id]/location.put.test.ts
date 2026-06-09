@@ -52,6 +52,7 @@ describe('server/api/books/[id]/location.put', () => {
       statusCode: 400,
       message: 'Book ID is required'
     })
+    expect(serviceMocks.updateLocation).not.toHaveBeenCalled()
   })
 
   it('rejects invalid locations', async () => {
@@ -62,5 +63,6 @@ describe('server/api/books/[id]/location.put', () => {
       statusCode: 400,
       message: 'Invalid location'
     })
+    expect(serviceMocks.updateLocation).not.toHaveBeenCalled()
   })
 })

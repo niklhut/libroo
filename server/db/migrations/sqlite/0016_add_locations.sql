@@ -23,3 +23,27 @@ CREATE INDEX `locations_parent_location_id_idx` ON `locations` (`parent_location
 CREATE INDEX `locations_path_idx` ON `locations` (`path`);
 --> statement-breakpoint
 ALTER TABLE `user_books` ADD `location_id` text REFERENCES locations(id) ON DELETE set null;
+--> statement-breakpoint
+CREATE TRIGGER `user_books_location_same_user_insert`
+BEFORE INSERT ON `user_books`
+WHEN NEW.`location_id` IS NOT NULL
+AND NOT EXISTS (
+  SELECT 1 FROM `locations`
+  WHERE `locations`.`id` = NEW.`location_id`
+  AND `locations`.`user_id` = NEW.`user_id`
+)
+BEGIN
+  SELECT RAISE(ABORT, 'location does not belong to user');
+END;
+--> statement-breakpoint
+CREATE TRIGGER `user_books_location_same_user_update`
+BEFORE UPDATE OF `location_id`, `user_id` ON `user_books`
+WHEN NEW.`location_id` IS NOT NULL
+AND NOT EXISTS (
+  SELECT 1 FROM `locations`
+  WHERE `locations`.`id` = NEW.`location_id`
+  AND `locations`.`user_id` = NEW.`user_id`
+)
+BEGIN
+  SELECT RAISE(ABORT, 'location does not belong to user');
+END;

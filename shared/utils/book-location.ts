@@ -1,5 +1,6 @@
 export const BOOK_LOCATION_MAX_LENGTH = 240
 export const BOOK_LOCATION_NAME_MAX_LENGTH = 120
+export const BOOK_LOCATION_PATH_SEPARATOR_PATTERN = /\s[-–—]\s|[/>]/
 
 export function normalizeBookLocationName(input: string | null | undefined): string | null {
   if (input === null || input === undefined) return null
