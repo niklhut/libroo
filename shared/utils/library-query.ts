@@ -14,6 +14,8 @@ export interface LibraryQueryState extends LibraryQueryFilters {
   pageSize: number
 }
 
+export const DEFAULT_LIBRARY_PAGE_SIZE = 12
+
 const loanFilters = new Set<LibraryLoanFilter>(['all', 'available', 'loaned'])
 const readingFilters = new Set<LibraryReadingFilter>(['all', 'unread', 'reading', 'read'])
 
@@ -31,7 +33,7 @@ export const normalizeLibraryQuery = (
   query: Record<string, unknown>,
   options: { defaultPageSize?: number, maxPageSize?: number } = {}
 ): LibraryQueryState => {
-  const defaultPageSize = options.defaultPageSize ?? 12
+  const defaultPageSize = options.defaultPageSize ?? DEFAULT_LIBRARY_PAGE_SIZE
   const maxPageSize = options.maxPageSize ?? 100
   const page = Math.max(1, parseInt(firstString(query.page) || '', 10) || 1)
   const pageSize = Math.min(
@@ -61,7 +63,7 @@ export const buildLibraryRouteQuery = (state: LibraryQueryState): Record<string,
     page: String(state.page)
   }
 
-  if (state.pageSize !== 12) query.pageSize = String(state.pageSize)
+  if (state.pageSize !== DEFAULT_LIBRARY_PAGE_SIZE) query.pageSize = String(state.pageSize)
   if (state.search) query.search = state.search
   if (state.loanStatus && state.loanStatus !== 'all') query.loanStatus = state.loanStatus
   if (state.readingStatus && state.readingStatus !== 'all') query.readingStatus = state.readingStatus

@@ -1682,7 +1682,7 @@ export const addBookByISBN = (userId: string, isbn: string) =>
 export const createManualBookRecord = (userId: string, input: ManualBookRepositoryInput) =>
   Effect.flatMap(BookRepository, repo => repo.createManualBook(userId, input))
 
-export const getLibrary = (userId: string, pagination: PaginationParams & { search?: string }) =>
+export const getLibrary = (userId: string, pagination: PaginationParams & LibraryQueryFilters) =>
   Effect.flatMap(BookRepository, repo => repo.getLibrary(userId, pagination))
 
 export const getLibraryByAuthor = (userId: string, authorId: string, pagination: PaginationParams) =>

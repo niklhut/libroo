@@ -47,13 +47,14 @@ const hasRouteStateMismatch = pageSize.value !== routeState.pageSize
   || readingStatus.value !== (routeState.readingStatus ?? 'all')
   || tag.value !== (routeState.tag ?? '')
   || location.value !== (routeState.location ?? '')
+const hasCachedResults = allBooks.value.length > 0 && paginationState.value
 
 if (hasRouteStateMismatch) {
   resetResultsAction()
 }
 
-if (hasRouteStateMismatch) {
-  page.value = 1
+if (hasRouteStateMismatch || !hasCachedResults) {
+  page.value = routeState.page
 }
 pageSize.value = routeState.pageSize
 search.value = routeState.search ?? ''
