@@ -2,6 +2,7 @@ import { Context, Effect, Layer, Either, Data } from 'effect'
 import type { HttpClient } from '@effect/platform'
 import { normalizeReadingProgress } from '../../shared/utils/reading-progress'
 import { MANUAL_COVER_MAX_BYTES } from '../../shared/utils/schemas'
+import type { LibraryQueryFilters } from '../../shared/utils/library-query'
 
 interface UserBookViewModel {
   id: string
@@ -46,7 +47,7 @@ export const toLibraryBook = (userBook: UserBookViewModel): LibraryBook => ({
 export interface BookServiceInterface {
   getUserLibrary: (
     userId: string,
-    pagination: PaginationParams & { search?: string }
+    pagination: PaginationParams & LibraryQueryFilters
   ) => Effect.Effect<PaginatedResult<LibraryBook>, DatabaseError, DbService>
 
   getAuthorLibrary: (
@@ -399,7 +400,7 @@ export const BookServiceLive = Layer.effect(
 
 // ===== Helper Effects =====
 
-export const getUserLibrary = (userId: string, pagination: PaginationParams & { search?: string }) =>
+export const getUserLibrary = (userId: string, pagination: PaginationParams & LibraryQueryFilters) =>
   Effect.flatMap(BookService, service => service.getUserLibrary(userId, pagination))
 
 export const getAuthorLibrary = (userId: string, authorId: string, pagination: PaginationParams) =>

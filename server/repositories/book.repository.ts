@@ -1,8 +1,9 @@
 import { Context, Effect, Layer, Data } from 'effect'
 import type { HttpClient } from '@effect/platform'
-import { eq, and, count, desc, asc, inArray, or, sql, notInArray, exists, isNull } from 'drizzle-orm'
+import { eq, and, count, desc, asc, inArray, or, sql, notInArray, exists, isNull, not } from 'drizzle-orm'
 import { books, authors, bookAuthors, userBooks, tags, bookSystemTags, userBookTags, loans, user, locations } from 'hub:db:schema'
 import { normalizeTagInput, normalizeSuggestedTags } from '../../shared/utils/tag-ingestion'
+import type { LibraryQueryFilters } from '../../shared/utils/library-query'
 
 // Error types
 export class BookNotFoundError extends Data.TaggedError('BookNotFoundError')<{
@@ -114,7 +115,7 @@ export interface BookRepositoryInterface {
 
   getLibrary: (
     userId: string,
-    pagination: PaginationParams & { search?: string }
+    pagination: PaginationParams & LibraryQueryFilters
   ) => Effect.Effect<PaginatedResult<UserBook>, DatabaseError, DbService>
 
   getLibraryByAuthor: (
@@ -903,6 +904,32 @@ export const BookRepositoryLive = Layer.effect(
           const normalizedSearch = pagination.search?.trim().toLowerCase()
           const hasSearch = Boolean(normalizedSearch)
           const likePattern = `%${normalizedSearch}%`
+          const normalizedTag = pagination.tag?.trim().toLowerCase()
+          const normalizedLocation = pagination.location?.trim().toLowerCase()
+          const activeLoanCondition = exists(
+            dbService.db
+              .select({ value: sql`1` })
+              .from(loans)
+              .where(and(eq(loans.userBookId, userBooks.id), eq(loans.status, 'active')))
+          )
+          const tagCondition = normalizedTag
+            ? or(
+                exists(
+                  dbService.db
+                    .select({ value: sql`1` })
+                    .from(userBookTags)
+                    .innerJoin(tags, eq(userBookTags.tagId, tags.id))
+                    .where(and(eq(userBookTags.userBookId, userBooks.id), sql`lower(${tags.name}) like ${`%${normalizedTag}%`}`))
+                ),
+                exists(
+                  dbService.db
+                    .select({ value: sql`1` })
+                    .from(bookSystemTags)
+                    .innerJoin(tags, eq(bookSystemTags.tagId, tags.id))
+                    .where(and(eq(bookSystemTags.bookId, books.id), sql`lower(${tags.name}) like ${`%${normalizedTag}%`}`))
+                )
+              )
+            : undefined
 
           const searchCondition = hasSearch
             ? or(
@@ -933,9 +960,18 @@ export const BookRepositoryLive = Layer.effect(
               )
             : undefined
 
-          const whereClause = hasSearch
-            ? and(eq(userBooks.userId, userId), isNull(userBooks.removedAt), searchCondition)
-            : and(eq(userBooks.userId, userId), isNull(userBooks.removedAt))
+          const whereClause = and(
+            eq(userBooks.userId, userId),
+            isNull(userBooks.removedAt),
+            searchCondition,
+            pagination.loanStatus === 'loaned' ? activeLoanCondition : undefined,
+            pagination.loanStatus === 'available' ? not(activeLoanCondition) : undefined,
+            pagination.readingStatus && pagination.readingStatus !== 'all'
+              ? eq(userBooks.readingStatus, pagination.readingStatus)
+              : undefined,
+            tagCondition,
+            normalizedLocation ? sql`lower(coalesce(${locations.path}, '')) like ${`%${normalizedLocation}%`}` : undefined
+          )
 
           // Get total count
           const countResult = yield* Effect.tryPromise({
@@ -1646,7 +1682,7 @@ export const addBookByISBN = (userId: string, isbn: string) =>
 export const createManualBookRecord = (userId: string, input: ManualBookRepositoryInput) =>
   Effect.flatMap(BookRepository, repo => repo.createManualBook(userId, input))
 
-export const getLibrary = (userId: string, pagination: PaginationParams & { search?: string }) =>
+export const getLibrary = (userId: string, pagination: PaginationParams & LibraryQueryFilters) =>
   Effect.flatMap(BookRepository, repo => repo.getLibrary(userId, pagination))
 
 export const getLibraryByAuthor = (userId: string, authorId: string, pagination: PaginationParams) =>

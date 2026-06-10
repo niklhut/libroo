@@ -1,4 +1,5 @@
 import type { LibraryBook } from '~~/shared/types/book'
+import type { LibraryLoanFilter, LibraryReadingFilter } from '~~/shared/utils/library-query'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
@@ -15,6 +16,11 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
   const pageSize = ref(12)
   const allBooks = ref<LibraryBook[]>([])
   const pagination = ref<DashboardPagination | null>(null)
+  const search = ref('')
+  const loanStatus = ref<LibraryLoanFilter>('all')
+  const readingStatus = ref<LibraryReadingFilter>('all')
+  const tag = ref('')
+  const location = ref('')
   const scrollY = ref(0)
   const shouldRestoreScroll = ref(false)
   const shouldSync = ref(false)
@@ -82,11 +88,22 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
     syncTargetPages.value = 1
   }
 
+  function resetResults() {
+    page.value = 1
+    allBooks.value = []
+    pagination.value = null
+  }
+
   return {
     page,
     pageSize,
     allBooks,
     pagination,
+    search,
+    loanStatus,
+    readingStatus,
+    tag,
+    location,
     scrollY,
     shouldRestoreScroll,
     shouldSync,
@@ -95,6 +112,7 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
     addBook,
     removeBooks,
     markNeedsSync,
-    clearNeedsSync
+    clearNeedsSync,
+    resetResults
   }
 })
