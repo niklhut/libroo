@@ -113,6 +113,9 @@ interface ApiRouteTestGlobals {
   updateReadingProgress: (...args: unknown[]) => unknown
   listLocations: (...args: unknown[]) => unknown
   createLocation: (...args: unknown[]) => unknown
+  renameLocation: (...args: unknown[]) => unknown
+  moveLocation: (...args: unknown[]) => unknown
+  deleteLocation: (...args: unknown[]) => unknown
   addUserTag: (...args: unknown[]) => unknown
   batchUpdateTags: (...args: unknown[]) => unknown
   deleteTag: (...args: unknown[]) => unknown
@@ -131,6 +134,9 @@ interface ApiRouteTestGlobals {
   createLoanSchema: unknown
   manualBookCreateSchema: unknown
   locationCreateSchema: unknown
+  locationRenameSchema: unknown
+  locationMoveSchema: unknown
+  locationDeleteSchema: unknown
 }
 
 const testGlobal = globalThis as typeof globalThis & Partial<ApiRouteTestGlobals>
@@ -156,6 +162,9 @@ export const serviceMocks = {
   updateReadingProgress: vi.fn(),
   listLocations: vi.fn(),
   createLocation: vi.fn(),
+  renameLocation: vi.fn(),
+  moveLocation: vi.fn(),
+  deleteLocation: vi.fn(),
   addUserTag: vi.fn(),
   batchUpdateTags: vi.fn(),
   deleteTag: vi.fn(),
@@ -198,6 +207,9 @@ const originalGlobals = {
   updateReadingProgress: testGlobal.updateReadingProgress,
   listLocations: testGlobal.listLocations,
   createLocation: testGlobal.createLocation,
+  renameLocation: testGlobal.renameLocation,
+  moveLocation: testGlobal.moveLocation,
+  deleteLocation: testGlobal.deleteLocation,
   addUserTag: testGlobal.addUserTag,
   batchUpdateTags: testGlobal.batchUpdateTags,
   deleteTag: testGlobal.deleteTag,
@@ -281,6 +293,9 @@ export async function setupApiRouteTest() {
   testGlobal.updateReadingProgress = (...args: unknown[]) => serviceMocks.updateReadingProgress(...args)
   testGlobal.listLocations = (...args: unknown[]) => serviceMocks.listLocations(...args)
   testGlobal.createLocation = (...args: unknown[]) => serviceMocks.createLocation(...args)
+  testGlobal.renameLocation = (...args: unknown[]) => serviceMocks.renameLocation(...args)
+  testGlobal.moveLocation = (...args: unknown[]) => serviceMocks.moveLocation(...args)
+  testGlobal.deleteLocation = (...args: unknown[]) => serviceMocks.deleteLocation(...args)
   testGlobal.addUserTag = (...args: unknown[]) => serviceMocks.addUserTag(...args)
   testGlobal.batchUpdateTags = (...args: unknown[]) => serviceMocks.batchUpdateTags(...args)
   testGlobal.deleteTag = (...args: unknown[]) => serviceMocks.deleteTag(...args)
@@ -301,6 +316,9 @@ export async function setupApiRouteTest() {
   testGlobal.createLoanSchema = schemas.createLoanSchema
   testGlobal.manualBookCreateSchema = schemas.manualBookCreateSchema
   testGlobal.locationCreateSchema = schemas.locationCreateSchema
+  testGlobal.locationRenameSchema = schemas.locationRenameSchema
+  testGlobal.locationMoveSchema = schemas.locationMoveSchema
+  testGlobal.locationDeleteSchema = schemas.locationDeleteSchema
 
   for (const mock of Object.values(serviceMocks)) {
     mock.mockReset()

@@ -39,6 +39,11 @@ const links = computed<NavigationMenuItem[]>(() => {
         to: '/library/loans'
       },
       {
+        label: 'Locations',
+        icon: 'i-lucide-map',
+        to: '/library/locations'
+      },
+      {
         label: 'Sign Out',
         icon: 'i-lucide-log-out',
         color: 'neutral' as const,
@@ -48,7 +53,7 @@ const links = computed<NavigationMenuItem[]>(() => {
     ]
 
     if (roleIncludesAdmin(user.value.role)) {
-      authenticatedLinks.splice(2, 0, {
+      authenticatedLinks.splice(3, 0, {
         label: 'Admin',
         icon: 'i-lucide-shield',
         to: '/admin/users'

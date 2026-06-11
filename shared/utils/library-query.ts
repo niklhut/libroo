@@ -1,5 +1,6 @@
 export type LibraryLoanFilter = 'all' | 'available' | 'loaned'
 export type LibraryReadingFilter = 'all' | 'unread' | 'reading' | 'read'
+export type LibrarySort = 'dateAdded' | 'title' | 'author' | 'locationPath'
 
 export interface LibraryQueryFilters {
   search?: string
@@ -7,6 +8,9 @@ export interface LibraryQueryFilters {
   readingStatus?: LibraryReadingFilter
   tag?: string
   location?: string
+  locationId?: string
+  includeLocationDescendants?: boolean
+  sortBy?: LibrarySort
 }
 
 export interface LibraryQueryState extends LibraryQueryFilters {
@@ -18,6 +22,7 @@ export const DEFAULT_LIBRARY_PAGE_SIZE = 12
 
 const loanFilters = new Set<LibraryLoanFilter>(['all', 'available', 'loaned'])
 const readingFilters = new Set<LibraryReadingFilter>(['all', 'unread', 'reading', 'read'])
+const sortOptions = new Set<LibrarySort>(['dateAdded', 'title', 'author', 'locationPath'])
 
 const firstString = (value: unknown): string | undefined => {
   if (Array.isArray(value)) return firstString(value[0])
@@ -27,6 +32,13 @@ const firstString = (value: unknown): string | undefined => {
 const cleanText = (value: unknown): string | undefined => {
   const text = firstString(value)?.trim()
   return text || undefined
+}
+
+const cleanBoolean = (value: unknown): boolean | undefined => {
+  const text = firstString(value)?.trim().toLowerCase()
+  if (text === 'true' || text === '1') return true
+  if (text === 'false' || text === '0') return false
+  return undefined
 }
 
 export const normalizeLibraryQuery = (
@@ -42,6 +54,7 @@ export const normalizeLibraryQuery = (
   )
   const loanStatus = firstString(query.loanStatus)
   const readingStatus = firstString(query.readingStatus)
+  const sortBy = firstString(query.sortBy)
 
   return {
     page,
@@ -54,7 +67,10 @@ export const normalizeLibraryQuery = (
       ? readingStatus as LibraryReadingFilter
       : 'all',
     tag: cleanText(query.tag),
-    location: cleanText(query.location)
+    location: cleanText(query.location),
+    locationId: cleanText(query.locationId),
+    includeLocationDescendants: cleanBoolean(query.includeLocationDescendants) ?? false,
+    sortBy: sortOptions.has(sortBy as LibrarySort) ? sortBy as LibrarySort : 'dateAdded'
   }
 }
 
@@ -69,6 +85,9 @@ export const buildLibraryRouteQuery = (state: LibraryQueryState): Record<string,
   if (state.readingStatus && state.readingStatus !== 'all') query.readingStatus = state.readingStatus
   if (state.tag) query.tag = state.tag
   if (state.location) query.location = state.location
+  if (state.locationId) query.locationId = state.locationId
+  if (state.includeLocationDescendants) query.includeLocationDescendants = 'true'
+  if (state.sortBy && state.sortBy !== 'dateAdded') query.sortBy = state.sortBy
 
   return query
 }

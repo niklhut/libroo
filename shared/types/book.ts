@@ -32,6 +32,12 @@ export interface BookLocation {
 
 export interface BookLocationWithCount extends BookLocation {
   bookCount: number
+  directBookCount: number
+  descendantBookCount: number
+}
+
+export interface BookLocationTreeNode extends BookLocationWithCount {
+  children: BookLocationTreeNode[]
 }
 
 export type ReadingStatus = 'unread' | 'reading' | 'read'

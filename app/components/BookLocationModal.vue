@@ -19,6 +19,7 @@ const parentLocationId = ref<string>()
 const newLocationName = ref('')
 const isSavingAssignment = ref(false)
 const isCreatingLocation = ref(false)
+const TOP_LEVEL_VALUE = '__top_level__'
 
 const modalOpen = computed({
   get: () => props.open,
@@ -38,9 +39,16 @@ const locationOptions = computed(() =>
 )
 
 const parentOptions = computed(() => [
-  { label: 'Top level', value: undefined },
+  { label: 'Top level', value: TOP_LEVEL_VALUE },
   ...locationOptions.value
 ])
+
+const selectedParentLocation = computed({
+  get: () => parentLocationId.value ?? TOP_LEVEL_VALUE,
+  set: (value: string) => {
+    parentLocationId.value = value === TOP_LEVEL_VALUE ? undefined : value
+  }
+})
 
 watch(
   () => props.open,
@@ -148,7 +156,7 @@ async function saveLocation() {
         <div class="space-y-3">
           <UFormField label="Parent location">
             <USelect
-              v-model="parentLocationId"
+              v-model="selectedParentLocation"
               :items="parentOptions"
               class="w-full"
             />
