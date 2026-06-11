@@ -207,6 +207,42 @@ export const locationCreateSchema = z.object({
 
 export type LocationCreateSchema = z.infer<typeof locationCreateSchema>
 
+export const locationRenameSchema = z.object({
+  name: locationCreateSchema.shape.name
+})
+
+export type LocationRenameSchema = z.infer<typeof locationRenameSchema>
+
+export const locationMoveSchema = z.object({
+  parentLocationId: z.preprocess(
+    (val) => {
+      if (val === null) return null
+      if (typeof val === 'string') return val.trim()
+      return val
+    },
+    z.string({ error: 'Parent location ID must be a string' })
+      .min(1, { error: 'Parent location ID is required' })
+      .nullable()
+  )
+})
+
+export type LocationMoveSchema = z.infer<typeof locationMoveSchema>
+
+export const locationDeleteSchema = z.discriminatedUnion('mode', [
+  z.object({
+    mode: z.literal('block')
+  }),
+  z.object({
+    mode: z.literal('clear')
+  }),
+  z.object({
+    mode: z.literal('move'),
+    targetLocationId: z.string({ error: 'Target location ID must be a string' }).min(1, { error: 'Target location ID is required' })
+  })
+])
+
+export type LocationDeleteSchema = z.infer<typeof locationDeleteSchema>
+
 export const locationPathSchema = z.object({
   path: z.preprocess(
     (val) => {

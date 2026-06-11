@@ -35,7 +35,10 @@ describe('server/api/books/index.get', () => {
         loanStatus: 'loaned',
         readingStatus: 'read',
         tag: ' classic ',
-        location: ' Shelf B '
+        location: ' Shelf B ',
+        locationId: ' loc-1 ',
+        includeLocationDescendants: 'true',
+        sortBy: 'locationPath'
       }
     }))).resolves.toBe(result)
     expect(serviceMocks.getUserLibrary).toHaveBeenCalledWith('user-1', {
@@ -45,7 +48,10 @@ describe('server/api/books/index.get', () => {
       loanStatus: 'loaned',
       readingStatus: 'read',
       tag: 'classic',
-      location: 'Shelf B'
+      location: 'Shelf B',
+      locationId: 'loc-1',
+      includeLocationDescendants: true,
+      sortBy: 'locationPath'
     })
   })
 })

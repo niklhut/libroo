@@ -48,7 +48,7 @@ export interface BookServiceInterface {
   getUserLibrary: (
     userId: string,
     pagination: PaginationParams & LibraryQueryFilters
-  ) => Effect.Effect<PaginatedResult<LibraryBook>, DatabaseError, DbService>
+  ) => Effect.Effect<PaginatedResult<LibraryBook>, LocationNotFoundError | DatabaseError, DbService>
 
   getAuthorLibrary: (
     userId: string,
@@ -194,7 +194,13 @@ export const BookServiceLive = Layer.effect(
     return {
       getUserLibrary: (userId, pagination) =>
         Effect.gen(function* () {
-          const result = yield* bookRepo.getLibrary(userId, pagination)
+          const selectedLocation = pagination.locationId
+            ? yield* locationRepo.getLocationById(userId, pagination.locationId)
+            : null
+          const result = yield* bookRepo.getLibrary(userId, {
+            ...pagination,
+            locationPath: selectedLocation?.path
+          })
 
           return {
             items: result.items.map(toLibraryBook),

@@ -1,5 +1,5 @@
 import type { LibraryBook } from '~~/shared/types/book'
-import type { LibraryLoanFilter, LibraryReadingFilter } from '~~/shared/utils/library-query'
+import type { LibraryLoanFilter, LibraryReadingFilter, LibrarySort } from '~~/shared/utils/library-query'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
@@ -21,6 +21,10 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
   const readingStatus = ref<LibraryReadingFilter>('all')
   const tag = ref('')
   const location = ref('')
+  const locationId = ref('')
+  const includeLocationDescendants = ref(false)
+  const sortBy = ref<LibrarySort>('dateAdded')
+  const groupByLocation = ref(false)
   const scrollY = ref(0)
   const shouldRestoreScroll = ref(false)
   const shouldSync = ref(false)
@@ -104,6 +108,10 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
     readingStatus,
     tag,
     location,
+    locationId,
+    includeLocationDescendants,
+    sortBy,
+    groupByLocation,
     scrollY,
     shouldRestoreScroll,
     shouldSync,

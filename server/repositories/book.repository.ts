@@ -4,6 +4,7 @@ import { eq, and, count, desc, asc, inArray, or, sql, notInArray, exists, isNull
 import { books, authors, bookAuthors, userBooks, tags, bookSystemTags, userBookTags, loans, user, locations } from 'hub:db:schema'
 import { normalizeTagInput, normalizeSuggestedTags } from '../../shared/utils/tag-ingestion'
 import type { LibraryQueryFilters } from '../../shared/utils/library-query'
+import { escapeLocationLikePattern } from '../../shared/utils/location-hierarchy'
 
 // Error types
 export class BookNotFoundError extends Data.TaggedError('BookNotFoundError')<{
@@ -97,6 +98,10 @@ export interface ManualBookRepositoryInput {
   tags: string[]
 }
 
+export interface BookLibraryFilters extends LibraryQueryFilters {
+  locationPath?: string
+}
+
 // Service interface
 export interface BookRepositoryInterface {
   addBookByISBN: (
@@ -115,7 +120,7 @@ export interface BookRepositoryInterface {
 
   getLibrary: (
     userId: string,
-    pagination: PaginationParams & LibraryQueryFilters
+    pagination: PaginationParams & BookLibraryFilters
   ) => Effect.Effect<PaginatedResult<UserBook>, DatabaseError, DbService>
 
   getLibraryByAuthor: (
@@ -906,6 +911,10 @@ export const BookRepositoryLive = Layer.effect(
           const likePattern = `%${normalizedSearch}%`
           const normalizedTag = pagination.tag?.trim().toLowerCase()
           const normalizedLocation = pagination.location?.trim().toLowerCase()
+          const selectedLocationPath = pagination.locationPath?.trim()
+          const selectedLocationDescendantPattern = selectedLocationPath
+            ? `${escapeLocationLikePattern(selectedLocationPath)} - %`
+            : undefined
           const activeLoanCondition = exists(
             dbService.db
               .select({ value: sql`1` })
@@ -970,8 +979,35 @@ export const BookRepositoryLive = Layer.effect(
               ? eq(userBooks.readingStatus, pagination.readingStatus)
               : undefined,
             tagCondition,
-            normalizedLocation ? sql`lower(coalesce(${locations.path}, '')) like ${`%${normalizedLocation}%`}` : undefined
+            normalizedLocation ? sql`lower(coalesce(${locations.path}, '')) like ${`%${normalizedLocation}%`}` : undefined,
+            pagination.locationId
+              ? pagination.includeLocationDescendants
+                ? selectedLocationDescendantPattern
+                  ? or(
+                      eq(userBooks.locationId, pagination.locationId),
+                      sql`${locations.path} like ${selectedLocationDescendantPattern} escape '\\'`
+                    )
+                  : eq(userBooks.locationId, pagination.locationId)
+                : eq(userBooks.locationId, pagination.locationId)
+              : undefined
           )
+
+          const firstAuthorSort = sql`(
+            select lower(${authors.name})
+            from ${bookAuthors}
+            inner join ${authors} on ${bookAuthors.authorId} = ${authors.id}
+            where ${bookAuthors.bookId} = ${books.id}
+            order by ${bookAuthors.sortOrder} asc, lower(${authors.name}) asc
+            limit 1
+          )`
+
+          const orderBy = pagination.sortBy === 'title'
+            ? [asc(sql`lower(${books.title})`), desc(userBooks.addedAt)]
+            : pagination.sortBy === 'author'
+              ? [asc(sql`coalesce(${firstAuthorSort}, 'zzzzzz')`), asc(sql`lower(${books.title})`), desc(userBooks.addedAt)]
+              : pagination.sortBy === 'locationPath'
+                ? [asc(sql`coalesce(lower(${locations.path}), 'zzzzzz')`), asc(sql`lower(${books.title})`), desc(userBooks.addedAt)]
+                : [desc(userBooks.addedAt)]
 
           // Get total count
           const countResult = yield* Effect.tryPromise({
@@ -1000,7 +1036,7 @@ export const BookRepositoryLive = Layer.effect(
                 .innerJoin(books, eq(userBooks.bookId, books.id))
                 .leftJoin(locations, eq(userBooks.locationId, locations.id))
                 .where(whereClause)
-                .orderBy(desc(userBooks.addedAt))
+                .orderBy(...orderBy)
                 .limit(pageSize)
                 .offset(offset),
             catch: error => new DatabaseError({

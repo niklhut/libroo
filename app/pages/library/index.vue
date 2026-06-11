@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { LibraryBook, BatchDeleteResult } from '~~/shared/types/book'
+import type { LibraryBook, BatchDeleteResult, BookLocationWithCount } from '~~/shared/types/book'
 import { buildLibraryRouteQuery, normalizeLibraryQuery } from '~~/shared/utils/library-query'
 
 interface PaginatedResponse {
@@ -27,6 +27,10 @@ const {
   readingStatus,
   tag,
   location,
+  locationId,
+  includeLocationDescendants,
+  sortBy,
+  groupByLocation,
   scrollY,
   shouldRestoreScroll,
   shouldSync,
@@ -47,6 +51,9 @@ const hasRouteStateMismatch = pageSize.value !== routeState.pageSize
   || readingStatus.value !== (routeState.readingStatus ?? 'all')
   || tag.value !== (routeState.tag ?? '')
   || location.value !== (routeState.location ?? '')
+  || locationId.value !== (routeState.locationId ?? '')
+  || includeLocationDescendants.value !== Boolean(routeState.includeLocationDescendants)
+  || sortBy.value !== (routeState.sortBy ?? 'dateAdded')
 const hasCachedResults = allBooks.value.length > 0 && paginationState.value
 
 if (hasRouteStateMismatch) {
@@ -62,16 +69,24 @@ loanStatus.value = routeState.loanStatus ?? 'all'
 readingStatus.value = routeState.readingStatus ?? 'all'
 tag.value = routeState.tag ?? ''
 location.value = routeState.location ?? ''
+locationId.value = routeState.locationId ?? ''
+includeLocationDescendants.value = Boolean(routeState.includeLocationDescendants)
+sortBy.value = routeState.sortBy ?? 'dateAdded'
 
 // Pagination state
 const isLoadingMore = ref(false)
 const filterRefreshTimer = ref<ReturnType<typeof setTimeout> | null>(null)
+const ALL_LOCATIONS_VALUE = '__all_locations__'
 
 // Selection state
 const isSelectMode = ref(false)
 const selectedBooks = shallowRef<Set<string>>(new Set())
 
 const shouldFetchInitial = allBooks.value.length === 0 || !paginationState.value
+
+const { data: locations } = await useFetch<BookLocationWithCount[]>('/api/locations', {
+  headers: useRequestHeaders(['cookie'])
+})
 
 // Fetch books with pagination
 const { data, refresh, status } = await useFetch<PaginatedResponse>('/api/books', {
@@ -85,7 +100,10 @@ const { data, refresh, status } = await useFetch<PaginatedResponse>('/api/books'
     loanStatus: loanStatus.value === 'all' ? undefined : loanStatus.value,
     readingStatus: readingStatus.value === 'all' ? undefined : readingStatus.value,
     tag: tag.value || undefined,
-    location: location.value || undefined
+    location: location.value || undefined,
+    locationId: locationId.value || undefined,
+    includeLocationDescendants: includeLocationDescendants.value || undefined,
+    sortBy: sortBy.value === 'dateAdded' ? undefined : sortBy.value
   }))
 })
 
@@ -164,6 +182,9 @@ const hasActiveFilters = computed(() =>
   || readingStatus.value !== 'all'
   || Boolean(tag.value.trim())
   || Boolean(location.value.trim())
+  || Boolean(locationId.value)
+  || includeLocationDescendants.value
+  || sortBy.value !== 'dateAdded'
 )
 const selectedCount = computed(() => selectedBooks.value.size)
 const allSelected = computed(() => books.value.length > 0 && selectedBooks.value.size === books.value.length)
@@ -178,13 +199,55 @@ const readingStatusItems = [
   { label: 'Reading', value: 'reading' },
   { label: 'Read', value: 'read' }
 ]
+const sortItems = [
+  { label: 'Date added', value: 'dateAdded' },
+  { label: 'Location path', value: 'locationPath' },
+  { label: 'Title', value: 'title' },
+  { label: 'Author', value: 'author' }
+]
+const selectedLocationFilter = computed({
+  get: () => locationId.value || ALL_LOCATIONS_VALUE,
+  set: (value: string) => {
+    locationId.value = value === ALL_LOCATIONS_VALUE ? '' : value
+  }
+})
+const locationOptions = computed(() => [
+  { label: 'All locations', value: ALL_LOCATIONS_VALUE },
+  ...(locations.value ?? []).map(location => ({
+    label: location.path,
+    value: location.id
+  }))
+])
+const groupedBooks = computed(() => {
+  const groups = new Map<string, { key: string, label: string, books: LibraryBook[] }>()
 
-watch([search, loanStatus, readingStatus, tag, location], () => {
+  for (const book of books.value) {
+    const key = book.location?.id ?? 'none'
+    const label = book.location?.path ?? 'No location'
+    const group = groups.get(key) ?? { key, label, books: [] }
+    group.books.push(book)
+    groups.set(key, group)
+  }
+
+  return [...groups.values()].sort((a, b) => {
+    if (a.key === 'none') return 1
+    if (b.key === 'none') return -1
+    return a.label.localeCompare(b.label)
+  })
+})
+
+watch([search, loanStatus, readingStatus, tag, location, locationId, includeLocationDescendants, sortBy], () => {
   if (filterRefreshTimer.value) clearTimeout(filterRefreshTimer.value)
 
   filterRefreshTimer.value = setTimeout(() => {
     void applyFilters()
   }, 250)
+})
+
+watch(locationId, (nextLocationId) => {
+  if (!nextLocationId) {
+    includeLocationDescendants.value = false
+  }
 })
 
 async function applyFilters() {
@@ -199,9 +262,13 @@ async function applyFilters() {
     loanStatus: loanStatus.value,
     readingStatus: readingStatus.value,
     tag: tag.value.trim() || undefined,
-    location: location.value.trim() || undefined
+    location: location.value.trim() || undefined,
+    locationId: locationId.value || undefined,
+    includeLocationDescendants: includeLocationDescendants.value,
+    sortBy: sortBy.value
   })
 
+  page.value = 1
   await refresh()
 }
 
@@ -221,6 +288,9 @@ function clearFilters() {
   readingStatus.value = 'all'
   tag.value = ''
   location.value = ''
+  locationId.value = ''
+  includeLocationDescendants.value = false
+  sortBy.value = 'dateAdded'
 }
 
 // Toggle select mode
@@ -373,6 +443,15 @@ async function deleteSelected() {
           {{ isSelectMode ? 'Cancel' : 'Select' }}
         </UButton>
         <UButton
+          icon="i-lucide-map"
+          size="lg"
+          color="neutral"
+          variant="outline"
+          to="/library/locations"
+        >
+          Locations
+        </UButton>
+        <UButton
           icon="i-lucide-plus"
           size="lg"
           to="/library/add"
@@ -412,7 +491,31 @@ async function deleteSelected() {
           <UInput
             v-model="location"
             icon="i-lucide-map-pin"
-            placeholder="Filter location"
+            placeholder="Search location path"
+          />
+        </div>
+
+        <div class="grid gap-3 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto_auto] md:items-center">
+          <USelect
+            v-model="selectedLocationFilter"
+            :items="locationOptions"
+            icon="i-lucide-map-pin"
+            class="w-full"
+          />
+          <USelect
+            v-model="sortBy"
+            :items="sortItems"
+            icon="i-lucide-arrow-up-down"
+            class="w-full"
+          />
+          <UCheckbox
+            v-model="includeLocationDescendants"
+            :disabled="!locationId"
+            label="Include sub-locations"
+          />
+          <USwitch
+            v-model="groupByLocation"
+            label="Group by location"
           />
         </div>
 
@@ -530,7 +633,48 @@ async function deleteSelected() {
 
       <!-- Book Grid -->
       <template v-else>
-        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+        <div
+          v-if="groupByLocation"
+          class="space-y-8"
+        >
+          <section
+            v-for="group in groupedBooks"
+            :key="group.key"
+            class="space-y-3"
+          >
+            <div class="flex items-center justify-between gap-3 border-b border-default pb-2">
+              <h2 class="text-base font-semibold text-highlighted">
+                {{ group.label }}
+              </h2>
+              <span class="text-sm text-muted">
+                {{ group.books.length }} {{ group.books.length === 1 ? 'book' : 'books' }}
+              </span>
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+              <BookCard
+                v-for="book in group.books"
+                :id="book.id"
+                :key="book.id"
+                :book-id="book.bookId"
+                :title="book.title"
+                :author="book.author"
+                :isbn="book.isbn"
+                :cover-path="book.coverPath"
+                :location="book.location"
+                :added-at="book.addedAt"
+                :active-loan="book.activeLoan"
+                :selectable="isSelectMode"
+                :selected="selectedBooks.has(book.id)"
+                @select="toggleBookSelection"
+              />
+            </div>
+          </section>
+        </div>
+
+        <div
+          v-else
+          class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4"
+        >
           <BookCard
             v-for="book in books"
             :id="book.id"

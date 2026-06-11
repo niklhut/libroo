@@ -10,7 +10,10 @@ describe('library query helpers', () => {
       loanStatus: 'loaned',
       readingStatus: 'reading',
       tag: '  sci-fi ',
-      location: ' shelf b '
+      location: ' shelf b ',
+      locationId: ' loc-1 ',
+      includeLocationDescendants: 'true',
+      sortBy: 'locationPath'
     })).toEqual({
       page: 1,
       pageSize: 100,
@@ -18,7 +21,10 @@ describe('library query helpers', () => {
       loanStatus: 'loaned',
       readingStatus: 'reading',
       tag: 'sci-fi',
-      location: 'shelf b'
+      location: 'shelf b',
+      locationId: 'loc-1',
+      includeLocationDescendants: true,
+      sortBy: 'locationPath'
     })
   })
 
@@ -32,7 +38,18 @@ describe('library query helpers', () => {
       loanStatus: 'all',
       readingStatus: 'all',
       tag: undefined,
-      location: undefined
+      location: undefined,
+      locationId: undefined,
+      includeLocationDescendants: false,
+      sortBy: 'dateAdded'
+    })
+  })
+
+  it('accepts native boolean query values', () => {
+    expect(normalizeLibraryQuery({
+      includeLocationDescendants: true
+    })).toMatchObject({
+      includeLocationDescendants: true
     })
   })
 
@@ -44,12 +61,18 @@ describe('library query helpers', () => {
       loanStatus: 'available',
       readingStatus: 'all',
       tag: 'classic',
-      location: undefined
+      location: undefined,
+      locationId: 'loc-1',
+      includeLocationDescendants: true,
+      sortBy: 'author'
     })).toEqual({
       page: '1',
       search: 'dune',
       loanStatus: 'available',
-      tag: 'classic'
+      tag: 'classic',
+      locationId: 'loc-1',
+      includeLocationDescendants: 'true',
+      sortBy: 'author'
     })
   })
 })
