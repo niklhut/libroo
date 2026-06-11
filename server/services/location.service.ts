@@ -114,15 +114,17 @@ export const LocationServiceLive = Layer.effect(
             }))
           }
 
-          const targetLocation = input.mode === 'move'
-            ? yield* locationRepo.getLocationById(userId, input.targetLocationId)
-            : null
+          if (input.mode === 'move') {
+            const targetLocation = yield* locationRepo.getLocationById(userId, input.targetLocationId)
+            if (targetLocation.id === location.id || targetLocation.path.startsWith(`${location.path} - `)) {
+              return yield* Effect.fail(new InvalidLocationMoveError({ message: 'Books cannot be moved into the location being deleted' }))
+            }
 
-          if (targetLocation?.id === location.id || targetLocation?.path.startsWith(`${location.path} - `)) {
-            return yield* Effect.fail(new InvalidLocationMoveError({ message: 'Books cannot be moved into the location being deleted' }))
+            yield* locationRepo.deleteLocation(userId, location, 'move', targetLocation)
+            return
           }
 
-          yield* locationRepo.deleteLocation(userId, location, input.mode === 'move' ? 'move' : 'clear', targetLocation)
+          yield* locationRepo.deleteLocation(userId, location, 'clear', null)
         })
     }
   })

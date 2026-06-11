@@ -10,7 +10,7 @@ export default effectHandler((event, user) =>
 
     const body = yield* Effect.tryPromise({
       try: () => readValidatedBody(event, locationRenameSchema.parse),
-      catch: () => createError({ statusCode: 400, message: 'Invalid location' })
+      catch: () => createError({ statusCode: 400, message: 'Invalid location rename' })
     })
 
     return yield* renameLocation(user.id, locationId, body)

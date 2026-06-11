@@ -35,6 +35,7 @@ const cleanText = (value: unknown): string | undefined => {
 }
 
 const cleanBoolean = (value: unknown): boolean | undefined => {
+  if (typeof value === 'boolean') return value
   const text = firstString(value)?.trim().toLowerCase()
   if (text === 'true' || text === '1') return true
   if (text === 'false' || text === '0') return false

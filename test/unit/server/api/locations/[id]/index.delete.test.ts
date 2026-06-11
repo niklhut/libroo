@@ -19,6 +19,15 @@ describe('server/api/locations/[id]/index.delete', () => {
 
   itRequiresAuth(route, { params: { id: 'loc-1' }, body: { mode: 'clear' } })
 
+  it('deletes a location with explicit block handling', async () => {
+    mockLoggedInUser()
+    serviceMocks.deleteLocation.mockReturnValueOnce(Effect.succeed(undefined))
+    const handler = await importRoute(route)
+
+    await expect(handler(makeEvent({ params: { id: 'loc-1' }, body: { mode: 'block' } }))).resolves.toEqual({ success: true })
+    expect(serviceMocks.deleteLocation).toHaveBeenCalledWith('user-1', 'loc-1', { mode: 'block' })
+  })
+
   it('deletes a location with explicit clear handling', async () => {
     mockLoggedInUser()
     serviceMocks.deleteLocation.mockReturnValueOnce(Effect.succeed(undefined))

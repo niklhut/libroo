@@ -45,6 +45,14 @@ describe('library query helpers', () => {
     })
   })
 
+  it('accepts native boolean query values', () => {
+    expect(normalizeLibraryQuery({
+      includeLocationDescendants: true
+    })).toMatchObject({
+      includeLocationDescendants: true
+    })
+  })
+
   it('builds compact route query params', () => {
     expect(buildLibraryRouteQuery({
       page: 1,

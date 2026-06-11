@@ -980,12 +980,14 @@ export const BookRepositoryLive = Layer.effect(
               : undefined,
             tagCondition,
             normalizedLocation ? sql`lower(coalesce(${locations.path}, '')) like ${`%${normalizedLocation}%`}` : undefined,
-            pagination.locationId && selectedLocationPath
+            pagination.locationId
               ? pagination.includeLocationDescendants
-                ? or(
-                    eq(userBooks.locationId, pagination.locationId),
-                    sql`${locations.path} like ${selectedLocationDescendantPattern} escape '\\'`
-                  )
+                ? selectedLocationDescendantPattern
+                  ? or(
+                      eq(userBooks.locationId, pagination.locationId),
+                      sql`${locations.path} like ${selectedLocationDescendantPattern} escape '\\'`
+                    )
+                  : eq(userBooks.locationId, pagination.locationId)
                 : eq(userBooks.locationId, pagination.locationId)
               : undefined
           )

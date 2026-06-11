@@ -227,24 +227,18 @@ export const LocationRepositoryLive = Layer.effect(
 
       renameLocation: (userId, location, name) =>
         Effect.gen(function* () {
-          const parent = location.parentLocationId
-            ? yield* Effect.tryPromise({
-              try: () => dbService.db
-                .select()
-                .from(locations)
-                .where(and(eq(locations.id, location.parentLocationId!), eq(locations.userId, userId)))
-                .limit(1),
-              catch: error => new DatabaseError({
-                message: `Failed to load parent location: ${error}`,
-                operation: 'renameLocation.parent'
-              })
-            }).pipe(Effect.map(rows => rows[0] ? toLocationRecord(rows[0]) : null))
-            : null
-
           const now = new Date()
 
-          yield* Effect.tryPromise({
+          return yield* Effect.tryPromise({
             try: () => dbService.db.transaction(async (tx) => {
+              const parent = location.parentLocationId
+                ? await tx
+                    .select()
+                    .from(locations)
+                    .where(and(eq(locations.id, location.parentLocationId), eq(locations.userId, userId)))
+                    .limit(1)
+                    .then(rows => rows[0] ? toLocationRecord(rows[0]) : null)
+                : null
               const descendants = await tx
                 .select()
                 .from(locations)
@@ -270,11 +264,10 @@ export const LocationRepositoryLive = Layer.effect(
                   })
                   .where(eq(locations.id, descendant.id))
               }
+              return repath.location
             }),
             catch: error => new LocationUpdateError({ message: `Failed to rename location: ${error}` })
           })
-
-          return computeLocationRepath(location, [], parent, name).location
         }),
 
       moveLocation: (userId, location, parent) =>

@@ -28,4 +28,15 @@ describe('server/api/locations/[id]/rename.put', () => {
     await expect(handler(makeEvent({ params: { id: 'loc-1' }, body: { name: ' Shelf C ' } }))).resolves.toBe(location)
     expect(serviceMocks.renameLocation).toHaveBeenCalledWith('user-1', 'loc-1', { name: 'Shelf C' })
   })
+
+  it('rejects invalid rename payloads', async () => {
+    mockLoggedInUser()
+    const handler = await importRoute(route)
+
+    await expect(handler(makeEvent({ params: { id: 'loc-1' }, body: { name: '' } }))).rejects.toMatchObject({
+      statusCode: 400,
+      message: 'Invalid location rename'
+    })
+    expect(serviceMocks.renameLocation).not.toHaveBeenCalled()
+  })
 })

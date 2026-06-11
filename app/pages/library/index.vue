@@ -268,6 +268,7 @@ async function applyFilters() {
     sortBy: sortBy.value
   })
 
+  page.value = 1
   await refresh()
 }
 

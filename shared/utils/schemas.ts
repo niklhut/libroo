@@ -214,7 +214,16 @@ export const locationRenameSchema = z.object({
 export type LocationRenameSchema = z.infer<typeof locationRenameSchema>
 
 export const locationMoveSchema = z.object({
-  parentLocationId: locationCreateSchema.shape.parentLocationId
+  parentLocationId: z.preprocess(
+    (val) => {
+      if (val === null) return null
+      if (typeof val === 'string') return val.trim()
+      return val
+    },
+    z.string({ error: 'Parent location ID must be a string' })
+      .min(1, { error: 'Parent location ID is required' })
+      .nullable()
+  )
 })
 
 export type LocationMoveSchema = z.infer<typeof locationMoveSchema>

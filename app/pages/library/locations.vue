@@ -84,6 +84,8 @@ async function createLocation(parentLocationId: string | null, name: string) {
 }
 
 async function renameLocation(locationId: string, name: string) {
+  if (isMutating.value) return
+
   isMutating.value = true
   try {
     await $fetch(`/api/locations/${locationId}/rename`, {
@@ -100,6 +102,8 @@ async function renameLocation(locationId: string, name: string) {
 }
 
 async function moveLocation(locationId: string, parentLocationId: string | null) {
+  if (isMutating.value) return
+
   isMutating.value = true
   try {
     await $fetch(`/api/locations/${locationId}/move`, {
@@ -122,7 +126,7 @@ function openDelete(location: BookLocationWithCount) {
 }
 
 async function deleteLocation() {
-  if (!deleteTarget.value || !canConfirmDelete.value) return
+  if (isMutating.value || !deleteTarget.value || !canConfirmDelete.value) return
 
   isMutating.value = true
   try {
