@@ -68,6 +68,7 @@ async function createLocation(parentLocationId: string | null, name: string) {
   if (!trimmedName || isCreating.value || isMutating.value) return
 
   isCreating.value = true
+  isMutating.value = true
   try {
     await $fetch('/api/locations', {
       method: 'POST',
@@ -80,6 +81,7 @@ async function createLocation(parentLocationId: string | null, name: string) {
     showErrorToast('Failed to add location', err)
   } finally {
     isCreating.value = false
+    isMutating.value = false
   }
 }
 
