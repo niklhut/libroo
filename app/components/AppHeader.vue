@@ -44,6 +44,11 @@ const links = computed<NavigationMenuItem[]>(() => {
         to: '/library/locations'
       },
       {
+        label: 'Settings',
+        icon: 'i-lucide-settings',
+        to: '/settings'
+      },
+      {
         label: 'Sign Out',
         icon: 'i-lucide-log-out',
         color: 'neutral' as const,
