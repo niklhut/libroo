@@ -82,6 +82,12 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true
   },
+  user: {
+    changeEmail: {
+      enabled: true,
+      updateEmailWithoutVerification: true
+    }
+  },
   socialProviders: {
     // Placeholder for social providers
     // google: {
