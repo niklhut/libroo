@@ -7,6 +7,7 @@ definePageMeta({
 })
 
 const route = useRoute()
+const config = useRuntimeConfig()
 const authStore = useAuthStore()
 const { user } = storeToRefs(authStore)
 const { signUp } = authStore
@@ -102,9 +103,15 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
     } else {
       toast.add({
         title: 'Account created!',
-        description: 'Welcome to Libroo.',
+        description: config.public.emailVerificationEnabled
+          ? 'Check your email to verify your account before signing in.'
+          : 'Welcome to Libroo.',
         color: 'success'
       })
+
+      if (config.public.emailVerificationEnabled) {
+        await navigateTo('/login')
+      }
     }
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : 'An unexpected error occurred'

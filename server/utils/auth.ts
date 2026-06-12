@@ -4,6 +4,8 @@ import { admin } from 'better-auth/plugins'
 import * as schema from '@nuxthub/db/schema'
 import { db } from '@nuxthub/db'
 import { librooAdminPolicyPlugin } from './libroo-admin-auth-plugin'
+import { getEmailVerificationConfig, validateEmailVerificationConfig } from './email-verification-config'
+import { sendEmailMessage } from '../services/email.service'
 
 interface EnvSecretOptions {
   envKey: string
@@ -72,6 +74,18 @@ const getAuthUrl = () => getEnvSecret({
     + 'Using default http://localhost:3000 which may cause authentication failures.'
 })
 
+const emailVerificationConfig = getEmailVerificationConfig()
+validateEmailVerificationConfig(emailVerificationConfig)
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll('\'', '&#39;')
+}
+
 export const auth = betterAuth({
   baseURL: getAuthUrl(),
   secret: getAuthSecret(),
@@ -80,12 +94,49 @@ export const auth = betterAuth({
     schema
   }),
   emailAndPassword: {
-    enabled: true
+    enabled: true,
+    requireEmailVerification: emailVerificationConfig.enabled,
+    autoSignIn: emailVerificationConfig.enabled ? false : undefined
+  },
+  emailVerification: emailVerificationConfig.enabled
+    ? {
+        sendOnSignUp: true,
+        sendOnSignIn: true,
+        autoSignInAfterVerification: true,
+        expiresIn: 60 * 60 * 24,
+        sendVerificationEmail: async ({ user, url }) => {
+          const displayName = escapeHtml(user.name)
+          await sendEmailMessage({
+            to: user.email,
+            subject: 'Verify your Libroo email address',
+            text: [
+              `Hello ${user.name},`,
+              '',
+              'Verify your email address for Libroo by opening this link:',
+              url,
+              '',
+              'This link expires in 24 hours. If you did not request this, you can ignore this email.'
+            ].join('\n'),
+            html: [
+              `<p>Hello ${displayName},</p>`,
+              '<p>Verify your email address for Libroo by opening this link:</p>',
+              `<p><a href="${url}">Verify email address</a></p>`,
+              '<p>This link expires in 24 hours. If you did not request this, you can ignore this email.</p>'
+            ].join('')
+          })
+        }
+      }
+    : undefined,
+  trustedOrigins: [getAuthUrl()],
+  advanced: {
+    crossSubDomainCookies: {
+      enabled: false
+    }
   },
   user: {
     changeEmail: {
       enabled: true,
-      updateEmailWithoutVerification: true
+      updateEmailWithoutVerification: !emailVerificationConfig.enabled
     }
   },
   socialProviders: {

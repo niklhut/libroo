@@ -73,7 +73,9 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
     const result = await signIn(payload.data.email, payload.data.password)
 
     if (result.error) {
-      error.value = result.error.message || 'Failed to sign in'
+      error.value = result.error.code === 'EMAIL_NOT_VERIFIED'
+        ? 'Verify your email address before signing in. A new verification email has been sent.'
+        : result.error.message || 'Failed to sign in'
       toast.add({
         title: 'Sign in failed',
         description: error.value,

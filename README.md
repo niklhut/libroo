@@ -31,6 +31,40 @@ BETTER_AUTH_SECRET=<output from openssl rand -base64 32>
 BETTER_AUTH_URL=https://your-libroo.example.com
 ```
 
+## Email Verification
+
+Email verification is disabled by default so local and private installs keep the existing registration, sign-in, and email-change flow.
+
+For hosted or self-hosted deployments where account ownership should be enforced, enable verification and choose an email provider.
+
+SMTP delivery:
+
+```bash
+LIBROO_EMAIL_VERIFICATION_ENABLED=true
+LIBROO_EMAIL_PROVIDER=smtp
+LIBROO_EMAIL_FROM="Libroo <no-reply@your-libroo.example.com>"
+LIBROO_SMTP_HOST=smtp.example.com
+LIBROO_SMTP_PORT=587
+LIBROO_SMTP_SECURE=false
+LIBROO_SMTP_USER=your-smtp-user
+LIBROO_SMTP_PASSWORD=your-smtp-password
+```
+
+Plunk delivery:
+
+```bash
+LIBROO_EMAIL_VERIFICATION_ENABLED=true
+LIBROO_EMAIL_PROVIDER=plunk
+LIBROO_PLUNK_API_KEY=sk_your_secret_key
+LIBROO_PLUNK_BASE_URL=https://next-api.useplunk.com
+```
+
+For a self-hosted Plunk instance, set `LIBROO_PLUNK_BASE_URL` to your Plunk API origin. Libroo renders the email subject, HTML, and plain text locally, then sends the same rendered message through SMTP or Plunk.
+
+When verification is enabled, Libroo fails startup if required email delivery settings are missing. New users must verify before normal app access, and email changes remain pending until the new address is verified. Users can resend verification mail from Settings. Verification links show clear success, expired-link, and invalid-link states.
+
+If `LIBROO_EMAIL_VERIFICATION_ENABLED=false` or unset, Libroo does not send verification mail and email changes apply immediately.
+
 Deploy the application with an empty database, then open `/register` on your deployed instance and create the first account. The first registered account becomes the administrator automatically.
 
 ## Local Development

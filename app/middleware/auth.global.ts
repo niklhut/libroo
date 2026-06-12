@@ -23,6 +23,15 @@ export default defineNuxtRouteMiddleware(async (to) => {
     return navigateTo('/login')
   }
 
+  const config = useRuntimeConfig()
+  const canUseUnverifiedAccount = to.path === '/settings' || to.path.startsWith('/verify-email')
+  if (config.public.emailVerificationEnabled && session.value.user.emailVerified !== true && !canUseUnverifiedAccount) {
+    return navigateTo({
+      path: '/settings',
+      query: { verify: 'required', redirect: to.fullPath }
+    })
+  }
+
   if (to.path.startsWith('/admin')) {
     const role = session.value.user.role
     const roles = typeof role === 'string' ? role.split(',').map(part => part.trim()) : []
