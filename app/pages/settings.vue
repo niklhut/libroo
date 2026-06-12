@@ -14,7 +14,8 @@ const authStore = useAuthStore()
 const { user } = storeToRefs(authStore)
 
 const emailState = reactive({
-  email: user.value?.email ?? ''
+  email: user.value?.email ?? '',
+  currentPassword: ''
 })
 const passwordState = reactive({
   currentPassword: '',
@@ -24,6 +25,7 @@ const passwordState = reactive({
 
 const isChangingEmail = ref(false)
 const isChangingPassword = ref(false)
+const showEmailCurrentPassword = ref(false)
 const showCurrentPassword = ref(false)
 const showNewPassword = ref(false)
 const showConfirmPassword = ref(false)
@@ -61,6 +63,22 @@ async function changeEmail(payload: FormSubmitEvent<AccountEmailChangeSchema>) {
   isChangingEmail.value = true
 
   try {
+    try {
+      await $fetch('/api/auth/verify-password', {
+        method: 'POST',
+        body: {
+          password: payload.data.currentPassword
+        }
+      })
+    } catch {
+      toast.add({
+        title: 'Email change failed',
+        description: 'Current password is incorrect.',
+        color: 'error'
+      })
+      return
+    }
+
     const result = await authClient.changeEmail({
       newEmail: payload.data.email
     })
@@ -78,6 +96,7 @@ async function changeEmail(payload: FormSubmitEvent<AccountEmailChangeSchema>) {
       title: 'Email updated',
       color: 'success'
     })
+    emailState.currentPassword = ''
   } catch (err: unknown) {
     toast.add({
       title: 'Email change failed',
@@ -256,12 +275,36 @@ async function importLibraryCsvFile() {
                 autocomplete="email"
               />
             </UFormField>
+            <UFormField
+              label="Current password"
+              name="currentPassword"
+              required
+            >
+              <UInput
+                v-model="emailState.currentPassword"
+                :type="showEmailCurrentPassword ? 'text' : 'password'"
+                class="w-full"
+                autocomplete="current-password"
+              >
+                <template #trailing>
+                  <UButton
+                    type="button"
+                    color="neutral"
+                    variant="ghost"
+                    size="xs"
+                    :icon="showEmailCurrentPassword ? 'i-lucide-eye-off' : 'i-lucide-eye'"
+                    :aria-label="showEmailCurrentPassword ? 'Hide current password' : 'Show current password'"
+                    @click="showEmailCurrentPassword = !showEmailCurrentPassword"
+                  />
+                </template>
+              </UInput>
+            </UFormField>
 
             <UButton
               type="submit"
               icon="i-lucide-mail"
               :loading="isChangingEmail"
-              :disabled="isChangingEmail || emailState.email === user?.email"
+              :disabled="isChangingEmail || emailState.email === user?.email || !emailState.currentPassword"
             >
               Change email
             </UButton>

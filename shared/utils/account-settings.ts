@@ -1,7 +1,9 @@
 import * as z from 'zod'
 
 export const accountEmailChangeSchema = z.object({
-  email: z.email({ error: 'Please enter a valid email address' })
+  email: z.email({ error: 'Please enter a valid email address' }),
+  currentPassword: z.string({ error: 'Current password is required' })
+    .min(1, { error: 'Current password is required' })
 })
 
 export type AccountEmailChangeSchema = z.infer<typeof accountEmailChangeSchema>

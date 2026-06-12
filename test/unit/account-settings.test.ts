@@ -3,13 +3,27 @@ import { accountEmailChangeSchema, accountPasswordChangeSchema } from '../../sha
 
 describe('account settings validation', () => {
   it('accepts a valid email change request', () => {
-    expect(accountEmailChangeSchema.parse({ email: 'ada@example.com' })).toEqual({
-      email: 'ada@example.com'
+    expect(accountEmailChangeSchema.parse({
+      email: 'ada@example.com',
+      currentPassword: 'current-password'
+    })).toEqual({
+      email: 'ada@example.com',
+      currentPassword: 'current-password'
     })
   })
 
   it('rejects invalid email addresses', () => {
-    expect(() => accountEmailChangeSchema.parse({ email: 'not-an-email' })).toThrow()
+    expect(() => accountEmailChangeSchema.parse({
+      email: 'not-an-email',
+      currentPassword: 'current-password'
+    })).toThrow()
+  })
+
+  it('requires the current password for email changes', () => {
+    expect(() => accountEmailChangeSchema.parse({
+      email: 'ada@example.com',
+      currentPassword: ''
+    })).toThrow()
   })
 
   it('accepts a valid password change request', () => {
