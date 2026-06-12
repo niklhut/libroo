@@ -21,13 +21,20 @@ const BaseServicesLive = Layer.mergeAll(
 
 // Repository layer (depends on base services)
 const RepositoriesLive = Layer.provideMerge(
-  Layer.mergeAll(BookRepositoryLive, OpenLibraryRepositoryLive, LendingRepositoryLive, AdminRepositoryLive, LocationRepositoryLive),
+  Layer.mergeAll(
+    BookRepositoryLive,
+    OpenLibraryRepositoryLive,
+    LendingRepositoryLive,
+    AdminRepositoryLive,
+    LocationRepositoryLive,
+    LibraryTransferRepositoryLive
+  ),
   BaseServicesLive
 )
 
 // Service layer (depends on repositories)
 const ServicesLive = Layer.provideMerge(
-  Layer.mergeAll(BookServiceLive, LendingServiceLive, AdminServiceLive, LocationServiceLive),
+  Layer.mergeAll(BookServiceLive, LendingServiceLive, AdminServiceLive, LocationServiceLive, LibraryTransferServiceLive),
   RepositoriesLive
 )
 
@@ -44,10 +51,12 @@ export type MainServices
     | LendingRepository
     | AdminRepository
     | LocationRepository
+    | LibraryTransferRepository
     | BookService
     | LendingService
     | AdminService
     | LocationService
+    | LibraryTransferService
     | HttpClient.HttpClient
 
 // Helper to safely get property from unknown object
@@ -70,6 +79,7 @@ const errorStatusCodes: Record<string, number> = {
   InvalidTagError: 400,
   InvalidReadingProgressError: 400,
   InvalidManualCoverError: 400,
+  InvalidLibraryCsvError: 400,
   InvalidLocationError: 400,
   InvalidLocationMoveError: 400,
   LocationNotFoundError: 404,

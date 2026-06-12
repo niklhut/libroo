@@ -417,6 +417,15 @@ export const bookReadingProgressSchema = z.object({
 
 export type BookReadingProgressSchema = z.infer<typeof bookReadingProgressSchema>
 
+export const libraryImportSchema = z.object({
+  csv: z.string({ error: 'CSV content is required' })
+    .min(1, { error: 'CSV content is required' })
+    .max(10 * 1024 * 1024, { error: 'CSV file is too large' }),
+  conflictStrategy: z.enum(['existing', 'csv'], { error: 'Conflict strategy is invalid' }).default('existing')
+})
+
+export type LibraryImportSchema = z.infer<typeof libraryImportSchema>
+
 export const createLoanSchema = z.object({
   borrowerDisplayName: z.string({ error: 'Borrower name is required' })
     .trim()

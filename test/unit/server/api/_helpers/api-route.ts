@@ -128,6 +128,8 @@ interface ApiRouteTestGlobals {
   getInvitePreview: (...args: unknown[]) => unknown
   acceptBookInvite: (...args: unknown[]) => unknown
   getBlob: (...args: unknown[]) => unknown
+  exportLibraryCsv: (...args: unknown[]) => unknown
+  importLibraryCsv: (...args: unknown[]) => unknown
   bookIsbnSchema: unknown
   bookBatchDeleteSchema: unknown
   bookTagAddSchema: unknown
@@ -137,6 +139,7 @@ interface ApiRouteTestGlobals {
   locationRenameSchema: unknown
   locationMoveSchema: unknown
   locationDeleteSchema: unknown
+  libraryImportSchema: unknown
 }
 
 const testGlobal = globalThis as typeof globalThis & Partial<ApiRouteTestGlobals>
@@ -176,7 +179,9 @@ export const serviceMocks = {
   listBooksLentToUser: vi.fn(),
   getInvitePreview: vi.fn(),
   acceptBookInvite: vi.fn(),
-  getBlob: vi.fn()
+  getBlob: vi.fn(),
+  exportLibraryCsv: vi.fn(),
+  importLibraryCsv: vi.fn()
 }
 
 export function getAuthHandlerMock() {
@@ -222,12 +227,18 @@ const originalGlobals = {
   getInvitePreview: testGlobal.getInvitePreview,
   acceptBookInvite: testGlobal.acceptBookInvite,
   getBlob: testGlobal.getBlob,
+  exportLibraryCsv: testGlobal.exportLibraryCsv,
+  importLibraryCsv: testGlobal.importLibraryCsv,
   bookIsbnSchema: testGlobal.bookIsbnSchema,
   bookBatchDeleteSchema: testGlobal.bookBatchDeleteSchema,
   bookTagAddSchema: testGlobal.bookTagAddSchema,
   createLoanSchema: testGlobal.createLoanSchema,
   manualBookCreateSchema: testGlobal.manualBookCreateSchema,
-  locationCreateSchema: testGlobal.locationCreateSchema
+  locationCreateSchema: testGlobal.locationCreateSchema,
+  locationRenameSchema: testGlobal.locationRenameSchema,
+  locationMoveSchema: testGlobal.locationMoveSchema,
+  locationDeleteSchema: testGlobal.locationDeleteSchema,
+  libraryImportSchema: testGlobal.libraryImportSchema
 }
 
 const createHttpError: HttpErrorFactory = (input) => {
@@ -308,6 +319,8 @@ export async function setupApiRouteTest() {
   testGlobal.getInvitePreview = (...args: unknown[]) => serviceMocks.getInvitePreview(...args)
   testGlobal.acceptBookInvite = (...args: unknown[]) => serviceMocks.acceptBookInvite(...args)
   testGlobal.getBlob = (...args: unknown[]) => serviceMocks.getBlob(...args)
+  testGlobal.exportLibraryCsv = (...args: unknown[]) => serviceMocks.exportLibraryCsv(...args)
+  testGlobal.importLibraryCsv = (...args: unknown[]) => serviceMocks.importLibraryCsv(...args)
 
   const schemas = await import('../../../../../shared/utils/schemas')
   testGlobal.bookIsbnSchema = schemas.bookIsbnSchema
@@ -319,6 +332,7 @@ export async function setupApiRouteTest() {
   testGlobal.locationRenameSchema = schemas.locationRenameSchema
   testGlobal.locationMoveSchema = schemas.locationMoveSchema
   testGlobal.locationDeleteSchema = schemas.locationDeleteSchema
+  testGlobal.libraryImportSchema = schemas.libraryImportSchema
 
   for (const mock of Object.values(serviceMocks)) {
     mock.mockReset()

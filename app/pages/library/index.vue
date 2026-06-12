@@ -77,6 +77,14 @@ sortBy.value = routeState.sortBy ?? 'dateAdded'
 const isLoadingMore = ref(false)
 const filterRefreshTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 const ALL_LOCATIONS_VALUE = '__all_locations__'
+const importModalOpen = ref(false)
+const importFileInput = ref<HTMLInputElement | null>(null)
+const importFileName = ref('')
+const importCsv = ref('')
+const importConflictStrategy = ref<'existing' | 'csv'>('existing')
+const isImporting = ref(false)
+const isExporting = ref(false)
+const LIBRARY_IMPORT_MAX_BYTES = 10 * 1024 * 1024
 
 // Selection state
 const isSelectMode = ref(false)
@@ -205,6 +213,10 @@ const sortItems = [
   { label: 'Title', value: 'title' },
   { label: 'Author', value: 'author' }
 ]
+const importConflictItems = [
+  { label: 'Keep existing', value: 'existing' },
+  { label: 'Use CSV values', value: 'csv' }
+]
 const selectedLocationFilter = computed({
   get: () => locationId.value || ALL_LOCATIONS_VALUE,
   set: (value: string) => {
@@ -247,6 +259,12 @@ watch([search, loanStatus, readingStatus, tag, location, locationId, includeLoca
 watch(locationId, (nextLocationId) => {
   if (!nextLocationId) {
     includeLocationDescendants.value = false
+  }
+})
+
+watch(importModalOpen, (isOpen) => {
+  if (!isOpen && !isImporting.value) {
+    resetImportDialog()
   }
 })
 
@@ -331,6 +349,110 @@ async function loadMore() {
     } finally {
       isLoadingMore.value = false
     }
+  }
+}
+
+async function downloadLibraryCsv() {
+  if (!import.meta.client) return
+
+  isExporting.value = true
+  try {
+    const csv = await $fetch<string>('/api/library/export', { responseType: 'text' })
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `libroo-library-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+    URL.revokeObjectURL(url)
+  } catch (err: unknown) {
+    const message = err instanceof Error
+      ? err.message
+      : (err as { data?: { message?: string } })?.data?.message || 'Unable to export your library'
+    toast.add({
+      title: 'Export failed',
+      description: message,
+      color: 'error'
+    })
+  } finally {
+    isExporting.value = false
+  }
+}
+
+function openImportDialog() {
+  importModalOpen.value = true
+}
+
+function resetImportDialog() {
+  importFileName.value = ''
+  importCsv.value = ''
+  importConflictStrategy.value = 'existing'
+  if (importFileInput.value) {
+    importFileInput.value.value = ''
+  }
+}
+
+async function handleImportFileChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+
+  if (file.size > LIBRARY_IMPORT_MAX_BYTES) {
+    resetImportDialog()
+    toast.add({
+      title: 'CSV file is too large',
+      description: 'Choose a CSV file under 10 MB.',
+      color: 'warning'
+    })
+    return
+  }
+
+  importFileName.value = file.name
+  importCsv.value = await file.text()
+}
+
+async function importLibraryCsvFile() {
+  if (!importCsv.value || isImporting.value) return
+
+  isImporting.value = true
+  try {
+    const result = await $fetch<{
+      created: number
+      updated: number
+      skipped: number
+      failed: Array<{ row: number, title: string, reason: string }>
+    }>('/api/library/import', {
+      method: 'POST',
+      body: {
+        csv: importCsv.value,
+        conflictStrategy: importConflictStrategy.value
+      }
+    })
+
+    importModalOpen.value = false
+    resetImportDialog()
+    resetResultsAction()
+    page.value = 1
+    await refresh()
+
+    toast.add({
+      title: 'Import complete',
+      description: `${result.created} created, ${result.updated} updated, ${result.skipped} skipped${result.failed.length ? `, ${result.failed.length} failed` : ''}.`,
+      color: result.failed.length ? 'warning' : 'success'
+    })
+  } catch (err: unknown) {
+    const message = err instanceof Error
+      ? err.message
+      : (err as { data?: { message?: string } })?.data?.message || 'Unable to import your library'
+    toast.add({
+      title: 'Import failed',
+      description: message,
+      color: 'error'
+    })
+  } finally {
+    isImporting.value = false
   }
 }
 
@@ -452,6 +574,26 @@ async function deleteSelected() {
           Locations
         </UButton>
         <UButton
+          icon="i-lucide-upload"
+          size="lg"
+          color="neutral"
+          variant="outline"
+          @click="openImportDialog"
+        >
+          Import
+        </UButton>
+        <UButton
+          icon="i-lucide-download"
+          size="lg"
+          color="neutral"
+          variant="outline"
+          :loading="isExporting"
+          :disabled="isExporting"
+          @click="downloadLibraryCsv"
+        >
+          Export
+        </UButton>
+        <UButton
           icon="i-lucide-plus"
           size="lg"
           to="/library/add"
@@ -463,6 +605,57 @@ async function deleteSelected() {
 
     <!-- Page Body -->
     <UPageBody>
+      <UModal
+        v-model:open="importModalOpen"
+        title="Import library CSV"
+        description="Restore books from a Libroo export."
+        :ui="{ footer: 'justify-end gap-3' }"
+      >
+        <template #body>
+          <div class="space-y-4">
+            <input
+              ref="importFileInput"
+              type="file"
+              accept=".csv,text/csv"
+              class="hidden"
+              @change="handleImportFileChange"
+            >
+            <UButton
+              icon="i-lucide-file-up"
+              color="neutral"
+              variant="outline"
+              @click="importFileInput?.click()"
+            >
+              {{ importFileName || 'Choose CSV' }}
+            </UButton>
+            <URadioGroup
+              v-model="importConflictStrategy"
+              :items="importConflictItems"
+              legend="When a book already exists"
+            />
+          </div>
+        </template>
+
+        <template #footer>
+          <UButton
+            color="neutral"
+            variant="soft"
+            :disabled="isImporting"
+            @click="resetImportDialog(); importModalOpen = false"
+          >
+            Cancel
+          </UButton>
+          <UButton
+            icon="i-lucide-upload"
+            :loading="isImporting"
+            :disabled="!importCsv || isImporting"
+            @click="importLibraryCsvFile"
+          >
+            Import
+          </UButton>
+        </template>
+      </UModal>
+
       <div class="mb-6 space-y-3">
         <UInput
           v-model="search"
