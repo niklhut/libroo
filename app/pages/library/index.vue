@@ -84,6 +84,7 @@ const importCsv = ref('')
 const importConflictStrategy = ref<'existing' | 'csv'>('existing')
 const isImporting = ref(false)
 const isExporting = ref(false)
+const LIBRARY_IMPORT_MAX_BYTES = 10 * 1024 * 1024
 
 // Selection state
 const isSelectMode = ref(false)
@@ -261,6 +262,12 @@ watch(locationId, (nextLocationId) => {
   }
 })
 
+watch(importModalOpen, (isOpen) => {
+  if (!isOpen && !isImporting.value) {
+    resetImportDialog()
+  }
+})
+
 async function applyFilters() {
   resetResultsAction()
   selectedBooks.value = new Set()
@@ -391,6 +398,16 @@ async function handleImportFileChange(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   if (!file) return
+
+  if (file.size > LIBRARY_IMPORT_MAX_BYTES) {
+    resetImportDialog()
+    toast.add({
+      title: 'CSV file is too large',
+      description: 'Choose a CSV file under 10 MB.',
+      color: 'warning'
+    })
+    return
+  }
 
   importFileName.value = file.name
   importCsv.value = await file.text()
@@ -624,7 +641,7 @@ async function deleteSelected() {
             color="neutral"
             variant="soft"
             :disabled="isImporting"
-            @click="importModalOpen = false"
+            @click="resetImportDialog(); importModalOpen = false"
           >
             Cancel
           </UButton>

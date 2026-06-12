@@ -109,7 +109,7 @@ export function parseLibraryCsv(csv: string): LibraryCsvRow[] {
   const [header, ...dataRows] = records.filter(row => row.some(value => value.trim() !== ''))
   if (!header) return []
 
-  const headerIndexes = new Map(header.map((column, index) => [column.trim(), index]))
+  const headerIndexes = new Map(header.map((column, index) => [column.replace(/^\uFEFF/, '').trim(), index]))
   const missingColumns = libraryCsvColumns.filter(column => !headerIndexes.has(column))
   if (missingColumns.length > 0) {
     throw new Error(`CSV is missing required columns: ${missingColumns.join(', ')}`)

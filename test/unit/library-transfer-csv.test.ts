@@ -54,4 +54,11 @@ describe('library transfer CSV', () => {
     expect(parseCsvList(encoded)).toEqual(authors)
     expect(parseCsvList('classic; sci-fi')).toEqual(['classic', 'sci-fi'])
   })
+
+  it('accepts a UTF-8 BOM before the first header cell', () => {
+    const csv = `\uFEFFtitle,authors,isbn,tags,location,reading_status,current_page,progress_percent,rating,note,added_date,active_loan_status,active_loan_borrower,active_loan_loaned_at,active_loan_due_at
+Dune,["Frank Herbert"],9780441172719,[],Shelf,read,,100,5,,2026-06-12T10:00:00.000Z,,,,`
+
+    expect(parseLibraryCsv(csv)[0]?.title).toBe('Dune')
+  })
 })
