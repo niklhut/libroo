@@ -38,11 +38,13 @@ const { data: verificationStatus, refresh: refreshVerificationStatus } = await u
   enabled: boolean
   email: string
   verified: boolean
+  pendingEmail: string | null
 }>('/api/auth/verification-status', {
   default: () => ({
     enabled: Boolean(config.public.emailVerificationEnabled),
     email: user.value?.email ?? '',
-    verified: user.value?.emailVerified === true
+    verified: user.value?.emailVerified === true,
+    pendingEmail: null
   })
 })
 
@@ -69,6 +71,10 @@ watch(user, (nextUser) => {
     pendingEmailChange.value = ''
   }
 })
+
+watch(verificationStatus, (nextStatus) => {
+  pendingEmailChange.value = nextStatus.pendingEmail ?? ''
+}, { immediate: true })
 
 if (route.query.verify === 'required') {
   toast.add({
@@ -122,6 +128,12 @@ async function changeEmail(payload: FormSubmitEvent<AccountEmailChangeSchema>) {
     }
 
     if (verificationStatus.value.enabled) {
+      await $fetch('/api/auth/pending-email-change', {
+        method: 'POST',
+        body: {
+          pendingEmail: payload.data.email
+        }
+      })
       pendingEmailChange.value = payload.data.email
       toast.add({
         title: 'Verification email sent',
@@ -155,9 +167,10 @@ async function resendVerificationEmail() {
     await $fetch('/api/auth/resend-verification', {
       method: 'POST'
     })
+    await refreshVerificationStatus()
     toast.add({
       title: 'Verification email sent',
-      description: `Check ${verificationStatus.value.email || user.value?.email}.`,
+      description: `Check ${verificationStatus.value.pendingEmail || verificationStatus.value.email || user.value?.email}.`,
       color: 'success'
     })
   } catch (err: unknown) {
@@ -352,7 +365,7 @@ async function importLibraryCsvFile() {
             />
 
             <UButton
-              v-if="!verificationStatus.verified"
+              v-if="!verificationStatus.verified || pendingEmailChange"
               type="button"
               icon="i-lucide-send"
               color="neutral"

@@ -1,6 +1,7 @@
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { admin } from 'better-auth/plugins'
+import { eq } from 'drizzle-orm'
 import * as schema from '@nuxthub/db/schema'
 import { db } from '@nuxthub/db'
 import { librooAdminPolicyPlugin } from './libroo-admin-auth-plugin'
@@ -104,8 +105,15 @@ export const auth = betterAuth({
         sendOnSignIn: true,
         autoSignInAfterVerification: true,
         expiresIn: 60 * 60 * 24,
+        afterEmailVerification: async (user) => {
+          await db
+            .update(schema.user)
+            .set({ pendingEmail: null })
+            .where(eq(schema.user.id, user.id))
+        },
         sendVerificationEmail: async ({ user, url }) => {
           const displayName = escapeHtml(user.name)
+          const safeUrl = escapeHtml(url)
           await sendEmailMessage({
             to: user.email,
             subject: 'Verify your Libroo email address',
@@ -120,7 +128,7 @@ export const auth = betterAuth({
             html: [
               `<p>Hello ${displayName},</p>`,
               '<p>Verify your email address for Libroo by opening this link:</p>',
-              `<p><a href="${url}">Verify email address</a></p>`,
+              `<p><a href="${safeUrl}">Verify email address</a></p>`,
               '<p>This link expires in 24 hours. If you did not request this, you can ignore this email.</p>'
             ].join('')
           })

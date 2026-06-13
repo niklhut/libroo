@@ -10,4 +10,8 @@ describe('email verification status mapping', () => {
     expect(getEmailVerificationFailureStatus({ statusText: 'INVALID_TOKEN' })).toBe('invalid')
     expect(getEmailVerificationFailureStatus({ code: 'TOKEN_ALREADY_USED' })).toBe('invalid')
   })
+
+  it('maps unknown failures to the failure state', () => {
+    expect(getEmailVerificationFailureStatus({ statusText: 'INTERNAL_SERVER_ERROR' })).toBe('failure')
+  })
 })

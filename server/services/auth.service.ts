@@ -1,14 +1,28 @@
 import { Context, Effect, Layer, Data } from 'effect'
 import type { H3Event } from 'h3'
 import type { User } from 'better-auth/types'
+import * as z from 'zod'
 import { isActiveBan } from '~~/shared/utils/auth-status'
 import { auth } from '../utils/auth'
 import { getEmailVerificationConfig } from '../utils/email-verification-config'
+import type { AuthRepository } from '../repositories/auth.repository'
+import { clearPendingEmail, getPendingEmail, setPendingEmail } from '../repositories/auth.repository'
+import type { DatabaseError } from '../repositories/book.repository'
 
 // Error types
 export class UnauthorizedError extends Data.TaggedError('UnauthorizedError')<{
   message?: string
 }> { }
+
+export class VerificationEmailDeliveryError extends Data.TaggedError('VerificationEmailDeliveryError')<{
+  message?: string
+}> { }
+
+export class InvalidPendingEmailError extends Data.TaggedError('InvalidPendingEmailError')<{
+  message?: string
+}> { }
+
+const pendingEmailSchema = z.email()
 
 // Type for the complete session data returned by auth.api.getSession
 // Inferred from the actual return type to ensure it stays in sync with Better Auth
@@ -23,8 +37,11 @@ export interface AuthServiceInterface {
     enabled: boolean
     email: string
     verified: boolean
-  }, UnauthorizedError>
-  resendVerificationEmail: (event: H3Event) => Effect.Effect<{ status: boolean }, UnauthorizedError>
+    pendingEmail: string | null
+  }, UnauthorizedError | DatabaseError, AuthRepository>
+  setPendingEmailChange: (event: H3Event, pendingEmail: string) => Effect.Effect<{ pendingEmail: string }, UnauthorizedError | InvalidPendingEmailError | DatabaseError, AuthRepository>
+  clearPendingEmailChange: (event: H3Event) => Effect.Effect<{ status: boolean }, UnauthorizedError | DatabaseError, AuthRepository>
+  resendVerificationEmail: (event: H3Event) => Effect.Effect<{ status: boolean }, UnauthorizedError | VerificationEmailDeliveryError | DatabaseError, AuthRepository>
 }
 
 // Service tag
@@ -74,39 +91,85 @@ export const AuthServiceLive = Layer.succeed(AuthService, {
   getEmailVerificationStatus: event =>
     Effect.gen(function* () {
       const sessionData = yield* fetchSession(event)
+      const pendingEmail = yield* getAccountPendingEmail(sessionData.user.id, sessionData.user.email)
 
       return {
         enabled: getEmailVerificationConfig().enabled,
         email: sessionData.user.email,
-        verified: sessionData.user.emailVerified === true
+        verified: sessionData.user.emailVerified === true,
+        pendingEmail
       }
+    }),
+
+  setPendingEmailChange: (event, pendingEmail) =>
+    Effect.gen(function* () {
+      const sessionData = yield* fetchSession(event)
+      const parsed = pendingEmailSchema.safeParse(pendingEmail)
+
+      if (!parsed.success) {
+        return yield* Effect.fail(new InvalidPendingEmailError({ message: 'Pending email is invalid' }))
+      }
+
+      yield* setPendingEmail(sessionData.user.id, parsed.data)
+      return { pendingEmail: parsed.data }
+    }),
+
+  clearPendingEmailChange: event =>
+    Effect.gen(function* () {
+      const sessionData = yield* fetchSession(event)
+      yield* clearPendingEmail(sessionData.user.id)
+      return { status: true }
     }),
 
   resendVerificationEmail: event =>
     Effect.gen(function* () {
       const sessionData = yield* fetchSession(event)
       const config = getEmailVerificationConfig()
+      const pendingEmail = yield* getAccountPendingEmail(sessionData.user.id, sessionData.user.email)
 
       if (!config.enabled) {
         return { status: true }
       }
 
-      if (sessionData.user.emailVerified === true) {
+      if (!pendingEmail && sessionData.user.emailVerified === true) {
         return { status: true }
       }
 
       return yield* Effect.tryPromise({
-        try: () => auth.api.sendVerificationEmail({
-          headers: event.headers,
-          body: {
-            email: sessionData.user.email,
-            callbackURL: '/verify-email'
-          }
-        }),
-        catch: () => new UnauthorizedError({ message: 'Unable to send verification email' })
+        try: () => pendingEmail
+          ? auth.api.changeEmail({
+              headers: event.headers,
+              body: {
+                newEmail: pendingEmail,
+                callbackURL: '/verify-email'
+              }
+            })
+          : auth.api.sendVerificationEmail({
+              headers: event.headers,
+              body: {
+                email: sessionData.user.email,
+                callbackURL: '/verify-email'
+              }
+            }),
+        catch: () => new VerificationEmailDeliveryError({ message: 'Unable to send verification email' })
       })
     })
 })
+
+function getAccountPendingEmail(userId: string, currentEmail: string) {
+  return Effect.gen(function* () {
+    const pendingEmail = yield* getPendingEmail(userId)
+
+    if (!pendingEmail || pendingEmail.toLowerCase() === currentEmail.toLowerCase()) {
+      if (pendingEmail) {
+        yield* clearPendingEmail(userId)
+      }
+      return null
+    }
+
+    return pendingEmail
+  })
+}
 
 // Helper effects
 export const getCurrentUser = (event: H3Event) =>
@@ -123,3 +186,9 @@ export const getEmailVerificationStatus = (event: H3Event) =>
 
 export const resendVerificationEmail = (event: H3Event) =>
   Effect.flatMap(AuthService, service => service.resendVerificationEmail(event))
+
+export const setPendingEmailChange = (event: H3Event, pendingEmail: string) =>
+  Effect.flatMap(AuthService, service => service.setPendingEmailChange(event, pendingEmail))
+
+export const clearPendingEmailChange = (event: H3Event) =>
+  Effect.flatMap(AuthService, service => service.clearPendingEmailChange(event))

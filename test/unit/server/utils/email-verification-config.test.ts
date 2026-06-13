@@ -60,6 +60,15 @@ describe('email verification config', () => {
     expect(() => validateEmailVerificationConfig()).not.toThrow()
   })
 
+  it('requires SMTP credentials as a pair', () => {
+    process.env.LIBROO_EMAIL_VERIFICATION_ENABLED = 'true'
+    process.env.LIBROO_EMAIL_FROM = 'Libroo <no-reply@example.com>'
+    process.env.LIBROO_SMTP_HOST = 'smtp.example.com'
+    process.env.LIBROO_SMTP_PASSWORD = 'password'
+
+    expect(() => validateEmailVerificationConfig()).toThrow(/LIBROO_SMTP_USER/)
+  })
+
   it('accepts Plunk settings when enabled', () => {
     process.env.LIBROO_EMAIL_VERIFICATION_ENABLED = 'true'
     process.env.LIBROO_EMAIL_PROVIDER = 'plunk'

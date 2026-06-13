@@ -12,6 +12,7 @@ const envKeys = [
 describe('EmailService', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
+    vi.restoreAllMocks()
     for (const key of envKeys) {
       Reflect.deleteProperty(process.env, key)
     }

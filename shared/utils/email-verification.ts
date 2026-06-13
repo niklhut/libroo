@@ -1,4 +1,4 @@
-export type EmailVerificationPageStatus = 'expired' | 'invalid'
+export type EmailVerificationPageStatus = 'expired' | 'invalid' | 'failure'
 
 export function getEmailVerificationFailureStatus(error: unknown): EmailVerificationPageStatus {
   const value = typeof error === 'string'
@@ -12,5 +12,13 @@ export function getEmailVerificationFailureStatus(error: unknown): EmailVerifica
         )
       : ''
 
-  return value.includes('TOKEN_EXPIRED') ? 'expired' : 'invalid'
+  if (value.includes('TOKEN_EXPIRED')) return 'expired'
+  if (
+    value.includes('INVALID')
+    || value.includes('INVALID_TOKEN')
+    || value.includes('TOKEN_ALREADY_USED')
+  ) {
+    return 'invalid'
+  }
+  return 'failure'
 }

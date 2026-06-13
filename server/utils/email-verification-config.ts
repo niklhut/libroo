@@ -108,6 +108,9 @@ export function validateEmailVerificationConfig(config = getEmailVerificationCon
     if (config.smtp?.user && !config.smtp.password) {
       missing.push('LIBROO_SMTP_PASSWORD')
     }
+    if (!config.smtp?.user && config.smtp?.password) {
+      missing.push('LIBROO_SMTP_USER')
+    }
   }
 
   if (config.provider === 'plunk') {

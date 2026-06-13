@@ -27,7 +27,8 @@ const RepositoriesLive = Layer.provideMerge(
     LendingRepositoryLive,
     AdminRepositoryLive,
     LocationRepositoryLive,
-    LibraryTransferRepositoryLive
+    LibraryTransferRepositoryLive,
+    AuthRepositoryLive
   ),
   BaseServicesLive
 )
@@ -52,6 +53,7 @@ export type MainServices
     | AdminRepository
     | LocationRepository
     | LibraryTransferRepository
+    | AuthRepository
     | BookService
     | LendingService
     | AdminService
@@ -70,6 +72,9 @@ function getProp<T>(obj: unknown, key: string): T | undefined {
 // Error mappings for converting tagged errors to HTTP status codes
 const errorStatusCodes: Record<string, number> = {
   UnauthorizedError: 401,
+  EmailDeliveryError: 503,
+  VerificationEmailDeliveryError: 503,
+  InvalidPendingEmailError: 400,
   BookNotFoundError: 404,
   OpenLibraryBookNotFoundError: 404,
   BookAlreadyOwnedError: 409,
