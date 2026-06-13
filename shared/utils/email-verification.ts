@@ -11,12 +11,13 @@ export function getEmailVerificationFailureStatus(error: unknown): EmailVerifica
           || ''
         )
       : ''
+  const uppercaseValue = value.toUpperCase()
 
-  if (value.includes('TOKEN_EXPIRED')) return 'expired'
+  if (uppercaseValue.includes('TOKEN_EXPIRED')) return 'expired'
   if (
-    value.includes('INVALID')
-    || value.includes('INVALID_TOKEN')
-    || value.includes('TOKEN_ALREADY_USED')
+    uppercaseValue.includes('INVALID')
+    || uppercaseValue.includes('INVALID_TOKEN')
+    || uppercaseValue.includes('TOKEN_ALREADY_USED')
   ) {
     return 'invalid'
   }

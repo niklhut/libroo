@@ -113,25 +113,12 @@ async function changeEmail(payload: FormSubmitEvent<AccountEmailChangeSchema>) {
       return
     }
 
-    const result = await authClient.changeEmail({
-      newEmail: payload.data.email,
-      callbackURL: '/verify-email'
-    })
-
-    if (result.error) {
-      toast.add({
-        title: 'Email change failed',
-        description: result.error.message || 'Unable to update email',
-        color: 'error'
-      })
-      return
-    }
-
     if (verificationStatus.value.enabled) {
       await $fetch('/api/auth/pending-email-change', {
         method: 'POST',
         body: {
-          pendingEmail: payload.data.email
+          pendingEmail: payload.data.email,
+          currentPassword: payload.data.currentPassword
         }
       })
       pendingEmailChange.value = payload.data.email
@@ -141,6 +128,19 @@ async function changeEmail(payload: FormSubmitEvent<AccountEmailChangeSchema>) {
         color: 'success'
       })
     } else {
+      const result = await authClient.changeEmail({
+        newEmail: payload.data.email
+      })
+
+      if (result.error) {
+        toast.add({
+          title: 'Email change failed',
+          description: result.error.message || 'Unable to update email',
+          color: 'error'
+        })
+        return
+      }
+
       toast.add({
         title: 'Email updated',
         color: 'success'
@@ -165,7 +165,12 @@ async function resendVerificationEmail() {
 
   try {
     await $fetch('/api/auth/resend-verification', {
-      method: 'POST'
+      method: 'POST',
+      body: pendingEmailChange.value
+        ? {
+            currentPassword: emailState.currentPassword
+          }
+        : undefined
     })
     await refreshVerificationStatus()
     toast.add({
@@ -371,7 +376,7 @@ async function importLibraryCsvFile() {
               color="neutral"
               variant="outline"
               :loading="isResendingVerification"
-              :disabled="isResendingVerification"
+              :disabled="isResendingVerification || Boolean(pendingEmailChange && !emailState.currentPassword)"
               @click="resendVerificationEmail"
             >
               Resend verification email

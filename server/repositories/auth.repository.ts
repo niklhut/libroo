@@ -1,10 +1,11 @@
 import { Context, Effect, Layer } from 'effect'
-import { eq } from 'drizzle-orm'
+import { and, eq, ne, or } from 'drizzle-orm'
 import { user } from 'hub:db:schema'
 import { DatabaseError } from './book.repository'
 
 export interface AuthRepositoryInterface {
   getPendingEmail: (userId: string) => Effect.Effect<string | null, DatabaseError>
+  emailIsInUse: (userId: string, email: string) => Effect.Effect<boolean, DatabaseError>
   setPendingEmail: (userId: string, pendingEmail: string) => Effect.Effect<void, DatabaseError>
   clearPendingEmail: (userId: string) => Effect.Effect<void, DatabaseError>
 }
@@ -28,10 +29,39 @@ export const AuthRepositoryLive = Layer.effect(
 
             return row?.pendingEmail ?? null
           },
-          catch: error => new DatabaseError({
-            message: `Failed to load pending email: ${error}`,
-            operation: 'auth.getPendingEmail'
-          })
+          catch: (error) => {
+            console.error('auth.getPendingEmail failed:', error)
+            return new DatabaseError({
+              message: 'Failed to load pending email',
+              operation: 'auth.getPendingEmail'
+            })
+          }
+        }),
+
+      emailIsInUse: (userId, email) =>
+        Effect.tryPromise({
+          try: async () => {
+            const [row] = await dbService.db
+              .select({ id: user.id })
+              .from(user)
+              .where(and(
+                ne(user.id, userId),
+                or(
+                  eq(user.email, email),
+                  eq(user.pendingEmail, email)
+                )
+              ))
+              .limit(1)
+
+            return Boolean(row)
+          },
+          catch: (error) => {
+            console.error('auth.emailIsInUse failed:', error)
+            return new DatabaseError({
+              message: 'Failed to check email availability',
+              operation: 'auth.emailIsInUse'
+            })
+          }
         }),
 
       setPendingEmail: (userId, pendingEmail) =>
@@ -45,10 +75,13 @@ export const AuthRepositoryLive = Layer.effect(
               })
               .where(eq(user.id, userId))
           },
-          catch: error => new DatabaseError({
-            message: `Failed to set pending email: ${error}`,
-            operation: 'auth.setPendingEmail'
-          })
+          catch: (error) => {
+            console.error('auth.setPendingEmail failed:', error)
+            return new DatabaseError({
+              message: 'Failed to set pending email',
+              operation: 'auth.setPendingEmail'
+            })
+          }
         }),
 
       clearPendingEmail: userId =>
@@ -62,10 +95,13 @@ export const AuthRepositoryLive = Layer.effect(
               })
               .where(eq(user.id, userId))
           },
-          catch: error => new DatabaseError({
-            message: `Failed to clear pending email: ${error}`,
-            operation: 'auth.clearPendingEmail'
-          })
+          catch: (error) => {
+            console.error('auth.clearPendingEmail failed:', error)
+            return new DatabaseError({
+              message: 'Failed to clear pending email',
+              operation: 'auth.clearPendingEmail'
+            })
+          }
         })
     }
   })
@@ -73,6 +109,9 @@ export const AuthRepositoryLive = Layer.effect(
 
 export const getPendingEmail = (userId: string) =>
   Effect.flatMap(AuthRepository, repository => repository.getPendingEmail(userId))
+
+export const emailIsInUse = (userId: string, email: string) =>
+  Effect.flatMap(AuthRepository, repository => repository.emailIsInUse(userId, email))
 
 export const setPendingEmail = (userId: string, pendingEmail: string) =>
   Effect.flatMap(AuthRepository, repository => repository.setPendingEmail(userId, pendingEmail))

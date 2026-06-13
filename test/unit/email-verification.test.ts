@@ -3,11 +3,11 @@ import { getEmailVerificationFailureStatus } from '../../shared/utils/email-veri
 
 describe('email verification status mapping', () => {
   it('maps expired token errors to the expired state', () => {
-    expect(getEmailVerificationFailureStatus({ statusText: 'TOKEN_EXPIRED' })).toBe('expired')
+    expect(getEmailVerificationFailureStatus({ statusText: 'token_expired' })).toBe('expired')
   })
 
   it('maps invalid and already-used token errors to the invalid state', () => {
-    expect(getEmailVerificationFailureStatus({ statusText: 'INVALID_TOKEN' })).toBe('invalid')
+    expect(getEmailVerificationFailureStatus({ statusText: 'invalid_token' })).toBe('invalid')
     expect(getEmailVerificationFailureStatus({ code: 'TOKEN_ALREADY_USED' })).toBe('invalid')
   })
 

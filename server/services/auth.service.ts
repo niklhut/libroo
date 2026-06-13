@@ -6,7 +6,7 @@ import { isActiveBan } from '~~/shared/utils/auth-status'
 import { auth } from '../utils/auth'
 import { getEmailVerificationConfig } from '../utils/email-verification-config'
 import type { AuthRepository } from '../repositories/auth.repository'
-import { clearPendingEmail, getPendingEmail, setPendingEmail } from '../repositories/auth.repository'
+import { clearPendingEmail, emailIsInUse, getPendingEmail, setPendingEmail } from '../repositories/auth.repository'
 import type { DatabaseError } from '../repositories/book.repository'
 
 // Error types
@@ -19,6 +19,10 @@ export class VerificationEmailDeliveryError extends Data.TaggedError('Verificati
 }> { }
 
 export class InvalidPendingEmailError extends Data.TaggedError('InvalidPendingEmailError')<{
+  message?: string
+}> { }
+
+export class PendingEmailConflictError extends Data.TaggedError('PendingEmailConflictError')<{
   message?: string
 }> { }
 
@@ -39,9 +43,9 @@ export interface AuthServiceInterface {
     verified: boolean
     pendingEmail: string | null
   }, UnauthorizedError | DatabaseError, AuthRepository>
-  setPendingEmailChange: (event: H3Event, pendingEmail: string) => Effect.Effect<{ pendingEmail: string }, UnauthorizedError | InvalidPendingEmailError | DatabaseError, AuthRepository>
+  setPendingEmailChange: (event: H3Event, pendingEmail: string, currentPassword: string) => Effect.Effect<{ pendingEmail: string }, UnauthorizedError | InvalidPendingEmailError | PendingEmailConflictError | VerificationEmailDeliveryError | DatabaseError, AuthRepository>
   clearPendingEmailChange: (event: H3Event) => Effect.Effect<{ status: boolean }, UnauthorizedError | DatabaseError, AuthRepository>
-  resendVerificationEmail: (event: H3Event) => Effect.Effect<{ status: boolean }, UnauthorizedError | VerificationEmailDeliveryError | DatabaseError, AuthRepository>
+  resendVerificationEmail: (event: H3Event, currentPassword?: string) => Effect.Effect<{ status: boolean }, UnauthorizedError | VerificationEmailDeliveryError | DatabaseError, AuthRepository>
 }
 
 // Service tag
@@ -101,17 +105,28 @@ export const AuthServiceLive = Layer.succeed(AuthService, {
       }
     }),
 
-  setPendingEmailChange: (event, pendingEmail) =>
+  setPendingEmailChange: (event, pendingEmail, currentPassword) =>
     Effect.gen(function* () {
       const sessionData = yield* fetchSession(event)
+      yield* verifyCurrentPassword(event, currentPassword)
       const parsed = pendingEmailSchema.safeParse(pendingEmail)
 
       if (!parsed.success) {
         return yield* Effect.fail(new InvalidPendingEmailError({ message: 'Pending email is invalid' }))
       }
 
-      yield* setPendingEmail(sessionData.user.id, parsed.data)
-      return { pendingEmail: parsed.data }
+      const normalizedPendingEmail = parsed.data.toLowerCase()
+      if (normalizedPendingEmail === sessionData.user.email.toLowerCase()) {
+        return yield* Effect.fail(new InvalidPendingEmailError({ message: 'Pending email must differ from the current email' }))
+      }
+
+      if (yield* emailIsInUse(sessionData.user.id, normalizedPendingEmail)) {
+        return yield* Effect.fail(new PendingEmailConflictError({ message: 'Email is already in use' }))
+      }
+
+      yield* setPendingEmail(sessionData.user.id, normalizedPendingEmail)
+      yield* sendPendingEmailChange(event, normalizedPendingEmail)
+      return { pendingEmail: normalizedPendingEmail }
     }),
 
   clearPendingEmailChange: event =>
@@ -121,7 +136,7 @@ export const AuthServiceLive = Layer.succeed(AuthService, {
       return { status: true }
     }),
 
-  resendVerificationEmail: event =>
+  resendVerificationEmail: (event, currentPassword) =>
     Effect.gen(function* () {
       const sessionData = yield* fetchSession(event)
       const config = getEmailVerificationConfig()
@@ -135,26 +150,57 @@ export const AuthServiceLive = Layer.succeed(AuthService, {
         return { status: true }
       }
 
-      return yield* Effect.tryPromise({
-        try: () => pendingEmail
-          ? auth.api.changeEmail({
-              headers: event.headers,
-              body: {
-                newEmail: pendingEmail,
-                callbackURL: '/verify-email'
-              }
-            })
-          : auth.api.sendVerificationEmail({
-              headers: event.headers,
-              body: {
-                email: sessionData.user.email,
-                callbackURL: '/verify-email'
-              }
-            }),
-        catch: () => new VerificationEmailDeliveryError({ message: 'Unable to send verification email' })
-      })
+      if (pendingEmail) {
+        yield* verifyCurrentPassword(event, currentPassword)
+      }
+
+      return pendingEmail
+        ? yield* sendPendingEmailChange(event, pendingEmail)
+        : yield* sendCurrentEmailVerification(event, sessionData.user.email)
     })
 })
+
+function verifyCurrentPassword(event: H3Event, currentPassword: string | undefined) {
+  if (!currentPassword) {
+    return Effect.fail(new UnauthorizedError({ message: 'Current password is required' }))
+  }
+
+  return Effect.tryPromise({
+    try: () => auth.api.verifyPassword({
+      headers: event.headers,
+      body: {
+        password: currentPassword
+      }
+    }),
+    catch: () => new UnauthorizedError({ message: 'Current password is incorrect' })
+  })
+}
+
+function sendPendingEmailChange(event: H3Event, pendingEmail: string) {
+  return Effect.tryPromise({
+    try: () => auth.api.changeEmail({
+      headers: event.headers,
+      body: {
+        newEmail: pendingEmail,
+        callbackURL: '/verify-email'
+      }
+    }),
+    catch: () => new VerificationEmailDeliveryError({ message: 'Unable to send verification email' })
+  }).pipe(Effect.as({ status: true }))
+}
+
+function sendCurrentEmailVerification(event: H3Event, email: string) {
+  return Effect.tryPromise({
+    try: () => auth.api.sendVerificationEmail({
+      headers: event.headers,
+      body: {
+        email,
+        callbackURL: '/verify-email'
+      }
+    }),
+    catch: () => new VerificationEmailDeliveryError({ message: 'Unable to send verification email' })
+  }).pipe(Effect.as({ status: true }))
+}
 
 function getAccountPendingEmail(userId: string, currentEmail: string) {
   return Effect.gen(function* () {
@@ -184,11 +230,11 @@ export const requireVerifiedAuth = (event: H3Event) =>
 export const getEmailVerificationStatus = (event: H3Event) =>
   Effect.flatMap(AuthService, service => service.getEmailVerificationStatus(event))
 
-export const resendVerificationEmail = (event: H3Event) =>
-  Effect.flatMap(AuthService, service => service.resendVerificationEmail(event))
+export const resendVerificationEmail = (event: H3Event, currentPassword?: string) =>
+  Effect.flatMap(AuthService, service => service.resendVerificationEmail(event, currentPassword))
 
-export const setPendingEmailChange = (event: H3Event, pendingEmail: string) =>
-  Effect.flatMap(AuthService, service => service.setPendingEmailChange(event, pendingEmail))
+export const setPendingEmailChange = (event: H3Event, pendingEmail: string, currentPassword: string) =>
+  Effect.flatMap(AuthService, service => service.setPendingEmailChange(event, pendingEmail, currentPassword))
 
 export const clearPendingEmailChange = (event: H3Event) =>
   Effect.flatMap(AuthService, service => service.clearPendingEmailChange(event))

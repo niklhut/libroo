@@ -4,7 +4,8 @@ import { setPendingEmailChange } from '../../services/auth.service'
 import { runEffect } from '../../utils/effect'
 
 const pendingEmailSchema = z.object({
-  pendingEmail: z.email()
+  pendingEmail: z.email(),
+  currentPassword: z.string().min(1)
 })
 
 export default defineEventHandler(async event =>
@@ -13,6 +14,6 @@ export default defineEventHandler(async event =>
       try: () => readValidatedBody(event, pendingEmailSchema.parse),
       catch: error => createError({ statusCode: 400, message: 'Invalid pending email', data: error })
     })
-    return yield* setPendingEmailChange(event, body.pendingEmail)
+    return yield* setPendingEmailChange(event, body.pendingEmail, body.currentPassword)
   }))
 )

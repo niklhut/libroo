@@ -6,7 +6,8 @@ import { AuthRepository } from '../../../../server/repositories/auth.repository'
 const authMock = vi.hoisted(() => ({
   getSession: vi.fn(),
   sendVerificationEmail: vi.fn(),
-  changeEmail: vi.fn()
+  changeEmail: vi.fn(),
+  verifyPassword: vi.fn()
 }))
 
 vi.mock('../../../../server/utils/auth', () => ({
@@ -14,7 +15,8 @@ vi.mock('../../../../server/utils/auth', () => ({
     api: {
       getSession: authMock.getSession,
       sendVerificationEmail: authMock.sendVerificationEmail,
-      changeEmail: authMock.changeEmail
+      changeEmail: authMock.changeEmail,
+      verifyPassword: authMock.verifyPassword
     }
   }
 }))
@@ -24,7 +26,15 @@ describe('AuthService', () => {
     authMock.getSession.mockReset()
     authMock.sendVerificationEmail.mockReset()
     authMock.changeEmail.mockReset()
+    authMock.verifyPassword.mockReset()
+    authMock.verifyPassword.mockResolvedValue({ status: true })
+    authMock.changeEmail.mockResolvedValue({ status: true })
+    authRepoMock.getPendingEmail.mockReset()
+    authRepoMock.emailIsInUse.mockReset()
+    authRepoMock.setPendingEmail.mockReset()
+    authRepoMock.clearPendingEmail.mockReset()
     authRepoMock.getPendingEmail.mockReturnValue(Effect.succeed(null))
+    authRepoMock.emailIsInUse.mockReturnValue(Effect.succeed(false))
     authRepoMock.setPendingEmail.mockReturnValue(Effect.void)
     authRepoMock.clearPendingEmail.mockReturnValue(Effect.void)
   })
@@ -158,9 +168,15 @@ describe('AuthService', () => {
     await expect(runAuthService(
       Effect.flatMap(AuthService, service => service.resendVerificationEmail(makeEvent({
         pendingEmail: 'ada.new@example.com'
-      })))
+      }), 'current-password'))
     )).resolves.toEqual({ status: true })
 
+    expect(authMock.verifyPassword).toHaveBeenCalledWith({
+      headers: expect.any(Headers),
+      body: {
+        password: 'current-password'
+      }
+    })
     expect(authMock.changeEmail).toHaveBeenCalledWith({
       headers: expect.any(Headers),
       body: {
@@ -207,15 +223,77 @@ describe('AuthService', () => {
     })
 
     await expect(runAuthService(
-      Effect.flatMap(AuthService, service => service.setPendingEmailChange(makeEvent(), 'ada.new@example.com'))
+      Effect.flatMap(AuthService, service => service.setPendingEmailChange(makeEvent(), 'Ada.New@example.com', 'current-password'))
     )).resolves.toEqual({ pendingEmail: 'ada.new@example.com' })
 
+    expect(authMock.verifyPassword).toHaveBeenCalledWith({
+      headers: expect.any(Headers),
+      body: {
+        password: 'current-password'
+      }
+    })
+    expect(authRepoMock.emailIsInUse).toHaveBeenCalledWith('user-1', 'ada.new@example.com')
     expect(authRepoMock.setPendingEmail).toHaveBeenCalledWith('user-1', 'ada.new@example.com')
+    expect(authMock.changeEmail).toHaveBeenCalledWith({
+      headers: expect.any(Headers),
+      body: {
+        newEmail: 'ada.new@example.com',
+        callbackURL: '/verify-email'
+      }
+    })
+  })
+
+  it('rejects pending email changes without the current password', async () => {
+    authMock.getSession.mockResolvedValueOnce({
+      user: {
+        id: 'user-1',
+        name: 'Ada',
+        email: 'ada@example.com',
+        emailVerified: true
+      },
+      session: { id: 'session-1' }
+    })
+
+    const result = await runAuthService(Effect.either(
+      Effect.flatMap(AuthService, service => service.setPendingEmailChange(makeEvent(), 'ada.new@example.com', ''))
+    ))
+
+    expect(result._tag).toBe('Left')
+    expect(result.left).toMatchObject({
+      _tag: 'UnauthorizedError',
+      message: 'Current password is required'
+    })
+    expect(authRepoMock.setPendingEmail).not.toHaveBeenCalled()
+  })
+
+  it('rejects pending email changes that conflict with another account email', async () => {
+    authMock.getSession.mockResolvedValueOnce({
+      user: {
+        id: 'user-1',
+        name: 'Ada',
+        email: 'ada@example.com',
+        emailVerified: true
+      },
+      session: { id: 'session-1' }
+    })
+    authRepoMock.emailIsInUse.mockReturnValueOnce(Effect.succeed(true))
+
+    const result = await runAuthService(Effect.either(
+      Effect.flatMap(AuthService, service => service.setPendingEmailChange(makeEvent(), 'taken@example.com', 'current-password'))
+    ))
+
+    expect(result._tag).toBe('Left')
+    expect(result.left).toMatchObject({
+      _tag: 'PendingEmailConflictError',
+      message: 'Email is already in use'
+    })
+    expect(authRepoMock.setPendingEmail).not.toHaveBeenCalled()
   })
 })
 
 const authRepoMock = {
   getPendingEmail: vi.fn(),
+  emailIsInUse: vi.fn(),
   setPendingEmail: vi.fn(),
   clearPendingEmail: vi.fn()
 }
