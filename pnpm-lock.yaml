@@ -56,6 +56,12 @@ importers:
       effect:
         specifier: ^3.21.2
         version: 3.21.2
+      jose:
+        specifier: ^6.2.3
+        version: 6.2.3
+      nodemailer:
+        specifier: ^8.0.11
+        version: 8.0.11
       nuxt:
         specifier: ^4.4.5
         version: 4.4.5(@babel/core@7.29.0)(@babel/plugin-syntax-jsx@7.28.6(@babel/core@7.29.0))(@libsql/client@0.17.3)(@parcel/watcher@2.5.6)(@types/node@25.7.0)(@vue/compiler-sfc@3.5.34)(cac@6.7.14)(db0@0.3.4(@libsql/client@0.17.3)(drizzle-orm@0.45.2(@cloudflare/workers-types@4.20260511.1)(@libsql/client@0.17.3)(kysely@0.28.17)))(drizzle-orm@0.45.2(@cloudflare/workers-types@4.20260511.1)(@libsql/client@0.17.3)(kysely@0.28.17))(eslint@10.3.0(jiti@2.7.0))(ioredis@5.10.1)(lightningcss@1.32.0)(magicast@0.5.2)(optionator@0.9.4)(pinia@3.0.4(typescript@6.0.3)(vue@3.5.34(typescript@6.0.3)))(rolldown@1.0.0-beta.57(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0))(rollup-plugin-visualizer@7.0.1(rolldown@1.0.0-beta.57(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0))(rollup@4.60.3))(rollup@4.60.3)(srvx@0.11.15)(terser@5.47.1)(tsx@4.21.0)(typescript@6.0.3)(vite@7.3.3(@types/node@25.7.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.47.1)(tsx@4.21.0)(yaml@2.9.0))(vue-tsc@3.2.9(typescript@6.0.3))(yaml@2.9.0)
@@ -81,6 +87,9 @@ importers:
       '@nuxt/test-utils':
         specifier: ^4.0.3
         version: 4.0.3(crossws@0.4.5(srvx@0.11.15))(magicast@0.5.2)(typescript@6.0.3)(vite@7.3.3(@types/node@25.7.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.47.1)(tsx@4.21.0)(yaml@2.9.0))(vitest@4.1.6(@types/node@25.7.0)(vite@7.3.3(@types/node@25.7.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.47.1)(tsx@4.21.0)(yaml@2.9.0)))
+      '@types/nodemailer':
+        specifier: ^8.0.1
+        version: 8.0.1
       drizzle-kit:
         specifier: ^0.31.10
         version: 0.31.10
@@ -2881,6 +2890,9 @@ packages:
   '@types/node@25.7.0':
     resolution: {integrity: sha512-z+pdZyxE+RTQE9AcboAZCb4otwcrvgHD+GlBpPgn0emDVt0ohrTMhAwlr2Wd9nZ+nihhYFxO2pThz3C5qSu2Eg==}
 
+  '@types/nodemailer@8.0.1':
+    resolution: {integrity: sha512-PxpaInm8V1JQDd4j0ds5HfvWQk8JupS1C0Picb96QJsrrRDjBH+DlK7L4ZdNSqNULhiZRQHc40nLVShaGxXAMw==}
+
   '@types/resolve@1.20.2':
     resolution: {integrity: sha512-60BCwRFOZCQhDncwQdxxeOEEkbc5dIMccYLwbxsS4TUNeVECQ/pBJ0j09mrHOl/JJvpRPGwO9SvE4nR2Nb/a4Q==}
 
@@ -5175,6 +5187,10 @@ packages:
 
   node-releases@2.0.44:
     resolution: {integrity: sha512-5WUyunoPMsvvEhS8AxHtRzP+oA8UCkJ7YRxatWKjngndhDGLiqEVAQKWjFAiAiuL8zMRGzGSJxFnLetoa43qGQ==}
+
+  nodemailer@8.0.11:
+    resolution: {integrity: sha512-nrO/pDAUKl+wXX+lx16tDLbnm0fW6sK/x8mgohaCpg+CdCEl482bD4tCuAZk2DyliruiNTIZxRCoWkDqJEnAiA==}
+    engines: {node: '>=6.0.0'}
 
   nopt@8.1.0:
     resolution: {integrity: sha512-ieGu42u/Qsa4TFktmaKEwM6MQH0pOWnaB3htzh0JRtx84+Mebc0cbZYN5bC+6WTZ4+77xrL9Pn5m7CV6VIkV7A==}
@@ -9505,6 +9521,10 @@ snapshots:
     dependencies:
       undici-types: 7.21.0
 
+  '@types/nodemailer@8.0.1':
+    dependencies:
+      '@types/node': 25.7.0
+
   '@types/resolve@1.20.2': {}
 
   '@types/web-bluetooth@0.0.20': {}
@@ -11825,6 +11845,8 @@ snapshots:
   node-mock-http@1.0.4: {}
 
   node-releases@2.0.44: {}
+
+  nodemailer@8.0.11: {}
 
   nopt@8.1.0:
     dependencies:

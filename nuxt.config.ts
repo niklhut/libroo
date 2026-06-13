@@ -1,3 +1,7 @@
+const truthyValues = new Set(['1', 'true', 'yes', 'on'])
+const emailVerificationEnabledRaw = process.env.LIBROO_EMAIL_VERIFICATION_ENABLED ?? ''
+const emailVerificationEnabled = truthyValues.has(emailVerificationEnabledRaw.trim().toLowerCase())
+
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
   modules: [
@@ -19,7 +23,20 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     betterAuthSecret: process.env.BETTER_AUTH_SECRET,
-    betterAuthUrl: process.env.BETTER_AUTH_URL
+    betterAuthUrl: process.env.BETTER_AUTH_URL,
+    emailVerificationEnabled: emailVerificationEnabledRaw,
+    emailProvider: process.env.LIBROO_EMAIL_PROVIDER,
+    emailFrom: process.env.LIBROO_EMAIL_FROM,
+    smtpHost: process.env.LIBROO_SMTP_HOST,
+    smtpPort: process.env.LIBROO_SMTP_PORT,
+    smtpSecure: process.env.LIBROO_SMTP_SECURE,
+    smtpUser: process.env.LIBROO_SMTP_USER,
+    smtpPassword: process.env.LIBROO_SMTP_PASSWORD,
+    plunkApiKey: process.env.LIBROO_PLUNK_API_KEY,
+    plunkBaseUrl: process.env.LIBROO_PLUNK_BASE_URL,
+    public: {
+      emailVerificationEnabled
+    }
   },
 
   routeRules: {

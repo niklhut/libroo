@@ -8,6 +8,7 @@ export const user = sqliteTable('user', {
   name: text('name').notNull(),
   email: text('email').notNull().unique(),
   emailVerified: integer('email_verified', { mode: 'boolean' }).notNull().default(false),
+  pendingEmail: text('pending_email'),
   image: text('image'),
   role: text('role').notNull().default('user'),
   banned: integer('banned', { mode: 'boolean' }).notNull().default(false),

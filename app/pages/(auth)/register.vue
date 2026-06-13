@@ -7,6 +7,7 @@ definePageMeta({
 })
 
 const route = useRoute()
+const config = useRuntimeConfig()
 const authStore = useAuthStore()
 const { user } = storeToRefs(authStore)
 const { signUp } = authStore
@@ -14,6 +15,8 @@ const toast = useToast()
 
 const isLoading = ref(false)
 const error = ref('')
+const verificationEmail = ref('')
+const isVerificationEmailSent = ref(false)
 
 const redirectPath = computed(() => {
   const redirect = route.query.redirect
@@ -100,11 +103,18 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
         color: 'error'
       })
     } else {
+      verificationEmail.value = payload.data.email
       toast.add({
         title: 'Account created!',
-        description: 'Welcome to Libroo.',
+        description: config.public.emailVerificationEnabled
+          ? 'Check your email to verify your account before signing in.'
+          : 'Welcome to Libroo.',
         color: 'success'
       })
+
+      if (config.public.emailVerificationEnabled) {
+        isVerificationEmailSent.value = true
+      }
     }
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : 'An unexpected error occurred'
@@ -121,7 +131,30 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
 
 <template>
   <UContainer class="py-12 max-w-md">
-    <UPageCard>
+    <UPageCard
+      v-if="isVerificationEmailSent"
+      title="Verify your email"
+      :description="`We sent a verification link to ${verificationEmail}. Open it to activate your account.`"
+      icon="i-lucide-mail-check"
+    >
+      <UAlert
+        color="success"
+        variant="soft"
+        icon="i-lucide-send"
+        title="Verification email sent"
+      />
+
+      <template #footer>
+        <UButton
+          to="/login"
+          icon="i-lucide-log-in"
+        >
+          Go to sign in
+        </UButton>
+      </template>
+    </UPageCard>
+
+    <UPageCard v-else>
       <UAuthForm
         :schema="schema"
         :fields="fields"

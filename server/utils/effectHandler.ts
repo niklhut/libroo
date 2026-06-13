@@ -1,7 +1,7 @@
 import { Effect } from 'effect'
 import type { H3Event } from 'h3'
 import { type MainServices, runEffect } from './effect'
-import { requireAuth } from '../services/auth.service'
+import { requireVerifiedAuth } from '../services/auth.service'
 
 /**
  * Creates a fully Effect-based event handler with automatic error conversion.
@@ -28,7 +28,7 @@ export function effectHandler<A, E>(
 ) {
   return defineEventHandler(async (event) => {
     const effect = Effect.gen(function* () {
-      const user = yield* requireAuth(event)
+      const user = yield* requireVerifiedAuth(event)
       return yield* handler(event, user)
     })
 

@@ -10,6 +10,8 @@ import type { LibraryImportConflictStrategy, LibraryImportResult } from '~~/shar
 import { authClient } from '~/utils/auth-client'
 
 const toast = useToast()
+const route = useRoute()
+const config = useRuntimeConfig()
 const authStore = useAuthStore()
 const { user } = storeToRefs(authStore)
 
@@ -25,10 +27,26 @@ const passwordState = reactive({
 
 const isChangingEmail = ref(false)
 const isChangingPassword = ref(false)
+const isResendingVerification = ref(false)
+const pendingEmailChange = ref('')
 const showEmailCurrentPassword = ref(false)
 const showCurrentPassword = ref(false)
 const showNewPassword = ref(false)
 const showConfirmPassword = ref(false)
+
+const { data: verificationStatus, refresh: refreshVerificationStatus } = await useFetch<{
+  enabled: boolean
+  email: string
+  verified: boolean
+  pendingEmail: string | null
+}>('/api/auth/verification-status', {
+  default: () => ({
+    enabled: Boolean(config.public.emailVerificationEnabled),
+    email: user.value?.email ?? '',
+    verified: user.value?.emailVerified === true,
+    pendingEmail: null
+  })
+})
 
 const importFileInput = ref<HTMLInputElement | null>(null)
 const importFileName = ref('')
@@ -48,15 +66,30 @@ watch(user, (nextUser) => {
   if (nextUser?.email && !isChangingEmail.value) {
     emailState.email = nextUser.email
   }
+
+  if (nextUser?.email === pendingEmailChange.value) {
+    pendingEmailChange.value = ''
+  }
 })
 
+watch(verificationStatus, (nextStatus) => {
+  pendingEmailChange.value = nextStatus.pendingEmail ?? ''
+}, { immediate: true })
+
+if (route.query.verify === 'required') {
+  toast.add({
+    title: 'Verify your email',
+    description: 'Open the verification link sent to your email before using the rest of Libroo.',
+    color: 'warning'
+  })
+}
+
 function getFailureMessage(err: unknown, fallback: string) {
-  return err instanceof Error
-    ? err.message
-    : (err as { data?: { message?: string }, error?: { message?: string }, message?: string })?.data?.message
-      || (err as { error?: { message?: string } })?.error?.message
-      || (err as { message?: string })?.message
-      || fallback
+  return (err as { data?: { message?: string }, error?: { message?: string }, message?: string })?.data?.message
+    || (err as { error?: { message?: string } })?.error?.message
+    || (err as { message?: string })?.message
+    || (err instanceof Error ? err.message : undefined)
+    || fallback
 }
 
 async function changeEmail(payload: FormSubmitEvent<AccountEmailChangeSchema>) {
@@ -79,24 +112,43 @@ async function changeEmail(payload: FormSubmitEvent<AccountEmailChangeSchema>) {
       return
     }
 
-    const result = await authClient.changeEmail({
-      newEmail: payload.data.email
-    })
-
-    if (result.error) {
-      toast.add({
-        title: 'Email change failed',
-        description: result.error.message || 'Unable to update email',
-        color: 'error'
+    if (verificationStatus.value.enabled) {
+      const result = await $fetch<{ pendingEmail: string }>('/api/auth/pending-email-change', {
+        method: 'POST',
+        body: {
+          pendingEmail: payload.data.email,
+          currentPassword: payload.data.currentPassword
+        }
       })
-      return
+      pendingEmailChange.value = result.pendingEmail
+      emailState.email = verificationStatus.value.email || user.value?.email || emailState.email
+      toast.add({
+        title: 'Verification email sent',
+        description: 'Your current email remains active until the new address is verified.',
+        color: 'success'
+      })
+    } else {
+      const result = await authClient.changeEmail({
+        newEmail: payload.data.email
+      })
+
+      if (result.error) {
+        toast.add({
+          title: 'Email change failed',
+          description: result.error.message || 'Unable to update email',
+          color: 'error'
+        })
+        return
+      }
+
+      toast.add({
+        title: 'Email updated',
+        color: 'success'
+      })
     }
 
-    toast.add({
-      title: 'Email updated',
-      color: 'success'
-    })
     emailState.currentPassword = ''
+    await refreshVerificationStatus()
   } catch (err: unknown) {
     toast.add({
       title: 'Email change failed',
@@ -105,6 +157,30 @@ async function changeEmail(payload: FormSubmitEvent<AccountEmailChangeSchema>) {
     })
   } finally {
     isChangingEmail.value = false
+  }
+}
+
+async function resendVerificationEmail() {
+  isResendingVerification.value = true
+
+  try {
+    await $fetch('/api/auth/resend-verification', {
+      method: 'POST'
+    })
+    await refreshVerificationStatus()
+    toast.add({
+      title: 'Verification email sent',
+      description: `Check ${verificationStatus.value.pendingEmail || verificationStatus.value.email || user.value?.email}.`,
+      color: 'success'
+    })
+  } catch (err: unknown) {
+    toast.add({
+      title: 'Verification failed',
+      description: getFailureMessage(err, 'Unable to send verification email'),
+      color: 'error'
+    })
+  } finally {
+    isResendingVerification.value = false
   }
 }
 
@@ -256,6 +332,51 @@ async function importLibraryCsvFile() {
               <span class="font-semibold">Account</span>
             </div>
           </template>
+
+          <div
+            v-if="verificationStatus.enabled"
+            class="mb-5 space-y-3"
+          >
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div class="space-y-1">
+                <p class="text-sm font-medium">
+                  Email verification
+                </p>
+                <p class="text-sm text-muted">
+                  {{ verificationStatus.verified ? 'Your current email address is verified.' : 'Verify your email address before using the rest of Libroo.' }}
+                </p>
+              </div>
+              <UBadge
+                :color="verificationStatus.verified ? 'success' : 'warning'"
+                variant="soft"
+                :icon="verificationStatus.verified ? 'i-lucide-shield-check' : 'i-lucide-mail-warning'"
+              >
+                {{ verificationStatus.verified ? 'Verified' : 'Unverified' }}
+              </UBadge>
+            </div>
+
+            <UAlert
+              v-if="pendingEmailChange"
+              color="info"
+              variant="soft"
+              icon="i-lucide-mail-check"
+              title="Pending email change"
+              :description="`Open the verification link sent to ${pendingEmailChange}. Your account email stays ${user?.email} until then. Enter a different email below to replace this pending change.`"
+            />
+
+            <UButton
+              v-if="!verificationStatus.verified || pendingEmailChange"
+              type="button"
+              icon="i-lucide-send"
+              color="neutral"
+              variant="outline"
+              :loading="isResendingVerification"
+              :disabled="isResendingVerification"
+              @click="resendVerificationEmail"
+            >
+              Resend verification email
+            </UButton>
+          </div>
 
           <UForm
             :schema="accountEmailChangeSchema"
