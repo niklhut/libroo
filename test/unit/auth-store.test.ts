@@ -83,7 +83,7 @@ describe('useAuthStore', () => {
     const store = useAuthStore()
 
     await expect(store.signIn('ada@example.com', 'secret')).resolves.toEqual({ error: null })
-    await expect(store.signUp('ada@example.com', 'secret', 'Ada')).resolves.toEqual({ error: null })
+    await expect(store.signUp('ada@example.com', 'secret', 'Ada', 'invite-token')).resolves.toEqual({ error: null })
     await expect(store.signOut()).resolves.toBeUndefined()
 
     expect(authClientMocks.signInEmail).toHaveBeenCalledWith({
@@ -93,7 +93,8 @@ describe('useAuthStore', () => {
     expect(authClientMocks.signUpEmail).toHaveBeenCalledWith({
       email: 'ada@example.com',
       password: 'secret',
-      name: 'Ada'
+      name: 'Ada',
+      inviteToken: 'invite-token'
     })
     expect(authClientMocks.signOut).toHaveBeenCalledTimes(1)
   })

@@ -17,6 +17,8 @@ export interface EmailVerificationConfig {
   } | null
 }
 
+export type EmailDeliveryConfig = Omit<EmailVerificationConfig, 'enabled'>
+
 const truthyValues = new Set(['1', 'true', 'yes', 'on'])
 
 function getConfigValue(key: string, runtimeKey: string): string | undefined {
@@ -58,16 +60,12 @@ function getEmailProvider(): EmailProvider {
 
 export function getEmailVerificationConfig(): EmailVerificationConfig {
   const enabled = getBooleanConfig('LIBROO_EMAIL_VERIFICATION_ENABLED', 'emailVerificationEnabled')
-  const provider = getEmailProvider()
-  const host = getConfigValue('LIBROO_SMTP_HOST', 'smtpHost')
-  const from = getConfigValue('LIBROO_EMAIL_FROM', 'emailFrom') ?? ''
-  const plunkApiKey = getConfigValue('LIBROO_PLUNK_API_KEY', 'plunkApiKey')
+  const deliveryConfig = getEmailDeliveryConfig()
 
   if (!enabled) {
     return {
       enabled: false,
-      provider,
-      from,
+      ...deliveryConfig,
       smtp: null,
       plunk: null
     }
@@ -75,6 +73,17 @@ export function getEmailVerificationConfig(): EmailVerificationConfig {
 
   return {
     enabled,
+    ...deliveryConfig
+  }
+}
+
+export function getEmailDeliveryConfig(): EmailDeliveryConfig {
+  const provider = getEmailProvider()
+  const host = getConfigValue('LIBROO_SMTP_HOST', 'smtpHost')
+  const from = getConfigValue('LIBROO_EMAIL_FROM', 'emailFrom') ?? ''
+  const plunkApiKey = getConfigValue('LIBROO_PLUNK_API_KEY', 'plunkApiKey')
+
+  return {
     provider,
     from,
     smtp: provider === 'smtp' && host
@@ -95,9 +104,29 @@ export function getEmailVerificationConfig(): EmailVerificationConfig {
   }
 }
 
+export function emailDeliveryConfigured(config = getEmailDeliveryConfig()) {
+  if (config.provider === 'smtp') {
+    return Boolean(config.from && config.smtp?.host && (!config.smtp.user || config.smtp.password))
+  }
+
+  return Boolean(config.plunk?.apiKey && config.plunk?.baseUrl)
+}
+
 export function validateEmailVerificationConfig(config = getEmailVerificationConfig()) {
   if (!config.enabled) return
 
+  try {
+    validateEmailDeliveryConfig(config)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Email delivery is not configured.'
+    throw new Error(
+      `Email verification is enabled, but ${message.charAt(0).toLowerCase()}${message.slice(1)} `
+      + 'Set these values or disable LIBROO_EMAIL_VERIFICATION_ENABLED.'
+    )
+  }
+}
+
+export function validateEmailDeliveryConfig(config = getEmailDeliveryConfig()) {
   const missing: string[] = []
 
   if (config.provider === 'smtp') {
@@ -120,8 +149,7 @@ export function validateEmailVerificationConfig(config = getEmailVerificationCon
 
   if (missing.length > 0) {
     throw new Error(
-      `Email verification is enabled, but email delivery is not configured. Missing: ${missing.join(', ')}. `
-      + 'Set these values or disable LIBROO_EMAIL_VERIFICATION_ENABLED.'
+      `Email delivery is not configured. Missing: ${missing.join(', ')}.`
     )
   }
 }

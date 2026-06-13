@@ -1,0 +1,390 @@
+import { Context, Data, Effect, Layer } from 'effect'
+import type { SignupInvite, SignupInviteCreateResult, SignupInvitePreview, SignupInviteStatus } from '~~/shared/types/signup-invite'
+import { SignupInviteRepository } from '../repositories/signup-invite.repository'
+import type { SignupInviteRecord } from '../repositories/signup-invite.repository'
+import type { EmailService } from './email.service'
+import { sendEmail } from './email.service'
+import type { DatabaseError } from '../repositories/book.repository'
+import type { DbService } from './db.service'
+
+const DEFAULT_INVITE_TTL_DAYS = 7
+const MAX_INVITE_TTL_DAYS = 90
+const DEFAULT_INVITE_PAGE_SIZE = 25
+const MAX_INVITE_PAGE_SIZE = 100
+
+export class InvalidSignupInviteError extends Data.TaggedError('InvalidSignupInviteError')<{
+  message: string
+}> { }
+
+export class SignupInviteForbiddenError extends Data.TaggedError('SignupInviteForbiddenError')<{
+  message: string
+}> { }
+
+export class SignupInviteDeliveryError extends Data.TaggedError('SignupInviteDeliveryError')<{
+  message: string
+}> { }
+
+export interface CreateSignupInviteInput {
+  email?: unknown
+  expiresInDays?: unknown
+}
+
+export interface SignupAttemptInput {
+  token?: unknown
+  email?: unknown
+}
+
+export interface SignupInviteActor {
+  id: string
+  role?: string | null
+}
+
+export interface ListSignupInvitesInput {
+  page?: unknown
+  pageSize?: unknown
+}
+
+export interface SignupInviteServiceInterface {
+  createInvite: (actor: SignupInviteActor, input: CreateSignupInviteInput) => Effect.Effect<SignupInviteCreateResult, SignupInviteForbiddenError | InvalidSignupInviteError | SignupInviteDeliveryError | DatabaseError, DbService | EmailService>
+  listInvites: (actor: SignupInviteActor, input?: ListSignupInvitesInput) => Effect.Effect<{ invites: SignupInvite[], total: number, page: number, pageSize: number }, SignupInviteForbiddenError | InvalidSignupInviteError | DatabaseError, DbService>
+  revokeInvite: (actor: SignupInviteActor, inviteId: string) => Effect.Effect<SignupInvite, SignupInviteForbiddenError | InvalidSignupInviteError | DatabaseError, DbService>
+  getInvitePreview: (token: string) => Effect.Effect<SignupInvitePreview, InvalidSignupInviteError | DatabaseError, DbService>
+  validateSignupAttempt: (input: SignupAttemptInput) => Effect.Effect<{ inviteId: string | null }, InvalidSignupInviteError | DatabaseError, DbService>
+  acceptInvite: (inviteId: string, userId: string) => Effect.Effect<SignupInvite, InvalidSignupInviteError | DatabaseError, DbService>
+}
+
+export class SignupInviteService extends Context.Tag('SignupInviteService')<SignupInviteService, SignupInviteServiceInterface>() { }
+
+export const SignupInviteServiceLive = Layer.effect(
+  SignupInviteService,
+  Effect.gen(function* () {
+    const repository = yield* SignupInviteRepository
+
+    return {
+      createInvite: (actor, input) =>
+        Effect.gen(function* () {
+          yield* requireAdmin(actor)
+          yield* requireInviteOnlyMode()
+
+          const normalized = yield* parseInviteInput(input)
+          const expiresAt = new Date(Date.now() + normalized.expiresInDays * 24 * 60 * 60 * 1000)
+          const { invite, token } = yield* repository.create({
+            email: normalized.email,
+            createdByUserId: actor.id,
+            expiresAt
+          })
+          const inviteUrl = buildSignupInviteUrl(token)
+
+          if (normalized.email) {
+            yield* sendInviteEmail(normalized.email, inviteUrl, expiresAt)
+          }
+
+          return {
+            invite: toSignupInvite(invite, inviteUrl),
+            token,
+            inviteUrl
+          }
+        }),
+
+      listInvites: (actor, input = {}) =>
+        Effect.gen(function* () {
+          yield* requireAdmin(actor)
+          yield* requireInviteOnlyMode()
+          const page = parsePositiveInteger(input.page, 1)
+          const pageSize = Math.min(MAX_INVITE_PAGE_SIZE, parsePositiveInteger(input.pageSize, DEFAULT_INVITE_PAGE_SIZE))
+          const { invites, total } = yield* repository.list({
+            limit: pageSize,
+            offset: (page - 1) * pageSize
+          })
+          const now = new Date()
+
+          return {
+            invites: invites.map(invite => toSignupInvite({
+              ...invite,
+              status: effectiveSignupInviteStatus(invite, now)
+            })),
+            total,
+            page,
+            pageSize
+          }
+        }),
+
+      revokeInvite: (actor, inviteId) =>
+        Effect.gen(function* () {
+          yield* requireAdmin(actor)
+          yield* requireInviteOnlyMode()
+
+          if (!inviteId) {
+            return yield* Effect.fail(new InvalidSignupInviteError({ message: 'Invite id is required' }))
+          }
+
+          const invite = yield* repository.revoke(inviteId, new Date())
+          if (!invite) {
+            return yield* Effect.fail(new InvalidSignupInviteError({ message: 'Invite not found' }))
+          }
+
+          return toSignupInvite(invite)
+        }),
+
+      getInvitePreview: token =>
+        Effect.gen(function* () {
+          if (!token) {
+            return yield* Effect.fail(new InvalidSignupInviteError({ message: 'Invite token is required' }))
+          }
+
+          const invite = yield* repository.findByToken(token)
+          if (!invite) {
+            return { email: null, status: null }
+          }
+
+          const status = effectiveSignupInviteStatus(invite, new Date())
+          return {
+            email: status === 'pending' ? invite.email : null,
+            status
+          }
+        }),
+
+      validateSignupAttempt: input =>
+        Effect.gen(function* () {
+          const { email, token } = yield* parseSignupAttempt(input)
+
+          if (publicRegistrationEnabled()) {
+            return { inviteId: null }
+          }
+
+          if (!token) {
+            return yield* Effect.fail(new InvalidSignupInviteError({ message: 'An invite is required to create an account' }))
+          }
+
+          if (!email) {
+            return yield* Effect.fail(new InvalidSignupInviteError({ message: 'A valid email address is required' }))
+          }
+
+          const invite = yield* repository.findByToken(token)
+          const now = new Date()
+          const validation = validateSignupInvite(invite, email, now)
+
+          if (!validation.valid) {
+            if (invite && validation.status === 'expired' && invite.status === 'pending') {
+              yield* repository.markExpired(invite.id, now)
+            }
+            return yield* Effect.fail(new InvalidSignupInviteError({ message: validation.message }))
+          }
+
+          if (yield* repository.emailExists(email)) {
+            return yield* Effect.fail(new InvalidSignupInviteError({ message: 'An account already exists for this email address' }))
+          }
+
+          return { inviteId: validation.invite.id }
+        }),
+
+      acceptInvite: (inviteId, userId) =>
+        Effect.gen(function* () {
+          if (!inviteId || !userId) {
+            return yield* Effect.fail(new InvalidSignupInviteError({ message: 'Invite and user are required' }))
+          }
+
+          const invite = yield* repository.markAccepted(inviteId, userId, new Date())
+          if (!invite) {
+            return yield* Effect.fail(new InvalidSignupInviteError({ message: 'Invite not found' }))
+          }
+
+          return toSignupInvite(invite)
+        })
+    }
+  })
+)
+
+export const createSignupInvite = (actor: SignupInviteActor, input: CreateSignupInviteInput) =>
+  Effect.flatMap(SignupInviteService, service => service.createInvite(actor, input))
+
+export const listSignupInvites = (actor: SignupInviteActor, input?: ListSignupInvitesInput) =>
+  Effect.flatMap(SignupInviteService, service => service.listInvites(actor, input))
+
+export const revokeSignupInvite = (actor: SignupInviteActor, inviteId: string) =>
+  Effect.flatMap(SignupInviteService, service => service.revokeInvite(actor, inviteId))
+
+export const getSignupInvitePreview = (token: string) =>
+  Effect.flatMap(SignupInviteService, service => service.getInvitePreview(token))
+
+export const validateSignupAttempt = (input: SignupAttemptInput) =>
+  Effect.flatMap(SignupInviteService, service => service.validateSignupAttempt(input))
+
+export const acceptSignupInvite = (inviteId: string, userId: string) =>
+  Effect.flatMap(SignupInviteService, service => service.acceptInvite(inviteId, userId))
+
+export function normalizeCreateSignupInviteInput(input: CreateSignupInviteInput) {
+  const email = normalizeEmail(input.email)
+  const expiresInDays = normalizeInviteTtl(input.expiresInDays)
+  return { email, expiresInDays }
+}
+
+export function effectiveSignupInviteStatus(invite: Pick<SignupInviteRecord, 'status' | 'expiresAt'>, now: Date): SignupInviteStatus {
+  if (invite.status === 'pending' && invite.expiresAt.getTime() <= now.getTime()) {
+    return 'expired'
+  }
+
+  return invite.status
+}
+
+export function validateSignupInvite(invite: SignupInviteRecord | null, email: string, now: Date) {
+  if (!invite) {
+    return { valid: false as const, status: null, message: 'Invite not found' }
+  }
+
+  const status = effectiveSignupInviteStatus(invite, now)
+  if (status !== 'pending') {
+    return { valid: false as const, status, message: inviteStatusMessage(status) }
+  }
+
+  if (invite.email && invite.email !== email) {
+    return { valid: false as const, status, message: 'This invite was sent to a different email address' }
+  }
+
+  return { valid: true as const, status, invite }
+}
+
+export function publicRegistrationEnabled() {
+  return parseBooleanConfig(process.env.LIBROO_PUBLIC_REGISTRATION_ENABLED, true)
+}
+
+function sendInviteEmail(email: string, inviteUrl: string, expiresAt: Date) {
+  const expiresOn = expiresAt.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  })
+
+  return sendEmail({
+    to: email,
+    subject: 'Your Libroo invite',
+    text: [
+      'You have been invited to join Libroo.',
+      '',
+      `Create your account with this link: ${inviteUrl}`,
+      '',
+      `This invite expires on ${expiresOn}.`
+    ].join('\n'),
+    html: [
+      '<p>You have been invited to join Libroo.</p>',
+      `<p><a href="${escapeHtml(inviteUrl)}">Create your account</a></p>`,
+      `<p>This invite expires on ${escapeHtml(expiresOn)}.</p>`
+    ].join('')
+  }).pipe(
+    Effect.mapError(error => new SignupInviteDeliveryError({ message: error.message }))
+  )
+}
+
+function toSignupInvite(invite: SignupInviteRecord, inviteUrl?: string): SignupInvite {
+  return {
+    id: invite.id,
+    email: invite.email,
+    status: invite.status,
+    createdByUserId: invite.createdByUserId,
+    acceptedByUserId: invite.acceptedByUserId,
+    expiresAt: invite.expiresAt,
+    acceptedAt: invite.acceptedAt,
+    revokedAt: invite.revokedAt,
+    createdAt: invite.createdAt,
+    updatedAt: invite.updatedAt,
+    inviteUrl
+  }
+}
+
+function requireAdmin(actor: SignupInviteActor) {
+  if (!roleIncludesAdmin(actor.role)) {
+    return Effect.fail(new SignupInviteForbiddenError({ message: 'Admin access required' }))
+  }
+
+  return Effect.void
+}
+
+function requireInviteOnlyMode() {
+  if (publicRegistrationEnabled()) {
+    return Effect.fail(new InvalidSignupInviteError({
+      message: 'Invite management is only available when public registration is disabled'
+    }))
+  }
+
+  return Effect.void
+}
+
+function roleIncludesAdmin(role: string | null | undefined) {
+  return (role ?? 'user').split(',').map(part => part.trim()).includes('admin')
+}
+
+function normalizeInviteTtl(value: unknown) {
+  const parsed = Number(value ?? DEFAULT_INVITE_TTL_DAYS)
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > MAX_INVITE_TTL_DAYS) {
+    throw new InvalidSignupInviteError({ message: `Invite expiration must be between 1 and ${MAX_INVITE_TTL_DAYS} days` })
+  }
+  return parsed
+}
+
+function parsePositiveInteger(value: unknown, fallback: number) {
+  const parsed = Number(value ?? fallback)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
+}
+
+function normalizeEmail(value: unknown) {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim().toLowerCase()
+  if (!trimmed) return null
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+    throw new InvalidSignupInviteError({ message: 'Enter a valid email address' })
+  }
+  return trimmed
+}
+
+function parseInviteInput(input: CreateSignupInviteInput) {
+  return Effect.try({
+    try: () => normalizeCreateSignupInviteInput(input),
+    catch: error => error instanceof InvalidSignupInviteError
+      ? error
+      : new InvalidSignupInviteError({ message: 'Invalid invite request' })
+  })
+}
+
+function parseSignupAttempt(input: SignupAttemptInput) {
+  return Effect.try({
+    try: () => ({
+      email: normalizeEmail(input.email),
+      token: normalizeToken(input.token)
+    }),
+    catch: error => error instanceof InvalidSignupInviteError
+      ? error
+      : new InvalidSignupInviteError({ message: 'Invalid signup request' })
+  })
+}
+
+function normalizeToken(value: unknown) {
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function inviteStatusMessage(status: SignupInviteStatus) {
+  if (status === 'expired') return 'This invite has expired'
+  if (status === 'revoked') return 'This invite has been revoked'
+  if (status === 'accepted') return 'This invite has already been accepted'
+  return 'This invite cannot be used'
+}
+
+function buildSignupInviteUrl(token: string) {
+  const baseURL = process.env.BETTER_AUTH_URL || 'http://localhost:3000'
+  const url = new URL('/register', baseURL)
+  url.searchParams.set('invite', token)
+  return url.toString()
+}
+
+function parseBooleanConfig(value: string | undefined, fallback: boolean) {
+  if (value === undefined || value.trim() === '') return fallback
+  return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase())
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll('\'', '&#39;')
+}

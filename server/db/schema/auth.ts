@@ -1,4 +1,5 @@
-import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core'
+import { sql } from 'drizzle-orm'
+import { sqliteTable, text, integer, index, uniqueIndex, check } from 'drizzle-orm/sqlite-core'
 
 // Better Auth core tables
 // Generated based on Better Auth schema requirements
@@ -54,3 +55,23 @@ export const verification = sqliteTable('verification', {
   createdAt: integer('created_at', { mode: 'timestamp' }),
   updatedAt: integer('updated_at', { mode: 'timestamp' })
 })
+
+export const signupInvites = sqliteTable('signup_invites', {
+  id: text('id').primaryKey(),
+  tokenHash: text('token_hash').notNull(),
+  email: text('email'),
+  status: text('status', { enum: ['pending', 'accepted', 'expired', 'revoked'] }).notNull().default('pending'),
+  createdByUserId: text('created_by_user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  acceptedByUserId: text('accepted_by_user_id').references(() => user.id, { onDelete: 'set null' }),
+  expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
+  acceptedAt: integer('accepted_at', { mode: 'timestamp' }),
+  revokedAt: integer('revoked_at', { mode: 'timestamp' }),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
+}, table => [
+  uniqueIndex('signup_invites_token_hash_unique').on(table.tokenHash),
+  index('signup_invites_status_idx').on(table.status),
+  index('signup_invites_email_idx').on(table.email),
+  index('signup_invites_created_by_user_id_idx').on(table.createdByUserId),
+  check('signup_invites_status_check', sql`${table.status} IN ('pending', 'accepted', 'expired', 'revoked')`)
+])

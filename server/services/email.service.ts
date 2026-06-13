@@ -1,6 +1,6 @@
 import nodemailer from 'nodemailer'
 import { Context, Data, Effect, Layer } from 'effect'
-import { getEmailVerificationConfig, validateEmailVerificationConfig } from '../utils/email-verification-config'
+import { getEmailDeliveryConfig, validateEmailDeliveryConfig } from '../utils/email-verification-config'
 
 export class EmailDeliveryError extends Data.TaggedError('EmailDeliveryError')<{
   message: string
@@ -25,8 +25,8 @@ export const EmailServiceLive = Layer.succeed(EmailService, {
   sendEmail: message =>
     Effect.tryPromise({
       try: async () => {
-        const config = getEmailVerificationConfig()
-        validateEmailVerificationConfig(config)
+        const config = getEmailDeliveryConfig()
+        validateEmailDeliveryConfig(config)
 
         if (config.provider === 'plunk') {
           if (!config.plunk) {

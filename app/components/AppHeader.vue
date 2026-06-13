@@ -5,6 +5,7 @@ import { storeToRefs } from 'pinia'
 const authStore = useAuthStore()
 const { user } = storeToRefs(authStore)
 const { signOut } = authStore
+const route = useRoute()
 
 async function handleSignOut() {
   try {
@@ -61,7 +62,8 @@ const links = computed<NavigationMenuItem[]>(() => {
       authenticatedLinks.splice(3, 0, {
         label: 'Admin',
         icon: 'i-lucide-shield',
-        to: '/admin/users'
+        to: '/admin/users',
+        active: route.path.startsWith('/admin')
       })
     }
 
