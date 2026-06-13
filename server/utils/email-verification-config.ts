@@ -106,7 +106,9 @@ export function getEmailDeliveryConfig(): EmailDeliveryConfig {
 
 export function emailDeliveryConfigured(config = getEmailDeliveryConfig()) {
   if (config.provider === 'smtp') {
-    return Boolean(config.from && config.smtp?.host && (!config.smtp.user || config.smtp.password))
+    const hasAuthPair = (!config.smtp?.user && !config.smtp?.password)
+      || (Boolean(config.smtp?.user) && Boolean(config.smtp?.password))
+    return Boolean(config.from && config.smtp?.host && hasAuthPair)
   }
 
   return Boolean(config.plunk?.apiKey && config.plunk?.baseUrl)

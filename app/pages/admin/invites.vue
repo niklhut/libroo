@@ -31,7 +31,7 @@ const currentPage = computed({
   }
 })
 
-const { data: signupInvitesPage, status: invitesStatus, refresh: refreshInvites } = await useAsyncData<SignupInviteList>(
+const { data: signupInvitesPage, status: invitesStatus, error: invitesError, refresh: refreshInvites } = await useAsyncData<SignupInviteList>(
   'admin-signup-invites',
   () => requestFetch('/api/admin/invites', {
     query: {
@@ -45,8 +45,8 @@ const { data: signupInvitesPage, status: invitesStatus, refresh: refreshInvites 
   }
 )
 
-const signupInvites = computed(() => signupInvitesPage.value.invites)
-const totalInvites = computed(() => signupInvitesPage.value.total)
+const signupInvites = computed(() => signupInvitesPage.value?.invites ?? [])
+const totalInvites = computed(() => signupInvitesPage.value?.total ?? 0)
 const totalPages = computed(() => Math.max(1, Math.ceil(totalInvites.value / pageSize)))
 const pageStart = computed(() => totalInvites.value === 0 ? 0 : ((currentPage.value - 1) * pageSize) + 1)
 const pageEnd = computed(() => Math.min(currentPage.value * pageSize, totalInvites.value))
@@ -330,6 +330,15 @@ function pageQuery(page: number) {
           class="animate-spin text-4xl text-muted"
         />
       </div>
+
+      <UAlert
+        v-else-if="invitesError"
+        color="error"
+        variant="subtle"
+        icon="i-lucide-circle-alert"
+        title="Could not load invites"
+        :description="invitesError.message"
+      />
 
       <UCard
         v-else-if="signupInvites.length === 0"

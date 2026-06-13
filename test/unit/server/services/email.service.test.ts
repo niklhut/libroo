@@ -49,7 +49,8 @@ describe('EmailService', () => {
         to: 'ada@example.com',
         subject: 'Verify your email',
         body: '<p>Verify with this link</p>'
-      })
+      }),
+      signal: expect.any(AbortSignal)
     })
   })
 

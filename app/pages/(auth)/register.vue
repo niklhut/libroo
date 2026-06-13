@@ -30,10 +30,31 @@ const { data: invitePreview } = await useAsyncData<SignupInvitePreview | null>(
     ? $fetch<SignupInvitePreview>(`/api/signup-invites/${inviteToken.value}`)
     : Promise.resolve(null),
   {
-    default: () => null
+    default: () => null,
+    watch: [inviteToken]
   }
 )
 const inviteEmail = computed(() => invitePreview.value?.email ?? '')
+const inviteStatus = computed(() => invitePreview.value?.status ?? null)
+const inviteUnavailable = computed(() =>
+  !config.public.publicRegistrationEnabled
+  && Boolean(inviteToken.value)
+  && inviteStatus.value !== 'pending'
+)
+const inviteBlockTitle = computed(() => {
+  if (registrationRequiresInvite.value) return 'Invite required'
+  if (inviteStatus.value === 'expired') return 'Invite expired'
+  if (inviteStatus.value === 'revoked') return 'Invite revoked'
+  if (inviteStatus.value === 'accepted') return 'Invite already used'
+  return 'Invite unavailable'
+})
+const inviteBlockDescription = computed(() => {
+  if (registrationRequiresInvite.value) return 'Open the invite link from your administrator to create an account.'
+  if (inviteStatus.value === 'expired') return 'This invite link has expired. Ask your administrator for a new invite.'
+  if (inviteStatus.value === 'revoked') return 'This invite link has been revoked. Ask your administrator for a new invite.'
+  if (inviteStatus.value === 'accepted') return 'This invite link has already been used.'
+  return 'This invite link cannot be used. Ask your administrator for a new invite.'
+})
 
 const redirectPath = computed(() => {
   const redirect = route.query.redirect
@@ -110,6 +131,11 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
     return
   }
 
+  if (inviteUnavailable.value) {
+    error.value = inviteBlockDescription.value
+    return
+  }
+
   isLoading.value = true
 
   try {
@@ -180,8 +206,8 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
     </UPageCard>
 
     <UPageCard
-      v-else-if="registrationRequiresInvite"
-      title="Invite required"
+      v-else-if="registrationRequiresInvite || inviteUnavailable"
+      :title="inviteBlockTitle"
       description="This Libroo instance only allows invited users to create accounts."
       icon="i-lucide-lock"
     >
@@ -189,8 +215,8 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
         color="warning"
         variant="subtle"
         icon="i-lucide-lock"
-        title="Invite required"
-        description="Open the invite link from your administrator to create an account."
+        :title="inviteBlockTitle"
+        :description="inviteBlockDescription"
       />
 
       <template #footer>

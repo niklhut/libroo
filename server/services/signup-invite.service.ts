@@ -11,6 +11,7 @@ const DEFAULT_INVITE_TTL_DAYS = 7
 const MAX_INVITE_TTL_DAYS = 90
 const DEFAULT_INVITE_PAGE_SIZE = 25
 const MAX_INVITE_PAGE_SIZE = 100
+const INVITE_RESERVATION_TTL_MS = 10 * 60 * 1000
 
 export class InvalidSignupInviteError extends Data.TaggedError('InvalidSignupInviteError')<{
   message: string
@@ -50,7 +51,9 @@ export interface SignupInviteServiceInterface {
   revokeInvite: (actor: SignupInviteActor, inviteId: string) => Effect.Effect<SignupInvite, SignupInviteForbiddenError | InvalidSignupInviteError | DatabaseError, DbService>
   getInvitePreview: (token: string) => Effect.Effect<SignupInvitePreview, InvalidSignupInviteError | DatabaseError, DbService>
   validateSignupAttempt: (input: SignupAttemptInput) => Effect.Effect<{ inviteId: string | null }, InvalidSignupInviteError | DatabaseError, DbService>
-  acceptInvite: (inviteId: string, userId: string) => Effect.Effect<SignupInvite, InvalidSignupInviteError | DatabaseError, DbService>
+  reserveSignupAttempt: (input: SignupAttemptInput) => Effect.Effect<{ reservationToken: string | null }, InvalidSignupInviteError | DatabaseError, DbService>
+  acceptInvite: (reservationToken: string, userId: string) => Effect.Effect<SignupInvite, InvalidSignupInviteError | DatabaseError, DbService>
+  releaseInviteReservation: (reservationToken: string) => Effect.Effect<void, DatabaseError, DbService>
 }
 
 export class SignupInviteService extends Context.Tag('SignupInviteService')<SignupInviteService, SignupInviteServiceInterface>() { }
@@ -178,18 +181,69 @@ export const SignupInviteServiceLive = Layer.effect(
           return { inviteId: validation.invite.id }
         }),
 
-      acceptInvite: (inviteId, userId) =>
+      reserveSignupAttempt: input =>
         Effect.gen(function* () {
-          if (!inviteId || !userId) {
+          const { email, token } = yield* parseSignupAttempt(input)
+
+          if (publicRegistrationEnabled()) {
+            return { reservationToken: null }
+          }
+
+          if (!token) {
+            return yield* Effect.fail(new InvalidSignupInviteError({ message: 'An invite is required to create an account' }))
+          }
+
+          if (!email) {
+            return yield* Effect.fail(new InvalidSignupInviteError({ message: 'A valid email address is required' }))
+          }
+
+          if (yield* repository.emailExists(email)) {
+            return yield* Effect.fail(new InvalidSignupInviteError({ message: 'An account already exists for this email address' }))
+          }
+
+          const now = new Date()
+          const reservation = yield* repository.reserveByToken(
+            token,
+            email,
+            now,
+            new Date(now.getTime() + INVITE_RESERVATION_TTL_MS)
+          )
+
+          if (!reservation) {
+            const invite = yield* repository.findByToken(token)
+            const validation = validateSignupInvite(invite, email, now)
+
+            if (!validation.valid) {
+              if (invite && validation.status === 'expired' && invite.status === 'pending') {
+                yield* repository.markExpired(invite.id, now)
+              }
+              return yield* Effect.fail(new InvalidSignupInviteError({ message: validation.message }))
+            }
+
+            return yield* Effect.fail(new InvalidSignupInviteError({ message: 'This invite is already being used' }))
+          }
+
+          return { reservationToken: reservation.reservationToken }
+        }),
+
+      acceptInvite: (reservationToken, userId) =>
+        Effect.gen(function* () {
+          if (!reservationToken || !userId) {
             return yield* Effect.fail(new InvalidSignupInviteError({ message: 'Invite and user are required' }))
           }
 
-          const invite = yield* repository.markAccepted(inviteId, userId, new Date())
+          const invite = yield* repository.markAcceptedReservation(reservationToken, userId, new Date())
           if (!invite) {
-            return yield* Effect.fail(new InvalidSignupInviteError({ message: 'Invite not found' }))
+            return yield* Effect.fail(new InvalidSignupInviteError({ message: 'Invite is no longer available' }))
           }
 
           return toSignupInvite(invite)
+        }),
+
+      releaseInviteReservation: reservationToken =>
+        Effect.gen(function* () {
+          if (!reservationToken) return
+          yield* repository.releaseReservation(reservationToken, new Date())
         })
     }
   })
@@ -210,8 +264,14 @@ export const getSignupInvitePreview = (token: string) =>
 export const validateSignupAttempt = (input: SignupAttemptInput) =>
   Effect.flatMap(SignupInviteService, service => service.validateSignupAttempt(input))
 
-export const acceptSignupInvite = (inviteId: string, userId: string) =>
-  Effect.flatMap(SignupInviteService, service => service.acceptInvite(inviteId, userId))
+export const reserveSignupAttempt = (input: SignupAttemptInput) =>
+  Effect.flatMap(SignupInviteService, service => service.reserveSignupAttempt(input))
+
+export const acceptSignupInvite = (reservationToken: string, userId: string) =>
+  Effect.flatMap(SignupInviteService, service => service.acceptInvite(reservationToken, userId))
+
+export const releaseSignupInviteReservation = (reservationToken: string) =>
+  Effect.flatMap(SignupInviteService, service => service.releaseInviteReservation(reservationToken))
 
 export function normalizeCreateSignupInviteInput(input: CreateSignupInviteInput) {
   const email = normalizeEmail(input.email)

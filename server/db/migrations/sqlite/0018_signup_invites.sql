@@ -5,6 +5,9 @@ CREATE TABLE `signup_invites` (
   `status` text DEFAULT 'pending' NOT NULL,
   `created_by_user_id` text NOT NULL,
   `accepted_by_user_id` text,
+  `reservation_token` text,
+  `reserved_at` integer,
+  `reservation_expires_at` integer,
   `expires_at` integer NOT NULL,
   `accepted_at` integer,
   `revoked_at` integer,
@@ -16,6 +19,7 @@ CREATE TABLE `signup_invites` (
 );
 
 CREATE UNIQUE INDEX `signup_invites_token_hash_unique` ON `signup_invites` (`token_hash`);
+CREATE UNIQUE INDEX `signup_invites_reservation_token_unique` ON `signup_invites` (`reservation_token`) WHERE `reservation_token` IS NOT NULL;
 CREATE INDEX `signup_invites_status_idx` ON `signup_invites` (`status`);
 CREATE INDEX `signup_invites_email_idx` ON `signup_invites` (`email`);
 CREATE INDEX `signup_invites_created_by_user_id_idx` ON `signup_invites` (`created_by_user_id`);

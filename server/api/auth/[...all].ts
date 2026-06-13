@@ -9,7 +9,7 @@ export default defineEventHandler(async (event) => {
   const url = new URL(request.url ?? 'http://localhost/api/auth')
   const verificationEnabled = getEmailVerificationConfig().enabled
   const isEmailSignup = url.pathname.endsWith('/api/auth/sign-up/email') && request.method === 'POST'
-  let acceptedInviteId: string | null = null
+  let inviteReservationToken: string | null = null
 
   if (verificationEnabled && url.pathname.endsWith('/api/auth/change-email')) {
     throw createError({
@@ -29,25 +29,40 @@ export default defineEventHandler(async (event) => {
 
   if (isEmailSignup) {
     const body = await readSignupBody(request)
-    const validation = await runEffect(Effect.gen(function* () {
-      return yield* validateSignupAttempt({
+    const reservation = await runEffect(Effect.gen(function* () {
+      return yield* reserveSignupAttempt({
         token: body?.inviteToken,
         email: body?.email
       })
     }))
-    acceptedInviteId = validation.inviteId
+    inviteReservationToken = reservation.reservationToken
   }
 
-  const response = await auth.handler(request)
+  let response: Response
 
-  if (isEmailSignup && response.ok && acceptedInviteId) {
+  try {
+    response = await auth.handler(request)
+  } catch (error) {
+    if (inviteReservationToken) {
+      await releaseInviteReservation(inviteReservationToken)
+    }
+    throw error
+  }
+
+  if (isEmailSignup && inviteReservationToken && !response.ok) {
+    await releaseInviteReservation(inviteReservationToken)
+  }
+
+  if (isEmailSignup && response.ok && inviteReservationToken) {
     const body = await response.clone().json().catch(() => null) as { user?: { id?: string } } | null
     const userId = body?.user?.id
 
     if (userId) {
       await runEffect(Effect.gen(function* () {
-        return yield* acceptSignupInvite(acceptedInviteId, userId)
+        return yield* acceptSignupInvite(inviteReservationToken, userId)
       }))
+    } else {
+      await releaseInviteReservation(inviteReservationToken)
     }
   }
 
@@ -69,4 +84,10 @@ async function readSignupBody(request: Request) {
   }
 
   return null
+}
+
+function releaseInviteReservation(reservationToken: string) {
+  return runEffect(Effect.gen(function* () {
+    return yield* releaseSignupInviteReservation(reservationToken)
+  }))
 }

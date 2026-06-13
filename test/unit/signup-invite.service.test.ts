@@ -3,9 +3,10 @@ import { Effect, Layer } from 'effect'
 import { EmailService } from '../../server/services/email.service'
 import { SignupInviteRepository } from '../../server/repositories/signup-invite.repository'
 import type { SignupInviteRecord, SignupInviteRepositoryInterface } from '../../server/repositories/signup-invite.repository'
-import { SignupInviteServiceLive, acceptSignupInvite, createSignupInvite, listSignupInvites, validateSignupAttempt } from '../../server/services/signup-invite.service'
+import { SignupInviteServiceLive, acceptSignupInvite, createSignupInvite, listSignupInvites, reserveSignupAttempt, validateSignupAttempt } from '../../server/services/signup-invite.service'
 
 const originalPublicRegistration = process.env.LIBROO_PUBLIC_REGISTRATION_ENABLED
+const originalBetterAuthUrl = process.env.BETTER_AUTH_URL
 const admin = { id: 'admin-1', role: 'admin' }
 
 describe('SignupInviteService', () => {
@@ -15,6 +16,7 @@ describe('SignupInviteService', () => {
   })
 
   afterEach(() => {
+    process.env.BETTER_AUTH_URL = originalBetterAuthUrl
     process.env.LIBROO_PUBLIC_REGISTRATION_ENABLED = originalPublicRegistration
   })
 
@@ -48,15 +50,34 @@ describe('SignupInviteService', () => {
 
   it('accepts a pending invite for Better Auth user ids', async () => {
     const state = createFakeState()
-    state.invites.push(makeInvite({ id: 'invite-1' }))
+    state.invites.push(makeInvite({
+      id: 'invite-1',
+      reservationToken: 'reservation-1',
+      reservedAt: new Date(),
+      reservationExpiresAt: new Date(Date.now() + 60_000)
+    }))
 
     const result = await runWithFakes(
-      acceptSignupInvite('invite-1', 'user-1'),
+      acceptSignupInvite('reservation-1', 'user-1'),
       state
     )
 
     expect(result.status).toBe('accepted')
     expect(result.acceptedByUserId).toBe('user-1')
+    expect(state.invites[0]?.reservationToken).toBeNull()
+  })
+
+  it('reserves pending invites before Better Auth signup', async () => {
+    const state = createFakeState()
+    state.invites.push(makeInvite({ id: 'invite-1', token: 'invite-token' }))
+
+    const result = await runWithFakes(
+      reserveSignupAttempt({ token: 'invite-token', email: 'ada@example.com' }),
+      state
+    )
+
+    expect(result.reservationToken).toBe('reservation-1')
+    expect(state.invites[0]?.reservationToken).toBe('reservation-1')
   })
 
   it('expires pending invites that are past their expiration date', async () => {
@@ -170,6 +191,7 @@ interface FakeState {
   sentEmails: Array<{ to: string, subject: string }>
   existingEmails: Set<string>
   nextToken: number
+  nextReservation: number
 }
 
 function createFakeState(): FakeState {
@@ -177,7 +199,8 @@ function createFakeState(): FakeState {
     invites: [],
     sentEmails: [],
     existingEmails: new Set(),
-    nextToken: 1
+    nextToken: 1,
+    nextReservation: 1
   }
 }
 
@@ -225,21 +248,95 @@ function createFakeRepository(state: FakeState): SignupInviteRepositoryInterface
     markExpired: (inviteId, now) =>
       Effect.sync(() => updateInvite(state, inviteId, {
         status: 'expired',
+        reservationToken: null,
+        reservedAt: null,
+        reservationExpiresAt: null,
         updatedAt: now
       })),
 
     markAccepted: (inviteId, userId, now) =>
-      Effect.sync(() => updateInvite(state, inviteId, {
-        status: 'accepted',
-        acceptedByUserId: userId,
-        acceptedAt: now,
-        updatedAt: now
-      })),
+      Effect.sync(() => {
+        const invite = state.invites.find(invite => invite.id === inviteId)
+        if (!invite || invite.status !== 'pending' || invite.expiresAt.getTime() <= now.getTime()) {
+          return null
+        }
+
+        return updateInvite(state, inviteId, {
+          status: 'accepted',
+          acceptedByUserId: userId,
+          acceptedAt: now,
+          reservationToken: null,
+          reservedAt: null,
+          reservationExpiresAt: null,
+          updatedAt: now
+        })
+      }),
+
+    reserveByToken: (token, email, now, reservationExpiresAt) =>
+      Effect.sync(() => {
+        const invite = state.invites.find(invite =>
+          invite.tokenHash === token
+          && invite.status === 'pending'
+          && invite.expiresAt.getTime() > now.getTime()
+          && (!invite.email || invite.email === email)
+          && (!invite.reservationToken || (invite.reservationExpiresAt?.getTime() ?? 0) <= now.getTime())
+        )
+        if (!invite) return null
+
+        const reservationToken = `reservation-${state.nextReservation++}`
+        const updatedInvite = updateInvite(state, invite.id, {
+          reservationToken,
+          reservedAt: now,
+          reservationExpiresAt,
+          updatedAt: now
+        })
+        return updatedInvite ? { invite: updatedInvite, reservationToken } : null
+      }),
+
+    markAcceptedReservation: (reservationToken, userId, now) =>
+      Effect.sync(() => {
+        const invite = state.invites.find(invite =>
+          invite.reservationToken === reservationToken
+          && invite.status === 'pending'
+          && invite.expiresAt.getTime() > now.getTime()
+          && (invite.reservationExpiresAt?.getTime() ?? 0) > now.getTime()
+        )
+        if (!invite) return null
+
+        return updateInvite(state, invite.id, {
+          status: 'accepted',
+          acceptedByUserId: userId,
+          acceptedAt: now,
+          reservationToken: null,
+          reservedAt: null,
+          reservationExpiresAt: null,
+          updatedAt: now
+        })
+      }),
+
+    releaseReservation: (reservationToken, now) =>
+      Effect.sync(() => {
+        const invite = state.invites.find(invite =>
+          invite.reservationToken === reservationToken
+          && invite.status === 'pending'
+        )
+        if (!invite) return
+
+        updateInvite(state, invite.id, {
+          reservationToken: null,
+          reservedAt: null,
+          reservationExpiresAt: null,
+          updatedAt: now
+        })
+      }),
 
     revoke: (inviteId, now) =>
       Effect.sync(() => updateInvite(state, inviteId, {
         status: 'revoked',
         revokedAt: now,
+        reservationToken: null,
+        reservedAt: null,
+        reservationExpiresAt: null,
         updatedAt: now
       })),
 
@@ -258,6 +355,9 @@ function makeInvite(overrides: Partial<SignupInviteRecord> & { token?: string } 
     status: 'pending',
     createdByUserId: 'admin-1',
     acceptedByUserId: null,
+    reservationToken: null,
+    reservedAt: null,
+    reservationExpiresAt: null,
     expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     acceptedAt: null,
     revokedAt: null,

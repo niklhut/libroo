@@ -63,6 +63,9 @@ export const signupInvites = sqliteTable('signup_invites', {
   status: text('status', { enum: ['pending', 'accepted', 'expired', 'revoked'] }).notNull().default('pending'),
   createdByUserId: text('created_by_user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
   acceptedByUserId: text('accepted_by_user_id').references(() => user.id, { onDelete: 'set null' }),
+  reservationToken: text('reservation_token'),
+  reservedAt: integer('reserved_at', { mode: 'timestamp' }),
+  reservationExpiresAt: integer('reservation_expires_at', { mode: 'timestamp' }),
   expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
   acceptedAt: integer('accepted_at', { mode: 'timestamp' }),
   revokedAt: integer('revoked_at', { mode: 'timestamp' }),
@@ -70,6 +73,7 @@ export const signupInvites = sqliteTable('signup_invites', {
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
 }, table => [
   uniqueIndex('signup_invites_token_hash_unique').on(table.tokenHash),
+  uniqueIndex('signup_invites_reservation_token_unique').on(table.reservationToken).where(sql`${table.reservationToken} IS NOT NULL`),
   index('signup_invites_status_idx').on(table.status),
   index('signup_invites_email_idx').on(table.email),
   index('signup_invites_created_by_user_id_idx').on(table.createdByUserId),

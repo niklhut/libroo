@@ -4,9 +4,11 @@ const emailVerificationEnabled = truthyValues.has(emailVerificationEnabledRaw.tr
 const publicRegistrationEnabledRaw = process.env.LIBROO_PUBLIC_REGISTRATION_ENABLED ?? 'true'
 const publicRegistrationEnabled = truthyValues.has(publicRegistrationEnabledRaw.trim().toLowerCase())
 const emailProvider = process.env.LIBROO_EMAIL_PROVIDER === 'plunk' ? 'plunk' : 'smtp'
+const smtpAuthConfigured = (!process.env.LIBROO_SMTP_USER && !process.env.LIBROO_SMTP_PASSWORD)
+  || Boolean(process.env.LIBROO_SMTP_USER && process.env.LIBROO_SMTP_PASSWORD)
 const emailDeliveryEnabled = emailProvider === 'plunk'
   ? Boolean(process.env.LIBROO_PLUNK_API_KEY && (process.env.LIBROO_PLUNK_BASE_URL ?? 'https://next-api.useplunk.com'))
-  : Boolean(process.env.LIBROO_EMAIL_FROM && process.env.LIBROO_SMTP_HOST && (!process.env.LIBROO_SMTP_USER || process.env.LIBROO_SMTP_PASSWORD))
+  : Boolean(process.env.LIBROO_EMAIL_FROM && process.env.LIBROO_SMTP_HOST && smtpAuthConfigured)
 
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
