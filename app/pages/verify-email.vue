@@ -73,9 +73,6 @@ onMounted(async () => {
       return
     }
 
-    await $fetch('/api/auth/pending-email-change', {
-      method: 'DELETE'
-    }).catch(() => undefined)
     status.value = 'success'
   } catch (err: unknown) {
     status.value = getEmailVerificationFailureStatus(err)
