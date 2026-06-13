@@ -4,6 +4,7 @@ import { SignupInviteRepository } from '../repositories/signup-invite.repository
 import type { SignupInviteRecord } from '../repositories/signup-invite.repository'
 import type { EmailService } from './email.service'
 import { sendEmail } from './email.service'
+import { getAuthUrl } from '../utils/auth'
 import type { DatabaseError } from '../repositories/book.repository'
 import type { DbService } from './db.service'
 
@@ -197,10 +198,6 @@ export const SignupInviteServiceLive = Layer.effect(
             return yield* Effect.fail(new InvalidSignupInviteError({ message: 'A valid email address is required' }))
           }
 
-          if (yield* repository.emailExists(email)) {
-            return yield* Effect.fail(new InvalidSignupInviteError({ message: 'An account already exists for this email address' }))
-          }
-
           const now = new Date()
           const reservation = yield* repository.reserveByToken(
             token,
@@ -221,6 +218,11 @@ export const SignupInviteServiceLive = Layer.effect(
             }
 
             return yield* Effect.fail(new InvalidSignupInviteError({ message: 'This invite is already being used' }))
+          }
+
+          if (yield* repository.emailExists(email)) {
+            yield* repository.releaseReservation(reservation.reservationToken, now)
+            return yield* Effect.fail(new InvalidSignupInviteError({ message: 'An account already exists for this email address' }))
           }
 
           return { reservationToken: reservation.reservationToken }
@@ -429,8 +431,7 @@ function inviteStatusMessage(status: SignupInviteStatus) {
 }
 
 function buildSignupInviteUrl(token: string) {
-  const baseURL = process.env.BETTER_AUTH_URL || 'http://localhost:3000'
-  const url = new URL('/register', baseURL)
+  const url = new URL('/register', getAuthUrl())
   url.searchParams.set('invite', token)
   return url.toString()
 }

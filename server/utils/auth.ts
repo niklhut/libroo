@@ -66,7 +66,7 @@ export const getAuthSecret = () => getEnvSecret({
     + 'Please set BETTER_AUTH_SECRET or NUXT_BETTER_AUTH_SECRET in your production environment.'
 })
 
-const getAuthUrl = () => getEnvSecret({
+export const getAuthUrl = () => getEnvSecret({
   envKey: 'BETTER_AUTH_URL',
   runtimeConfigKey: 'betterAuthUrl',
   devFallback: 'http://localhost:3000',

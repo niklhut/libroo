@@ -91,6 +91,7 @@ const fields = computed<AuthFormField[]>(() => [
     label: 'Email',
     placeholder: 'Enter your email',
     defaultValue: inviteEmail.value,
+    disabled: Boolean(inviteEmail.value),
     required: true
   },
   {
@@ -133,6 +134,11 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
 
   if (inviteUnavailable.value) {
     error.value = inviteBlockDescription.value
+    return
+  }
+
+  if (inviteEmail.value && payload.data.email.toLowerCase() !== inviteEmail.value) {
+    error.value = 'Use the email address this invite was sent to'
     return
   }
 
@@ -208,7 +214,6 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
     <UPageCard
       v-else-if="registrationRequiresInvite || inviteUnavailable"
       :title="inviteBlockTitle"
-      description="This Libroo instance only allows invited users to create accounts."
       icon="i-lucide-lock"
     >
       <UAlert
