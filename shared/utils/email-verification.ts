@@ -6,6 +6,8 @@ export function getEmailVerificationFailureStatus(error: unknown): EmailVerifica
     : error && typeof error === 'object'
       ? String(
           ('statusText' in error && error.statusText)
+          || ('data' in error && error.data && typeof error.data === 'object' && 'message' in error.data && error.data.message)
+          || ('data' in error && error.data && typeof error.data === 'object' && 'statusMessage' in error.data && error.data.statusMessage)
           || ('message' in error && error.message)
           || ('code' in error && error.code)
           || ''
@@ -18,6 +20,7 @@ export function getEmailVerificationFailureStatus(error: unknown): EmailVerifica
     uppercaseValue.includes('INVALID')
     || uppercaseValue.includes('INVALID_TOKEN')
     || uppercaseValue.includes('TOKEN_ALREADY_USED')
+    || uppercaseValue.includes('NO LONGER ACTIVE')
   ) {
     return 'invalid'
   }

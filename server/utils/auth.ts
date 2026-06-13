@@ -56,7 +56,7 @@ const getEnvSecret = (options: EnvSecretOptions): string => {
   return value as string
 }
 
-const getAuthSecret = () => getEnvSecret({
+export const getAuthSecret = () => getEnvSecret({
   envKey: 'BETTER_AUTH_SECRET',
   runtimeConfigKey: 'betterAuthSecret',
   devFallback: 'libroo-dev-secret',
@@ -87,6 +87,22 @@ function escapeHtml(value: string) {
     .replaceAll('\'', '&#39;')
 }
 
+function getPublicVerificationUrl(url: string) {
+  try {
+    const verificationUrl = new URL('/verify-email', getAuthUrl())
+    const token = new URL(url).searchParams.get('token')
+
+    if (token) {
+      verificationUrl.searchParams.set('token', token)
+      return verificationUrl.toString()
+    }
+  } catch {
+    // Fall back to the provider URL if Better Auth ever changes the URL shape.
+  }
+
+  return url
+}
+
 export const auth = betterAuth({
   baseURL: getAuthUrl(),
   secret: getAuthSecret(),
@@ -113,7 +129,8 @@ export const auth = betterAuth({
         },
         sendVerificationEmail: async ({ user, url }) => {
           const displayName = escapeHtml(user.name)
-          const safeUrl = escapeHtml(url)
+          const verificationUrl = getPublicVerificationUrl(url)
+          const safeUrl = escapeHtml(verificationUrl)
           await sendEmailMessage({
             to: user.email,
             subject: 'Verify your Libroo email address',
@@ -121,7 +138,7 @@ export const auth = betterAuth({
               `Hello ${user.name},`,
               '',
               'Verify your email address for Libroo by opening this link:',
-              url,
+              verificationUrl,
               '',
               'This link expires in 24 hours. If you did not request this, you can ignore this email.'
             ].join('\n'),

@@ -15,6 +15,8 @@ const toast = useToast()
 
 const isLoading = ref(false)
 const error = ref('')
+const verificationEmail = ref('')
+const isVerificationEmailSent = ref(false)
 
 const redirectPath = computed(() => {
   const redirect = route.query.redirect
@@ -101,6 +103,7 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
         color: 'error'
       })
     } else {
+      verificationEmail.value = payload.data.email
       toast.add({
         title: 'Account created!',
         description: config.public.emailVerificationEnabled
@@ -110,7 +113,7 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
       })
 
       if (config.public.emailVerificationEnabled) {
-        await navigateTo('/login')
+        isVerificationEmailSent.value = true
       }
     }
   } catch (e: unknown) {
@@ -128,7 +131,30 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
 
 <template>
   <UContainer class="py-12 max-w-md">
-    <UPageCard>
+    <UPageCard
+      v-if="isVerificationEmailSent"
+      title="Verify your email"
+      :description="`We sent a verification link to ${verificationEmail}. Open it to activate your account.`"
+      icon="i-lucide-mail-check"
+    >
+      <UAlert
+        color="success"
+        variant="soft"
+        icon="i-lucide-send"
+        title="Verification email sent"
+      />
+
+      <template #footer>
+        <UButton
+          to="/login"
+          icon="i-lucide-log-in"
+        >
+          Go to sign in
+        </UButton>
+      </template>
+    </UPageCard>
+
+    <UPageCard v-else>
       <UAuthForm
         :schema="schema"
         :fields="fields"

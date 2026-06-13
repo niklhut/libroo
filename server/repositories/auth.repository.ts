@@ -5,6 +5,7 @@ import { DatabaseError } from './book.repository'
 
 export interface AuthRepositoryInterface {
   getPendingEmail: (userId: string) => Effect.Effect<string | null, DatabaseError>
+  getPendingEmailByCurrentEmail: (email: string) => Effect.Effect<string | null, DatabaseError>
   emailIsInUse: (userId: string, email: string) => Effect.Effect<boolean, DatabaseError>
   setPendingEmail: (userId: string, pendingEmail: string) => Effect.Effect<void, DatabaseError>
   clearPendingEmail: (userId: string) => Effect.Effect<void, DatabaseError>
@@ -34,6 +35,26 @@ export const AuthRepositoryLive = Layer.effect(
             return new DatabaseError({
               message: 'Failed to load pending email',
               operation: 'auth.getPendingEmail'
+            })
+          }
+        }),
+
+      getPendingEmailByCurrentEmail: email =>
+        Effect.tryPromise({
+          try: async () => {
+            const [row] = await dbService.db
+              .select({ pendingEmail: user.pendingEmail })
+              .from(user)
+              .where(eq(user.email, email))
+              .limit(1)
+
+            return row?.pendingEmail ?? null
+          },
+          catch: (error) => {
+            console.error('auth.getPendingEmailByCurrentEmail failed:', error)
+            return new DatabaseError({
+              message: 'Failed to load pending email',
+              operation: 'auth.getPendingEmailByCurrentEmail'
             })
           }
         }),
@@ -109,6 +130,9 @@ export const AuthRepositoryLive = Layer.effect(
 
 export const getPendingEmail = (userId: string) =>
   Effect.flatMap(AuthRepository, repository => repository.getPendingEmail(userId))
+
+export const getPendingEmailByCurrentEmail = (email: string) =>
+  Effect.flatMap(AuthRepository, repository => repository.getPendingEmailByCurrentEmail(email))
 
 export const emailIsInUse = (userId: string, email: string) =>
   Effect.flatMap(AuthRepository, repository => repository.emailIsInUse(userId, email))

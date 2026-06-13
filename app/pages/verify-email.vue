@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { authClient } from '~/utils/auth-client'
 import { getEmailVerificationFailureStatus } from '~~/shared/utils/email-verification'
 
 definePageMeta({
@@ -65,10 +64,15 @@ onMounted(async () => {
   }
 
   try {
-    await authClient.$fetch('/verify-email', {
+    const result = await $fetch<{ status: boolean }>('/api/auth/verify-email', {
       query: { token },
       method: 'GET'
     })
+    if (result.status !== true) {
+      status.value = 'invalid'
+      return
+    }
+
     await $fetch('/api/auth/pending-email-change', {
       method: 'DELETE'
     }).catch(() => undefined)

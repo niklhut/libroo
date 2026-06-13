@@ -1,4 +1,5 @@
 import { Effect } from 'effect'
+import { JWTExpired } from 'jose/errors'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AuthService, AuthServiceLive, UnauthorizedError } from '../../../../server/services/auth.service'
 import { AuthRepository } from '../../../../server/repositories/auth.repository'
@@ -10,7 +11,12 @@ const authMock = vi.hoisted(() => ({
   verifyPassword: vi.fn()
 }))
 
+const jwtMock = vi.hoisted(() => ({
+  jwtVerify: vi.fn()
+}))
+
 vi.mock('../../../../server/utils/auth', () => ({
+  getAuthSecret: () => 'test-secret',
   auth: {
     api: {
       getSession: authMock.getSession,
@@ -21,19 +27,26 @@ vi.mock('../../../../server/utils/auth', () => ({
   }
 }))
 
+vi.mock('jose', () => ({
+  jwtVerify: jwtMock.jwtVerify
+}))
+
 describe('AuthService', () => {
   beforeEach(() => {
     authMock.getSession.mockReset()
     authMock.sendVerificationEmail.mockReset()
     authMock.changeEmail.mockReset()
     authMock.verifyPassword.mockReset()
+    jwtMock.jwtVerify.mockReset()
     authMock.verifyPassword.mockResolvedValue({ status: true })
     authMock.changeEmail.mockResolvedValue({ status: true })
     authRepoMock.getPendingEmail.mockReset()
+    authRepoMock.getPendingEmailByCurrentEmail.mockReset()
     authRepoMock.emailIsInUse.mockReset()
     authRepoMock.setPendingEmail.mockReset()
     authRepoMock.clearPendingEmail.mockReset()
     authRepoMock.getPendingEmail.mockReturnValue(Effect.succeed(null))
+    authRepoMock.getPendingEmailByCurrentEmail.mockReturnValue(Effect.succeed(null))
     authRepoMock.emailIsInUse.mockReturnValue(Effect.succeed(false))
     authRepoMock.setPendingEmail.mockReturnValue(Effect.void)
     authRepoMock.clearPendingEmail.mockReturnValue(Effect.void)
@@ -168,15 +181,10 @@ describe('AuthService', () => {
     await expect(runAuthService(
       Effect.flatMap(AuthService, service => service.resendVerificationEmail(makeEvent({
         pendingEmail: 'ada.new@example.com'
-      }), 'current-password'))
+      })))
     )).resolves.toEqual({ status: true })
 
-    expect(authMock.verifyPassword).toHaveBeenCalledWith({
-      headers: expect.any(Headers),
-      body: {
-        password: 'current-password'
-      }
-    })
+    expect(authMock.verifyPassword).not.toHaveBeenCalled()
     expect(authMock.changeEmail).toHaveBeenCalledWith({
       headers: expect.any(Headers),
       body: {
@@ -243,6 +251,32 @@ describe('AuthService', () => {
     })
   })
 
+  it('replaces an existing pending email change', async () => {
+    authMock.getSession.mockResolvedValueOnce({
+      user: {
+        id: 'user-1',
+        name: 'Ada',
+        email: 'ada@example.com',
+        emailVerified: true
+      },
+      session: { id: 'session-1' }
+    })
+    authRepoMock.getPendingEmail.mockReturnValueOnce(Effect.succeed('ada.pending@example.com'))
+
+    await expect(runAuthService(
+      Effect.flatMap(AuthService, service => service.setPendingEmailChange(makeEvent(), 'ada.new@example.com', 'current-password'))
+    )).resolves.toEqual({ pendingEmail: 'ada.new@example.com' })
+
+    expect(authRepoMock.setPendingEmail).toHaveBeenCalledWith('user-1', 'ada.new@example.com')
+    expect(authMock.changeEmail).toHaveBeenCalledWith({
+      headers: expect.any(Headers),
+      body: {
+        newEmail: 'ada.new@example.com',
+        callbackURL: '/verify-email'
+      }
+    })
+  })
+
   it('rejects pending email changes without the current password', async () => {
     authMock.getSession.mockResolvedValueOnce({
       user: {
@@ -289,10 +323,80 @@ describe('AuthService', () => {
     })
     expect(authRepoMock.setPendingEmail).not.toHaveBeenCalled()
   })
+
+  it('accepts normal email verification tokens without a pending email lookup', async () => {
+    jwtMock.jwtVerify.mockResolvedValueOnce({
+      payload: {
+        email: 'ada@example.com'
+      }
+    })
+
+    await expect(runAuthService(
+      Effect.flatMap(AuthService, service => service.validateEmailVerificationToken('token'))
+    )).resolves.toEqual({ status: true })
+
+    expect(authRepoMock.getPendingEmailByCurrentEmail).not.toHaveBeenCalled()
+  })
+
+  it('accepts email-change verification tokens that match the current pending email', async () => {
+    jwtMock.jwtVerify.mockResolvedValueOnce({
+      payload: {
+        email: 'ada@example.com',
+        updateTo: 'ada.new@example.com'
+      }
+    })
+    authRepoMock.getPendingEmailByCurrentEmail.mockReturnValueOnce(Effect.succeed('ada.new@example.com'))
+
+    await expect(runAuthService(
+      Effect.flatMap(AuthService, service => service.validateEmailVerificationToken('token'))
+    )).resolves.toEqual({ status: true })
+
+    expect(authRepoMock.getPendingEmailByCurrentEmail).toHaveBeenCalledWith('ada@example.com')
+  })
+
+  it('rejects stale email-change verification tokens', async () => {
+    jwtMock.jwtVerify.mockResolvedValueOnce({
+      payload: {
+        email: 'ada@example.com',
+        updateTo: 'ada.old@example.com'
+      }
+    })
+    authRepoMock.getPendingEmailByCurrentEmail.mockReturnValueOnce(Effect.succeed('ada.new@example.com'))
+
+    const result = await runAuthService(Effect.either(
+      Effect.flatMap(AuthService, service => service.validateEmailVerificationToken('token'))
+    ))
+
+    expect(result._tag).toBe('Left')
+    expect(result.left).toMatchObject({
+      _tag: 'InvalidEmailVerificationTokenError',
+      message: 'This email change link is no longer active. Request a new verification email from settings.'
+    })
+  })
+
+  it('preserves expired email verification token errors', async () => {
+    jwtMock.jwtVerify.mockRejectedValueOnce(new JWTExpired('expired', {
+      claim: 'exp',
+      reason: 'check_failed',
+      payload: {},
+      value: new Date()
+    }))
+
+    const result = await runAuthService(Effect.either(
+      Effect.flatMap(AuthService, service => service.validateEmailVerificationToken('token'))
+    ))
+
+    expect(result._tag).toBe('Left')
+    expect(result.left).toMatchObject({
+      _tag: 'ExpiredEmailVerificationTokenError',
+      message: 'TOKEN_EXPIRED'
+    })
+  })
 })
 
 const authRepoMock = {
   getPendingEmail: vi.fn(),
+  getPendingEmailByCurrentEmail: vi.fn(),
   emailIsInUse: vi.fn(),
   setPendingEmail: vi.fn(),
   clearPendingEmail: vi.fn()

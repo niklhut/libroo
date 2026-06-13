@@ -76,6 +76,8 @@ const errorStatusCodes: Record<string, number> = {
   VerificationEmailDeliveryError: 503,
   InvalidPendingEmailError: 400,
   PendingEmailConflictError: 409,
+  InvalidEmailVerificationTokenError: 401,
+  ExpiredEmailVerificationTokenError: 401,
   BookNotFoundError: 404,
   OpenLibraryBookNotFoundError: 404,
   BookAlreadyOwnedError: 409,

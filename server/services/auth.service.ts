@@ -1,12 +1,14 @@
 import { Context, Effect, Layer, Data } from 'effect'
 import type { H3Event } from 'h3'
 import type { User } from 'better-auth/types'
+import { jwtVerify } from 'jose'
+import { JWTExpired } from 'jose/errors'
 import * as z from 'zod'
 import { isActiveBan } from '~~/shared/utils/auth-status'
-import { auth } from '../utils/auth'
+import { auth, getAuthSecret } from '../utils/auth'
 import { getEmailVerificationConfig } from '../utils/email-verification-config'
 import type { AuthRepository } from '../repositories/auth.repository'
-import { clearPendingEmail, emailIsInUse, getPendingEmail, setPendingEmail } from '../repositories/auth.repository'
+import { clearPendingEmail, emailIsInUse, getPendingEmail, getPendingEmailByCurrentEmail, setPendingEmail } from '../repositories/auth.repository'
 import type { DatabaseError } from '../repositories/book.repository'
 
 // Error types
@@ -26,7 +28,19 @@ export class PendingEmailConflictError extends Data.TaggedError('PendingEmailCon
   message?: string
 }> { }
 
+export class InvalidEmailVerificationTokenError extends Data.TaggedError('InvalidEmailVerificationTokenError')<{
+  message?: string
+}> { }
+
+export class ExpiredEmailVerificationTokenError extends Data.TaggedError('ExpiredEmailVerificationTokenError')<{
+  message?: string
+}> { }
+
 const pendingEmailSchema = z.email()
+const emailVerificationTokenSchema = z.object({
+  email: z.email(),
+  updateTo: z.email().optional()
+})
 
 // Type for the complete session data returned by auth.api.getSession
 // Inferred from the actual return type to ensure it stays in sync with Better Auth
@@ -46,6 +60,7 @@ export interface AuthServiceInterface {
   setPendingEmailChange: (event: H3Event, pendingEmail: string, currentPassword: string) => Effect.Effect<{ pendingEmail: string }, UnauthorizedError | InvalidPendingEmailError | PendingEmailConflictError | VerificationEmailDeliveryError | DatabaseError, AuthRepository>
   clearPendingEmailChange: (event: H3Event) => Effect.Effect<{ status: boolean }, UnauthorizedError | DatabaseError, AuthRepository>
   resendVerificationEmail: (event: H3Event, currentPassword?: string) => Effect.Effect<{ status: boolean }, UnauthorizedError | VerificationEmailDeliveryError | DatabaseError, AuthRepository>
+  validateEmailVerificationToken: (token: string) => Effect.Effect<{ status: boolean }, InvalidEmailVerificationTokenError | ExpiredEmailVerificationTokenError | DatabaseError, AuthRepository>
 }
 
 // Service tag
@@ -136,7 +151,7 @@ export const AuthServiceLive = Layer.succeed(AuthService, {
       return { status: true }
     }),
 
-  resendVerificationEmail: (event, currentPassword) =>
+  resendVerificationEmail: event =>
     Effect.gen(function* () {
       const sessionData = yield* fetchSession(event)
       const config = getEmailVerificationConfig()
@@ -150,13 +165,42 @@ export const AuthServiceLive = Layer.succeed(AuthService, {
         return { status: true }
       }
 
-      if (pendingEmail) {
-        yield* verifyCurrentPassword(event, currentPassword)
-      }
-
       return pendingEmail
         ? yield* sendPendingEmailChange(event, pendingEmail)
         : yield* sendCurrentEmailVerification(event, sessionData.user.email)
+    }),
+
+  validateEmailVerificationToken: token =>
+    Effect.gen(function* () {
+      const payload = yield* Effect.tryPromise({
+        try: async () => {
+          const { payload } = await jwtVerify(token, new TextEncoder().encode(getAuthSecret()), {
+            algorithms: ['HS256']
+          })
+          return emailVerificationTokenSchema.parse(payload)
+        },
+        catch: error => error instanceof JWTExpired
+          ? new ExpiredEmailVerificationTokenError({
+              message: 'TOKEN_EXPIRED'
+            })
+          : new InvalidEmailVerificationTokenError({
+              message: 'This verification link is invalid.'
+            })
+      })
+
+      if (!payload.updateTo) {
+        return { status: true }
+      }
+
+      const pendingEmail = yield* getPendingEmailByCurrentEmail(payload.email.toLowerCase())
+
+      if (pendingEmail?.toLowerCase() !== payload.updateTo.toLowerCase()) {
+        return yield* Effect.fail(new InvalidEmailVerificationTokenError({
+          message: 'This email change link is no longer active. Request a new verification email from settings.'
+        }))
+      }
+
+      return { status: true }
     })
 })
 
@@ -238,3 +282,6 @@ export const setPendingEmailChange = (event: H3Event, pendingEmail: string, curr
 
 export const clearPendingEmailChange = (event: H3Event) =>
   Effect.flatMap(AuthService, service => service.clearPendingEmailChange(event))
+
+export const validateEmailVerificationToken = (token: string) =>
+  Effect.flatMap(AuthService, service => service.validateEmailVerificationToken(token))

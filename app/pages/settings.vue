@@ -85,12 +85,11 @@ if (route.query.verify === 'required') {
 }
 
 function getFailureMessage(err: unknown, fallback: string) {
-  return err instanceof Error
-    ? err.message
-    : (err as { data?: { message?: string }, error?: { message?: string }, message?: string })?.data?.message
-      || (err as { error?: { message?: string } })?.error?.message
-      || (err as { message?: string })?.message
-      || fallback
+  return (err as { data?: { message?: string }, error?: { message?: string }, message?: string })?.data?.message
+    || (err as { error?: { message?: string } })?.error?.message
+    || (err as { message?: string })?.message
+    || (err instanceof Error ? err.message : undefined)
+    || fallback
 }
 
 async function changeEmail(payload: FormSubmitEvent<AccountEmailChangeSchema>) {
@@ -114,14 +113,15 @@ async function changeEmail(payload: FormSubmitEvent<AccountEmailChangeSchema>) {
     }
 
     if (verificationStatus.value.enabled) {
-      await $fetch('/api/auth/pending-email-change', {
+      const result = await $fetch<{ pendingEmail: string }>('/api/auth/pending-email-change', {
         method: 'POST',
         body: {
           pendingEmail: payload.data.email,
           currentPassword: payload.data.currentPassword
         }
       })
-      pendingEmailChange.value = payload.data.email
+      pendingEmailChange.value = result.pendingEmail
+      emailState.email = verificationStatus.value.email || user.value?.email || emailState.email
       toast.add({
         title: 'Verification email sent',
         description: 'Your current email remains active until the new address is verified.',
@@ -165,12 +165,7 @@ async function resendVerificationEmail() {
 
   try {
     await $fetch('/api/auth/resend-verification', {
-      method: 'POST',
-      body: pendingEmailChange.value
-        ? {
-            currentPassword: emailState.currentPassword
-          }
-        : undefined
+      method: 'POST'
     })
     await refreshVerificationStatus()
     toast.add({
@@ -366,7 +361,7 @@ async function importLibraryCsvFile() {
               variant="soft"
               icon="i-lucide-mail-check"
               title="Pending email change"
-              :description="`Open the verification link sent to ${pendingEmailChange}. Your account email stays ${user?.email} until then.`"
+              :description="`Open the verification link sent to ${pendingEmailChange}. Your account email stays ${user?.email} until then. Enter a different email below to replace this pending change.`"
             />
 
             <UButton
@@ -376,7 +371,7 @@ async function importLibraryCsvFile() {
               color="neutral"
               variant="outline"
               :loading="isResendingVerification"
-              :disabled="isResendingVerification || Boolean(pendingEmailChange && !emailState.currentPassword)"
+              :disabled="isResendingVerification"
               @click="resendVerificationEmail"
             >
               Resend verification email

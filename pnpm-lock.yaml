@@ -56,6 +56,9 @@ importers:
       effect:
         specifier: ^3.21.2
         version: 3.21.2
+      jose:
+        specifier: ^6.2.3
+        version: 6.2.3
       nodemailer:
         specifier: ^8.0.11
         version: 8.0.11
