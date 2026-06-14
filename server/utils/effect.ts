@@ -26,6 +26,7 @@ const RepositoriesLive = Layer.provideMerge(
     OpenLibraryRepositoryLive,
     LendingRepositoryLive,
     AdminRepositoryLive,
+    AuditRepositoryLive,
     LocationRepositoryLive,
     LibraryTransferRepositoryLive,
     AuthRepositoryLive,
@@ -36,7 +37,7 @@ const RepositoriesLive = Layer.provideMerge(
 
 // Service layer (depends on repositories)
 const ServicesLive = Layer.provideMerge(
-  Layer.mergeAll(BookServiceLive, LendingServiceLive, AdminServiceLive, LocationServiceLive, LibraryTransferServiceLive, SignupInviteServiceLive, EmailServiceLive),
+  Layer.mergeAll(BookServiceLive, LendingServiceLive, AdminServiceLive, AuditServiceLive, LocationServiceLive, LibraryTransferServiceLive, SignupInviteServiceLive, EmailServiceLive),
   RepositoriesLive
 )
 
@@ -52,6 +53,7 @@ export type MainServices
     | OpenLibraryRepository
     | LendingRepository
     | AdminRepository
+    | AuditRepository
     | LocationRepository
     | LibraryTransferRepository
     | AuthRepository
@@ -59,6 +61,7 @@ export type MainServices
     | BookService
     | LendingService
     | AdminService
+    | AuditService
     | LocationService
     | LibraryTransferService
     | SignupInviteService

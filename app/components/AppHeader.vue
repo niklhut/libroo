@@ -6,6 +6,7 @@ const authStore = useAuthStore()
 const { user } = storeToRefs(authStore)
 const { signOut } = authStore
 const route = useRoute()
+const config = useRuntimeConfig()
 
 async function handleSignOut() {
   try {
@@ -24,6 +25,26 @@ const logoTo = computed(() => user.value ? '/library' : '/login')
 function roleIncludesAdmin(role: string | null | undefined) {
   return (role ?? 'user').split(',').map(part => part.trim()).includes('admin')
 }
+
+const adminLinks = computed<NavigationMenuItem[]>(() => [
+  {
+    label: 'Users',
+    icon: 'i-lucide-users',
+    to: '/admin/users'
+  },
+  ...(!config.public.publicRegistrationEnabled
+    ? [{
+        label: 'Invites',
+        icon: 'i-lucide-user-plus',
+        to: '/admin/invites'
+      }]
+    : []),
+  {
+    label: 'Audit',
+    icon: 'i-lucide-scroll-text',
+    to: '/admin/audit'
+  }
+])
 
 // Navigation links - only show Sign Out when logged in
 const links = computed<NavigationMenuItem[]>(() => {
@@ -63,7 +84,8 @@ const links = computed<NavigationMenuItem[]>(() => {
         label: 'Admin',
         icon: 'i-lucide-shield',
         to: '/admin/users',
-        active: route.path.startsWith('/admin')
+        active: route.path.startsWith('/admin'),
+        children: adminLinks.value
       })
     }
 

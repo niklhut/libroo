@@ -7,7 +7,6 @@ const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const { user: currentUser } = storeToRefs(authStore)
-const config = useRuntimeConfig()
 const updatingUserId = ref<string | null>(null)
 const adminAuth = useAuth()
 const requestFetch = useRequestFetch()
@@ -104,7 +103,11 @@ async function setRole(user: AdminUser, role: AdminUser['role']) {
       ...usersPage.value,
       users: users.value.map(item =>
         item.id === user.id
-          ? { ...item, role, isAdmin: role === 'admin' }
+          ? {
+              ...item,
+              role,
+              isAdmin: role === 'admin'
+            }
           : item
       )
     }
@@ -243,17 +246,7 @@ async function unwrapAuthResponse<T>(promise: Promise<{ data: T | null, error: {
     <UPageHeader
       title="Users"
       :description="`${totalUsers} registered ${totalUsers === 1 ? 'user' : 'users'}`"
-    >
-      <template #links>
-        <UButton
-          v-if="!config.public.publicRegistrationEnabled"
-          to="/admin/invites"
-          icon="i-lucide-user-plus"
-        >
-          Invites
-        </UButton>
-      </template>
-    </UPageHeader>
+    />
 
     <UPageBody>
       <div

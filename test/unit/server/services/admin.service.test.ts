@@ -1,8 +1,9 @@
 import { Effect, Layer } from 'effect'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AdminRepository } from '../../../../server/repositories/admin.repository'
+import { AuditRepository } from '../../../../server/repositories/audit.repository'
 import { DatabaseError } from '../../../../server/repositories/book.repository'
-import { AdminForbiddenError, AdminService, AdminServiceLive } from '../../../../server/services/admin.service'
+import { AdminForbiddenError, AdminService, AdminServiceLive, InvalidAdminRequestError } from '../../../../server/services/admin.service'
 
 const authMock = vi.hoisted(() => ({
   listUsers: vi.fn()
@@ -17,6 +18,10 @@ vi.mock('../../../../server/utils/auth', () => ({
 }))
 
 describe('AdminService', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
   it('maps Better Auth authorization failures', async () => {
     const listLastActiveByUserIds = vi.fn()
     authMock.listUsers.mockRejectedValueOnce({ statusCode: 403 })
@@ -121,16 +126,66 @@ describe('AdminService', () => {
     })
     expect(listLastActiveByUserIds).toHaveBeenCalledWith(['user-1', 'user-2'])
   })
+
+  it('rejects audit reads for non-admin users', async () => {
+    const listAudit = vi.fn()
+
+    const result = await runAdminService(
+      Effect.either(Effect.flatMap(AdminService, service =>
+        service.listAuditEntries({
+          actor: { id: 'user-1', role: 'user' }
+        })
+      )),
+      vi.fn(),
+      vi.fn(),
+      listAudit
+    )
+
+    expect(result._tag).toBe('Left')
+    expect(result.left).toBeInstanceOf(AdminForbiddenError)
+    expect(listAudit).not.toHaveBeenCalled()
+  })
+
+  it('rejects invalid audit category filters', async () => {
+    const listAudit = vi.fn()
+
+    const result = await runAdminService(
+      Effect.either(Effect.flatMap(AdminService, service =>
+        service.listAuditEntries({
+          actor: { id: 'admin-1', role: 'admin' },
+          category: 'everything'
+        })
+      )),
+      vi.fn(),
+      vi.fn(),
+      listAudit
+    )
+
+    expect(result._tag).toBe('Left')
+    expect(result.left).toBeInstanceOf(InvalidAdminRequestError)
+    expect(listAudit).not.toHaveBeenCalled()
+  })
 })
 
 function runAdminService<A, E>(
   effect: Effect.Effect<A, E, AdminService>,
-  listLastActiveByUserIds: ReturnType<typeof vi.fn>
+  listLastActiveByUserIds: ReturnType<typeof vi.fn>,
+  createAudit: ReturnType<typeof vi.fn> = vi.fn(entry => Effect.succeed({
+    id: 'audit-1',
+    createdAt: new Date(),
+    ...entry
+  })),
+  listAudit: ReturnType<typeof vi.fn> = vi.fn(() => Effect.succeed({ entries: [], total: 0 }))
 ) {
   return Effect.runPromise(effect.pipe(
     Effect.provide(AdminServiceLive),
     Effect.provide(Layer.succeed(AdminRepository, {
       listLastActiveByUserIds
+    })),
+    Effect.provide(Layer.succeed(AuditRepository, {
+      create: createAudit,
+      list: listAudit,
+      deleteOlderThan: vi.fn(() => Effect.succeed(0))
     }))
   ))
 }

@@ -163,7 +163,10 @@ describe('librooAdminPolicyPlugin', () => {
       userId: 'admin-1',
       banReason: 'test'
     })).toEqual({
-      userId: 'admin-1'
+      userId: 'admin-1',
+      banned: true,
+      banReason: 'test',
+      banExpiresIn: undefined
     })
   })
 
@@ -172,7 +175,18 @@ describe('librooAdminPolicyPlugin', () => {
       userId: 'admin-1',
       data: { banned: true }
     })).toEqual({
-      userId: 'admin-1'
+      userId: 'admin-1',
+      banned: true
+    })
+  })
+
+  it('normalizes Better Auth update-user unban changes without marking them as ban attempts', async () => {
+    expect(normalizeAdminBanMutationBody('/admin/update-user', {
+      userId: 'admin-1',
+      data: { banned: false }
+    })).toEqual({
+      userId: 'admin-1',
+      banned: false
     })
   })
 

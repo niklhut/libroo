@@ -32,6 +32,8 @@ export default defineNuxtConfig({
   runtimeConfig: {
     betterAuthSecret: process.env.BETTER_AUTH_SECRET,
     betterAuthUrl: process.env.BETTER_AUTH_URL,
+    authAuditRetentionDays: process.env.LIBROO_AUTH_AUDIT_RETENTION_DAYS ?? '5',
+    adminAuditRetentionDays: process.env.LIBROO_ADMIN_AUDIT_RETENTION_DAYS ?? '30',
     emailVerificationEnabled: emailVerificationEnabledRaw,
     publicRegistrationEnabled: publicRegistrationEnabledRaw,
     emailProvider: process.env.LIBROO_EMAIL_PROVIDER,
@@ -57,6 +59,12 @@ export default defineNuxtConfig({
   compatibilityDate: '2025-01-15',
 
   nitro: {
+    experimental: {
+      tasks: true
+    },
+    scheduledTasks: {
+      '0 3 * * *': 'audit:cleanup'
+    },
     imports: {
       dirs: [
         './server/services',
@@ -68,6 +76,26 @@ export default defineNuxtConfig({
   hub: {
     db: 'sqlite',
     blob: true
+  },
+
+  hooks: {
+    'nitro:config'(nitroConfig) {
+      nitroConfig.experimental = {
+        ...nitroConfig.experimental,
+        tasks: true
+      }
+      nitroConfig.tasks = {
+        ...nitroConfig.tasks,
+        'audit:cleanup': {
+          handler: './tasks/audit/cleanup.ts',
+          description: 'Delete expired admin and auth audit log entries.'
+        }
+      }
+      nitroConfig.scheduledTasks = {
+        ...nitroConfig.scheduledTasks,
+        '0 3 * * *': 'audit:cleanup'
+      }
+    }
   },
 
   eslint: {

@@ -1,6 +1,8 @@
 import { Context, Data, Effect, Layer } from 'effect'
 import type { AdminUser, AdminUsersPage } from '~~/shared/types/admin'
+import type { AdminAuditCategory, AdminAuditLogPage } from '~~/shared/types/admin-audit'
 import { AdminRepository } from '../repositories/admin.repository'
+import { AuditRepository } from '../repositories/audit.repository'
 import { DatabaseError } from '../repositories/book.repository'
 import { auth } from '../utils/auth'
 
@@ -21,6 +23,18 @@ interface ListUsersInput {
   pageSize?: unknown
 }
 
+interface AdminActor {
+  id: string
+  role?: string | null
+}
+
+interface ListAuditInput {
+  actor: AdminActor
+  page?: unknown
+  pageSize?: unknown
+  category?: unknown
+}
+
 interface BetterAuthAdminUser {
   id: string
   name: string
@@ -37,6 +51,9 @@ export interface AdminServiceInterface {
   listUsers: (
     input: ListUsersInput
   ) => Effect.Effect<AdminUsersPage, AdminForbiddenError | InvalidAdminRequestError | DatabaseError, DbService>
+  listAuditEntries: (
+    input: ListAuditInput
+  ) => Effect.Effect<AdminAuditLogPage, AdminForbiddenError | InvalidAdminRequestError | DatabaseError, DbService>
 }
 
 export class AdminService extends Context.Tag('AdminService')<AdminService, AdminServiceInterface>() { }
@@ -45,6 +62,7 @@ export const AdminServiceLive = Layer.effect(
   AdminService,
   Effect.gen(function* () {
     const adminRepository = yield* AdminRepository
+    const auditRepository = yield* AuditRepository
 
     return {
       listUsers: input =>
@@ -74,6 +92,29 @@ export const AdminServiceLive = Layer.effect(
             page,
             pageSize
           }
+        }),
+
+      listAuditEntries: input =>
+        Effect.gen(function* () {
+          yield* requireAdmin(input.actor)
+          const page = parsePositiveInteger(input.page, 1)
+          const pageSize = Math.min(MAX_ADMIN_PAGE_SIZE, parsePositiveInteger(input.pageSize, DEFAULT_ADMIN_PAGE_SIZE))
+          const category = parseAuditCategory(input.category)
+          if (isAuditCategoryProvided(input.category) && category === null) {
+            return yield* Effect.fail(new InvalidAdminRequestError({ message: 'Invalid audit category' }))
+          }
+          const { entries, total } = yield* auditRepository.list({
+            limit: pageSize,
+            offset: (page - 1) * pageSize,
+            category
+          })
+
+          return {
+            entries,
+            total,
+            page,
+            pageSize
+          }
         })
     }
   })
@@ -82,8 +123,28 @@ export const AdminServiceLive = Layer.effect(
 export const listAdminUsers = (input: ListUsersInput) =>
   Effect.flatMap(AdminService, service => service.listUsers(input))
 
+export const listAdminAuditEntries = (input: ListAuditInput) =>
+  Effect.flatMap(AdminService, service => service.listAuditEntries(input))
+
 function roleIncludesAdmin(role: string | null | undefined) {
   return (role ?? 'user').split(',').map(part => part.trim()).includes('admin')
+}
+
+function requireAdmin(actor: AdminActor) {
+  if (!roleIncludesAdmin(actor.role)) {
+    return Effect.fail(new AdminForbiddenError({ message: 'Admin access required' }))
+  }
+
+  return Effect.void
+}
+
+function parseAuditCategory(value: unknown): AdminAuditCategory | null {
+  if (value === 'admin' || value === 'auth') return value
+  return null
+}
+
+function isAuditCategoryProvided(value: unknown) {
+  return value !== undefined && value !== null && value !== ''
 }
 
 function parsePositiveInteger(value: unknown, fallback: number) {
@@ -109,7 +170,7 @@ function toAdminUser(user: BetterAuthAdminUser, lastActiveAt: Date | null): Admi
   }
 }
 
-function mapBetterAuthError(error: unknown) {
+function mapBetterAuthError(error: unknown, operation = 'admin.listUsers') {
   const statusCode = typeof error === 'object' && error && 'statusCode' in error
     ? Number(error.statusCode)
     : undefined
@@ -121,7 +182,7 @@ function mapBetterAuthError(error: unknown) {
   if (statusCode && statusCode >= 500) {
     return new DatabaseError({
       message: getBetterAuthErrorMessage(error),
-      operation: 'admin.listUsers'
+      operation
     })
   }
 
