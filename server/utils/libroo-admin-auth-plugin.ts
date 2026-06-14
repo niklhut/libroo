@@ -1,7 +1,9 @@
 import { APIError, createAuthMiddleware, getSessionFromCtx } from 'better-auth/api'
 import type { BetterAuthPlugin } from 'better-auth/types'
 import { sql } from 'drizzle-orm'
+import { parseRoleValues, roleIncludesAdmin } from '~~/shared/utils/auth-roles'
 import { isActiveBan } from '~~/shared/utils/auth-status'
+import { newPasswordSchema } from '~~/shared/utils/password'
 import { db } from '@nuxthub/db'
 import { user } from '@nuxthub/db/schema'
 
@@ -46,13 +48,7 @@ type BanReservationResult
   = | { reserved: true }
     | { reserved: false, reason: 'last_admin' | 'concurrent' }
 
-const parseRoleValues = (role: string | string[] | null | undefined): string[] => {
-  const values = Array.isArray(role) ? role : [role ?? 'user']
-  return values.flatMap(value => value.split(',')).map(part => part.trim()).filter(Boolean)
-}
-
-export const roleIncludesAdmin = (role: string | string[] | null | undefined) =>
-  parseRoleValues(role).includes('admin')
+export const IMPERSONATION_DISABLED_MESSAGE = 'Admin impersonation is disabled for this Libroo beta.'
 
 const isEffectiveAdmin = (user: UserWithRole) =>
   roleIncludesAdmin(user.role)
@@ -111,6 +107,29 @@ export const librooAdminPolicyPlugin = (): BetterAuthPlugin => ({
             actorUserId: session.user.id,
             findUserById,
             reserveAdminBan: reserveAdminBanInDatabase
+          })
+        })
+      },
+      {
+        matcher: context => context.path === '/admin/impersonate-user'
+          || context.path === '/admin/stop-impersonating',
+        handler: createAuthMiddleware(() => {
+          throw APIError.from('FORBIDDEN', {
+            message: IMPERSONATION_DISABLED_MESSAGE,
+            code: 'IMPERSONATION_DISABLED'
+          })
+        })
+      },
+      {
+        matcher: context => context.path === '/admin/set-user-password',
+        handler: createAuthMiddleware(async (ctx) => {
+          const body = ctx.body as { newPassword?: unknown }
+          const result = newPasswordSchema('New password is required').safeParse(body.newPassword)
+          if (result.success) return
+
+          throw APIError.from('BAD_REQUEST', {
+            message: result.error.issues[0]?.message ?? 'Password is invalid',
+            code: 'INVALID_NEW_PASSWORD'
           })
         })
       }

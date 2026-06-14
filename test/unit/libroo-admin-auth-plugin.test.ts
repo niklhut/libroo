@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { assignFirstAdminRole, enforceBanUserPolicy, enforceSetRolePolicy, normalizeAdminBanMutationBody, normalizeAdminRoleMutationBody, roleIncludesAdmin } from '../../server/utils/libroo-admin-auth-plugin'
+import { APIError } from 'better-auth/api'
+import { roleIncludesAdmin } from '../../shared/utils/auth-roles'
+import { IMPERSONATION_DISABLED_MESSAGE, assignFirstAdminRole, enforceBanUserPolicy, enforceSetRolePolicy, normalizeAdminBanMutationBody, normalizeAdminRoleMutationBody } from '../../server/utils/libroo-admin-auth-plugin'
 
 describe('librooAdminPolicyPlugin', () => {
   it('allows promotions to pass through to Better Auth', async () => {
@@ -217,5 +219,14 @@ describe('librooAdminPolicyPlugin', () => {
 
   it('skips first-admin assignment when Better Auth does not return a user id', async () => {
     await expect(assignFirstAdminRole(undefined, async () => ({ changes: 1 }))).resolves.toBe(false)
+  })
+
+  it('documents the blocked impersonation endpoint error', () => {
+    expect(() => {
+      throw APIError.from('FORBIDDEN', {
+        message: IMPERSONATION_DISABLED_MESSAGE,
+        code: 'IMPERSONATION_DISABLED'
+      })
+    }).toThrow(IMPERSONATION_DISABLED_MESSAGE)
   })
 })

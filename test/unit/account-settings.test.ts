@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { accountEmailChangeSchema, accountPasswordChangeSchema } from '../../shared/utils/account-settings'
+import { accountEmailChangeSchema, accountNewPasswordSchema, accountPasswordChangeSchema } from '../../shared/utils/account-settings'
+import { newPasswordSchema, PASSWORD_MIN_LENGTH_MESSAGE } from '../../shared/utils/password'
 
 describe('account settings validation', () => {
   it('accepts a valid email change request', () => {
@@ -50,5 +51,16 @@ describe('account settings validation', () => {
       newPassword: 'new-password',
       confirmPassword: 'different-password'
     })).toThrow()
+  })
+
+  it('uses the shared new-password rule for account updates', () => {
+    expect(accountPasswordChangeSchema.shape.newPassword).toBe(accountNewPasswordSchema)
+  })
+
+  it('exposes one shared new-password message for registration and password updates', () => {
+    const result = newPasswordSchema().safeParse('short')
+
+    expect(result.success).toBe(false)
+    expect(result.error?.issues[0]?.message).toBe(PASSWORD_MIN_LENGTH_MESSAGE)
   })
 })

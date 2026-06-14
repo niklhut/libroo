@@ -1,11 +1,14 @@
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { admin } from 'better-auth/plugins'
+import { defaultAc } from 'better-auth/plugins/admin/access'
 import { eq } from 'drizzle-orm'
 import * as schema from '@nuxthub/db/schema'
+import { PASSWORD_MIN_LENGTH } from '~~/shared/utils/password'
 import { db } from '@nuxthub/db'
 import { librooAdminPolicyPlugin } from './libroo-admin-auth-plugin'
 import { librooAdminAuditPlugin } from './libroo-admin-audit-plugin'
+import { librooSecurityNotificationPlugin } from './libroo-security-notification-plugin'
 import { getEmailVerificationConfig, validateEmailVerificationConfig } from './email-verification-config'
 import { sendEmailMessage } from '../services/email.service'
 
@@ -58,26 +61,49 @@ const getEnvSecret = (options: EnvSecretOptions): string => {
 }
 
 export const getAuthSecret = () => getEnvSecret({
-  envKey: 'BETTER_AUTH_SECRET',
+  envKey: 'NUXT_BETTER_AUTH_SECRET',
   runtimeConfigKey: 'betterAuthSecret',
   devFallback: 'libroo-dev-secret',
   productionError:
-    'CRITICAL: BETTER_AUTH_SECRET environment variable is missing or empty. '
+    'CRITICAL: NUXT_BETTER_AUTH_SECRET environment variable is missing or empty. '
     + 'This is required in production to ensure session security. '
-    + 'Please set BETTER_AUTH_SECRET or NUXT_BETTER_AUTH_SECRET in your production environment.'
+    + 'Please set NUXT_BETTER_AUTH_SECRET in your production environment.'
 })
 
 export const getAuthUrl = () => getEnvSecret({
-  envKey: 'BETTER_AUTH_URL',
+  envKey: 'NUXT_BETTER_AUTH_URL',
   runtimeConfigKey: 'betterAuthUrl',
   devFallback: 'http://localhost:3000',
   productionWarning:
-    'WARNING: BETTER_AUTH_URL is not set in production. '
+    'WARNING: NUXT_BETTER_AUTH_URL is not set in production. '
     + 'Using default http://localhost:3000 which may cause authentication failures.'
 })
 
 const emailVerificationConfig = getEmailVerificationConfig()
 validateEmailVerificationConfig(emailVerificationConfig)
+
+const adminRole = defaultAc.newRole({
+  user: [
+    'create',
+    'list',
+    'set-role',
+    'ban',
+    'delete',
+    'set-password',
+    'get',
+    'update'
+  ],
+  session: [
+    'list',
+    'revoke',
+    'delete'
+  ]
+})
+
+const userRole = defaultAc.newRole({
+  user: [],
+  session: []
+})
 
 function escapeHtml(value: string) {
   return value
@@ -113,6 +139,7 @@ export const auth = betterAuth({
   }),
   emailAndPassword: {
     enabled: true,
+    minPasswordLength: PASSWORD_MIN_LENGTH,
     requireEmailVerification: emailVerificationConfig.enabled,
     autoSignIn: emailVerificationConfig.enabled ? false : undefined
   },
@@ -177,8 +204,14 @@ export const auth = betterAuth({
     // }
   },
   plugins: [
-    admin(),
+    admin({
+      roles: {
+        admin: adminRole,
+        user: userRole
+      }
+    }),
     librooAdminAuditPlugin(),
+    librooSecurityNotificationPlugin(),
     librooAdminPolicyPlugin()
   ]
 })

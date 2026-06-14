@@ -7,7 +7,8 @@ const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const { user: currentUser } = storeToRefs(authStore)
-const updatingUserId = ref<string | null>(null)
+const roleUpdatingUserId = ref<string | null>(null)
+const statusUpdatingUserId = ref<string | null>(null)
 const adminAuth = useAuth()
 const requestFetch = useRequestFetch()
 const pageSize = 25
@@ -91,9 +92,9 @@ function originalUser(row: TableRow<AdminUser>) {
 }
 
 async function setRole(user: AdminUser, role: AdminUser['role']) {
-  if (updatingUserId.value) return
+  if (roleUpdatingUserId.value === user.id) return
 
-  updatingUserId.value = user.id
+  roleUpdatingUserId.value = user.id
   try {
     await unwrapAuthResponse(adminAuth.admin.setRole({
       userId: user.id,
@@ -124,14 +125,14 @@ async function setRole(user: AdminUser, role: AdminUser['role']) {
       color: 'error'
     })
   } finally {
-    updatingUserId.value = null
+    roleUpdatingUserId.value = null
   }
 }
 
 async function banUser(user: AdminUser) {
-  if (updatingUserId.value) return
+  if (statusUpdatingUserId.value === user.id) return
 
-  updatingUserId.value = user.id
+  statusUpdatingUserId.value = user.id
   try {
     const response = await unwrapAuthResponse(adminAuth.admin.banUser({
       userId: user.id,
@@ -145,14 +146,14 @@ async function banUser(user: AdminUser) {
   } catch (err: unknown) {
     showStatusError(err, 'Could not ban account')
   } finally {
-    updatingUserId.value = null
+    statusUpdatingUserId.value = null
   }
 }
 
 async function unbanUser(user: AdminUser) {
-  if (updatingUserId.value) return
+  if (statusUpdatingUserId.value === user.id) return
 
-  updatingUserId.value = user.id
+  statusUpdatingUserId.value = user.id
   try {
     const response = await unwrapAuthResponse(adminAuth.admin.unbanUser({
       userId: user.id
@@ -165,7 +166,7 @@ async function unbanUser(user: AdminUser) {
   } catch (err: unknown) {
     showStatusError(err, 'Could not unban account')
   } finally {
-    updatingUserId.value = null
+    statusUpdatingUserId.value = null
   }
 }
 
@@ -324,7 +325,7 @@ async function unwrapAuthResponse<T>(promise: Promise<{ data: T | null, error: {
                 variant="ghost"
                 icon="i-lucide-shield-minus"
                 :disabled="!canDemote(originalUser(row))"
-                :loading="updatingUserId === originalUser(row).id"
+                :loading="roleUpdatingUserId === originalUser(row).id"
                 @click="setRole(originalUser(row), 'user')"
               >
                 Demote
@@ -335,7 +336,7 @@ async function unwrapAuthResponse<T>(promise: Promise<{ data: T | null, error: {
                 color="neutral"
                 variant="ghost"
                 icon="i-lucide-shield-plus"
-                :loading="updatingUserId === originalUser(row).id"
+                :loading="roleUpdatingUserId === originalUser(row).id"
                 @click="setRole(originalUser(row), 'admin')"
               >
                 Promote
@@ -347,7 +348,7 @@ async function unwrapAuthResponse<T>(promise: Promise<{ data: T | null, error: {
                 color="neutral"
                 variant="ghost"
                 icon="i-lucide-user-check"
-                :loading="updatingUserId === originalUser(row).id"
+                :loading="statusUpdatingUserId === originalUser(row).id"
                 @click="unbanUser(originalUser(row))"
               >
                 Unban
@@ -359,7 +360,7 @@ async function unwrapAuthResponse<T>(promise: Promise<{ data: T | null, error: {
                 variant="ghost"
                 icon="i-lucide-user-x"
                 :disabled="!canBan(originalUser(row))"
-                :loading="updatingUserId === originalUser(row).id"
+                :loading="statusUpdatingUserId === originalUser(row).id"
                 @click="banUser(originalUser(row))"
               >
                 Ban

@@ -6,19 +6,19 @@ import { SignupInviteRepository } from '../../server/repositories/signup-invite.
 import type { SignupInviteRecord, SignupInviteRepositoryInterface } from '../../server/repositories/signup-invite.repository'
 import { SignupInviteServiceLive, acceptSignupInvite, createSignupInvite, listSignupInvites, reserveSignupAttempt, revokeSignupInvite, validateSignupAttempt } from '../../server/services/signup-invite.service'
 
-const originalPublicRegistration = process.env.LIBROO_PUBLIC_REGISTRATION_ENABLED
-const originalBetterAuthUrl = process.env.BETTER_AUTH_URL
+const originalPublicRegistration = process.env.NUXT_PUBLIC_REGISTRATION_ENABLED
+const originalBetterAuthUrl = process.env.NUXT_BETTER_AUTH_URL
 const admin = { id: 'admin-1', role: 'admin' }
 
 describe('SignupInviteService', () => {
   beforeEach(() => {
-    process.env.BETTER_AUTH_URL = 'https://libroo.example.com'
-    process.env.LIBROO_PUBLIC_REGISTRATION_ENABLED = 'false'
+    process.env.NUXT_BETTER_AUTH_URL = 'https://libroo.example.com'
+    process.env.NUXT_PUBLIC_REGISTRATION_ENABLED = 'false'
   })
 
   afterEach(() => {
-    process.env.BETTER_AUTH_URL = originalBetterAuthUrl
-    process.env.LIBROO_PUBLIC_REGISTRATION_ENABLED = originalPublicRegistration
+    process.env.NUXT_BETTER_AUTH_URL = originalBetterAuthUrl
+    process.env.NUXT_PUBLIC_REGISTRATION_ENABLED = originalPublicRegistration
   })
 
   it('creates pending invite links for admins', async () => {
@@ -141,7 +141,7 @@ describe('SignupInviteService', () => {
   })
 
   it('rejects disabled public signup without an invite', async () => {
-    process.env.LIBROO_PUBLIC_REGISTRATION_ENABLED = 'false'
+    process.env.NUXT_PUBLIC_REGISTRATION_ENABLED = 'false'
     const state = createFakeState()
 
     await expect(runWithFakes(
@@ -151,7 +151,7 @@ describe('SignupInviteService', () => {
   })
 
   it('allows public signup without invites when enabled', async () => {
-    process.env.LIBROO_PUBLIC_REGISTRATION_ENABLED = 'true'
+    process.env.NUXT_PUBLIC_REGISTRATION_ENABLED = 'true'
     const state = createFakeState()
 
     await expect(runWithFakes(
@@ -161,7 +161,7 @@ describe('SignupInviteService', () => {
   })
 
   it('ignores stale invite tokens when public signup is enabled', async () => {
-    process.env.LIBROO_PUBLIC_REGISTRATION_ENABLED = 'true'
+    process.env.NUXT_PUBLIC_REGISTRATION_ENABLED = 'true'
     const state = createFakeState()
     state.invites.push(makeInvite({
       token: 'expired-token',
@@ -176,7 +176,7 @@ describe('SignupInviteService', () => {
   })
 
   it('rejects invite management when public registration is enabled', async () => {
-    process.env.LIBROO_PUBLIC_REGISTRATION_ENABLED = 'true'
+    process.env.NUXT_PUBLIC_REGISTRATION_ENABLED = 'true'
     const state = createFakeState()
 
     await expect(runWithFakes(

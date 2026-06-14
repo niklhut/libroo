@@ -1,4 +1,5 @@
 import { isActiveBan } from '~~/shared/utils/auth-status'
+import { booleanConfigValue } from '~~/shared/utils/runtime-config'
 
 export default defineNuxtRouteMiddleware(async (to) => {
   // Skip auth check for pages explicitly marked as public
@@ -25,7 +26,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
 
   const config = useRuntimeConfig()
   const canUseUnverifiedAccount = to.path === '/settings' || to.path.startsWith('/verify-email')
-  if (config.public.emailVerificationEnabled && session.value.user.emailVerified !== true && !canUseUnverifiedAccount) {
+  if (booleanConfigValue(config.public.emailVerificationEnabled) && session.value.user.emailVerified !== true && !canUseUnverifiedAccount) {
     return navigateTo({
       path: '/settings',
       query: { verify: 'required', redirect: to.fullPath }

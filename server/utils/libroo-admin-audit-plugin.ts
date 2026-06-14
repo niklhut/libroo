@@ -1,9 +1,10 @@
 import { createAuthMiddleware, getSessionFromCtx } from 'better-auth/api'
 import type { BetterAuthPlugin } from 'better-auth/types'
 import type { AdminAuditAction } from '~~/shared/types/admin-audit'
+import { roleIncludesAdmin } from '~~/shared/utils/auth-roles'
 import type { CreateAdminAuditEntryInput } from '../repositories/audit.repository'
 import { createAdminAuditEntryInDatabase } from '../repositories/audit.repository'
-import { normalizeAdminBanMutationBody, normalizeAdminRoleMutationBody, roleIncludesAdmin } from './libroo-admin-auth-plugin'
+import { normalizeAdminBanMutationBody, normalizeAdminRoleMutationBody } from './libroo-admin-auth-plugin'
 
 export type UserWithAuditFields = {
   id: string

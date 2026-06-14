@@ -5,6 +5,8 @@ import { AdminRepository } from '../repositories/admin.repository'
 import { AuditRepository } from '../repositories/audit.repository'
 import { DatabaseError } from '../repositories/book.repository'
 import { auth } from '../utils/auth'
+import { requireAdmin } from '../utils/admin-access'
+import { roleIncludesAdmin } from '~~/shared/utils/auth-roles'
 
 const DEFAULT_ADMIN_PAGE_SIZE = 25
 const MAX_ADMIN_PAGE_SIZE = 100
@@ -96,7 +98,7 @@ export const AdminServiceLive = Layer.effect(
 
       listAuditEntries: input =>
         Effect.gen(function* () {
-          yield* requireAdmin(input.actor)
+          yield* requireAdmin(input.actor, () => new AdminForbiddenError({ message: 'Admin access required' }))
           const page = parsePositiveInteger(input.page, 1)
           const pageSize = Math.min(MAX_ADMIN_PAGE_SIZE, parsePositiveInteger(input.pageSize, DEFAULT_ADMIN_PAGE_SIZE))
           const category = parseAuditCategory(input.category)
@@ -125,18 +127,6 @@ export const listAdminUsers = (input: ListUsersInput) =>
 
 export const listAdminAuditEntries = (input: ListAuditInput) =>
   Effect.flatMap(AdminService, service => service.listAuditEntries(input))
-
-function roleIncludesAdmin(role: string | null | undefined) {
-  return (role ?? 'user').split(',').map(part => part.trim()).includes('admin')
-}
-
-function requireAdmin(actor: AdminActor) {
-  if (!roleIncludesAdmin(actor.role)) {
-    return Effect.fail(new AdminForbiddenError({ message: 'Admin access required' }))
-  }
-
-  return Effect.void
-}
 
 function parseAuditCategory(value: unknown): AdminAuditCategory | null {
   if (value === 'admin' || value === 'auth') return value
