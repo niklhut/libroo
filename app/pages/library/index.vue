@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import type { LibraryBook, BatchDeleteResult, BookLocationWithCount } from '~~/shared/types/book'
-import { buildLibraryRouteQuery, normalizeLibraryQuery } from '~~/shared/utils/library-query'
+import {
+  buildLibraryRouteQuery,
+  describeActiveLibraryFilters,
+  getActiveLibraryFilterCount,
+  normalizeLibraryQuery
+} from '~~/shared/utils/library-query'
 
 interface PaginatedResponse {
   items: LibraryBook[]
@@ -77,6 +82,7 @@ sortBy.value = routeState.sortBy ?? 'dateAdded'
 const isLoadingMore = ref(false)
 const filterRefreshTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 const ALL_LOCATIONS_VALUE = '__all_locations__'
+const areFiltersExpanded = ref(false)
 
 // Selection state
 const isSelectMode = ref(false)
@@ -186,6 +192,17 @@ const hasActiveFilters = computed(() =>
   || includeLocationDescendants.value
   || sortBy.value !== 'dateAdded'
 )
+const activeAdvancedFilterCount = computed(() => getActiveLibraryFilterCount({
+  loanStatus: loanStatus.value,
+  readingStatus: readingStatus.value,
+  tag: tag.value,
+  location: location.value,
+  locationId: locationId.value,
+  includeLocationDescendants: includeLocationDescendants.value,
+  sortBy: sortBy.value,
+  groupByLocation: groupByLocation.value
+}))
+const hasActiveAdvancedFilters = computed(() => activeAdvancedFilterCount.value > 0)
 const selectedCount = computed(() => selectedBooks.value.size)
 const allSelected = computed(() => books.value.length > 0 && selectedBooks.value.size === books.value.length)
 const loanStatusItems = [
@@ -218,6 +235,22 @@ const locationOptions = computed(() => [
     value: location.id
   }))
 ])
+const selectedLocationLabel = computed(() =>
+  locationOptions.value.find(option => option.value === selectedLocationFilter.value)?.label
+)
+const activeFilterSummary = computed(() => describeActiveLibraryFilters({
+  loanStatus: loanStatus.value,
+  readingStatus: readingStatus.value,
+  tag: tag.value,
+  location: location.value,
+  locationId: locationId.value,
+  includeLocationDescendants: includeLocationDescendants.value,
+  sortBy: sortBy.value,
+  groupByLocation: groupByLocation.value
+}, {
+  locationLabel: selectedLocationLabel.value
+}))
+const collapsedFilterSummary = computed(() => activeFilterSummary.value.slice(0, 3))
 const groupedBooks = computed(() => {
   const groups = new Map<string, { key: string, label: string, books: LibraryBook[] }>()
 
@@ -291,6 +324,7 @@ function clearFilters() {
   locationId.value = ''
   includeLocationDescendants.value = false
   sortBy.value = 'dateAdded'
+  groupByLocation.value = false
 }
 
 // Toggle select mode
@@ -463,76 +497,130 @@ async function deleteSelected() {
 
     <!-- Page Body -->
     <UPageBody>
-      <div class="mb-6 space-y-3">
-        <UInput
-          v-model="search"
-          icon="i-lucide-search"
-          size="lg"
-          placeholder="Search title, author, ISBN, tag, or location"
-          class="w-full"
-        />
-
-        <div class="grid gap-3 md:grid-cols-4">
-          <USelect
-            v-model="loanStatus"
-            :items="loanStatusItems"
-            class="w-full"
-          />
-          <USelect
-            v-model="readingStatus"
-            :items="readingStatusItems"
-            class="w-full"
-          />
+      <section class="mb-6 space-y-3">
+        <div class="flex flex-col gap-3 md:flex-row md:items-center">
           <UInput
-            v-model="tag"
-            icon="i-lucide-tag"
-            placeholder="Filter tag"
+            v-model="search"
+            icon="i-lucide-search"
+            size="lg"
+            placeholder="Search title, author, ISBN, tag, or location"
+            class="w-full md:flex-1"
           />
-          <UInput
-            v-model="location"
-            icon="i-lucide-map-pin"
-            placeholder="Search location path"
-          />
-        </div>
 
-        <div class="grid gap-3 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto_auto] md:items-center">
-          <USelect
-            v-model="selectedLocationFilter"
-            :items="locationOptions"
-            icon="i-lucide-map-pin"
-            class="w-full"
-          />
-          <USelect
-            v-model="sortBy"
-            :items="sortItems"
-            icon="i-lucide-arrow-up-down"
-            class="w-full"
-          />
-          <UCheckbox
-            v-model="includeLocationDescendants"
-            :disabled="!locationId"
-            label="Include sub-locations"
-          />
-          <USwitch
-            v-model="groupByLocation"
-            label="Group by location"
-          />
+          <div class="flex w-full flex-wrap items-center gap-2 md:w-auto">
+            <UButton
+              size="lg"
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-sliders-horizontal"
+              :trailing-icon="areFiltersExpanded ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
+              :aria-expanded="areFiltersExpanded"
+              aria-controls="library-advanced-filters"
+              class="w-full justify-center md:w-auto"
+              @click="areFiltersExpanded = !areFiltersExpanded"
+            >
+              Filters
+              <UBadge
+                v-if="hasActiveAdvancedFilters"
+                color="primary"
+                variant="soft"
+                size="sm"
+                class="ml-1"
+              >
+                {{ activeAdvancedFilterCount }}
+              </UBadge>
+            </UButton>
+            <UButton
+              v-if="hasActiveFilters || groupByLocation"
+              size="lg"
+              color="neutral"
+              variant="ghost"
+              icon="i-lucide-x"
+              class="flex-1 justify-center md:flex-none"
+              @click="clearFilters"
+            >
+              Clear
+            </UButton>
+          </div>
         </div>
 
         <div
-          v-if="hasActiveFilters"
-          class="flex justify-end"
+          v-if="hasActiveAdvancedFilters && !areFiltersExpanded"
+          class="flex flex-wrap items-center gap-2 text-sm text-muted"
         >
-          <UButton
+          <span>Active:</span>
+          <UBadge
+            v-for="summary in collapsedFilterSummary"
+            :key="summary"
             color="neutral"
-            variant="ghost"
-            icon="i-lucide-x"
-            @click="clearFilters"
+            variant="soft"
           >
-            Clear filters
-          </UButton>
+            {{ summary }}
+          </UBadge>
+          <span v-if="activeFilterSummary.length > collapsedFilterSummary.length">
+            +{{ activeFilterSummary.length - collapsedFilterSummary.length }} more
+          </span>
         </div>
-      </div>
+
+        <UCollapsible
+          v-model:open="areFiltersExpanded"
+          :unmount-on-hide="false"
+        >
+          <template #content>
+            <div
+              id="library-advanced-filters"
+              class="space-y-3 rounded-lg border border-default bg-muted/30 p-3"
+            >
+              <div class="grid gap-3 md:grid-cols-4">
+                <USelect
+                  v-model="loanStatus"
+                  :items="loanStatusItems"
+                  class="w-full"
+                />
+                <USelect
+                  v-model="readingStatus"
+                  :items="readingStatusItems"
+                  class="w-full"
+                />
+                <UInput
+                  v-model="tag"
+                  icon="i-lucide-tag"
+                  placeholder="Filter tag"
+                />
+                <UInput
+                  v-model="location"
+                  icon="i-lucide-map-pin"
+                  placeholder="Search location path"
+                />
+              </div>
+
+              <div class="grid gap-3 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto_auto] md:items-center">
+                <USelect
+                  v-model="selectedLocationFilter"
+                  :items="locationOptions"
+                  icon="i-lucide-map-pin"
+                  class="w-full"
+                />
+                <USelect
+                  v-model="sortBy"
+                  :items="sortItems"
+                  icon="i-lucide-arrow-up-down"
+                  class="w-full"
+                />
+                <UCheckbox
+                  v-model="includeLocationDescendants"
+                  :disabled="!locationId"
+                  label="Include sub-locations"
+                />
+                <USwitch
+                  v-model="groupByLocation"
+                  label="Group by location"
+                />
+              </div>
+            </div>
+          </template>
+        </UCollapsible>
+      </section>
 
       <!-- Selection toolbar -->
       <div
