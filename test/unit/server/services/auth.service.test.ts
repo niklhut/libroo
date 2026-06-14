@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AuthService, AuthServiceLive, UnauthorizedError } from '../../../../server/services/auth.service'
 import { AuthRepository } from '../../../../server/repositories/auth.repository'
 
+const originalEmailVerificationEnabled = process.env.NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED
+
 const authMock = vi.hoisted(() => ({
   getSession: vi.fn(),
   sendVerificationEmail: vi.fn(),
@@ -53,7 +55,11 @@ describe('AuthService', () => {
   })
 
   afterEach(() => {
-    delete process.env.NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED
+    if (originalEmailVerificationEnabled === undefined) {
+      delete process.env.NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED
+    } else {
+      process.env.NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = originalEmailVerificationEnabled
+    }
   })
 
   it('rejects active banned sessions', async () => {

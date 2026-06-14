@@ -7,8 +7,8 @@ const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const { user: currentUser } = storeToRefs(authStore)
-const roleUpdatingUserId = ref<string | null>(null)
-const statusUpdatingUserId = ref<string | null>(null)
+const roleUpdatingUserIds = ref(new Set<string>())
+const statusUpdatingUserIds = ref(new Set<string>())
 const adminAuth = useAuth()
 const requestFetch = useRequestFetch()
 const pageSize = 25
@@ -92,9 +92,9 @@ function originalUser(row: TableRow<AdminUser>) {
 }
 
 async function setRole(user: AdminUser, role: AdminUser['role']) {
-  if (roleUpdatingUserId.value === user.id) return
+  if (roleUpdatingUserIds.value.has(user.id)) return
 
-  roleUpdatingUserId.value = user.id
+  roleUpdatingUserIds.value.add(user.id)
   try {
     await unwrapAuthResponse(adminAuth.admin.setRole({
       userId: user.id,
@@ -125,14 +125,14 @@ async function setRole(user: AdminUser, role: AdminUser['role']) {
       color: 'error'
     })
   } finally {
-    roleUpdatingUserId.value = null
+    roleUpdatingUserIds.value.delete(user.id)
   }
 }
 
 async function banUser(user: AdminUser) {
-  if (statusUpdatingUserId.value === user.id) return
+  if (statusUpdatingUserIds.value.has(user.id)) return
 
-  statusUpdatingUserId.value = user.id
+  statusUpdatingUserIds.value.add(user.id)
   try {
     const response = await unwrapAuthResponse(adminAuth.admin.banUser({
       userId: user.id,
@@ -146,14 +146,14 @@ async function banUser(user: AdminUser) {
   } catch (err: unknown) {
     showStatusError(err, 'Could not ban account')
   } finally {
-    statusUpdatingUserId.value = null
+    statusUpdatingUserIds.value.delete(user.id)
   }
 }
 
 async function unbanUser(user: AdminUser) {
-  if (statusUpdatingUserId.value === user.id) return
+  if (statusUpdatingUserIds.value.has(user.id)) return
 
-  statusUpdatingUserId.value = user.id
+  statusUpdatingUserIds.value.add(user.id)
   try {
     const response = await unwrapAuthResponse(adminAuth.admin.unbanUser({
       userId: user.id
@@ -166,7 +166,7 @@ async function unbanUser(user: AdminUser) {
   } catch (err: unknown) {
     showStatusError(err, 'Could not unban account')
   } finally {
-    statusUpdatingUserId.value = null
+    statusUpdatingUserIds.value.delete(user.id)
   }
 }
 
@@ -325,7 +325,7 @@ async function unwrapAuthResponse<T>(promise: Promise<{ data: T | null, error: {
                 variant="ghost"
                 icon="i-lucide-shield-minus"
                 :disabled="!canDemote(originalUser(row))"
-                :loading="roleUpdatingUserId === originalUser(row).id"
+                :loading="roleUpdatingUserIds.has(originalUser(row).id)"
                 @click="setRole(originalUser(row), 'user')"
               >
                 Demote
@@ -336,7 +336,7 @@ async function unwrapAuthResponse<T>(promise: Promise<{ data: T | null, error: {
                 color="neutral"
                 variant="ghost"
                 icon="i-lucide-shield-plus"
-                :loading="roleUpdatingUserId === originalUser(row).id"
+                :loading="roleUpdatingUserIds.has(originalUser(row).id)"
                 @click="setRole(originalUser(row), 'admin')"
               >
                 Promote
@@ -348,7 +348,7 @@ async function unwrapAuthResponse<T>(promise: Promise<{ data: T | null, error: {
                 color="neutral"
                 variant="ghost"
                 icon="i-lucide-user-check"
-                :loading="statusUpdatingUserId === originalUser(row).id"
+                :loading="statusUpdatingUserIds.has(originalUser(row).id)"
                 @click="unbanUser(originalUser(row))"
               >
                 Unban
@@ -360,7 +360,7 @@ async function unwrapAuthResponse<T>(promise: Promise<{ data: T | null, error: {
                 variant="ghost"
                 icon="i-lucide-user-x"
                 :disabled="!canBan(originalUser(row))"
-                :loading="statusUpdatingUserId === originalUser(row).id"
+                :loading="statusUpdatingUserIds.has(originalUser(row).id)"
                 @click="banUser(originalUser(row))"
               >
                 Ban

@@ -8,13 +8,19 @@ const envKeys = [
   'NUXT_PLUNK_API_KEY',
   'NUXT_PLUNK_BASE_URL'
 ]
+const originalEnvValues = new Map(envKeys.map(key => [key, process.env[key]]))
 
 describe('EmailService', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
     for (const key of envKeys) {
-      Reflect.deleteProperty(process.env, key)
+      const value = originalEnvValues.get(key)
+      if (value === undefined) {
+        Reflect.deleteProperty(process.env, key)
+      } else {
+        process.env[key] = value
+      }
     }
   })
 

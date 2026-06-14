@@ -1,3 +1,4 @@
+import { roleIncludesAdmin } from '~~/shared/utils/auth-roles'
 import { isActiveBan } from '~~/shared/utils/auth-status'
 import { booleanConfigValue } from '~~/shared/utils/runtime-config'
 
@@ -34,9 +35,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
   }
 
   if (to.path.startsWith('/admin')) {
-    const role = session.value.user.role
-    const roles = typeof role === 'string' ? role.split(',').map(part => part.trim()) : []
-    if (!roles.includes('admin')) {
+    if (!roleIncludesAdmin(session.value.user.role)) {
       return navigateTo('/library')
     }
   }

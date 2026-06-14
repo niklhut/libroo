@@ -160,7 +160,6 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
             <template #trailing>
               <UButton
                 type="button"
-                tabindex="-1"
                 color="neutral"
                 variant="link"
                 size="sm"

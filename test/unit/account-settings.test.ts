@@ -63,4 +63,11 @@ describe('account settings validation', () => {
     expect(result.success).toBe(false)
     expect(result.error?.issues[0]?.message).toBe(PASSWORD_MIN_LENGTH_MESSAGE)
   })
+
+  it('uses caller-specific required messages for empty new passwords', () => {
+    const result = newPasswordSchema('New password is required').safeParse('')
+
+    expect(result.success).toBe(false)
+    expect(result.error?.issues[0]?.message).toBe('New password is required')
+  })
 })

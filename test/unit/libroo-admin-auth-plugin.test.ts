@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { APIError } from 'better-auth/api'
 import { roleIncludesAdmin } from '../../shared/utils/auth-roles'
-import { IMPERSONATION_DISABLED_MESSAGE, assignFirstAdminRole, enforceBanUserPolicy, enforceSetRolePolicy, normalizeAdminBanMutationBody, normalizeAdminRoleMutationBody } from '../../server/utils/libroo-admin-auth-plugin'
+import { IMPERSONATION_DISABLED_MESSAGE, assignFirstAdminRole, blockAdminImpersonation, enforceBanUserPolicy, enforceSetRolePolicy, normalizeAdminBanMutationBody, normalizeAdminRoleMutationBody, validateAdminSetUserPasswordBody } from '../../server/utils/libroo-admin-auth-plugin'
 
 describe('librooAdminPolicyPlugin', () => {
   it('allows promotions to pass through to Better Auth', async () => {
@@ -221,12 +220,12 @@ describe('librooAdminPolicyPlugin', () => {
     await expect(assignFirstAdminRole(undefined, async () => ({ changes: 1 }))).resolves.toBe(false)
   })
 
-  it('documents the blocked impersonation endpoint error', () => {
-    expect(() => {
-      throw APIError.from('FORBIDDEN', {
-        message: IMPERSONATION_DISABLED_MESSAGE,
-        code: 'IMPERSONATION_DISABLED'
-      })
-    }).toThrow(IMPERSONATION_DISABLED_MESSAGE)
+  it('blocks impersonation through the production guard', () => {
+    expect(() => blockAdminImpersonation()).toThrow(IMPERSONATION_DISABLED_MESSAGE)
+  })
+
+  it('rejects malformed admin set-password bodies as bad requests', () => {
+    expect(() => validateAdminSetUserPasswordBody(undefined)).toThrow(/New password is required/)
+    expect(() => validateAdminSetUserPasswordBody({ newPassword: '' })).toThrow(/New password is required/)
   })
 })

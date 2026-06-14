@@ -13,31 +13,35 @@ type HookContext = {
   path?: string
   context: {
     returned?: unknown
+    internalAdapter?: {
+      findUserById?: (userId: string) => Promise<SecurityNotificationUser | null>
+    }
   }
+  body?: unknown
 }
 
 const PASSWORD_CHANGE_USER_KEY = Symbol('libroo-password-change-user')
+const PASSWORD_CHANGE_PATHS = new Set(['/change-password', '/admin/set-user-password'])
 
 export const librooSecurityNotificationPlugin = (): BetterAuthPlugin => ({
   id: 'libroo-security-notifications',
   hooks: {
     before: [
       {
-        matcher: context => context.path === '/change-password',
+        matcher: context => isPasswordChangePath(context.path),
         handler: createAuthMiddleware(async (ctx) => {
-          const session = await getSessionFromCtx(ctx as Parameters<typeof getSessionFromCtx>[0]).catch(() => null)
-          if (!session?.user?.email) return
-          setPasswordChangeUser(ctx.context, {
-            id: session.user.id,
-            name: session.user.name,
-            email: session.user.email
-          })
+          const user = ctx.path === '/admin/set-user-password'
+            ? await getAdminPasswordTargetUser(ctx as HookContext)
+            : await getCurrentSessionUser(ctx)
+          if (!user?.email) return
+
+          setPasswordChangeUser(ctx.context, user)
         })
       }
     ],
     after: [
       {
-        matcher: context => context.path === '/change-password',
+        matcher: context => isPasswordChangePath(context.path),
         handler: createAuthMiddleware(async (ctx) => {
           await notifyPasswordChanged(ctx as HookContext)
         })
@@ -47,11 +51,29 @@ export const librooSecurityNotificationPlugin = (): BetterAuthPlugin => ({
 })
 
 export async function notifyPasswordChanged(ctx: HookContext) {
-  if (ctx.path !== '/change-password') return false
+  if (!isPasswordChangePath(ctx.path)) return false
   if (!emailDeliveryConfigured()) return false
   if (!await endpointSucceeded(ctx.context.returned)) return false
 
   return sendPasswordChangedNotification(getPasswordChangeUser(ctx.context))
+}
+
+async function getCurrentSessionUser(ctx: Parameters<Parameters<typeof createAuthMiddleware>[0]>[0]) {
+  const session = await getSessionFromCtx(ctx as Parameters<typeof getSessionFromCtx>[0]).catch(() => null)
+  if (!session?.user?.email) return null
+
+  return {
+    id: session.user.id,
+    name: session.user.name,
+    email: session.user.email
+  }
+}
+
+async function getAdminPasswordTargetUser(ctx: HookContext) {
+  const userId = getUserIdFromBody(ctx.body)
+  if (!userId) return null
+
+  return ctx.context.internalAdapter?.findUserById?.(userId) ?? null
 }
 
 export async function sendPasswordChangedNotification(user: SecurityNotificationUser | null) {
@@ -89,8 +111,23 @@ async function sendPasswordChangedEmail(user: SecurityNotificationUser) {
 async function endpointSucceeded(returned: unknown) {
   if (!returned) return false
   if (returned instanceof Response) return returned.ok
-  if (typeof returned === 'object' && returned && 'statusCode' in returned) return false
-  return true
+  if (typeof returned === 'object' && returned) {
+    if ('statusCode' in returned) return false
+    if ('status' in returned && typeof returned.status === 'boolean') return returned.status
+    if ('success' in returned && typeof returned.success === 'boolean') return returned.success
+  }
+
+  return false
+}
+
+function isPasswordChangePath(path: string | undefined) {
+  return Boolean(path && PASSWORD_CHANGE_PATHS.has(path))
+}
+
+function getUserIdFromBody(body: unknown) {
+  if (!body || typeof body !== 'object') return null
+  const userId = (body as { userId?: unknown }).userId
+  return typeof userId === 'string' && userId.trim() ? userId : null
 }
 
 function setPasswordChangeUser(context: object, user: SecurityNotificationUser) {

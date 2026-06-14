@@ -163,8 +163,11 @@ export function validateEmailDeliveryConfig(config = getEmailDeliveryConfig()) {
 
   if (config.provider === 'smtp') {
     if (!config.from) missing.push('NUXT_EMAIL_FROM')
-    if (!config.smtp?.host) missing.push('NUXT_SMTP_HOST')
-    if (!config.smtp?.port) missing.push('NUXT_SMTP_PORT')
+    if (!config.smtp?.host) {
+      missing.push('NUXT_SMTP_HOST')
+    } else if (!config.smtp.port) {
+      missing.push('NUXT_SMTP_PORT')
+    }
 
     if (config.smtp?.user && !config.smtp.password) {
       missing.push('NUXT_SMTP_PASSWORD')

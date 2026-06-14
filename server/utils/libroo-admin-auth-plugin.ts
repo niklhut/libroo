@@ -114,28 +114,36 @@ export const librooAdminPolicyPlugin = (): BetterAuthPlugin => ({
         matcher: context => context.path === '/admin/impersonate-user'
           || context.path === '/admin/stop-impersonating',
         handler: createAuthMiddleware(() => {
-          throw APIError.from('FORBIDDEN', {
-            message: IMPERSONATION_DISABLED_MESSAGE,
-            code: 'IMPERSONATION_DISABLED'
-          })
+          blockAdminImpersonation()
         })
       },
       {
         matcher: context => context.path === '/admin/set-user-password',
         handler: createAuthMiddleware(async (ctx) => {
-          const body = ctx.body as { newPassword?: unknown }
-          const result = newPasswordSchema('New password is required').safeParse(body.newPassword)
-          if (result.success) return
-
-          throw APIError.from('BAD_REQUEST', {
-            message: result.error.issues[0]?.message ?? 'Password is invalid',
-            code: 'INVALID_NEW_PASSWORD'
-          })
+          validateAdminSetUserPasswordBody(ctx.body)
         })
       }
     ]
   }
 })
+
+export function blockAdminImpersonation(): never {
+  throw APIError.from('FORBIDDEN', {
+    message: IMPERSONATION_DISABLED_MESSAGE,
+    code: 'IMPERSONATION_DISABLED'
+  })
+}
+
+export function validateAdminSetUserPasswordBody(bodyValue: unknown) {
+  const body = isRecord(bodyValue) ? bodyValue : {}
+  const result = newPasswordSchema('New password is required').safeParse(body.newPassword)
+  if (result.success) return
+
+  throw APIError.from('BAD_REQUEST', {
+    message: result.error.issues[0]?.message ?? 'Password is invalid',
+    code: 'INVALID_NEW_PASSWORD'
+  })
+}
 
 export function normalizeAdminRoleMutationBody(path: string | undefined, body: unknown): SetRoleBody | undefined {
   if (path === '/admin/set-role') {
@@ -151,6 +159,10 @@ export function normalizeAdminRoleMutationBody(path: string | undefined, body: u
       role: updateBody.data.role
     }
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
 }
 
 export function normalizeAdminBanMutationBody(path: string | undefined, body: unknown): BanUserBody | undefined {

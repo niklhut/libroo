@@ -416,7 +416,6 @@ async function importLibraryCsvFile() {
                 <template #trailing>
                   <UButton
                     type="button"
-                    tabindex="-1"
                     color="neutral"
                     variant="ghost"
                     size="xs"
@@ -471,7 +470,6 @@ async function importLibraryCsvFile() {
                 <template #trailing>
                   <UButton
                     type="button"
-                    tabindex="-1"
                     color="neutral"
                     variant="ghost"
                     size="xs"
@@ -496,7 +494,6 @@ async function importLibraryCsvFile() {
                 <template #trailing>
                   <UButton
                     type="button"
-                    tabindex="-1"
                     color="neutral"
                     variant="ghost"
                     size="xs"
@@ -521,7 +518,6 @@ async function importLibraryCsvFile() {
                 <template #trailing>
                   <UButton
                     type="button"
-                    tabindex="-1"
                     color="neutral"
                     variant="ghost"
                     size="xs"
