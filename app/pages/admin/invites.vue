@@ -215,18 +215,7 @@ function pageQuery(page: number) {
     <UPageHeader
       title="Invites"
       description="Create signup links and manage pending invitations."
-    >
-      <template #links>
-        <UButton
-          to="/admin/users"
-          color="neutral"
-          variant="outline"
-          icon="i-lucide-users"
-        >
-          Users
-        </UButton>
-      </template>
-    </UPageHeader>
+    />
 
     <UPageBody>
       <UCard>

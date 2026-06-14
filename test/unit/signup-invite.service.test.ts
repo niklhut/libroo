@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { Effect, Layer } from 'effect'
 import { EmailService } from '../../server/services/email.service'
+import { AuditRepository } from '../../server/repositories/audit.repository'
 import { SignupInviteRepository } from '../../server/repositories/signup-invite.repository'
 import type { SignupInviteRecord, SignupInviteRepositoryInterface } from '../../server/repositories/signup-invite.repository'
-import { SignupInviteServiceLive, acceptSignupInvite, createSignupInvite, listSignupInvites, reserveSignupAttempt, validateSignupAttempt } from '../../server/services/signup-invite.service'
+import { SignupInviteServiceLive, acceptSignupInvite, createSignupInvite, listSignupInvites, reserveSignupAttempt, revokeSignupInvite, validateSignupAttempt } from '../../server/services/signup-invite.service'
 
 const originalPublicRegistration = process.env.LIBROO_PUBLIC_REGISTRATION_ENABLED
 const originalBetterAuthUrl = process.env.BETTER_AUTH_URL
@@ -32,6 +33,15 @@ describe('SignupInviteService', () => {
     expect(result.invite.status).toBe('pending')
     expect(result.invite.email).toBeNull()
     expect(state.invites).toHaveLength(1)
+    expect(state.auditEntries).toEqual([expect.objectContaining({
+      actorUserId: 'admin-1',
+      targetUserId: null,
+      action: 'signup_invite.created',
+      metadata: expect.objectContaining({
+        inviteId: result.invite.id,
+        email: null
+      })
+    })])
   })
 
   it('creates invite emails through the email service', async () => {
@@ -65,6 +75,27 @@ describe('SignupInviteService', () => {
     expect(result.status).toBe('accepted')
     expect(result.acceptedByUserId).toBe('user-1')
     expect(state.invites[0]?.reservationToken).toBeNull()
+  })
+
+  it('records invite revocation audit entries', async () => {
+    const state = createFakeState()
+    state.invites.push(makeInvite({ id: 'invite-1' }))
+
+    await runWithFakes(
+      revokeSignupInvite(admin, 'invite-1'),
+      state
+    )
+
+    expect(state.auditEntries).toEqual([expect.objectContaining({
+      actorUserId: 'admin-1',
+      targetUserId: null,
+      action: 'signup_invite.revoked',
+      metadata: expect.objectContaining({
+        inviteId: 'invite-1',
+        previousStatus: 'pending',
+        newStatus: 'revoked'
+      })
+    })])
   })
 
   it('reserves pending invites before Better Auth signup', async () => {
@@ -189,6 +220,12 @@ describe('SignupInviteService', () => {
 interface FakeState {
   invites: SignupInviteRecord[]
   sentEmails: Array<{ to: string, subject: string }>
+  auditEntries: Array<{
+    actorUserId: string
+    targetUserId: string | null
+    action: string
+    metadata?: Record<string, unknown> | null
+  }>
   existingEmails: Set<string>
   nextToken: number
   nextReservation: number
@@ -198,13 +235,14 @@ function createFakeState(): FakeState {
   return {
     invites: [],
     sentEmails: [],
+    auditEntries: [],
     existingEmails: new Set(),
     nextToken: 1,
     nextReservation: 1
   }
 }
 
-function runWithFakes<A, E>(effect: Effect.Effect<A, E, SignupInviteService | SignupInviteRepository | EmailService>, state: FakeState) {
+function runWithFakes<A, E>(effect: Effect.Effect<A, E, SignupInviteService | SignupInviteRepository | EmailService | AuditRepository>, state: FakeState) {
   return Effect.runPromise(effect.pipe(
     Effect.provide(SignupInviteServiceLive),
     Effect.provide(Layer.succeed(SignupInviteRepository, createFakeRepository(state))),
@@ -216,6 +254,19 @@ function runWithFakes<A, E>(effect: Effect.Effect<A, E, SignupInviteService | Si
             subject: message.subject
           })
         })
+    })),
+    Effect.provide(Layer.succeed(AuditRepository, {
+      create: entry =>
+        Effect.sync(() => {
+          state.auditEntries.push(entry)
+          return {
+            id: `audit-${state.auditEntries.length}`,
+            createdAt: new Date(),
+            ...entry
+          }
+        }),
+      list: () => Effect.succeed({ entries: [], total: 0 }),
+      deleteOlderThan: () => Effect.succeed(0)
     }))
   ))
 }

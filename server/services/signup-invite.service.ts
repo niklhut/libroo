@@ -2,6 +2,7 @@ import { Context, Data, Effect, Layer } from 'effect'
 import type { SignupInvite, SignupInviteCreateResult, SignupInvitePreview, SignupInviteStatus } from '~~/shared/types/signup-invite'
 import { SignupInviteRepository } from '../repositories/signup-invite.repository'
 import type { SignupInviteRecord } from '../repositories/signup-invite.repository'
+import { AuditRepository } from '../repositories/audit.repository'
 import type { EmailService } from './email.service'
 import { sendEmail } from './email.service'
 import { getAuthUrl } from '../utils/auth'
@@ -63,6 +64,7 @@ export const SignupInviteServiceLive = Layer.effect(
   SignupInviteService,
   Effect.gen(function* () {
     const repository = yield* SignupInviteRepository
+    const auditRepository = yield* AuditRepository
 
     return {
       createInvite: (actor, input) =>
@@ -82,6 +84,18 @@ export const SignupInviteServiceLive = Layer.effect(
           if (normalized.email) {
             yield* sendInviteEmail(normalized.email, inviteUrl, expiresAt)
           }
+
+          yield* auditRepository.create({
+            category: 'admin',
+            actorUserId: actor.id,
+            targetUserId: null,
+            action: 'signup_invite.created',
+            metadata: {
+              inviteId: invite.id,
+              email: invite.email,
+              expiresAt: invite.expiresAt
+            }
+          })
 
           return {
             invite: toSignupInvite(invite, inviteUrl),
@@ -126,6 +140,19 @@ export const SignupInviteServiceLive = Layer.effect(
           if (!invite) {
             return yield* Effect.fail(new InvalidSignupInviteError({ message: 'Invite not found' }))
           }
+
+          yield* auditRepository.create({
+            category: 'admin',
+            actorUserId: actor.id,
+            targetUserId: invite.acceptedByUserId,
+            action: 'signup_invite.revoked',
+            metadata: {
+              inviteId: invite.id,
+              email: invite.email,
+              previousStatus: 'pending',
+              newStatus: invite.status
+            }
+          })
 
           return toSignupInvite(invite)
         }),

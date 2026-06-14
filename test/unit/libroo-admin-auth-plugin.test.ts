@@ -163,7 +163,10 @@ describe('librooAdminPolicyPlugin', () => {
       userId: 'admin-1',
       banReason: 'test'
     })).toEqual({
-      userId: 'admin-1'
+      userId: 'admin-1',
+      banned: true,
+      banReason: 'test',
+      banExpiresIn: undefined
     })
   })
 
@@ -172,7 +175,8 @@ describe('librooAdminPolicyPlugin', () => {
       userId: 'admin-1',
       data: { banned: true }
     })).toEqual({
-      userId: 'admin-1'
+      userId: 'admin-1',
+      banned: true
     })
   })
 

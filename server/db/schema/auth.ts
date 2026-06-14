@@ -79,3 +79,19 @@ export const signupInvites = sqliteTable('signup_invites', {
   index('signup_invites_created_by_user_id_idx').on(table.createdByUserId),
   check('signup_invites_status_check', sql`${table.status} IN ('pending', 'accepted', 'expired', 'revoked')`)
 ])
+
+export const adminAuditLog = sqliteTable('admin_audit_log', {
+  id: text('id').primaryKey(),
+  category: text('category', { enum: ['admin', 'auth'] }).notNull().default('admin'),
+  actorUserId: text('actor_user_id').references(() => user.id, { onDelete: 'set null' }),
+  targetUserId: text('target_user_id').references(() => user.id, { onDelete: 'set null' }),
+  action: text('action').notNull(),
+  metadata: text('metadata'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull()
+}, table => [
+  index('admin_audit_log_category_idx').on(table.category),
+  index('admin_audit_log_actor_user_id_idx').on(table.actorUserId),
+  index('admin_audit_log_target_user_id_idx').on(table.targetUserId),
+  index('admin_audit_log_action_idx').on(table.action),
+  index('admin_audit_log_created_at_idx').on(table.createdAt)
+])

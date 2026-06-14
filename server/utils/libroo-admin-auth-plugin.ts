@@ -27,6 +27,9 @@ type UpdateUserBody = {
 
 type BanUserBody = {
   userId?: string
+  banned?: boolean | null
+  banReason?: string | null
+  banExpiresIn?: number | null
 }
 
 type CreateUser = {
@@ -133,17 +136,29 @@ export function normalizeAdminRoleMutationBody(path: string | undefined, body: u
 
 export function normalizeAdminBanMutationBody(path: string | undefined, body: unknown): BanUserBody | undefined {
   if (path === '/admin/ban-user') {
+    const bodyValue = body as BanUserBody
     return {
-      userId: (body as BanUserBody).userId
+      userId: bodyValue.userId,
+      banned: true,
+      banReason: bodyValue.banReason,
+      banExpiresIn: bodyValue.banExpiresIn
+    }
+  }
+
+  if (path === '/admin/unban-user') {
+    return {
+      userId: (body as BanUserBody).userId,
+      banned: false
     }
   }
 
   if (path === '/admin/update-user') {
     const updateBody = body as UpdateUserBody
-    if (!updateBody.data || updateBody.data.banned !== true) return undefined
+    if (!updateBody.data || !('banned' in updateBody.data)) return undefined
 
     return {
-      userId: updateBody.userId
+      userId: updateBody.userId,
+      banned: updateBody.data.banned
     }
   }
 }

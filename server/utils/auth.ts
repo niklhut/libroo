@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm'
 import * as schema from '@nuxthub/db/schema'
 import { db } from '@nuxthub/db'
 import { librooAdminPolicyPlugin } from './libroo-admin-auth-plugin'
+import { librooAdminAuditPlugin } from './libroo-admin-audit-plugin'
 import { getEmailVerificationConfig, validateEmailVerificationConfig } from './email-verification-config'
 import { sendEmailMessage } from '../services/email.service'
 
@@ -177,6 +178,7 @@ export const auth = betterAuth({
   },
   plugins: [
     admin(),
+    librooAdminAuditPlugin(),
     librooAdminPolicyPlugin()
   ]
 })
