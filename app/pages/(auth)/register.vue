@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import * as z from 'zod'
 import type { FormSubmitEvent, AuthFormField } from '@nuxt/ui'
+import type { SignupInvitePreview } from '~~/shared/types/signup-invite'
 
 definePageMeta({
   auth: false
@@ -17,6 +18,43 @@ const isLoading = ref(false)
 const error = ref('')
 const verificationEmail = ref('')
 const isVerificationEmailSent = ref(false)
+const inviteToken = computed(() => {
+  const invite = route.query.invite
+  return typeof invite === 'string' && invite.trim() ? invite.trim() : null
+})
+const registrationRequiresInvite = computed(() => !config.public.publicRegistrationEnabled && !inviteToken.value)
+
+const { data: invitePreview } = await useAsyncData<SignupInvitePreview | null>(
+  'signup-invite-preview',
+  () => inviteToken.value
+    ? $fetch<SignupInvitePreview>(`/api/signup-invites/${inviteToken.value}`)
+    : Promise.resolve(null),
+  {
+    default: () => null,
+    watch: [inviteToken]
+  }
+)
+const inviteEmail = computed(() => invitePreview.value?.email ?? '')
+const inviteStatus = computed(() => invitePreview.value?.status ?? null)
+const inviteUnavailable = computed(() =>
+  !config.public.publicRegistrationEnabled
+  && Boolean(inviteToken.value)
+  && inviteStatus.value !== 'pending'
+)
+const inviteBlockTitle = computed(() => {
+  if (registrationRequiresInvite.value) return 'Invite required'
+  if (inviteStatus.value === 'expired') return 'Invite expired'
+  if (inviteStatus.value === 'revoked') return 'Invite revoked'
+  if (inviteStatus.value === 'accepted') return 'Invite already used'
+  return 'Invite unavailable'
+})
+const inviteBlockDescription = computed(() => {
+  if (registrationRequiresInvite.value) return 'Open the invite link from your administrator to create an account.'
+  if (inviteStatus.value === 'expired') return 'This invite link has expired. Ask your administrator for a new invite.'
+  if (inviteStatus.value === 'revoked') return 'This invite link has been revoked. Ask your administrator for a new invite.'
+  if (inviteStatus.value === 'accepted') return 'This invite link has already been used.'
+  return 'This invite link cannot be used. Ask your administrator for a new invite.'
+})
 
 const redirectPath = computed(() => {
   const redirect = route.query.redirect
@@ -39,7 +77,7 @@ watch(user, (newUser) => {
 }, { immediate: true })
 
 // Form fields
-const fields: AuthFormField[] = [
+const fields = computed<AuthFormField[]>(() => [
   {
     name: 'name',
     type: 'text',
@@ -52,6 +90,8 @@ const fields: AuthFormField[] = [
     type: 'email',
     label: 'Email',
     placeholder: 'Enter your email',
+    defaultValue: inviteEmail.value,
+    disabled: Boolean(inviteEmail.value),
     required: true
   },
   {
@@ -69,7 +109,7 @@ const fields: AuthFormField[] = [
     placeholder: 'Confirm your password',
     required: true
   }
-]
+])
 
 // Validation schema
 const schema = z.object({
@@ -86,13 +126,30 @@ type Schema = z.output<typeof schema>
 
 async function onSubmit(payload: FormSubmitEvent<Schema>) {
   error.value = ''
+
+  if (registrationRequiresInvite.value) {
+    error.value = 'An invite is required to create an account'
+    return
+  }
+
+  if (inviteUnavailable.value) {
+    error.value = inviteBlockDescription.value
+    return
+  }
+
+  if (inviteEmail.value && payload.data.email.toLowerCase() !== inviteEmail.value) {
+    error.value = 'Use the email address this invite was sent to'
+    return
+  }
+
   isLoading.value = true
 
   try {
     const result = await signUp(
       payload.data.email,
       payload.data.password,
-      payload.data.name
+      payload.data.name,
+      inviteToken.value
     )
 
     if (result.error) {
@@ -154,8 +211,32 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
       </template>
     </UPageCard>
 
+    <UPageCard
+      v-else-if="registrationRequiresInvite || inviteUnavailable"
+      :title="inviteBlockTitle"
+      icon="i-lucide-lock"
+    >
+      <UAlert
+        color="warning"
+        variant="subtle"
+        icon="i-lucide-lock"
+        :title="inviteBlockTitle"
+        :description="inviteBlockDescription"
+      />
+
+      <template #footer>
+        <UButton
+          :to="{ path: '/login', query: route.query.redirect ? { redirect: route.query.redirect } : undefined }"
+          icon="i-lucide-log-in"
+        >
+          Sign in
+        </UButton>
+      </template>
+    </UPageCard>
+
     <UPageCard v-else>
       <UAuthForm
+        :key="inviteEmail"
         :schema="schema"
         :fields="fields"
         :loading="isLoading"

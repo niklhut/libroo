@@ -67,6 +67,20 @@ If `LIBROO_EMAIL_VERIFICATION_ENABLED=false` or unset, Libroo does not send veri
 
 Deploy the application with an empty database, then open `/register` on your deployed instance and create the first account. The first registered account becomes the administrator automatically.
 
+## Invite-Only Hosted Mode
+
+Public registration is enabled by default. Hosted admins can turn it off so only invited users can join:
+
+```bash
+LIBROO_PUBLIC_REGISTRATION_ENABLED=false
+```
+
+When public registration is disabled, `/register` requires an invite token. Admins can create invite links from `/admin/users`; if email delivery is configured, admins can also send invite emails. Invites start as pending, then become accepted after Better Auth creates the account, expired after their expiration date, or revoked when an admin cancels them. Expired and revoked invites cannot be used.
+
+Invite emails use the same SMTP or Plunk settings as verification emails. Link-only invites can still be created without configuring email delivery.
+
+For a new private hosted instance, leave public registration enabled until the first account is created and promoted automatically to administrator. Then set `LIBROO_PUBLIC_REGISTRATION_ENABLED=false`, restart the deployment, and create invites from the admin users page.
+
 ## Local Development
 
 ```bash

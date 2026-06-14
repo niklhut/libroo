@@ -1,12 +1,13 @@
 import nodemailer from 'nodemailer'
 import { Context, Data, Effect, Layer } from 'effect'
-import { getEmailVerificationConfig, validateEmailVerificationConfig } from '../utils/email-verification-config'
+import { getEmailDeliveryConfig, validateEmailDeliveryConfig } from '../utils/email-verification-config'
 
 export class EmailDeliveryError extends Data.TaggedError('EmailDeliveryError')<{
   message: string
 }> { }
 
 export const USER_SAFE_EMAIL_DELIVERY_ERROR = 'Email delivery is temporarily unavailable. Please try again later or contact the administrator.'
+const PLUNK_SEND_TIMEOUT_MS = 5000
 
 export interface EmailMessage {
   to: string
@@ -25,8 +26,8 @@ export const EmailServiceLive = Layer.succeed(EmailService, {
   sendEmail: message =>
     Effect.tryPromise({
       try: async () => {
-        const config = getEmailVerificationConfig()
-        validateEmailVerificationConfig(config)
+        const config = getEmailDeliveryConfig()
+        validateEmailDeliveryConfig(config)
 
         if (config.provider === 'plunk') {
           if (!config.plunk) {
@@ -70,34 +71,42 @@ async function sendWithPlunk(
   config: { apiKey: string, baseUrl: string },
   message: EmailMessage
 ) {
-  const response = await fetch(`${config.baseUrl.replace(/\/+$/, '')}/v1/send`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${config.apiKey}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      to: message.to,
-      subject: message.subject,
-      body: message.html ?? message.text
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), PLUNK_SEND_TIMEOUT_MS)
+
+  try {
+    const response = await fetch(`${config.baseUrl.replace(/\/+$/, '')}/v1/send`, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Authorization': `Bearer ${config.apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        to: message.to,
+        subject: message.subject,
+        body: message.html ?? message.text
+      })
     })
-  })
 
-  const body = await response.json().catch(() => null) as {
-    success?: boolean
-    error?: {
-      code?: string
-      message?: string
+    const body = await response.json().catch(() => null) as {
+      success?: boolean
+      error?: {
+        code?: string
+        message?: string
+      }
+    } | null
+
+    if (!response.ok || body?.success === false) {
+      if (response.status === 402 || body?.error?.code === 'BILLING_LIMIT_EXCEEDED') {
+        throw new Error('Plunk email sending limit exceeded. Verification email could not be sent; increase the Plunk limit or switch email providers.')
+      }
+
+      const code = body?.error?.code ? `[${body.error.code}] ` : ''
+      throw new Error(`${code}${body?.error?.message ?? 'Plunk email delivery failed'}`)
     }
-  } | null
-
-  if (!response.ok || body?.success === false) {
-    if (response.status === 402 || body?.error?.code === 'BILLING_LIMIT_EXCEEDED') {
-      throw new Error('Plunk email sending limit exceeded. Verification email could not be sent; increase the Plunk limit or switch email providers.')
-    }
-
-    const code = body?.error?.code ? `[${body.error.code}] ` : ''
-    throw new Error(`${code}${body?.error?.message ?? 'Plunk email delivery failed'}`)
+  } finally {
+    clearTimeout(timeout)
   }
 }
 

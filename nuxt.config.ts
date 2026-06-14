@@ -1,6 +1,14 @@
 const truthyValues = new Set(['1', 'true', 'yes', 'on'])
 const emailVerificationEnabledRaw = process.env.LIBROO_EMAIL_VERIFICATION_ENABLED ?? ''
 const emailVerificationEnabled = truthyValues.has(emailVerificationEnabledRaw.trim().toLowerCase())
+const publicRegistrationEnabledRaw = process.env.LIBROO_PUBLIC_REGISTRATION_ENABLED ?? 'true'
+const publicRegistrationEnabled = truthyValues.has(publicRegistrationEnabledRaw.trim().toLowerCase())
+const emailProvider = process.env.LIBROO_EMAIL_PROVIDER === 'plunk' ? 'plunk' : 'smtp'
+const smtpAuthConfigured = (!process.env.LIBROO_SMTP_USER && !process.env.LIBROO_SMTP_PASSWORD)
+  || Boolean(process.env.LIBROO_SMTP_USER && process.env.LIBROO_SMTP_PASSWORD)
+const emailDeliveryEnabled = emailProvider === 'plunk'
+  ? Boolean(process.env.LIBROO_PLUNK_API_KEY && (process.env.LIBROO_PLUNK_BASE_URL ?? 'https://next-api.useplunk.com'))
+  : Boolean(process.env.LIBROO_EMAIL_FROM && process.env.LIBROO_SMTP_HOST && smtpAuthConfigured)
 
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
@@ -25,6 +33,7 @@ export default defineNuxtConfig({
     betterAuthSecret: process.env.BETTER_AUTH_SECRET,
     betterAuthUrl: process.env.BETTER_AUTH_URL,
     emailVerificationEnabled: emailVerificationEnabledRaw,
+    publicRegistrationEnabled: publicRegistrationEnabledRaw,
     emailProvider: process.env.LIBROO_EMAIL_PROVIDER,
     emailFrom: process.env.LIBROO_EMAIL_FROM,
     smtpHost: process.env.LIBROO_SMTP_HOST,
@@ -35,7 +44,9 @@ export default defineNuxtConfig({
     plunkApiKey: process.env.LIBROO_PLUNK_API_KEY,
     plunkBaseUrl: process.env.LIBROO_PLUNK_BASE_URL,
     public: {
-      emailVerificationEnabled
+      emailVerificationEnabled,
+      publicRegistrationEnabled,
+      emailDeliveryEnabled
     }
   },
 

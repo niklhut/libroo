@@ -22,12 +22,15 @@ export const useAuthStore = defineStore('auth', () => {
     })
   }
 
-  async function signUp(email: string, password: string, name: string) {
-    return authClient.signUp.email({
+  async function signUp(email: string, password: string, name: string, inviteToken?: string | null) {
+    const body = {
       email,
       password,
-      name
-    })
+      name,
+      inviteToken: inviteToken || undefined
+    } as Parameters<typeof authClient.signUp.email>[0] & { inviteToken?: string }
+
+    return authClient.signUp.email(body)
   }
 
   async function signOut() {
