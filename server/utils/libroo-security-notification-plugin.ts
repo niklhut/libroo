@@ -127,7 +127,9 @@ function isPasswordChangePath(path: string | undefined) {
 function getUserIdFromBody(body: unknown) {
   if (!body || typeof body !== 'object') return null
   const userId = (body as { userId?: unknown }).userId
-  return typeof userId === 'string' && userId.trim() ? userId : null
+  if (typeof userId !== 'string') return null
+  const trimmedUserId = userId.trim()
+  return trimmedUserId ? trimmedUserId : null
 }
 
 function setPasswordChangeUser(context: object, user: SecurityNotificationUser) {
