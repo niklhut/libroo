@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AuthService, AuthServiceLive, UnauthorizedError } from '../../../../server/services/auth.service'
 import { AuthRepository } from '../../../../server/repositories/auth.repository'
 
+const originalEmailVerificationEnabled = process.env.NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED
+
 const authMock = vi.hoisted(() => ({
   getSession: vi.fn(),
   sendVerificationEmail: vi.fn(),
@@ -53,7 +55,11 @@ describe('AuthService', () => {
   })
 
   afterEach(() => {
-    delete process.env.LIBROO_EMAIL_VERIFICATION_ENABLED
+    if (originalEmailVerificationEnabled === undefined) {
+      delete process.env.NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED
+    } else {
+      process.env.NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = originalEmailVerificationEnabled
+    }
   })
 
   it('rejects active banned sessions', async () => {
@@ -98,8 +104,31 @@ describe('AuthService', () => {
     })
   })
 
+  it('returns null optional user id when no active session exists', async () => {
+    authMock.getSession.mockResolvedValueOnce(null)
+
+    await expect(runAuthService(
+      Effect.flatMap(AuthService, service => service.getOptionalCurrentUserId(makeEvent()))
+    )).resolves.toBeNull()
+  })
+
+  it('returns optional user id for active sessions', async () => {
+    authMock.getSession.mockResolvedValueOnce({
+      user: {
+        id: 'user-1',
+        name: 'Ada',
+        email: 'ada@example.com'
+      },
+      session: { id: 'session-1' }
+    })
+
+    await expect(runAuthService(
+      Effect.flatMap(AuthService, service => service.getOptionalCurrentUserId(makeEvent()))
+    )).resolves.toBe('user-1')
+  })
+
   it('allows unverified users when email verification is disabled', async () => {
-    process.env.LIBROO_EMAIL_VERIFICATION_ENABLED = 'false'
+    process.env.NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = 'false'
     authMock.getSession.mockResolvedValueOnce({
       user: {
         id: 'user-1',
@@ -118,7 +147,7 @@ describe('AuthService', () => {
   })
 
   it('requires verified users when email verification is enabled', async () => {
-    process.env.LIBROO_EMAIL_VERIFICATION_ENABLED = 'true'
+    process.env.NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = 'true'
     authMock.getSession.mockResolvedValueOnce({
       user: {
         id: 'user-1',
@@ -140,7 +169,7 @@ describe('AuthService', () => {
   })
 
   it('resends verification email for unverified users', async () => {
-    process.env.LIBROO_EMAIL_VERIFICATION_ENABLED = 'true'
+    process.env.NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = 'true'
     authMock.getSession.mockResolvedValueOnce({
       user: {
         id: 'user-1',
@@ -166,7 +195,7 @@ describe('AuthService', () => {
   })
 
   it('resends pending email-change verification to the pending inbox', async () => {
-    process.env.LIBROO_EMAIL_VERIFICATION_ENABLED = 'true'
+    process.env.NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = 'true'
     authMock.getSession.mockResolvedValueOnce({
       user: {
         id: 'user-1',
@@ -196,7 +225,7 @@ describe('AuthService', () => {
   })
 
   it('surfaces resend delivery failures as non-auth errors', async () => {
-    process.env.LIBROO_EMAIL_VERIFICATION_ENABLED = 'true'
+    process.env.NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = 'true'
     authMock.getSession.mockResolvedValueOnce({
       user: {
         id: 'user-1',

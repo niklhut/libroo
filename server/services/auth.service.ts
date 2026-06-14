@@ -49,6 +49,7 @@ export type SessionData = NonNullable<Awaited<ReturnType<typeof auth.api.getSess
 // Service interface
 export interface AuthServiceInterface {
   getCurrentUser: (event: H3Event) => Effect.Effect<SessionData, UnauthorizedError>
+  getOptionalCurrentUserId: (event: H3Event) => Effect.Effect<string | null>
   requireAuth: (event: H3Event) => Effect.Effect<User, UnauthorizedError>
   requireVerifiedAuth: (event: H3Event) => Effect.Effect<User, UnauthorizedError>
   getEmailVerificationStatus: (event: H3Event) => Effect.Effect<{
@@ -85,10 +86,29 @@ const fetchSession = (event: H3Event): Effect.Effect<SessionData, UnauthorizedEr
     return session
   })
 
+const fetchOptionalSession = (event: H3Event): Effect.Effect<SessionData | null> =>
+  Effect.gen(function* () {
+    const session = yield* Effect.promise(() =>
+      auth.api.getSession({ headers: event.headers }).catch(() => null)
+    )
+
+    if (!session || isActiveBan(session.user)) {
+      return null
+    }
+
+    return session
+  })
+
 // Live implementation
 export const AuthServiceLive = Layer.succeed(AuthService, {
   getCurrentUser: event =>
     fetchSession(event),
+
+  getOptionalCurrentUserId: event =>
+    Effect.gen(function* () {
+      const sessionData = yield* fetchOptionalSession(event)
+      return sessionData?.user.id ?? null
+    }),
 
   requireAuth: event =>
     Effect.gen(function* () {
@@ -264,6 +284,9 @@ function getAccountPendingEmail(userId: string, currentEmail: string) {
 // Helper effects
 export const getCurrentUser = (event: H3Event) =>
   Effect.flatMap(AuthService, service => service.getCurrentUser(event))
+
+export const getOptionalCurrentUserId = (event: H3Event) =>
+  Effect.flatMap(AuthService, service => service.getOptionalCurrentUserId(event))
 
 export const requireAuth = (event: H3Event) =>
   Effect.flatMap(AuthService, service => service.requireAuth(event))

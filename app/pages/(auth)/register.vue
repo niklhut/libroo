@@ -2,6 +2,8 @@
 import * as z from 'zod'
 import type { FormSubmitEvent, AuthFormField } from '@nuxt/ui'
 import type { SignupInvitePreview } from '~~/shared/types/signup-invite'
+import { newPasswordSchema } from '~~/shared/utils/password'
+import { booleanConfigValue } from '~~/shared/utils/runtime-config'
 
 definePageMeta({
   auth: false
@@ -16,13 +18,17 @@ const toast = useToast()
 
 const isLoading = ref(false)
 const error = ref('')
+const showPassword = ref(false)
+const showConfirmPassword = ref(false)
 const verificationEmail = ref('')
 const isVerificationEmailSent = ref(false)
 const inviteToken = computed(() => {
   const invite = route.query.invite
   return typeof invite === 'string' && invite.trim() ? invite.trim() : null
 })
-const registrationRequiresInvite = computed(() => !config.public.publicRegistrationEnabled && !inviteToken.value)
+const emailVerificationEnabled = computed(() => booleanConfigValue(config.public.emailVerificationEnabled))
+const registrationEnabled = computed(() => booleanConfigValue(config.public.registrationEnabled, true))
+const registrationRequiresInvite = computed(() => !registrationEnabled.value && !inviteToken.value)
 
 const { data: invitePreview } = await useAsyncData<SignupInvitePreview | null>(
   'signup-invite-preview',
@@ -37,7 +43,7 @@ const { data: invitePreview } = await useAsyncData<SignupInvitePreview | null>(
 const inviteEmail = computed(() => invitePreview.value?.email ?? '')
 const inviteStatus = computed(() => invitePreview.value?.status ?? null)
 const inviteUnavailable = computed(() =>
-  !config.public.publicRegistrationEnabled
+  !registrationEnabled.value
   && Boolean(inviteToken.value)
   && inviteStatus.value !== 'pending'
 )
@@ -115,7 +121,7 @@ const fields = computed<AuthFormField[]>(() => [
 const schema = z.object({
   name: z.string({ error: 'Name is required' }).min(1, { error: 'Name is required' }),
   email: z.email({ error: 'Please enter a valid email address' }),
-  password: z.string({ error: 'Password is required' }).min(8, { error: 'Password must be at least 8 characters' }),
+  password: newPasswordSchema(),
   confirmPassword: z.string({ error: 'Confirm Password is required' }).min(1, { error: 'Please confirm your password' })
 }).refine(data => data.password === data.confirmPassword, {
   error: 'Passwords do not match',
@@ -123,6 +129,23 @@ const schema = z.object({
 })
 
 type Schema = z.output<typeof schema>
+
+type AuthInputField = AuthFormField & {
+  placeholder?: string
+  autocomplete?: string
+  disabled?: boolean
+}
+
+function inputFieldProps(field: AuthFormField) {
+  const inputField = field as AuthInputField
+  return {
+    name: inputField.name,
+    placeholder: inputField.placeholder,
+    autocomplete: inputField.autocomplete,
+    required: inputField.required,
+    disabled: inputField.disabled
+  }
+}
 
 async function onSubmit(payload: FormSubmitEvent<Schema>) {
   error.value = ''
@@ -163,13 +186,13 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
       verificationEmail.value = payload.data.email
       toast.add({
         title: 'Account created!',
-        description: config.public.emailVerificationEnabled
+        description: emailVerificationEnabled.value
           ? 'Check your email to verify your account before signing in.'
           : 'Welcome to Libroo.',
         color: 'success'
       })
 
-      if (config.public.emailVerificationEnabled) {
+      if (emailVerificationEnabled.value) {
         isVerificationEmailSent.value = true
       }
     }
@@ -253,6 +276,50 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
           >
             Sign in
           </ULink>
+        </template>
+
+        <template #password-field="{ state, field }">
+          <UInput
+            v-model="state.password"
+            v-bind="inputFieldProps(field)"
+            :type="showPassword ? 'text' : 'password'"
+            class="w-full"
+          >
+            <template #trailing>
+              <UButton
+                type="button"
+                color="neutral"
+                variant="link"
+                size="sm"
+                :icon="showPassword ? 'i-lucide-eye-off' : 'i-lucide-eye'"
+                :aria-label="showPassword ? 'Hide password' : 'Show password'"
+                :aria-pressed="showPassword"
+                @click="showPassword = !showPassword"
+              />
+            </template>
+          </UInput>
+        </template>
+
+        <template #confirmPassword-field="{ state, field }">
+          <UInput
+            v-model="state.confirmPassword"
+            v-bind="inputFieldProps(field)"
+            :type="showConfirmPassword ? 'text' : 'password'"
+            class="w-full"
+          >
+            <template #trailing>
+              <UButton
+                type="button"
+                color="neutral"
+                variant="link"
+                size="sm"
+                :icon="showConfirmPassword ? 'i-lucide-eye-off' : 'i-lucide-eye'"
+                :aria-label="showConfirmPassword ? 'Hide confirmed password' : 'Show confirmed password'"
+                :aria-pressed="showConfirmPassword"
+                @click="showConfirmPassword = !showConfirmPassword"
+              />
+            </template>
+          </UInput>
         </template>
 
         <template

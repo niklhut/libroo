@@ -7,6 +7,7 @@ import {
   type AccountPasswordChangeSchema
 } from '~~/shared/utils/account-settings'
 import type { LibraryImportConflictStrategy, LibraryImportResult } from '~~/shared/types/library-transfer'
+import { booleanConfigValue } from '~~/shared/utils/runtime-config'
 import { authClient } from '~/utils/auth-client'
 
 const toast = useToast()
@@ -33,6 +34,8 @@ const showEmailCurrentPassword = ref(false)
 const showCurrentPassword = ref(false)
 const showNewPassword = ref(false)
 const showConfirmPassword = ref(false)
+const emailForm = useTemplateRef<{ clear: (name?: string | RegExp) => void }>('emailForm')
+const passwordForm = useTemplateRef<{ clear: (name?: string | RegExp) => void }>('passwordForm')
 
 const { data: verificationStatus, refresh: refreshVerificationStatus } = await useFetch<{
   enabled: boolean
@@ -41,7 +44,7 @@ const { data: verificationStatus, refresh: refreshVerificationStatus } = await u
   pendingEmail: string | null
 }>('/api/auth/verification-status', {
   default: () => ({
-    enabled: Boolean(config.public.emailVerificationEnabled),
+    enabled: booleanConfigValue(config.public.emailVerificationEnabled),
     email: user.value?.email ?? '',
     verified: user.value?.emailVerified === true,
     pendingEmail: null
@@ -148,6 +151,7 @@ async function changeEmail(payload: FormSubmitEvent<AccountEmailChangeSchema>) {
     }
 
     emailState.currentPassword = ''
+    emailForm.value?.clear()
     await refreshVerificationStatus()
   } catch (err: unknown) {
     toast.add({
@@ -206,6 +210,7 @@ async function changePassword(payload: FormSubmitEvent<AccountPasswordChangeSche
     passwordState.currentPassword = ''
     passwordState.newPassword = ''
     passwordState.confirmPassword = ''
+    passwordForm.value?.clear()
     toast.add({
       title: 'Password updated',
       color: 'success'
@@ -379,6 +384,7 @@ async function importLibraryCsvFile() {
           </div>
 
           <UForm
+            ref="emailForm"
             :schema="accountEmailChangeSchema"
             :state="emailState"
             class="space-y-4"
@@ -444,6 +450,7 @@ async function importLibraryCsvFile() {
           </template>
 
           <UForm
+            ref="passwordForm"
             :schema="accountPasswordChangeSchema"
             :state="passwordState"
             class="space-y-4"

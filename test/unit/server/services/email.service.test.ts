@@ -3,26 +3,32 @@ import { Effect } from 'effect'
 import { EmailServiceLive, sendEmail, sendEmailMessage, USER_SAFE_EMAIL_DELIVERY_ERROR } from '../../../../server/services/email.service'
 
 const envKeys = [
-  'LIBROO_EMAIL_VERIFICATION_ENABLED',
-  'LIBROO_EMAIL_PROVIDER',
-  'LIBROO_PLUNK_API_KEY',
-  'LIBROO_PLUNK_BASE_URL'
+  'NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED',
+  'NUXT_EMAIL_PROVIDER',
+  'NUXT_PLUNK_API_KEY',
+  'NUXT_PLUNK_BASE_URL'
 ]
+const originalEnvValues = new Map(envKeys.map(key => [key, process.env[key]]))
 
 describe('EmailService', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
     for (const key of envKeys) {
-      Reflect.deleteProperty(process.env, key)
+      const value = originalEnvValues.get(key)
+      if (value === undefined) {
+        Reflect.deleteProperty(process.env, key)
+      } else {
+        process.env[key] = value
+      }
     }
   })
 
   it('sends rendered messages through Plunk', async () => {
-    process.env.LIBROO_EMAIL_VERIFICATION_ENABLED = 'true'
-    process.env.LIBROO_EMAIL_PROVIDER = 'plunk'
-    process.env.LIBROO_PLUNK_API_KEY = 'sk_test'
-    process.env.LIBROO_PLUNK_BASE_URL = 'https://plunk.example.com/'
+    process.env.NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = 'true'
+    process.env.NUXT_EMAIL_PROVIDER = 'plunk'
+    process.env.NUXT_PLUNK_API_KEY = 'sk_test'
+    process.env.NUXT_PLUNK_BASE_URL = 'https://plunk.example.com/'
 
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
       success: true,
@@ -55,9 +61,9 @@ describe('EmailService', () => {
   })
 
   it('surfaces Plunk delivery failures', async () => {
-    process.env.LIBROO_EMAIL_VERIFICATION_ENABLED = 'true'
-    process.env.LIBROO_EMAIL_PROVIDER = 'plunk'
-    process.env.LIBROO_PLUNK_API_KEY = 'sk_test'
+    process.env.NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = 'true'
+    process.env.NUXT_EMAIL_PROVIDER = 'plunk'
+    process.env.NUXT_PLUNK_API_KEY = 'sk_test'
 
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
       success: false,
@@ -83,9 +89,9 @@ describe('EmailService', () => {
   })
 
   it('surfaces Plunk billing limits as a clear delivery failure', async () => {
-    process.env.LIBROO_EMAIL_VERIFICATION_ENABLED = 'true'
-    process.env.LIBROO_EMAIL_PROVIDER = 'plunk'
-    process.env.LIBROO_PLUNK_API_KEY = 'sk_test'
+    process.env.NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = 'true'
+    process.env.NUXT_EMAIL_PROVIDER = 'plunk'
+    process.env.NUXT_PLUNK_API_KEY = 'sk_test'
 
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
       success: false,
@@ -111,9 +117,9 @@ describe('EmailService', () => {
   })
 
   it('masks provider details in the auth email helper', async () => {
-    process.env.LIBROO_EMAIL_VERIFICATION_ENABLED = 'true'
-    process.env.LIBROO_EMAIL_PROVIDER = 'plunk'
-    process.env.LIBROO_PLUNK_API_KEY = 'sk_test'
+    process.env.NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = 'true'
+    process.env.NUXT_EMAIL_PROVIDER = 'plunk'
+    process.env.NUXT_PLUNK_API_KEY = 'sk_test'
 
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
       success: false,

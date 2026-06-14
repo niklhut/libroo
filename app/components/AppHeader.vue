@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import type { NavigationMenuItem } from '@nuxt/ui'
 import { storeToRefs } from 'pinia'
+import { roleIncludesAdmin } from '~~/shared/utils/auth-roles'
+import { booleanConfigValue } from '~~/shared/utils/runtime-config'
 
 const authStore = useAuthStore()
 const { user } = storeToRefs(authStore)
 const { signOut } = authStore
 const route = useRoute()
 const config = useRuntimeConfig()
+const registrationEnabled = computed(() => booleanConfigValue(config.public.registrationEnabled, true))
 
 async function handleSignOut() {
   try {
@@ -22,17 +25,13 @@ async function handleSignOut() {
 // Logo destination based on auth status
 const logoTo = computed(() => user.value ? '/library' : '/login')
 
-function roleIncludesAdmin(role: string | null | undefined) {
-  return (role ?? 'user').split(',').map(part => part.trim()).includes('admin')
-}
-
 const adminLinks = computed<NavigationMenuItem[]>(() => [
   {
     label: 'Users',
     icon: 'i-lucide-users',
     to: '/admin/users'
   },
-  ...(!config.public.publicRegistrationEnabled
+  ...(!registrationEnabled.value
     ? [{
         label: 'Invites',
         icon: 'i-lucide-user-plus',
@@ -96,7 +95,7 @@ const links = computed<NavigationMenuItem[]>(() => {
 </script>
 
 <template>
-  <UHeader :links="links">
+  <UHeader>
     <template #left>
       <NuxtLink
         :to="logoTo"
@@ -118,6 +117,14 @@ const links = computed<NavigationMenuItem[]>(() => {
       />
 
       <UColorModeButton />
+    </template>
+
+    <template #body>
+      <UNavigationMenu
+        :items="links"
+        orientation="vertical"
+        class="-mx-2"
+      />
     </template>
   </UHeader>
 </template>

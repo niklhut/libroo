@@ -1,7 +1,9 @@
 import { APIError, createAuthMiddleware, getSessionFromCtx } from 'better-auth/api'
 import type { BetterAuthPlugin } from 'better-auth/types'
 import { sql } from 'drizzle-orm'
+import { parseRoleValues, roleIncludesAdmin } from '~~/shared/utils/auth-roles'
 import { isActiveBan } from '~~/shared/utils/auth-status'
+import { newPasswordSchema } from '~~/shared/utils/password'
 import { db } from '@nuxthub/db'
 import { user } from '@nuxthub/db/schema'
 
@@ -46,13 +48,7 @@ type BanReservationResult
   = | { reserved: true }
     | { reserved: false, reason: 'last_admin' | 'concurrent' }
 
-const parseRoleValues = (role: string | string[] | null | undefined): string[] => {
-  const values = Array.isArray(role) ? role : [role ?? 'user']
-  return values.flatMap(value => value.split(',')).map(part => part.trim()).filter(Boolean)
-}
-
-export const roleIncludesAdmin = (role: string | string[] | null | undefined) =>
-  parseRoleValues(role).includes('admin')
+export const IMPERSONATION_DISABLED_MESSAGE = 'Admin impersonation is disabled for this Libroo beta.'
 
 const isEffectiveAdmin = (user: UserWithRole) =>
   roleIncludesAdmin(user.role)
@@ -113,10 +109,41 @@ export const librooAdminPolicyPlugin = (): BetterAuthPlugin => ({
             reserveAdminBan: reserveAdminBanInDatabase
           })
         })
+      },
+      {
+        matcher: context => context.path === '/admin/impersonate-user'
+          || context.path === '/admin/stop-impersonating',
+        handler: createAuthMiddleware(() => {
+          blockAdminImpersonation()
+        })
+      },
+      {
+        matcher: context => context.path === '/admin/set-user-password',
+        handler: createAuthMiddleware(async (ctx) => {
+          validateAdminSetUserPasswordBody(ctx.body)
+        })
       }
     ]
   }
 })
+
+export function blockAdminImpersonation(): never {
+  throw APIError.from('FORBIDDEN', {
+    message: IMPERSONATION_DISABLED_MESSAGE,
+    code: 'IMPERSONATION_DISABLED'
+  })
+}
+
+export function validateAdminSetUserPasswordBody(bodyValue: unknown) {
+  const body = isRecord(bodyValue) ? bodyValue : {}
+  const result = newPasswordSchema('New password is required').safeParse(body.newPassword)
+  if (result.success) return
+
+  throw APIError.from('BAD_REQUEST', {
+    message: result.error.issues[0]?.message ?? 'Password is invalid',
+    code: 'INVALID_NEW_PASSWORD'
+  })
+}
 
 export function normalizeAdminRoleMutationBody(path: string | undefined, body: unknown): SetRoleBody | undefined {
   if (path === '/admin/set-role') {
@@ -132,6 +159,10 @@ export function normalizeAdminRoleMutationBody(path: string | undefined, body: u
       role: updateBody.data.role
     }
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
 }
 
 export function normalizeAdminBanMutationBody(path: string | undefined, body: unknown): BanUserBody | undefined {

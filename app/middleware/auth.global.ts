@@ -1,4 +1,6 @@
+import { roleIncludesAdmin } from '~~/shared/utils/auth-roles'
 import { isActiveBan } from '~~/shared/utils/auth-status'
+import { booleanConfigValue } from '~~/shared/utils/runtime-config'
 
 export default defineNuxtRouteMiddleware(async (to) => {
   // Skip auth check for pages explicitly marked as public
@@ -25,7 +27,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
 
   const config = useRuntimeConfig()
   const canUseUnverifiedAccount = to.path === '/settings' || to.path.startsWith('/verify-email')
-  if (config.public.emailVerificationEnabled && session.value.user.emailVerified !== true && !canUseUnverifiedAccount) {
+  if (booleanConfigValue(config.public.emailVerificationEnabled) && session.value.user.emailVerified !== true && !canUseUnverifiedAccount) {
     return navigateTo({
       path: '/settings',
       query: { verify: 'required', redirect: to.fullPath }
@@ -33,9 +35,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
   }
 
   if (to.path.startsWith('/admin')) {
-    const role = session.value.user.role
-    const roles = typeof role === 'string' ? role.split(',').map(part => part.trim()) : []
-    if (!roles.includes('admin')) {
+    if (!roleIncludesAdmin(session.value.user.role)) {
       return navigateTo('/library')
     }
   }

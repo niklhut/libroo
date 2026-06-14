@@ -26,11 +26,32 @@ describe('server/api/invite/[token]/index.get', () => {
       isOwnInvite: false,
       status: 'available' as const
     }
+    serviceMocks.getOptionalCurrentUserId.mockReturnValueOnce(Effect.succeed(null))
     serviceMocks.getInvitePreview.mockReturnValueOnce(Effect.succeed(preview))
     const handler = await importRoute(route)
 
     await expect(handler(makeEvent({ params: { token: 'token-1' } }))).resolves.toEqual(preview)
+    expect(serviceMocks.getOptionalCurrentUserId).toHaveBeenCalled()
     expect(serviceMocks.getInvitePreview).toHaveBeenCalledWith('token-1', null)
+  })
+
+  it('passes the optional viewer user id to invite previews', async () => {
+    const preview = {
+      title: 'Example',
+      author: 'Author',
+      coverPath: null,
+      ownerName: 'Ada',
+      dueAt: null,
+      canAccept: false,
+      isOwnInvite: true,
+      status: 'own-invite' as const
+    }
+    serviceMocks.getOptionalCurrentUserId.mockReturnValueOnce(Effect.succeed('user-1'))
+    serviceMocks.getInvitePreview.mockReturnValueOnce(Effect.succeed(preview))
+    const handler = await importRoute(route)
+
+    await expect(handler(makeEvent({ params: { token: 'token-1' } }))).resolves.toEqual(preview)
+    expect(serviceMocks.getInvitePreview).toHaveBeenCalledWith('token-1', 'user-1')
   })
 
   it('rejects missing tokens', async () => {

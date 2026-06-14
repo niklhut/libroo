@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { assignFirstAdminRole, enforceBanUserPolicy, enforceSetRolePolicy, normalizeAdminBanMutationBody, normalizeAdminRoleMutationBody, roleIncludesAdmin } from '../../server/utils/libroo-admin-auth-plugin'
+import { roleIncludesAdmin } from '../../shared/utils/auth-roles'
+import { IMPERSONATION_DISABLED_MESSAGE, assignFirstAdminRole, blockAdminImpersonation, enforceBanUserPolicy, enforceSetRolePolicy, normalizeAdminBanMutationBody, normalizeAdminRoleMutationBody, validateAdminSetUserPasswordBody } from '../../server/utils/libroo-admin-auth-plugin'
 
 describe('librooAdminPolicyPlugin', () => {
   it('allows promotions to pass through to Better Auth', async () => {
@@ -217,5 +218,14 @@ describe('librooAdminPolicyPlugin', () => {
 
   it('skips first-admin assignment when Better Auth does not return a user id', async () => {
     await expect(assignFirstAdminRole(undefined, async () => ({ changes: 1 }))).resolves.toBe(false)
+  })
+
+  it('blocks impersonation through the production guard', () => {
+    expect(() => blockAdminImpersonation()).toThrow(IMPERSONATION_DISABLED_MESSAGE)
+  })
+
+  it('rejects malformed admin set-password bodies as bad requests', () => {
+    expect(() => validateAdminSetUserPasswordBody(undefined)).toThrow(/New password is required/)
+    expect(() => validateAdminSetUserPasswordBody({ newPassword: '' })).toThrow(/New password is required/)
   })
 })

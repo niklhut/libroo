@@ -27,8 +27,8 @@ openssl rand -base64 32
 Set these values in `.env` or in your hosting provider's environment settings:
 
 ```bash
-BETTER_AUTH_SECRET=<output from openssl rand -base64 32>
-BETTER_AUTH_URL=https://your-libroo.example.com
+NUXT_BETTER_AUTH_SECRET=<output from openssl rand -base64 32>
+NUXT_BETTER_AUTH_URL=https://your-libroo.example.com
 ```
 
 ## Email Verification
@@ -40,30 +40,32 @@ For hosted or self-hosted deployments where account ownership should be enforced
 SMTP delivery:
 
 ```bash
-LIBROO_EMAIL_VERIFICATION_ENABLED=true
-LIBROO_EMAIL_PROVIDER=smtp
-LIBROO_EMAIL_FROM="Libroo <no-reply@your-libroo.example.com>"
-LIBROO_SMTP_HOST=smtp.example.com
-LIBROO_SMTP_PORT=587
-LIBROO_SMTP_SECURE=false
-LIBROO_SMTP_USER=your-smtp-user
-LIBROO_SMTP_PASSWORD=your-smtp-password
+NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED=true
+NUXT_PUBLIC_EMAIL_DELIVERY_ENABLED=true
+NUXT_EMAIL_PROVIDER=smtp
+NUXT_EMAIL_FROM="Libroo <no-reply@your-libroo.example.com>"
+NUXT_SMTP_HOST=smtp.example.com
+NUXT_SMTP_PORT=587
+NUXT_SMTP_SECURE=false
+NUXT_SMTP_USER=your-smtp-user
+NUXT_SMTP_PASSWORD=your-smtp-password
 ```
 
 Plunk delivery:
 
 ```bash
-LIBROO_EMAIL_VERIFICATION_ENABLED=true
-LIBROO_EMAIL_PROVIDER=plunk
-LIBROO_PLUNK_API_KEY=sk_your_secret_key
-LIBROO_PLUNK_BASE_URL=https://next-api.useplunk.com
+NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED=true
+NUXT_PUBLIC_EMAIL_DELIVERY_ENABLED=true
+NUXT_EMAIL_PROVIDER=plunk
+NUXT_PLUNK_API_KEY=sk_your_secret_key
+NUXT_PLUNK_BASE_URL=https://next-api.useplunk.com
 ```
 
-For a self-hosted Plunk instance, set `LIBROO_PLUNK_BASE_URL` to your Plunk API origin. Libroo renders the email subject, HTML, and plain text locally, then sends the same rendered message through SMTP or Plunk.
+For a self-hosted Plunk instance, set `NUXT_PLUNK_BASE_URL` to your Plunk API origin. Libroo renders the email subject, HTML, and plain text locally, then sends the same rendered message through SMTP or Plunk.
 
 When verification is enabled, Libroo fails startup if required email delivery settings are missing. New users must verify before normal app access, and email changes remain pending until the new address is verified. Users can resend verification mail from Settings. Verification links show clear success, expired-link, and invalid-link states.
 
-If `LIBROO_EMAIL_VERIFICATION_ENABLED=false` or unset, Libroo does not send verification mail and email changes apply immediately.
+If `NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED=false` or unset, Libroo does not send verification mail and email changes apply immediately. Security notifications, such as password-changed emails, are sent whenever SMTP or Plunk delivery is configured, even if email verification itself is disabled. If delivery is not configured, password changes still succeed without sending a notification.
 
 Deploy the application with an empty database, then open `/register` on your deployed instance and create the first account. The first registered account becomes the administrator automatically.
 
@@ -72,14 +74,14 @@ Deploy the application with an empty database, then open `/register` on your dep
 Public registration is enabled by default. Hosted admins can turn it off so only invited users can join:
 
 ```bash
-LIBROO_PUBLIC_REGISTRATION_ENABLED=false
+NUXT_PUBLIC_REGISTRATION_ENABLED=false
 ```
 
-When public registration is disabled, `/register` requires an invite token. Admins can create invite links from `/admin/users`; if email delivery is configured, admins can also send invite emails. Invites start as pending, then become accepted after Better Auth creates the account, expired after their expiration date, or revoked when an admin cancels them. Expired and revoked invites cannot be used.
+When public registration is disabled, `/register` requires an invite token. Admins can create invite links from `/admin/users`; if email delivery is configured and `NUXT_PUBLIC_EMAIL_DELIVERY_ENABLED=true`, admins can also send invite emails. Invites start as pending, then become accepted after Better Auth creates the account, expired after their expiration date, or revoked when an admin cancels them. Expired and revoked invites cannot be used.
 
 Invite emails use the same SMTP or Plunk settings as verification emails. Link-only invites can still be created without configuring email delivery.
 
-For a new private hosted instance, leave public registration enabled until the first account is created and promoted automatically to administrator. Then set `LIBROO_PUBLIC_REGISTRATION_ENABLED=false`, restart the deployment, and create invites from the admin users page.
+For a new private hosted instance, leave public registration enabled until the first account is created and promoted automatically to administrator. Then set `NUXT_PUBLIC_REGISTRATION_ENABLED=false`, restart the deployment, and create invites from the admin users page.
 
 ## Local Development
 
@@ -91,7 +93,7 @@ pnpm install
 pnpm dev
 ```
 
-For local development, set `BETTER_AUTH_URL=http://localhost:3000`. You can generate a local secret with the same `openssl rand -base64 32` command, or use any stable development-only value.
+For local development, set `NUXT_BETTER_AUTH_URL=http://localhost:3000`. You can generate a local secret with the same `openssl rand -base64 32` command, or use any stable development-only value.
 
 Open `http://localhost:3000/register` and create the first account. The first registered account becomes the administrator automatically.
 

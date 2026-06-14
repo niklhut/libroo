@@ -6,8 +6,10 @@ import { AuditRepository } from '../repositories/audit.repository'
 import type { EmailService } from './email.service'
 import { sendEmail } from './email.service'
 import { getAuthUrl } from '../utils/auth'
+import { requireAdmin } from '../utils/admin-access'
 import type { DatabaseError } from '../repositories/book.repository'
 import type { DbService } from './db.service'
+import { booleanConfigValue } from '~~/shared/utils/runtime-config'
 
 const DEFAULT_INVITE_TTL_DAYS = 7
 const MAX_INVITE_TTL_DAYS = 90
@@ -69,7 +71,7 @@ export const SignupInviteServiceLive = Layer.effect(
     return {
       createInvite: (actor, input) =>
         Effect.gen(function* () {
-          yield* requireAdmin(actor)
+          yield* requireAdmin(actor, () => new SignupInviteForbiddenError({ message: 'Admin access required' }))
           yield* requireInviteOnlyMode()
 
           const normalized = yield* parseInviteInput(input)
@@ -106,7 +108,7 @@ export const SignupInviteServiceLive = Layer.effect(
 
       listInvites: (actor, input = {}) =>
         Effect.gen(function* () {
-          yield* requireAdmin(actor)
+          yield* requireAdmin(actor, () => new SignupInviteForbiddenError({ message: 'Admin access required' }))
           yield* requireInviteOnlyMode()
           const page = parsePositiveInteger(input.page, 1)
           const pageSize = Math.min(MAX_INVITE_PAGE_SIZE, parsePositiveInteger(input.pageSize, DEFAULT_INVITE_PAGE_SIZE))
@@ -129,7 +131,7 @@ export const SignupInviteServiceLive = Layer.effect(
 
       revokeInvite: (actor, inviteId) =>
         Effect.gen(function* () {
-          yield* requireAdmin(actor)
+          yield* requireAdmin(actor, () => new SignupInviteForbiddenError({ message: 'Admin access required' }))
           yield* requireInviteOnlyMode()
 
           if (!inviteId) {
@@ -334,7 +336,16 @@ export function validateSignupInvite(invite: SignupInviteRecord | null, email: s
 }
 
 export function publicRegistrationEnabled() {
-  return parseBooleanConfig(process.env.LIBROO_PUBLIC_REGISTRATION_ENABLED, true)
+  try {
+    if (typeof useRuntimeConfig === 'function') {
+      const config = useRuntimeConfig()
+      return booleanConfigValue(config.public?.registrationEnabled, true)
+    }
+  } catch {
+    // Runtime config is unavailable in some CLI and test contexts.
+  }
+
+  return booleanConfigValue(process.env.NUXT_PUBLIC_REGISTRATION_ENABLED, true)
 }
 
 function sendInviteEmail(email: string, inviteUrl: string, expiresAt: Date) {
@@ -380,14 +391,6 @@ function toSignupInvite(invite: SignupInviteRecord, inviteUrl?: string): SignupI
   }
 }
 
-function requireAdmin(actor: SignupInviteActor) {
-  if (!roleIncludesAdmin(actor.role)) {
-    return Effect.fail(new SignupInviteForbiddenError({ message: 'Admin access required' }))
-  }
-
-  return Effect.void
-}
-
 function requireInviteOnlyMode() {
   if (publicRegistrationEnabled()) {
     return Effect.fail(new InvalidSignupInviteError({
@@ -396,10 +399,6 @@ function requireInviteOnlyMode() {
   }
 
   return Effect.void
-}
-
-function roleIncludesAdmin(role: string | null | undefined) {
-  return (role ?? 'user').split(',').map(part => part.trim()).includes('admin')
 }
 
 function normalizeInviteTtl(value: unknown) {
@@ -461,11 +460,6 @@ function buildSignupInviteUrl(token: string) {
   const url = new URL('/register', getAuthUrl())
   url.searchParams.set('invite', token)
   return url.toString()
-}
-
-function parseBooleanConfig(value: string | undefined, fallback: boolean) {
-  if (value === undefined || value.trim() === '') return fallback
-  return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase())
 }
 
 function escapeHtml(value: string) {

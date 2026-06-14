@@ -14,6 +14,7 @@ const toast = useToast()
 
 const isLoading = ref(false)
 const error = ref('')
+const showPassword = ref(false)
 
 // Get redirect path from query
 const redirectPath = computed(() => {
@@ -64,6 +65,23 @@ const schema = z.object({
 })
 
 type Schema = z.output<typeof schema>
+
+type AuthInputField = AuthFormField & {
+  placeholder?: string
+  autocomplete?: string
+  disabled?: boolean
+}
+
+function inputFieldProps(field: AuthFormField) {
+  const inputField = field as AuthInputField
+  return {
+    name: inputField.name,
+    placeholder: inputField.placeholder,
+    autocomplete: inputField.autocomplete,
+    required: inputField.required,
+    disabled: inputField.disabled
+  }
+}
 
 async function onSubmit(payload: FormSubmitEvent<Schema>) {
   error.value = ''
@@ -130,6 +148,28 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
           >
             Forgot password?
           </ULink>
+        </template>
+
+        <template #password-field="{ state, field }">
+          <UInput
+            v-model="state.password"
+            v-bind="inputFieldProps(field)"
+            :type="showPassword ? 'text' : 'password'"
+            class="w-full"
+          >
+            <template #trailing>
+              <UButton
+                type="button"
+                color="neutral"
+                variant="link"
+                size="sm"
+                :icon="showPassword ? 'i-lucide-eye-off' : 'i-lucide-eye'"
+                :aria-label="showPassword ? 'Hide password' : 'Show password'"
+                :aria-pressed="showPassword"
+                @click="showPassword = !showPassword"
+              />
+            </template>
+          </UInput>
         </template>
 
         <template

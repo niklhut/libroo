@@ -1,23 +1,29 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { getEmailVerificationConfig, validateEmailVerificationConfig } from '../../../../server/utils/email-verification-config'
+import { getEmailVerificationConfig, validateEmailDeliveryConfig, validateEmailVerificationConfig } from '../../../../server/utils/email-verification-config'
 
 const envKeys = [
-  'LIBROO_EMAIL_VERIFICATION_ENABLED',
-  'LIBROO_EMAIL_PROVIDER',
-  'LIBROO_EMAIL_FROM',
-  'LIBROO_SMTP_HOST',
-  'LIBROO_SMTP_PORT',
-  'LIBROO_SMTP_SECURE',
-  'LIBROO_SMTP_USER',
-  'LIBROO_SMTP_PASSWORD',
-  'LIBROO_PLUNK_API_KEY',
-  'LIBROO_PLUNK_BASE_URL'
+  'NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED',
+  'NUXT_EMAIL_PROVIDER',
+  'NUXT_EMAIL_FROM',
+  'NUXT_SMTP_HOST',
+  'NUXT_SMTP_PORT',
+  'NUXT_SMTP_SECURE',
+  'NUXT_SMTP_USER',
+  'NUXT_SMTP_PASSWORD',
+  'NUXT_PLUNK_API_KEY',
+  'NUXT_PLUNK_BASE_URL'
 ]
+const originalEnvValues = new Map(envKeys.map(key => [key, process.env[key]]))
 
 describe('email verification config', () => {
   afterEach(() => {
     for (const key of envKeys) {
-      Reflect.deleteProperty(process.env, key)
+      const value = originalEnvValues.get(key)
+      if (value === undefined) {
+        Reflect.deleteProperty(process.env, key)
+      } else {
+        process.env[key] = value
+      }
     }
   })
 
@@ -30,19 +36,19 @@ describe('email verification config', () => {
   })
 
   it('fails loudly when enabled without delivery settings', () => {
-    process.env.LIBROO_EMAIL_VERIFICATION_ENABLED = 'true'
+    process.env.NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = 'true'
 
     expect(() => validateEmailVerificationConfig()).toThrow(/Email verification is enabled/)
   })
 
   it('accepts SMTP settings when enabled', () => {
-    process.env.LIBROO_EMAIL_VERIFICATION_ENABLED = 'true'
-    process.env.LIBROO_EMAIL_FROM = 'Libroo <no-reply@example.com>'
-    process.env.LIBROO_SMTP_HOST = 'smtp.example.com'
-    process.env.LIBROO_SMTP_PORT = '465'
-    process.env.LIBROO_SMTP_SECURE = 'true'
-    process.env.LIBROO_SMTP_USER = 'user'
-    process.env.LIBROO_SMTP_PASSWORD = 'password'
+    process.env.NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = 'true'
+    process.env.NUXT_EMAIL_FROM = 'Libroo <no-reply@example.com>'
+    process.env.NUXT_SMTP_HOST = 'smtp.example.com'
+    process.env.NUXT_SMTP_PORT = '465'
+    process.env.NUXT_SMTP_SECURE = 'true'
+    process.env.NUXT_SMTP_USER = 'user'
+    process.env.NUXT_SMTP_PASSWORD = 'password'
 
     expect(getEmailVerificationConfig()).toEqual({
       enabled: true,
@@ -61,19 +67,28 @@ describe('email verification config', () => {
   })
 
   it('requires SMTP credentials as a pair', () => {
-    process.env.LIBROO_EMAIL_VERIFICATION_ENABLED = 'true'
-    process.env.LIBROO_EMAIL_FROM = 'Libroo <no-reply@example.com>'
-    process.env.LIBROO_SMTP_HOST = 'smtp.example.com'
-    process.env.LIBROO_SMTP_PASSWORD = 'password'
+    process.env.NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = 'true'
+    process.env.NUXT_EMAIL_FROM = 'Libroo <no-reply@example.com>'
+    process.env.NUXT_SMTP_HOST = 'smtp.example.com'
+    process.env.NUXT_SMTP_PASSWORD = 'password'
 
-    expect(() => validateEmailVerificationConfig()).toThrow(/LIBROO_SMTP_USER/)
+    expect(() => validateEmailVerificationConfig()).toThrow(/NUXT_SMTP_USER/)
+  })
+
+  it('does not report SMTP port as missing when SMTP host is absent', () => {
+    expect(() => validateEmailDeliveryConfig({
+      provider: 'smtp',
+      from: '',
+      smtp: null,
+      plunk: null
+    })).toThrow(/Missing: NUXT_EMAIL_FROM, NUXT_SMTP_HOST\./)
   })
 
   it('accepts Plunk settings when enabled', () => {
-    process.env.LIBROO_EMAIL_VERIFICATION_ENABLED = 'true'
-    process.env.LIBROO_EMAIL_PROVIDER = 'plunk'
-    process.env.LIBROO_PLUNK_API_KEY = 'sk_test'
-    process.env.LIBROO_PLUNK_BASE_URL = 'https://plunk.example.com'
+    process.env.NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = 'true'
+    process.env.NUXT_EMAIL_PROVIDER = 'plunk'
+    process.env.NUXT_PLUNK_API_KEY = 'sk_test'
+    process.env.NUXT_PLUNK_BASE_URL = 'https://plunk.example.com'
 
     expect(getEmailVerificationConfig()).toEqual({
       enabled: true,
@@ -89,9 +104,9 @@ describe('email verification config', () => {
   })
 
   it('fails loudly when Plunk is selected without an API key', () => {
-    process.env.LIBROO_EMAIL_VERIFICATION_ENABLED = 'true'
-    process.env.LIBROO_EMAIL_PROVIDER = 'plunk'
+    process.env.NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = 'true'
+    process.env.NUXT_EMAIL_PROVIDER = 'plunk'
 
-    expect(() => validateEmailVerificationConfig()).toThrow(/LIBROO_PLUNK_API_KEY/)
+    expect(() => validateEmailVerificationConfig()).toThrow(/NUXT_PLUNK_API_KEY/)
   })
 })
