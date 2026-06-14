@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AdminRepository } from '../../../../server/repositories/admin.repository'
 import { AuditRepository } from '../../../../server/repositories/audit.repository'
 import { DatabaseError } from '../../../../server/repositories/book.repository'
-import { AdminForbiddenError, AdminService, AdminServiceLive } from '../../../../server/services/admin.service'
+import { AdminForbiddenError, AdminService, AdminServiceLive, InvalidAdminRequestError } from '../../../../server/services/admin.service'
 
 const authMock = vi.hoisted(() => ({
   listUsers: vi.fn()
@@ -143,6 +143,26 @@ describe('AdminService', () => {
 
     expect(result._tag).toBe('Left')
     expect(result.left).toBeInstanceOf(AdminForbiddenError)
+    expect(listAudit).not.toHaveBeenCalled()
+  })
+
+  it('rejects invalid audit category filters', async () => {
+    const listAudit = vi.fn()
+
+    const result = await runAdminService(
+      Effect.either(Effect.flatMap(AdminService, service =>
+        service.listAuditEntries({
+          actor: { id: 'admin-1', role: 'admin' },
+          category: 'everything'
+        })
+      )),
+      vi.fn(),
+      vi.fn(),
+      listAudit
+    )
+
+    expect(result._tag).toBe('Left')
+    expect(result.left).toBeInstanceOf(InvalidAdminRequestError)
     expect(listAudit).not.toHaveBeenCalled()
   })
 })

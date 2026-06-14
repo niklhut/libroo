@@ -104,7 +104,7 @@ export const librooAdminPolicyPlugin = (): BetterAuthPlugin => ({
           }
 
           const banBody = normalizeAdminBanMutationBody(ctx.path, ctx.body)
-          if (!banBody) return
+          if (!banBody || banBody.banned !== true) return
 
           await enforceBanUserPolicy({
             body: banBody,

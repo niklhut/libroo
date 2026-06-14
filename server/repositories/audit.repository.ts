@@ -32,10 +32,7 @@ export const AuditRepositoryLive = Layer.effect(
     return {
       create: input =>
         Effect.tryPromise({
-          try: async () => {
-            await ensureAdminAuditLogCompatibility(dbService.db)
-            return createAdminAuditEntryInDatabase(input, dbService.db)
-          },
+          try: () => createAdminAuditEntryInDatabase(input, dbService.db),
           catch: error => new DatabaseError({
             message: `Failed to create admin audit entry: ${error}`,
             operation: 'audit.create'
@@ -45,7 +42,6 @@ export const AuditRepositoryLive = Layer.effect(
       list: input =>
         Effect.tryPromise({
           try: async () => {
-            await ensureAdminAuditLogCompatibility(dbService.db)
             const actorUser = aliasedTable(user, 'actor_user')
             const targetUser = aliasedTable(user, 'target_user')
             const whereClause = input.category
@@ -93,7 +89,6 @@ export const AuditRepositoryLive = Layer.effect(
       deleteOlderThan: input =>
         Effect.tryPromise({
           try: async () => {
-            await ensureAdminAuditLogCompatibility(dbService.db)
             const result = await dbService.db
               .delete(adminAuditLog)
               .where(and(
@@ -111,25 +106,6 @@ export const AuditRepositoryLive = Layer.effect(
     }
   })
 )
-
-export async function ensureAdminAuditLogCompatibility(database: DbServiceInterface['db'] = db) {
-  const columns = await getAdminAuditLogColumns(database)
-  if (columns.length === 0) return
-
-  const hasCategory = columns.some(column => column.name === 'category')
-  const actorUserIdColumn = columns.find(column => column.name === 'actor_user_id')
-  const actorUserIdIsRequired = actorUserIdColumn?.notnull === 1
-
-  if (!hasCategory && !actorUserIdIsRequired) {
-    await database.run(sql`ALTER TABLE admin_audit_log ADD COLUMN category text NOT NULL DEFAULT 'admin'`)
-    await database.run(sql`CREATE INDEX IF NOT EXISTS admin_audit_log_category_idx ON admin_audit_log (category)`)
-    return
-  }
-
-  if (!hasCategory || actorUserIdIsRequired) {
-    await rebuildAdminAuditLogTable(database, hasCategory)
-  }
-}
 
 export async function createAdminAuditEntryInDatabase(
   input: CreateAdminAuditEntryInput,
@@ -185,59 +161,6 @@ function toAdminAuditEntry(row: {
     metadata: parseMetadata(row.metadata),
     createdAt: row.createdAt
   }
-}
-
-async function getAdminAuditLogColumns(database: DbServiceInterface['db']) {
-  const result = await database.run(sql`PRAGMA table_info(admin_audit_log)`)
-  const rows = 'rows' in result && Array.isArray(result.rows) ? result.rows : []
-
-  return rows.map(row => ({
-    name: String((row as Record<string, unknown>).name),
-    notnull: Number((row as Record<string, unknown>).notnull)
-  }))
-}
-
-async function rebuildAdminAuditLogTable(database: DbServiceInterface['db'], hasCategory: boolean) {
-  await database.run(sql`PRAGMA foreign_keys=OFF`)
-  await database.run(sql`
-    CREATE TABLE IF NOT EXISTS __new_admin_audit_log (
-      id text PRIMARY KEY NOT NULL,
-      category text NOT NULL DEFAULT 'admin',
-      actor_user_id text REFERENCES "user"(id) ON DELETE set null,
-      target_user_id text REFERENCES "user"(id) ON DELETE set null,
-      action text NOT NULL,
-      metadata text,
-      created_at integer NOT NULL
-    )
-  `)
-  await database.run(sql`
-    INSERT INTO __new_admin_audit_log (
-      id,
-      category,
-      actor_user_id,
-      target_user_id,
-      action,
-      metadata,
-      created_at
-    )
-    SELECT
-      id,
-      ${hasCategory ? sql`category` : sql`'admin'`},
-      actor_user_id,
-      target_user_id,
-      action,
-      metadata,
-      created_at
-    FROM admin_audit_log
-  `)
-  await database.run(sql`DROP TABLE admin_audit_log`)
-  await database.run(sql`ALTER TABLE __new_admin_audit_log RENAME TO admin_audit_log`)
-  await database.run(sql`CREATE INDEX IF NOT EXISTS admin_audit_log_category_idx ON admin_audit_log (category)`)
-  await database.run(sql`CREATE INDEX IF NOT EXISTS admin_audit_log_actor_user_id_idx ON admin_audit_log (actor_user_id)`)
-  await database.run(sql`CREATE INDEX IF NOT EXISTS admin_audit_log_target_user_id_idx ON admin_audit_log (target_user_id)`)
-  await database.run(sql`CREATE INDEX IF NOT EXISTS admin_audit_log_action_idx ON admin_audit_log (action)`)
-  await database.run(sql`CREATE INDEX IF NOT EXISTS admin_audit_log_created_at_idx ON admin_audit_log (created_at)`)
-  await database.run(sql`PRAGMA foreign_keys=ON`)
 }
 
 function getAffectedRowCount(result: unknown) {

@@ -4,6 +4,7 @@ import type { DatabaseError } from '../repositories/book.repository'
 import type { DbService } from './db.service'
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000
+const MAX_RETENTION_DAYS = Math.floor(8.64e15 / DAY_IN_MS)
 const DEFAULT_AUTH_RETENTION_DAYS = 5
 const DEFAULT_ADMIN_RETENTION_DAYS = 30
 
@@ -66,7 +67,10 @@ export const cleanupExpiredAuditEntries = (input?: CleanupAuditInput) =>
 
 function parseRetentionDays(value: unknown, fallback: number) {
   const parsed = Number(value ?? fallback)
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback
+  if (!Number.isFinite(parsed) || parsed < 0) return fallback
+
+  const normalized = Math.trunc(parsed)
+  return normalized <= MAX_RETENTION_DAYS ? normalized : fallback
 }
 
 function cutoffDate(now: Date, retentionDays: number) {

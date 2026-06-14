@@ -100,6 +100,9 @@ export const AdminServiceLive = Layer.effect(
           const page = parsePositiveInteger(input.page, 1)
           const pageSize = Math.min(MAX_ADMIN_PAGE_SIZE, parsePositiveInteger(input.pageSize, DEFAULT_ADMIN_PAGE_SIZE))
           const category = parseAuditCategory(input.category)
+          if (isAuditCategoryProvided(input.category) && category === null) {
+            return yield* Effect.fail(new InvalidAdminRequestError({ message: 'Invalid audit category' }))
+          }
           const { entries, total } = yield* auditRepository.list({
             limit: pageSize,
             offset: (page - 1) * pageSize,
@@ -138,6 +141,10 @@ function requireAdmin(actor: AdminActor) {
 function parseAuditCategory(value: unknown): AdminAuditCategory | null {
   if (value === 'admin' || value === 'auth') return value
   return null
+}
+
+function isAuditCategoryProvided(value: unknown) {
+  return value !== undefined && value !== null && value !== ''
 }
 
 function parsePositiveInteger(value: unknown, fallback: number) {

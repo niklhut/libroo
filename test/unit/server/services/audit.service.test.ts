@@ -41,7 +41,20 @@ describe('AuditService', () => {
     await expect(runAuditService(
       Effect.flatMap(AuditService, service => service.cleanupExpiredEntries({
         authRetentionDays: 'nope',
-        adminRetentionDays: -1,
+        adminRetentionDays: Number.MAX_SAFE_INTEGER,
+        now: new Date('2026-06-14T12:00:00.000Z')
+      }))
+    )).resolves.toMatchObject({
+      authRetentionDays: 5,
+      adminRetentionDays: 30
+    })
+  })
+
+  it('normalizes fractional retention days before calculating cutoffs', async () => {
+    await expect(runAuditService(
+      Effect.flatMap(AuditService, service => service.cleanupExpiredEntries({
+        authRetentionDays: 5.9,
+        adminRetentionDays: '30.9',
         now: new Date('2026-06-14T12:00:00.000Z')
       }))
     )).resolves.toMatchObject({

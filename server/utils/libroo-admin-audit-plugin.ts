@@ -79,7 +79,7 @@ export const librooAdminAuditPlugin = (): BetterAuthPlugin => ({
           if (isAuditedAuthPath(ctx.path)) {
             const entry = await buildAuthAuditEntry(ctx as HookContext)
             if (entry) {
-              await createAdminAuditEntryInDatabase(entry)
+              await persistAuditEntry(entry, 'auth')
             }
             return
           }
@@ -91,7 +91,7 @@ export const librooAdminAuditPlugin = (): BetterAuthPlugin => ({
 
           const responseUser = getResponseUser(response)
           for (const snapshot of snapshots) {
-            await createAdminAuditEntryInDatabase({
+            await persistAuditEntry({
               category: 'admin',
               actorUserId: snapshot.actorUserId,
               targetUserId: snapshot.targetUserId,
@@ -100,7 +100,7 @@ export const librooAdminAuditPlugin = (): BetterAuthPlugin => ({
                 ...snapshot.metadata,
                 ...metadataFromResponse(snapshot, responseUser)
               }
-            })
+            }, 'admin')
           }
         })
       }
@@ -406,10 +406,18 @@ async function getEndpointResponse(returned: unknown) {
   if (!returned) return null
   if (returned instanceof Response) {
     if (!returned.ok) return null
-    return await returned.clone().json()
+    return await returned.clone().json().catch(() => null)
   }
   if (typeof returned === 'object' && returned && 'statusCode' in returned) return null
   return returned
+}
+
+async function persistAuditEntry(input: CreateAdminAuditEntryInput, category: 'admin' | 'auth') {
+  try {
+    await createAdminAuditEntryInDatabase(input)
+  } catch (error) {
+    console.error(`Failed to persist ${category} audit entry`, error)
+  }
 }
 
 function getResponseUser(response: unknown): UserWithAuditFields | null {

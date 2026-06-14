@@ -180,6 +180,16 @@ describe('librooAdminPolicyPlugin', () => {
     })
   })
 
+  it('normalizes Better Auth update-user unban changes without marking them as ban attempts', async () => {
+    expect(normalizeAdminBanMutationBody('/admin/update-user', {
+      userId: 'admin-1',
+      data: { banned: false }
+    })).toEqual({
+      userId: 'admin-1',
+      banned: false
+    })
+  })
+
   it('normalizes Better Auth update-user role changes into the same policy input', async () => {
     expect(normalizeAdminRoleMutationBody('/admin/update-user', {
       userId: 'admin-1',
