@@ -33,9 +33,18 @@ const icon = computed(() => {
   }
 })
 
-const actionLabel = computed(() => status.value === 'success' ? 'Continue to library' : 'Open settings')
-const actionTo = computed(() => status.value === 'success' ? '/library' : '/settings')
-const actionIcon = computed(() => status.value === 'success' ? 'i-lucide-library' : 'i-lucide-settings')
+const actionLabel = computed(() => {
+  if (status.value === 'pending') return ''
+  return status.value === 'success' ? 'Continue to library' : 'Open settings'
+})
+const actionTo = computed(() => {
+  if (status.value === 'pending') return undefined
+  return status.value === 'success' ? '/library' : '/settings'
+})
+const actionIcon = computed(() => {
+  if (status.value === 'pending') return undefined
+  return status.value === 'success' ? 'i-lucide-library' : 'i-lucide-settings'
+})
 
 onMounted(async () => {
   const token = route.query.token

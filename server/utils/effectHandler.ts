@@ -10,7 +10,8 @@ type EffectHandlerOptions = {
 
 /**
  * Creates a fully Effect-based event handler with automatic error conversion.
- * Authentication is always required.
+ * Authentication defaults to verified users, but can be relaxed to any signed-in
+ * session or disabled for public routes with the auth option.
  *
  * Errors are handled within Effect using catchAll, converting them to H3 errors.
  * The H3 error is then thrown after the Effect completes for proper HTTP response handling.
