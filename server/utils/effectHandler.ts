@@ -1,7 +1,12 @@
 import { Effect } from 'effect'
-import type { H3Event } from 'h3'
+import type { EventHandler, H3Event } from 'h3'
 import { type MainServices, runEffect } from './effect'
-import { requireVerifiedAuth } from '../services/auth.service'
+import { requireAuth, requireVerifiedAuth } from '../services/auth.service'
+
+type EffectHandlerUser = { id: string, name: string, email: string, role?: string | null }
+type EffectHandlerOptions = {
+  auth?: 'verified' | 'session' | false
+}
 
 /**
  * Creates a fully Effect-based event handler with automatic error conversion.
@@ -23,12 +28,43 @@ import { requireVerifiedAuth } from '../services/auth.service'
 export function effectHandler<A, E>(
   handler: (
     event: H3Event,
-    user: { id: string, name: string, email: string, role?: string | null }
-  ) => Effect.Effect<A, E, MainServices>
-) {
+    user: EffectHandlerUser
+  ) => Effect.Effect<A, E, MainServices>,
+  options?: { auth?: 'verified' }
+): EventHandler
+
+export function effectHandler<A, E>(
+  handler: (
+    event: H3Event,
+    user: EffectHandlerUser
+  ) => Effect.Effect<A, E, MainServices>,
+  options: { auth: 'session' }
+): EventHandler
+
+export function effectHandler<A, E>(
+  handler: (
+    event: H3Event,
+    user: null
+  ) => Effect.Effect<A, E, MainServices>,
+  options: { auth: false }
+): EventHandler
+
+export function effectHandler<A, E>(
+  handler: (
+    event: H3Event,
+    // The implementation must accept both overload handler shapes.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    user: any
+  ) => Effect.Effect<A, E, MainServices>,
+  options: EffectHandlerOptions = {}
+): EventHandler {
   return defineEventHandler(async (event) => {
     const effect = Effect.gen(function* () {
-      const user = yield* requireVerifiedAuth(event)
+      const user = options.auth === false
+        ? null
+        : options.auth === 'session'
+          ? yield* requireAuth(event)
+          : yield* requireVerifiedAuth(event)
       return yield* handler(event, user)
     })
 

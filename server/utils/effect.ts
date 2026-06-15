@@ -37,7 +37,7 @@ const RepositoriesLive = Layer.provideMerge(
 
 // Service layer (depends on repositories)
 const ServicesLive = Layer.provideMerge(
-  Layer.mergeAll(BookServiceLive, LendingServiceLive, AdminServiceLive, AuditServiceLive, LocationServiceLive, LibraryTransferServiceLive, SignupInviteServiceLive, EmailServiceLive),
+  Layer.mergeAll(BookServiceLive, LendingServiceLive, AdminServiceLive, AuditServiceLive, LocationServiceLive, LibraryTransferServiceLive, SignupInviteServiceLive, EmailServiceLive, EmailCapabilityServiceLive),
   RepositoriesLive
 )
 
@@ -66,6 +66,7 @@ export type MainServices
     | LibraryTransferService
     | SignupInviteService
     | EmailService
+    | EmailCapabilityService
     | HttpClient.HttpClient
 
 // Helper to safely get property from unknown object
@@ -81,6 +82,7 @@ const errorStatusCodes: Record<string, number> = {
   UnauthorizedError: 401,
   EmailDeliveryError: 503,
   VerificationEmailDeliveryError: 503,
+  EmailCapabilityDisabledError: 403,
   InvalidPendingEmailError: 400,
   PendingEmailConflictError: 409,
   InvalidEmailVerificationTokenError: 401,

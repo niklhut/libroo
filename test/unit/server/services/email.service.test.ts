@@ -3,7 +3,7 @@ import { Effect } from 'effect'
 import { EmailServiceLive, sendEmail, sendEmailMessage, USER_SAFE_EMAIL_DELIVERY_ERROR } from '../../../../server/services/email.service'
 
 const envKeys = [
-  'NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED',
+  'NUXT_EMAIL_VERIFICATION_ENABLED',
   'NUXT_EMAIL_PROVIDER',
   'NUXT_PLUNK_API_KEY',
   'NUXT_PLUNK_BASE_URL'
@@ -25,7 +25,7 @@ describe('EmailService', () => {
   })
 
   it('sends rendered messages through Plunk', async () => {
-    process.env.NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = 'true'
+    process.env.NUXT_EMAIL_VERIFICATION_ENABLED = 'true'
     process.env.NUXT_EMAIL_PROVIDER = 'plunk'
     process.env.NUXT_PLUNK_API_KEY = 'sk_test'
     process.env.NUXT_PLUNK_BASE_URL = 'https://plunk.example.com/'
@@ -61,7 +61,7 @@ describe('EmailService', () => {
   })
 
   it('surfaces Plunk delivery failures', async () => {
-    process.env.NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = 'true'
+    process.env.NUXT_EMAIL_VERIFICATION_ENABLED = 'true'
     process.env.NUXT_EMAIL_PROVIDER = 'plunk'
     process.env.NUXT_PLUNK_API_KEY = 'sk_test'
 
@@ -89,7 +89,7 @@ describe('EmailService', () => {
   })
 
   it('surfaces Plunk billing limits as a clear delivery failure', async () => {
-    process.env.NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = 'true'
+    process.env.NUXT_EMAIL_VERIFICATION_ENABLED = 'true'
     process.env.NUXT_EMAIL_PROVIDER = 'plunk'
     process.env.NUXT_PLUNK_API_KEY = 'sk_test'
 
@@ -117,7 +117,7 @@ describe('EmailService', () => {
   })
 
   it('masks provider details in the auth email helper', async () => {
-    process.env.NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = 'true'
+    process.env.NUXT_EMAIL_VERIFICATION_ENABLED = 'true'
     process.env.NUXT_EMAIL_PROVIDER = 'plunk'
     process.env.NUXT_PLUNK_API_KEY = 'sk_test'
 

@@ -35,30 +35,8 @@ function getRuntimeConfigValue(runtimeKey: string): string | undefined {
   }
 }
 
-function getPublicRuntimeConfigValue(runtimeKey: string): string | undefined {
-  try {
-    if (typeof useRuntimeConfig === 'function') {
-      const config = useRuntimeConfig()
-      const runtimeValue = config.public?.[runtimeKey]
-      if (typeof runtimeValue === 'string' && runtimeValue.trim()) {
-        return runtimeValue
-      }
-    }
-  } catch {
-    // Runtime config is unavailable in some CLI and test contexts.
-  }
-}
-
 function getConfigValue(envKey: string, runtimeKey: string): string | undefined {
   const runtimeValue = getRuntimeConfigValue(runtimeKey)
-  if (runtimeValue) return runtimeValue
-
-  const envValue = process.env[envKey]
-  return envValue && envValue.trim() ? envValue : undefined
-}
-
-function getPublicConfigValue(envKey: string, runtimeKey: string): string | undefined {
-  const runtimeValue = getPublicRuntimeConfigValue(runtimeKey)
   if (runtimeValue) return runtimeValue
 
   const envValue = process.env[envKey]
@@ -70,8 +48,7 @@ function getBooleanConfig(envKey: string, runtimeKey: string, fallback = false) 
   return value ? truthyValues.has(value.trim().toLowerCase()) : fallback
 }
 
-function getPublicBooleanConfig(envKey: string, runtimeKey: string, fallback = false) {
-  const value = getPublicConfigValue(envKey, runtimeKey)
+function parseBooleanConfigValue(value: string | undefined, fallback = false) {
   return value ? truthyValues.has(value.trim().toLowerCase()) : fallback
 }
 
@@ -89,7 +66,7 @@ function getEmailProvider(): EmailProvider {
 }
 
 export function getEmailVerificationConfig(): EmailVerificationConfig {
-  const enabled = getPublicBooleanConfig('NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED', 'emailVerificationEnabled')
+  const enabled = parseBooleanConfigValue(getConfigValue('NUXT_EMAIL_VERIFICATION_ENABLED', 'emailVerificationEnabled'))
   const deliveryConfig = getEmailDeliveryConfig()
 
   if (!enabled) {
@@ -153,7 +130,7 @@ export function validateEmailVerificationConfig(config = getEmailVerificationCon
     const message = error instanceof Error ? error.message : 'Email delivery is not configured.'
     throw new Error(
       `Email verification is enabled, but ${message.charAt(0).toLowerCase()}${message.slice(1)} `
-      + 'Set these values or disable NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED.'
+      + 'Set these values or disable NUXT_EMAIL_VERIFICATION_ENABLED.'
     )
   }
 }

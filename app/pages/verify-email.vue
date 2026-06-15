@@ -33,16 +33,9 @@ const icon = computed(() => {
   }
 })
 
-const color = computed(() => {
-  switch (status.value) {
-    case 'success':
-      return 'success'
-    case 'pending':
-      return 'neutral'
-    default:
-      return 'error'
-  }
-})
+const actionLabel = computed(() => status.value === 'success' ? 'Continue to library' : 'Open settings')
+const actionTo = computed(() => status.value === 'success' ? '/library' : '/settings')
+const actionIcon = computed(() => status.value === 'success' ? 'i-lucide-library' : 'i-lucide-settings')
 
 onMounted(async () => {
   const token = route.query.token
@@ -81,39 +74,14 @@ onMounted(async () => {
 </script>
 
 <template>
-  <UContainer class="py-12 max-w-lg">
-    <UPageCard
+  <UContainer class="py-12 max-w-md">
+    <AuthStateCard
       title="Email verification"
       :description="message"
       :icon="icon"
-    >
-      <UAlert
-        :color="color"
-        variant="soft"
-        :icon="icon"
-        :title="status === 'pending' ? 'Verifying email' : status === 'success' ? 'Email verified' : 'Verification failed'"
-      />
-
-      <template #footer>
-        <div class="flex flex-wrap gap-3">
-          <UButton
-            v-if="status === 'success'"
-            to="/library"
-            icon="i-lucide-library"
-          >
-            Continue to library
-          </UButton>
-          <UButton
-            v-else
-            to="/settings"
-            icon="i-lucide-settings"
-            color="neutral"
-            variant="outline"
-          >
-            Open settings
-          </UButton>
-        </div>
-      </template>
-    </UPageCard>
+      :action-label="actionLabel"
+      :action-to="actionTo"
+      :action-icon="actionIcon"
+    />
   </UContainer>
 </template>

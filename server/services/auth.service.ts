@@ -6,7 +6,7 @@ import { JWTExpired } from 'jose/errors'
 import * as z from 'zod'
 import { isActiveBan } from '~~/shared/utils/auth-status'
 import { auth, getAuthSecret } from '../utils/auth'
-import { getEmailVerificationConfig } from '../utils/email-verification-config'
+import { getEmailCapabilities } from '../utils/email-capabilities'
 import type { AuthRepository } from '../repositories/auth.repository'
 import { clearPendingEmail, emailIsInUse, getPendingEmail, getPendingEmailByCurrentEmail, setPendingEmail } from '../repositories/auth.repository'
 import type { DatabaseError } from '../repositories/book.repository'
@@ -18,6 +18,10 @@ export class UnauthorizedError extends Data.TaggedError('UnauthorizedError')<{
 
 export class VerificationEmailDeliveryError extends Data.TaggedError('VerificationEmailDeliveryError')<{
   message?: string
+}> { }
+
+export class EmailCapabilityDisabledError extends Data.TaggedError('EmailCapabilityDisabledError')<{
+  message: string
 }> { }
 
 export class InvalidPendingEmailError extends Data.TaggedError('InvalidPendingEmailError')<{
@@ -58,9 +62,9 @@ export interface AuthServiceInterface {
     verified: boolean
     pendingEmail: string | null
   }, UnauthorizedError | DatabaseError, AuthRepository>
-  setPendingEmailChange: (event: H3Event, pendingEmail: string, currentPassword: string) => Effect.Effect<{ pendingEmail: string }, UnauthorizedError | InvalidPendingEmailError | PendingEmailConflictError | VerificationEmailDeliveryError | DatabaseError, AuthRepository>
+  setPendingEmailChange: (event: H3Event, pendingEmail: string, currentPassword: string) => Effect.Effect<{ pendingEmail: string }, UnauthorizedError | InvalidPendingEmailError | PendingEmailConflictError | VerificationEmailDeliveryError | EmailCapabilityDisabledError | DatabaseError, AuthRepository>
   clearPendingEmailChange: (event: H3Event) => Effect.Effect<{ status: boolean }, UnauthorizedError | DatabaseError, AuthRepository>
-  resendVerificationEmail: (event: H3Event, currentPassword?: string) => Effect.Effect<{ status: boolean }, UnauthorizedError | VerificationEmailDeliveryError | DatabaseError, AuthRepository>
+  resendVerificationEmail: (event: H3Event, currentPassword?: string) => Effect.Effect<{ status: boolean }, UnauthorizedError | VerificationEmailDeliveryError | EmailCapabilityDisabledError | DatabaseError, AuthRepository>
   validateEmailVerificationToken: (token: string) => Effect.Effect<{ status: boolean }, InvalidEmailVerificationTokenError | ExpiredEmailVerificationTokenError | DatabaseError, AuthRepository>
 }
 
@@ -120,7 +124,7 @@ export const AuthServiceLive = Layer.succeed(AuthService, {
     Effect.gen(function* () {
       const sessionData = yield* fetchSession(event)
 
-      if (getEmailVerificationConfig().enabled && sessionData.user.emailVerified !== true) {
+      if (getEmailCapabilities().emailVerificationEnabled && sessionData.user.emailVerified !== true) {
         return yield* Effect.fail(new UnauthorizedError({ message: 'Email verification required' }))
       }
 
@@ -133,7 +137,7 @@ export const AuthServiceLive = Layer.succeed(AuthService, {
       const pendingEmail = yield* getAccountPendingEmail(sessionData.user.id, sessionData.user.email)
 
       return {
-        enabled: getEmailVerificationConfig().enabled,
+        enabled: getEmailCapabilities().emailVerificationEnabled,
         email: sessionData.user.email,
         verified: sessionData.user.emailVerified === true,
         pendingEmail
@@ -144,6 +148,11 @@ export const AuthServiceLive = Layer.succeed(AuthService, {
     Effect.gen(function* () {
       const sessionData = yield* fetchSession(event)
       yield* verifyCurrentPassword(event, currentPassword)
+      if (!getEmailCapabilities().emailChangeVerificationEnabled) {
+        return yield* Effect.fail(new EmailCapabilityDisabledError({
+          message: 'Email-change verification is not enabled. Change email with current password instead.'
+        }))
+      }
       const parsed = pendingEmailSchema.safeParse(pendingEmail)
 
       if (!parsed.success) {
@@ -174,11 +183,13 @@ export const AuthServiceLive = Layer.succeed(AuthService, {
   resendVerificationEmail: event =>
     Effect.gen(function* () {
       const sessionData = yield* fetchSession(event)
-      const config = getEmailVerificationConfig()
+      const capabilities = getEmailCapabilities()
       const pendingEmail = yield* getAccountPendingEmail(sessionData.user.id, sessionData.user.email)
 
-      if (!config.enabled) {
-        return { status: true }
+      if (!capabilities.emailVerificationEnabled) {
+        return yield* Effect.fail(new EmailCapabilityDisabledError({
+          message: 'Email verification is not enabled for this deployment.'
+        }))
       }
 
       if (!pendingEmail && sessionData.user.emailVerified === true) {

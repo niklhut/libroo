@@ -10,6 +10,7 @@ import { requireAdmin } from '../utils/admin-access'
 import type { DatabaseError } from '../repositories/book.repository'
 import type { DbService } from './db.service'
 import { booleanConfigValue } from '~~/shared/utils/runtime-config'
+import { getEmailCapabilities } from '../utils/email-capabilities'
 
 const DEFAULT_INVITE_TTL_DAYS = 7
 const MAX_INVITE_TTL_DAYS = 90
@@ -75,6 +76,11 @@ export const SignupInviteServiceLive = Layer.effect(
           yield* requireInviteOnlyMode()
 
           const normalized = yield* parseInviteInput(input)
+          if (normalized.email && !getEmailCapabilities().inviteEmailEnabled) {
+            return yield* Effect.fail(new InvalidSignupInviteError({
+              message: 'Invite email is not available because email sending is not configured. Create an invite link instead.'
+            }))
+          }
           const expiresAt = new Date(Date.now() + normalized.expiresInDays * 24 * 60 * 60 * 1000)
           const { invite, token } = yield* repository.create({
             email: normalized.email,

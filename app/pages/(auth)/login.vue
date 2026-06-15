@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import * as z from 'zod'
 import type { FormSubmitEvent, AuthFormField } from '@nuxt/ui'
+import { canShowForgotPasswordAction } from '~~/shared/utils/email-capability-ui'
 
 definePageMeta({
   auth: false
@@ -11,10 +12,12 @@ const authStore = useAuthStore()
 const { user } = storeToRefs(authStore)
 const { signIn } = authStore
 const toast = useToast()
+const { data: emailCapabilities } = await useEmailCapabilities()
 
 const isLoading = ref(false)
 const error = ref('')
 const showPassword = ref(false)
+const showForgotPassword = computed(() => canShowForgotPasswordAction(emailCapabilities.value))
 
 // Get redirect path from query
 const redirectPath = computed(() => {
@@ -92,7 +95,9 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
 
     if (result.error) {
       error.value = result.error.code === 'EMAIL_NOT_VERIFIED'
-        ? 'Verify your email address before signing in. A new verification email has been sent.'
+        ? emailCapabilities.value.emailVerificationEnabled
+          ? 'Verify your email address before signing in. A new verification email has been sent.'
+          : 'Verify your email address before signing in.'
         : result.error.message || 'Failed to sign in'
       toast.add({
         title: 'Sign in failed',
@@ -142,9 +147,9 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
 
         <template #password-hint>
           <ULink
-            to="#"
+            v-if="showForgotPassword"
+            to="/forgot-password"
             class="text-primary font-medium"
-            tabindex="-1"
           >
             Forgot password?
           </ULink>

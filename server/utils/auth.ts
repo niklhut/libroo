@@ -130,6 +130,12 @@ function getPublicVerificationUrl(url: string) {
   return url
 }
 
+function getPublicPasswordResetUrl(token: string) {
+  const resetUrl = new URL('/reset-password', getAuthUrl())
+  resetUrl.searchParams.set('token', token)
+  return resetUrl.toString()
+}
+
 export const auth = betterAuth({
   baseURL: getAuthUrl(),
   secret: getAuthSecret(),
@@ -141,7 +147,30 @@ export const auth = betterAuth({
     enabled: true,
     minPasswordLength: PASSWORD_MIN_LENGTH,
     requireEmailVerification: emailVerificationConfig.enabled,
-    autoSignIn: emailVerificationConfig.enabled ? false : undefined
+    autoSignIn: emailVerificationConfig.enabled ? false : undefined,
+    sendResetPassword: async ({ user, token }) => {
+      const displayName = escapeHtml(user.name)
+      const resetUrl = getPublicPasswordResetUrl(token)
+      const safeUrl = escapeHtml(resetUrl)
+      await sendEmailMessage({
+        to: user.email,
+        subject: 'Reset your Libroo password',
+        text: [
+          `Hello ${user.name},`,
+          '',
+          'Reset your Libroo password by opening this link:',
+          resetUrl,
+          '',
+          'This link expires in 1 hour. If you did not request this, you can ignore this email.'
+        ].join('\n'),
+        html: [
+          `<p>Hello ${displayName},</p>`,
+          '<p>Reset your Libroo password by opening this link:</p>',
+          `<p><a href="${safeUrl}">Reset password</a></p>`,
+          '<p>This link expires in 1 hour. If you did not request this, you can ignore this email.</p>'
+        ].join('')
+      })
+    }
   },
   emailVerification: emailVerificationConfig.enabled
     ? {

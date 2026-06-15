@@ -1,14 +1,13 @@
 import { Effect } from 'effect'
-import { runEffect } from '../../../utils/effect'
 
-export default defineEventHandler((event) => {
-  const token = getRouterParam(event, 'token')
+export default effectHandler(event =>
+  Effect.gen(function* () {
+    const token = getRouterParam(event, 'token')
 
-  if (!token) {
-    throw createError({ statusCode: 400, message: 'Invite token is required' })
-  }
+    if (!token) {
+      return yield* Effect.fail(createError({ statusCode: 400, message: 'Invite token is required' }))
+    }
 
-  return runEffect(Effect.gen(function* () {
     return yield* getSignupInvitePreview(token)
-  }))
-})
+  }),
+{ auth: false })

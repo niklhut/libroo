@@ -22,6 +22,7 @@ export default defineNuxtConfig({
     betterAuthUrl: '',
     authAuditRetentionDays: '5',
     adminAuditRetentionDays: '30',
+    emailVerificationEnabled: 'false',
     emailProvider: 'smtp',
     emailFrom: '',
     smtpHost: '',
@@ -32,9 +33,7 @@ export default defineNuxtConfig({
     plunkApiKey: '',
     plunkBaseUrl: 'https://next-api.useplunk.com',
     public: {
-      emailVerificationEnabled: 'false',
-      registrationEnabled: 'true',
-      emailDeliveryEnabled: 'false'
+      registrationEnabled: 'true'
     }
   },
 
