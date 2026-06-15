@@ -18,6 +18,15 @@ export interface LibraryQueryState extends LibraryQueryFilters {
   pageSize: number
 }
 
+export interface LibraryFilterSummaryState extends LibraryQueryFilters {
+  groupByLocation?: boolean
+}
+
+export interface LibraryFilterSummaryOptions {
+  includeSearch?: boolean
+  locationLabel?: string
+}
+
 export const DEFAULT_LIBRARY_PAGE_SIZE = 12
 
 const loanFilters = new Set<LibraryLoanFilter>(['all', 'available', 'loaned'])
@@ -91,4 +100,45 @@ export const buildLibraryRouteQuery = (state: LibraryQueryState): Record<string,
   if (state.sortBy && state.sortBy !== 'dateAdded') query.sortBy = state.sortBy
 
   return query
+}
+
+export const getActiveLibraryFilterCount = (
+  state: LibraryFilterSummaryState,
+  options: { includeSearch?: boolean } = {}
+): number => {
+  const advancedFilters = [
+    state.loanStatus && state.loanStatus !== 'all',
+    state.readingStatus && state.readingStatus !== 'all',
+    state.tag?.trim(),
+    state.location?.trim(),
+    state.locationId,
+    state.includeLocationDescendants,
+    state.sortBy && state.sortBy !== 'dateAdded',
+    state.groupByLocation
+  ]
+
+  return advancedFilters.filter(Boolean).length + (options.includeSearch && state.search?.trim() ? 1 : 0)
+}
+
+export const describeActiveLibraryFilters = (
+  state: LibraryFilterSummaryState,
+  options: LibraryFilterSummaryOptions = {}
+): string[] => {
+  const labels: string[] = []
+
+  if (options.includeSearch && state.search?.trim()) labels.push(`Search: ${state.search.trim()}`)
+  if (state.loanStatus && state.loanStatus !== 'all') {
+    labels.push(state.loanStatus === 'loaned' ? 'Loaned out' : 'Available')
+  }
+  if (state.readingStatus && state.readingStatus !== 'all') {
+    labels.push(`Reading: ${state.readingStatus}`)
+  }
+  if (state.tag?.trim()) labels.push(`Tag: ${state.tag.trim()}`)
+  if (state.location?.trim()) labels.push(`Location search: ${state.location.trim()}`)
+  if (state.locationId) labels.push(`Location: ${options.locationLabel || 'selected'}`)
+  if (state.includeLocationDescendants) labels.push('Includes sub-locations')
+  if (state.sortBy && state.sortBy !== 'dateAdded') labels.push(`Sort: ${state.sortBy}`)
+  if (state.groupByLocation) labels.push('Grouped by location')
+
+  return labels
 }
