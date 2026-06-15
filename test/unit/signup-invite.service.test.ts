@@ -8,17 +8,23 @@ import { SignupInviteServiceLive, acceptSignupInvite, createSignupInvite, listSi
 
 const originalPublicRegistration = process.env.NUXT_PUBLIC_REGISTRATION_ENABLED
 const originalBetterAuthUrl = process.env.NUXT_BETTER_AUTH_URL
+const originalEmailFrom = process.env.NUXT_EMAIL_FROM
+const originalSmtpHost = process.env.NUXT_SMTP_HOST
 const admin = { id: 'admin-1', role: 'admin' }
 
 describe('SignupInviteService', () => {
   beforeEach(() => {
     process.env.NUXT_BETTER_AUTH_URL = 'https://libroo.example.com'
     process.env.NUXT_PUBLIC_REGISTRATION_ENABLED = 'false'
+    delete process.env.NUXT_EMAIL_FROM
+    delete process.env.NUXT_SMTP_HOST
   })
 
   afterEach(() => {
-    process.env.NUXT_BETTER_AUTH_URL = originalBetterAuthUrl
-    process.env.NUXT_PUBLIC_REGISTRATION_ENABLED = originalPublicRegistration
+    restoreEnv('NUXT_BETTER_AUTH_URL', originalBetterAuthUrl)
+    restoreEnv('NUXT_PUBLIC_REGISTRATION_ENABLED', originalPublicRegistration)
+    restoreEnv('NUXT_EMAIL_FROM', originalEmailFrom)
+    restoreEnv('NUXT_SMTP_HOST', originalSmtpHost)
   })
 
   it('creates pending invite links for admins', async () => {
@@ -45,6 +51,8 @@ describe('SignupInviteService', () => {
   })
 
   it('creates invite emails through the email service', async () => {
+    process.env.NUXT_EMAIL_FROM = 'Libroo <no-reply@example.com>'
+    process.env.NUXT_SMTP_HOST = 'smtp.example.com'
     const state = createFakeState()
     const result = await runWithFakes(
       createSignupInvite(admin, { email: 'Ada@Example.com', expiresInDays: 7 }),
@@ -56,6 +64,18 @@ describe('SignupInviteService', () => {
       to: 'ada@example.com',
       subject: 'Your Libroo invite'
     }])
+  })
+
+  it('rejects invite emails when email sending is not configured', async () => {
+    const state = createFakeState()
+
+    await expect(runWithFakes(
+      createSignupInvite(admin, { email: 'ada@example.com', expiresInDays: 7 }),
+      state
+    )).rejects.toThrow('Invite email is not available because email sending is not configured')
+
+    expect(state.invites).toHaveLength(0)
+    expect(state.sentEmails).toHaveLength(0)
   })
 
   it('accepts a pending invite for Better Auth user ids', async () => {
@@ -216,6 +236,14 @@ describe('SignupInviteService', () => {
     expect(result.pageSize).toBe(2)
   })
 })
+
+function restoreEnv(key: string, value: string | undefined) {
+  if (value === undefined) {
+    Reflect.deleteProperty(process.env, key)
+  } else {
+    process.env[key] = value
+  }
+}
 
 interface FakeState {
   invites: SignupInviteRecord[]

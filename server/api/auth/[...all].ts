@@ -1,5 +1,6 @@
 import { Effect } from 'effect'
 import { auth } from '../../utils/auth'
+import { getEmailCapabilities } from '../../utils/email-capabilities'
 import { getEmailVerificationConfig } from '../../utils/email-verification-config'
 import { validateEmailVerificationToken } from '../../services/auth.service'
 import { runEffect } from '../../utils/effect'
@@ -8,8 +9,16 @@ export default defineEventHandler(async (event) => {
   const request = toWebRequest(event)
   const url = new URL(request.url ?? 'http://localhost/api/auth')
   const verificationEnabled = getEmailVerificationConfig().enabled
+  const capabilities = getEmailCapabilities()
   const isEmailSignup = url.pathname.endsWith('/api/auth/sign-up/email') && request.method === 'POST'
   let inviteReservationToken: string | null = null
+
+  if (url.pathname.endsWith('/api/auth/request-password-reset') && request.method === 'POST' && !capabilities.passwordResetEnabled) {
+    throw createError({
+      statusCode: 404,
+      message: 'Password reset email is not available for this deployment. Contact the administrator to reset your password.'
+    })
+  }
 
   if (verificationEnabled && url.pathname.endsWith('/api/auth/change-email')) {
     throw createError({

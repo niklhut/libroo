@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { TableColumn, TableRow } from '@nuxt/ui/components/Table.vue'
 import type { SignupInvite, SignupInviteCreateResult, SignupInviteList } from '~~/shared/types/signup-invite'
+import { canShowInviteEmailInput } from '~~/shared/utils/email-capability-ui'
 import { booleanConfigValue } from '~~/shared/utils/runtime-config'
 
 const toast = useToast()
@@ -8,6 +9,7 @@ const config = useRuntimeConfig()
 const route = useRoute()
 const router = useRouter()
 const requestFetch = useRequestFetch()
+const { data: emailCapabilities } = await useEmailCapabilities()
 
 if (booleanConfigValue(config.public.registrationEnabled, true)) {
   await navigateTo('/admin/users', { replace: true })
@@ -21,7 +23,7 @@ const createdInviteUrl = ref('')
 const createdInviteCopied = ref(false)
 const pageSize = 25
 
-const canSendInviteEmail = computed(() => booleanConfigValue(config.public.emailDeliveryEnabled))
+const canSendInviteEmail = computed(() => canShowInviteEmailInput(emailCapabilities.value))
 
 const currentPage = computed({
   get: () => parsePage(route.query.page),

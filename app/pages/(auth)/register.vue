@@ -2,6 +2,7 @@
 import * as z from 'zod'
 import type { FormSubmitEvent, AuthFormField } from '@nuxt/ui'
 import type { SignupInvitePreview } from '~~/shared/types/signup-invite'
+import { getRegistrationSuccessDescription } from '~~/shared/utils/email-capability-ui'
 import { newPasswordSchema } from '~~/shared/utils/password'
 import { booleanConfigValue } from '~~/shared/utils/runtime-config'
 
@@ -15,6 +16,7 @@ const authStore = useAuthStore()
 const { user } = storeToRefs(authStore)
 const { signUp } = authStore
 const toast = useToast()
+const { data: emailCapabilities } = await useEmailCapabilities()
 
 const isLoading = ref(false)
 const error = ref('')
@@ -26,7 +28,6 @@ const inviteToken = computed(() => {
   const invite = route.query.invite
   return typeof invite === 'string' && invite.trim() ? invite.trim() : null
 })
-const emailVerificationEnabled = computed(() => booleanConfigValue(config.public.emailVerificationEnabled))
 const registrationEnabled = computed(() => booleanConfigValue(config.public.registrationEnabled, true))
 const registrationRequiresInvite = computed(() => !registrationEnabled.value && !inviteToken.value)
 
@@ -186,13 +187,11 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
       verificationEmail.value = payload.data.email
       toast.add({
         title: 'Account created!',
-        description: emailVerificationEnabled.value
-          ? 'Check your email to verify your account before signing in.'
-          : 'Welcome to Libroo.',
+        description: getRegistrationSuccessDescription(emailCapabilities.value),
         color: 'success'
       })
 
-      if (emailVerificationEnabled.value) {
+      if (emailCapabilities.value.emailVerificationEnabled) {
         isVerificationEmailSent.value = true
       }
     }
@@ -211,51 +210,25 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
 
 <template>
   <UContainer class="py-12 max-w-md">
-    <UPageCard
+    <AuthStateCard
       v-if="isVerificationEmailSent"
       title="Verify your email"
-      :description="`We sent a verification link to ${verificationEmail}. Open it to activate your account.`"
       icon="i-lucide-mail-check"
-    >
-      <UAlert
-        color="success"
-        variant="soft"
-        icon="i-lucide-send"
-        title="Verification email sent"
-      />
+      :description="`We sent a verification link to ${verificationEmail}. Open it to activate your account.`"
+      action-label="Go to sign in"
+      action-to="/login"
+      action-icon="i-lucide-log-in"
+    />
 
-      <template #footer>
-        <UButton
-          to="/login"
-          icon="i-lucide-log-in"
-        >
-          Go to sign in
-        </UButton>
-      </template>
-    </UPageCard>
-
-    <UPageCard
+    <AuthStateCard
       v-else-if="registrationRequiresInvite || inviteUnavailable"
       :title="inviteBlockTitle"
+      :description="inviteBlockDescription"
       icon="i-lucide-lock"
-    >
-      <UAlert
-        color="warning"
-        variant="subtle"
-        icon="i-lucide-lock"
-        :title="inviteBlockTitle"
-        :description="inviteBlockDescription"
-      />
-
-      <template #footer>
-        <UButton
-          :to="{ path: '/login', query: route.query.redirect ? { redirect: route.query.redirect } : undefined }"
-          icon="i-lucide-log-in"
-        >
-          Sign in
-        </UButton>
-      </template>
-    </UPageCard>
+      action-label="Sign in"
+      :action-to="{ path: '/login', query: route.query.redirect ? { redirect: route.query.redirect } : undefined }"
+      action-icon="i-lucide-log-in"
+    />
 
     <UPageCard v-else>
       <UAuthForm

@@ -7,14 +7,14 @@ import {
   type AccountPasswordChangeSchema
 } from '~~/shared/utils/account-settings'
 import type { LibraryImportConflictStrategy, LibraryImportResult } from '~~/shared/types/library-transfer'
-import { booleanConfigValue } from '~~/shared/utils/runtime-config'
+import { canShowVerificationResendAction, canUseVerifiedEmailChange, getPasswordUpdatedDescription } from '~~/shared/utils/email-capability-ui'
 import { authClient } from '~/utils/auth-client'
 
 const toast = useToast()
 const route = useRoute()
-const config = useRuntimeConfig()
 const authStore = useAuthStore()
 const { user } = storeToRefs(authStore)
+const { data: emailCapabilities } = await useEmailCapabilities()
 
 const emailState = reactive({
   email: user.value?.email ?? '',
@@ -44,12 +44,13 @@ const { data: verificationStatus, refresh: refreshVerificationStatus } = await u
   pendingEmail: string | null
 }>('/api/auth/verification-status', {
   default: () => ({
-    enabled: booleanConfigValue(config.public.emailVerificationEnabled),
+    enabled: emailCapabilities.value.emailVerificationEnabled,
     email: user.value?.email ?? '',
     verified: user.value?.emailVerified === true,
     pendingEmail: null
   })
 })
+const showVerificationResend = computed(() => canShowVerificationResendAction(emailCapabilities.value, verificationStatus.value))
 
 const importFileInput = ref<HTMLInputElement | null>(null)
 const importFileName = ref('')
@@ -82,7 +83,9 @@ watch(verificationStatus, (nextStatus) => {
 if (route.query.verify === 'required') {
   toast.add({
     title: 'Verify your email',
-    description: 'Open the verification link sent to your email before using the rest of Libroo.',
+    description: emailCapabilities.value.emailVerificationEnabled
+      ? 'Open the verification link sent to your email before using the rest of Libroo.'
+      : 'Email verification is unavailable. Contact the administrator if your account is blocked.',
     color: 'warning'
   })
 }
@@ -115,7 +118,7 @@ async function changeEmail(payload: FormSubmitEvent<AccountEmailChangeSchema>) {
       return
     }
 
-    if (verificationStatus.value.enabled) {
+    if (canUseVerifiedEmailChange(emailCapabilities.value)) {
       const result = await $fetch<{ pendingEmail: string }>('/api/auth/pending-email-change', {
         method: 'POST',
         body: {
@@ -146,6 +149,9 @@ async function changeEmail(payload: FormSubmitEvent<AccountEmailChangeSchema>) {
 
       toast.add({
         title: 'Email updated',
+        description: emailCapabilities.value.emailSendingEnabled
+          ? undefined
+          : 'No verification email was sent because email sending is not configured.',
         color: 'success'
       })
     }
@@ -213,6 +219,7 @@ async function changePassword(payload: FormSubmitEvent<AccountPasswordChangeSche
     passwordForm.value?.clear()
     toast.add({
       title: 'Password updated',
+      description: getPasswordUpdatedDescription(emailCapabilities.value),
       color: 'success'
     })
   } catch (err: unknown) {
@@ -339,7 +346,7 @@ async function importLibraryCsvFile() {
           </template>
 
           <div
-            v-if="verificationStatus.enabled"
+            v-if="emailCapabilities.emailVerificationEnabled && verificationStatus.enabled"
             class="mb-5 space-y-3"
           >
             <div class="flex flex-wrap items-center justify-between gap-3">
@@ -370,7 +377,7 @@ async function importLibraryCsvFile() {
             />
 
             <UButton
-              v-if="!verificationStatus.verified || pendingEmailChange"
+              v-if="showVerificationResend"
               type="button"
               icon="i-lucide-send"
               color="neutral"

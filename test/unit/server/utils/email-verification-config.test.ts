@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { getEmailVerificationConfig, validateEmailDeliveryConfig, validateEmailVerificationConfig } from '../../../../server/utils/email-verification-config'
+import { getEmailCapabilities } from '../../../../server/utils/email-capabilities'
 
 const envKeys = [
-  'NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED',
+  'NUXT_EMAIL_VERIFICATION_ENABLED',
   'NUXT_EMAIL_PROVIDER',
   'NUXT_EMAIL_FROM',
   'NUXT_SMTP_HOST',
@@ -36,13 +37,13 @@ describe('email verification config', () => {
   })
 
   it('fails loudly when enabled without delivery settings', () => {
-    process.env.NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = 'true'
+    process.env.NUXT_EMAIL_VERIFICATION_ENABLED = 'true'
 
     expect(() => validateEmailVerificationConfig()).toThrow(/Email verification is enabled/)
   })
 
   it('accepts SMTP settings when enabled', () => {
-    process.env.NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = 'true'
+    process.env.NUXT_EMAIL_VERIFICATION_ENABLED = 'true'
     process.env.NUXT_EMAIL_FROM = 'Libroo <no-reply@example.com>'
     process.env.NUXT_SMTP_HOST = 'smtp.example.com'
     process.env.NUXT_SMTP_PORT = '465'
@@ -67,7 +68,7 @@ describe('email verification config', () => {
   })
 
   it('requires SMTP credentials as a pair', () => {
-    process.env.NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = 'true'
+    process.env.NUXT_EMAIL_VERIFICATION_ENABLED = 'true'
     process.env.NUXT_EMAIL_FROM = 'Libroo <no-reply@example.com>'
     process.env.NUXT_SMTP_HOST = 'smtp.example.com'
     process.env.NUXT_SMTP_PASSWORD = 'password'
@@ -85,7 +86,7 @@ describe('email verification config', () => {
   })
 
   it('accepts Plunk settings when enabled', () => {
-    process.env.NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = 'true'
+    process.env.NUXT_EMAIL_VERIFICATION_ENABLED = 'true'
     process.env.NUXT_EMAIL_PROVIDER = 'plunk'
     process.env.NUXT_PLUNK_API_KEY = 'sk_test'
     process.env.NUXT_PLUNK_BASE_URL = 'https://plunk.example.com'
@@ -104,9 +105,46 @@ describe('email verification config', () => {
   })
 
   it('fails loudly when Plunk is selected without an API key', () => {
-    process.env.NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = 'true'
+    process.env.NUXT_EMAIL_VERIFICATION_ENABLED = 'true'
     process.env.NUXT_EMAIL_PROVIDER = 'plunk'
 
     expect(() => validateEmailVerificationConfig()).toThrow(/NUXT_PLUNK_API_KEY/)
+  })
+
+  it('exposes no email capabilities without delivery settings', () => {
+    expect(getEmailCapabilities()).toEqual({
+      emailSendingEnabled: false,
+      emailVerificationEnabled: false,
+      passwordResetEnabled: false,
+      inviteEmailEnabled: false,
+      emailChangeVerificationEnabled: false,
+      reminderEmailEnabled: false
+    })
+  })
+
+  it('enables sending-backed capabilities when SMTP delivery is configured', () => {
+    process.env.NUXT_EMAIL_FROM = 'Libroo <no-reply@example.com>'
+    process.env.NUXT_SMTP_HOST = 'smtp.example.com'
+
+    expect(getEmailCapabilities()).toEqual({
+      emailSendingEnabled: true,
+      emailVerificationEnabled: false,
+      passwordResetEnabled: true,
+      inviteEmailEnabled: true,
+      emailChangeVerificationEnabled: false,
+      reminderEmailEnabled: true
+    })
+  })
+
+  it('enables verification-backed capabilities only when verification and delivery are configured', () => {
+    process.env.NUXT_EMAIL_VERIFICATION_ENABLED = 'true'
+    process.env.NUXT_EMAIL_FROM = 'Libroo <no-reply@example.com>'
+    process.env.NUXT_SMTP_HOST = 'smtp.example.com'
+
+    expect(getEmailCapabilities()).toMatchObject({
+      emailSendingEnabled: true,
+      emailVerificationEnabled: true,
+      emailChangeVerificationEnabled: true
+    })
   })
 })

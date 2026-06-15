@@ -4,7 +4,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AuthService, AuthServiceLive, UnauthorizedError } from '../../../../server/services/auth.service'
 import { AuthRepository } from '../../../../server/repositories/auth.repository'
 
-const originalEmailVerificationEnabled = process.env.NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED
+const envKeys = [
+  'NUXT_EMAIL_VERIFICATION_ENABLED',
+  'NUXT_EMAIL_FROM',
+  'NUXT_SMTP_HOST',
+  'NUXT_SMTP_USER',
+  'NUXT_SMTP_PASSWORD'
+]
+const originalEnvValues = new Map(envKeys.map(key => [key, process.env[key]]))
 
 const authMock = vi.hoisted(() => ({
   getSession: vi.fn(),
@@ -55,10 +62,13 @@ describe('AuthService', () => {
   })
 
   afterEach(() => {
-    if (originalEmailVerificationEnabled === undefined) {
-      delete process.env.NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED
-    } else {
-      process.env.NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = originalEmailVerificationEnabled
+    for (const key of envKeys) {
+      const value = originalEnvValues.get(key)
+      if (value === undefined) {
+        Reflect.deleteProperty(process.env, key)
+      } else {
+        process.env[key] = value
+      }
     }
   })
 
@@ -128,7 +138,7 @@ describe('AuthService', () => {
   })
 
   it('allows unverified users when email verification is disabled', async () => {
-    process.env.NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = 'false'
+    process.env.NUXT_EMAIL_VERIFICATION_ENABLED = 'false'
     authMock.getSession.mockResolvedValueOnce({
       user: {
         id: 'user-1',
@@ -147,7 +157,7 @@ describe('AuthService', () => {
   })
 
   it('requires verified users when email verification is enabled', async () => {
-    process.env.NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = 'true'
+    enableVerificationEmail()
     authMock.getSession.mockResolvedValueOnce({
       user: {
         id: 'user-1',
@@ -169,7 +179,7 @@ describe('AuthService', () => {
   })
 
   it('resends verification email for unverified users', async () => {
-    process.env.NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = 'true'
+    enableVerificationEmail()
     authMock.getSession.mockResolvedValueOnce({
       user: {
         id: 'user-1',
@@ -195,7 +205,7 @@ describe('AuthService', () => {
   })
 
   it('resends pending email-change verification to the pending inbox', async () => {
-    process.env.NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = 'true'
+    enableVerificationEmail()
     authMock.getSession.mockResolvedValueOnce({
       user: {
         id: 'user-1',
@@ -225,7 +235,7 @@ describe('AuthService', () => {
   })
 
   it('surfaces resend delivery failures as non-auth errors', async () => {
-    process.env.NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = 'true'
+    enableVerificationEmail()
     authMock.getSession.mockResolvedValueOnce({
       user: {
         id: 'user-1',
@@ -249,6 +259,7 @@ describe('AuthService', () => {
   })
 
   it('persists pending email changes in the account repository', async () => {
+    enableVerificationEmail()
     authMock.getSession.mockResolvedValueOnce({
       user: {
         id: 'user-1',
@@ -281,6 +292,7 @@ describe('AuthService', () => {
   })
 
   it('replaces an existing pending email change', async () => {
+    enableVerificationEmail()
     authMock.getSession.mockResolvedValueOnce({
       user: {
         id: 'user-1',
@@ -307,6 +319,7 @@ describe('AuthService', () => {
   })
 
   it('rejects pending email changes without the current password', async () => {
+    enableVerificationEmail()
     authMock.getSession.mockResolvedValueOnce({
       user: {
         id: 'user-1',
@@ -330,6 +343,7 @@ describe('AuthService', () => {
   })
 
   it('rejects pending email changes that conflict with another account email', async () => {
+    enableVerificationEmail()
     authMock.getSession.mockResolvedValueOnce({
       user: {
         id: 'user-1',
@@ -351,6 +365,31 @@ describe('AuthService', () => {
       message: 'Email is already in use'
     })
     expect(authRepoMock.setPendingEmail).not.toHaveBeenCalled()
+  })
+
+  it('rejects pending email verification flow when email-change verification is disabled', async () => {
+    process.env.NUXT_EMAIL_VERIFICATION_ENABLED = 'false'
+    authMock.getSession.mockResolvedValueOnce({
+      user: {
+        id: 'user-1',
+        name: 'Ada',
+        email: 'ada@example.com',
+        emailVerified: true
+      },
+      session: { id: 'session-1' }
+    })
+
+    const result = await runAuthService(Effect.either(
+      Effect.flatMap(AuthService, service => service.setPendingEmailChange(makeEvent(), 'ada.new@example.com', 'current-password'))
+    ))
+
+    expect(result._tag).toBe('Left')
+    expect(result.left).toMatchObject({
+      _tag: 'EmailCapabilityDisabledError',
+      message: 'Email-change verification is not enabled. Change email with current password instead.'
+    })
+    expect(authRepoMock.setPendingEmail).not.toHaveBeenCalled()
+    expect(authMock.changeEmail).not.toHaveBeenCalled()
   })
 
   it('accepts normal email verification tokens without a pending email lookup', async () => {
@@ -447,4 +486,10 @@ function makeEvent(options: { pendingEmail?: string } = {}) {
     headers: new Headers(),
     responseHeaders: {}
   } as never
+}
+
+function enableVerificationEmail() {
+  process.env.NUXT_EMAIL_VERIFICATION_ENABLED = 'true'
+  process.env.NUXT_EMAIL_FROM = 'Libroo <no-reply@example.com>'
+  process.env.NUXT_SMTP_HOST = 'smtp.example.com'
 }

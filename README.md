@@ -40,8 +40,7 @@ For hosted or self-hosted deployments where account ownership should be enforced
 SMTP delivery:
 
 ```bash
-NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED=true
-NUXT_PUBLIC_EMAIL_DELIVERY_ENABLED=true
+NUXT_EMAIL_VERIFICATION_ENABLED=true
 NUXT_EMAIL_PROVIDER=smtp
 NUXT_EMAIL_FROM="Libroo <no-reply@your-libroo.example.com>"
 NUXT_SMTP_HOST=smtp.example.com
@@ -54,8 +53,7 @@ NUXT_SMTP_PASSWORD=your-smtp-password
 Plunk delivery:
 
 ```bash
-NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED=true
-NUXT_PUBLIC_EMAIL_DELIVERY_ENABLED=true
+NUXT_EMAIL_VERIFICATION_ENABLED=true
 NUXT_EMAIL_PROVIDER=plunk
 NUXT_PLUNK_API_KEY=sk_your_secret_key
 NUXT_PLUNK_BASE_URL=https://next-api.useplunk.com
@@ -65,7 +63,18 @@ For a self-hosted Plunk instance, set `NUXT_PLUNK_BASE_URL` to your Plunk API or
 
 When verification is enabled, Libroo fails startup if required email delivery settings are missing. New users must verify before normal app access, and email changes remain pending until the new address is verified. Users can resend verification mail from Settings. Verification links show clear success, expired-link, and invalid-link states.
 
-If `NUXT_PUBLIC_EMAIL_VERIFICATION_ENABLED=false` or unset, Libroo does not send verification mail and email changes apply immediately. Security notifications, such as password-changed emails, are sent whenever SMTP or Plunk delivery is configured, even if email verification itself is disabled. If delivery is not configured, password changes still succeed without sending a notification.
+If `NUXT_EMAIL_VERIFICATION_ENABLED=false` or unset, Libroo does not send verification mail and email changes apply immediately after the current password is confirmed. Security notifications, password reset emails, invite emails, and future reminder emails are available whenever SMTP or Plunk delivery is configured, even if email verification itself is disabled. If delivery is not configured, password changes still succeed without sending a notification and admins can create invite links instead of invite emails.
+
+## Email Capability Matrix
+
+Libroo derives email feature visibility from one server-side capability source. The client receives only safe boolean flags, never SMTP, Plunk, or sender configuration.
+
+| Deployment state | Visible behavior |
+| --- | --- |
+| No email configured | Forgot password, resend verification, invite email, and reminder email actions are hidden. Email changes are applied after current-password confirmation. Password changes complete without notification email. Admins can create invite links and share them manually. |
+| Email sending configured, verification disabled | Forgot password, invite email, password-change notification attempts, and future reminder email actions are available. Registration does not show verification messaging. Email changes apply after current-password confirmation. |
+| Email verification enabled | All sending-backed features are available. Registration tells users to verify by email. Unverified users are kept on Settings until verified. Resend verification and pending-email-change verification are available. |
+| Hosted/public deployments requiring verification or reset | Configure SMTP or Plunk and set `NUXT_EMAIL_VERIFICATION_ENABLED=true`. Password reset and verification actions are shown only when delivery is configured; otherwise the APIs reject email-only requests instead of pretending mail was sent. |
 
 Deploy the application with an empty database, then open `/register` on your deployed instance and create the first account. The first registered account becomes the administrator automatically.
 
@@ -77,7 +86,7 @@ Public registration is enabled by default. Hosted admins can turn it off so only
 NUXT_PUBLIC_REGISTRATION_ENABLED=false
 ```
 
-When public registration is disabled, `/register` requires an invite token. Admins can create invite links from `/admin/users`; if email delivery is configured and `NUXT_PUBLIC_EMAIL_DELIVERY_ENABLED=true`, admins can also send invite emails. Invites start as pending, then become accepted after Better Auth creates the account, expired after their expiration date, or revoked when an admin cancels them. Expired and revoked invites cannot be used.
+When public registration is disabled, `/register` requires an invite token. Admins can create invite links from `/admin/users`; if email delivery is configured, admins can also send invite emails. Invites start as pending, then become accepted after Better Auth creates the account, expired after their expiration date, or revoked when an admin cancels them. Expired and revoked invites cannot be used.
 
 Invite emails use the same SMTP or Plunk settings as verification emails. Link-only invites can still be created without configuring email delivery.
 

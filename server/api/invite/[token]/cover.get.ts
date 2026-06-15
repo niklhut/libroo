@@ -1,31 +1,28 @@
 import { Effect } from 'effect'
-import { runEffect } from '../../../utils/effect'
 
-export default defineEventHandler(async (event) => {
-  const token = getRouterParam(event, 'token')
+export default effectHandler(event =>
+  Effect.gen(function* () {
+    const token = getRouterParam(event, 'token')
 
-  if (!token) {
-    throw createError({ statusCode: 400, message: 'Invitation token is required' })
-  }
+    if (!token) {
+      return yield* Effect.fail(createError({ statusCode: 400, message: 'Invitation token is required' }))
+    }
 
-  return runEffect(
-    Effect.gen(function* () {
-      const preview = yield* getInvitePreview(token)
+    const preview = yield* getInvitePreview(token)
 
-      if (!preview.coverPath) {
-        return yield* Effect.fail(createError({ statusCode: 404, message: 'Cover not found' }))
-      }
+    if (!preview.coverPath) {
+      return yield* Effect.fail(createError({ statusCode: 404, message: 'Cover not found' }))
+    }
 
-      const blobData = yield* getBlob(preview.coverPath)
+    const blobData = yield* getBlob(preview.coverPath)
 
-      if (!blobData) {
-        return yield* Effect.fail(createError({ statusCode: 404, message: 'Cover not found' }))
-      }
+    if (!blobData) {
+      return yield* Effect.fail(createError({ statusCode: 404, message: 'Cover not found' }))
+    }
 
-      setHeader(event, 'Content-Type', blobData.type || 'application/octet-stream')
-      setHeader(event, 'Cache-Control', 'private, max-age=3600')
+    setHeader(event, 'Content-Type', blobData.type || 'application/octet-stream')
+    setHeader(event, 'Cache-Control', 'private, max-age=3600')
 
-      return blobData
-    })
-  )
-})
+    return blobData
+  }),
+{ auth: false })
