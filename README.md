@@ -56,7 +56,7 @@ pnpm build:selfhost
 docker build .
 ```
 
-This profile uses local libSQL/SQLite storage through Drizzle, local filesystem blob storage, WebP cover conversion through `sharp`, and SMTP or Plunk email delivery. The Docker image defaults to `NUXT_DATABASE_URL=file:/data/db/sqlite.db` and `NUXT_LOCAL_STORAGE_DIR=/data/blob`; mount `/data` as the persistent volume.
+This profile uses local libSQL/SQLite storage through Drizzle, local filesystem blob storage, WebP cover conversion through `sharp`, and SMTP or Plunk email delivery. The Docker image defaults to `NUXT_DATABASE_URL=file:/data/db/sqlite.db` and `NUXT_LOCAL_STORAGE_DIR=/data/blob`; mount `/data` as the persistent volume. The image pre-creates `/data/db/` and `/data/blob/`, and the application also creates missing database and blob parent directories at runtime, so a fresh mounted `/data` volume can be empty.
 
 ## Email Verification
 

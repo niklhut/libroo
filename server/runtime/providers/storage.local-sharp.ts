@@ -1,6 +1,6 @@
 import { Effect, Layer } from 'effect'
 import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
-import { dirname, join, normalize, relative } from 'node:path'
+import { dirname, isAbsolute, join, normalize, relative, resolve, win32 } from 'node:path'
 import sharp from 'sharp'
 import { StorageError, StorageService } from '../../services/storage.service'
 import type { BlobMetadata, BlobPutOptions } from '../../services/storage.service'
@@ -16,15 +16,38 @@ function getLocalStorageRoot() {
 }
 
 function assertSafePathname(pathname: string) {
-  const normalized = normalize(pathname).replace(/^(\.\.(\/|\\|$))+/, '')
-  if (normalized.startsWith('..') || normalized.includes('\0') || normalize(pathname).startsWith('/')) {
+  const normalized = normalize(pathname)
+  const windowsNormalized = win32.normalize(pathname)
+
+  if (
+    normalized.includes('\0')
+    || isAbsolute(normalized)
+    || win32.isAbsolute(pathname)
+    || normalized === '..'
+    || normalized.startsWith('../')
+    || normalized.startsWith('..\\')
+    || windowsNormalized === '..'
+    || windowsNormalized.startsWith('..\\')
+  ) {
     throw new Error(`Unsafe blob pathname: ${pathname}`)
   }
   return normalized
 }
 
 function resolveBlobPath(pathname: string) {
-  return join(getLocalStorageRoot(), assertSafePathname(pathname))
+  const root = resolve(getLocalStorageRoot())
+  const candidate = resolve(root, assertSafePathname(pathname))
+  const relativePath = relative(root, candidate)
+  if (
+    relativePath === '..'
+    || relativePath.startsWith('../')
+    || relativePath.startsWith('..\\')
+    || isAbsolute(relativePath)
+  ) {
+    throw new Error(`Unsafe blob pathname: ${pathname}`)
+  }
+
+  return candidate
 }
 
 function metadataPath(pathname: string) {

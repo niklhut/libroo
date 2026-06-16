@@ -25,6 +25,8 @@ WORKDIR /app
 COPY --from=build /app/.output ./.output
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/package.json ./package.json
+RUN mkdir -p /data/db /data/blob && chown -R node:node /app /data
+USER node
 VOLUME ["/data"]
 EXPOSE 3000
 CMD ["node", ".output/server/index.mjs"]

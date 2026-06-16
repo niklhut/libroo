@@ -83,14 +83,25 @@ export const StorageServiceCloudflareLive = Layer.succeed(StorageService, {
     Effect.tryPromise({
       try: () => {
         const contentType = detectImageContentType(data)
+        if (contentType === 'application/octet-stream') {
+          throw new StorageError({
+            message: 'Unsupported cover image format',
+            operation: 'convertCoverImage'
+          })
+        }
         return blob.put(pathnameForStoredCover(pathname, contentType), data, {
           contentType
         }).then(toMetadata)
       },
-      catch: error => new StorageError({
-        message: `Failed to put cover image blob: ${error}`,
-        operation: 'putCoverImage'
-      })
+      catch: (error) => {
+        if (error instanceof StorageError) {
+          return error
+        }
+        return new StorageError({
+          message: `Failed to put cover image blob: ${error}`,
+          operation: 'putCoverImage'
+        })
+      }
     }),
 
   get: pathname =>
