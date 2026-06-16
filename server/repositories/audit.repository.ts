@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { Context, Effect, Layer } from 'effect'
 import { aliasedTable, and, desc, eq, lt, sql } from 'drizzle-orm'
-import { db } from '@nuxthub/db'
+import { db } from '../runtime/auth-db.active'
 import { adminAuditLog, user } from 'hub:db:schema'
 import type { AdminAuditAction, AdminAuditCategory, AdminAuditEntry } from '~~/shared/types/admin-audit'
 import { DatabaseError } from './book.repository'

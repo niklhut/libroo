@@ -1,22 +1,12 @@
 import { Cause, Effect, Exit, Layer, pipe } from 'effect'
-import { HttpClient } from '@effect/platform'
-import { NodeHttpClient } from '@effect/platform-node'
-
-// Create HttpClient layer that follows redirects (OpenLibrary cover URLs redirect)
-const HttpClientLive = Layer.effect(
-  HttpClient.HttpClient,
-  Effect.gen(function* () {
-    const baseClient = yield* HttpClient.HttpClient
-    return HttpClient.followRedirects(baseClient, 10)
-  })
-).pipe(Layer.provide(NodeHttpClient.layer))
+import type * as HttpClient from '@effect/platform/HttpClient'
+import { RuntimeInfrastructureLive } from '../runtime/active'
+import type { EmailService } from '../runtime/email.core'
 
 // Base services layer (no dependencies)
 const BaseServicesLive = Layer.mergeAll(
-  DbServiceLive,
-  StorageServiceLive,
   AuthServiceLive,
-  HttpClientLive
+  RuntimeInfrastructureLive
 )
 
 // Repository layer (depends on base services)
@@ -37,7 +27,7 @@ const RepositoriesLive = Layer.provideMerge(
 
 // Service layer (depends on repositories)
 const ServicesLive = Layer.provideMerge(
-  Layer.mergeAll(BookServiceLive, LendingServiceLive, AdminServiceLive, AuditServiceLive, LocationServiceLive, LibraryTransferServiceLive, SignupInviteServiceLive, EmailServiceLive, EmailCapabilityServiceLive),
+  Layer.mergeAll(BookServiceLive, LendingServiceLive, AdminServiceLive, AuditServiceLive, LocationServiceLive, LibraryTransferServiceLive, SignupInviteServiceLive, EmailCapabilityServiceLive),
   RepositoriesLive
 )
 

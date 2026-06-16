@@ -1,4 +1,8 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
+const runtimeProfile = process.env.NUXT_LIBROO_RUNTIME_PROFILE === 'cloudflare'
+  ? 'cloudflare'
+  : 'selfhost'
+
 export default defineNuxtConfig({
   modules: [
     '@nuxthub/core',
@@ -23,7 +27,7 @@ export default defineNuxtConfig({
     authAuditRetentionDays: '5',
     adminAuditRetentionDays: '30',
     emailVerificationEnabled: 'false',
-    emailProvider: 'smtp',
+    emailProvider: runtimeProfile === 'cloudflare' ? 'plunk' : 'smtp',
     emailFrom: '',
     smtpHost: '',
     smtpPort: '587',
@@ -35,6 +39,12 @@ export default defineNuxtConfig({
     public: {
       registrationEnabled: 'true'
     }
+  },
+
+  alias: {
+    '../runtime/active': `./server/runtime/${runtimeProfile}.ts`,
+    '../runtime/auth-db.active': `./server/runtime/auth-db.${runtimeProfile}.ts`,
+    '../runtime/email.active': `./server/runtime/email.${runtimeProfile}.ts`
   },
 
   routeRules: {

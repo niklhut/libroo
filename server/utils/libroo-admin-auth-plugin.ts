@@ -4,8 +4,7 @@ import { sql } from 'drizzle-orm'
 import { parseRoleValues, roleIncludesAdmin } from '~~/shared/utils/auth-roles'
 import { isActiveBan } from '~~/shared/utils/auth-status'
 import { newPasswordSchema } from '~~/shared/utils/password'
-import { db } from '@nuxthub/db'
-import { user } from '@nuxthub/db/schema'
+import { db, user } from '../runtime/auth-db.active'
 
 type UserWithRole = {
   id: string

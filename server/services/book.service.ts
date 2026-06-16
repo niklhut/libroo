@@ -1,5 +1,5 @@
 import { Context, Effect, Layer, Either, Data } from 'effect'
-import type { HttpClient } from '@effect/platform'
+import type * as HttpClient from '@effect/platform/HttpClient'
 import { normalizeReadingProgress } from '../../shared/utils/reading-progress'
 import { MANUAL_COVER_MAX_BYTES } from '../../shared/utils/schemas'
 import type { LibraryQueryFilters } from '../../shared/utils/library-query'

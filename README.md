@@ -31,13 +31,40 @@ NUXT_BETTER_AUTH_SECRET=<output from openssl rand -base64 32>
 NUXT_BETTER_AUTH_URL=https://your-libroo.example.com
 ```
 
+## Runtime Profiles
+
+Libroo has two runtime profiles. Runtime-specific database, storage, email, and HTTP client implementations are composed as Effect layers under `server/runtime/`, so route handlers, services, and repositories stay shared. The build defaults to `selfhost`; set `NUXT_LIBROO_RUNTIME_PROFILE=cloudflare` explicitly for the hosted Worker profile.
+
+Hosted Cloudflare/NuxtHub:
+
+```bash
+NUXT_LIBROO_RUNTIME_PROFILE=cloudflare
+NUXT_EMAIL_PROVIDER=plunk
+pnpm build:cloudflare
+pnpm dlx wrangler@latest --cwd .output deploy --dry-run --outdir /tmp/libroo-wrangler-dry-run
+```
+
+This profile uses NuxtHub D1, NuxtHub/R2 blob storage, Plunk email delivery, and stores cover images without server-side conversion. It does not import the self-hosted `sharp`, `nodemailer`, or local filesystem storage implementations.
+
+Self-hosted Docker:
+
+```bash
+NUXT_LIBROO_RUNTIME_PROFILE=selfhost
+NUXT_DATABASE_URL=file:.data/db/sqlite.db
+NUXT_LOCAL_STORAGE_DIR=.data/blob
+pnpm build:selfhost
+docker build .
+```
+
+This profile uses local libSQL/SQLite storage through Drizzle, local filesystem blob storage, WebP cover conversion through `sharp`, and SMTP or Plunk email delivery. The Docker image defaults to `NUXT_DATABASE_URL=file:/data/db/sqlite.db` and `NUXT_LOCAL_STORAGE_DIR=/data/blob`; mount `/data` as the persistent volume.
+
 ## Email Verification
 
 Email verification is disabled by default so local and private installs keep the existing registration, sign-in, and email-change flow.
 
 For hosted or self-hosted deployments where account ownership should be enforced, enable verification and choose an email provider.
 
-SMTP delivery:
+SMTP delivery is available in the self-hosted profile:
 
 ```bash
 NUXT_EMAIL_VERIFICATION_ENABLED=true
@@ -50,7 +77,7 @@ NUXT_SMTP_USER=your-smtp-user
 NUXT_SMTP_PASSWORD=your-smtp-password
 ```
 
-Plunk delivery:
+Plunk delivery is available in both profiles and is the only email provider in the hosted Cloudflare profile:
 
 ```bash
 NUXT_EMAIL_VERIFICATION_ENABLED=true

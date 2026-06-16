@@ -1,5 +1,5 @@
 import { Context, Effect, Layer, Data } from 'effect'
-import type { HttpClient } from '@effect/platform'
+import type * as HttpClient from '@effect/platform/HttpClient'
 import { eq, and, count, desc, asc, inArray, or, sql, notInArray, exists, isNull, not } from 'drizzle-orm'
 import { books, authors, bookAuthors, userBooks, tags, bookSystemTags, userBookTags, loans, user, locations } from 'hub:db:schema'
 import { normalizeTagInput, normalizeSuggestedTags } from '../../shared/utils/tag-ingestion'
