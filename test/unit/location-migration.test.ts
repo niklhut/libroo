@@ -2,18 +2,18 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-const migrationPath = resolve('server/db/migrations/sqlite/0016_add_locations.sql')
+const migrationPath = resolve('server/db/migrations/0000_initial_beta.sql')
 
-describe('location migration', () => {
+describe('beta baseline migration', () => {
   it('enforces uniqueness separately for root locations and child siblings', () => {
     const migration = readFileSync(migrationPath, 'utf8')
 
     expect(migration).toMatch(/CREATE UNIQUE INDEX `locations_user_parent_name_unique`/)
     expect(migration).toMatch(/`user_id`,`parent_location_id`,`normalized_name`/)
-    expect(migration).toMatch(/WHERE `parent_location_id` IS NOT NULL/)
+    expect(migration).toMatch(/WHERE "locations"\."parent_location_id" IS NOT NULL/)
     expect(migration).toMatch(/CREATE UNIQUE INDEX `locations_user_root_name_unique`/)
     expect(migration).toMatch(/`user_id`,`normalized_name`/)
-    expect(migration).toMatch(/WHERE `parent_location_id` IS NULL/)
+    expect(migration).toMatch(/WHERE "locations"\."parent_location_id" IS NULL/)
   })
 
   it('enforces assigned locations belong to the user book owner', () => {

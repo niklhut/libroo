@@ -1,1 +1,0 @@
-ALTER TABLE `books` ADD `work_key` text;
