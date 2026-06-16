@@ -1,4 +1,10 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
+const runtimeProfile = process.env.NUXT_LIBROO_RUNTIME_PROFILE === 'cloudflare'
+  ? 'cloudflare'
+  : 'selfhost'
+const cloudflareD1DatabaseId = process.env.NUXT_HUB_CLOUDFLARE_DATABASE_ID
+const cloudflareR2BucketName = process.env.NUXT_HUB_CLOUDFLARE_BUCKET_NAME
+
 export default defineNuxtConfig({
   modules: [
     '@nuxthub/core',
@@ -23,7 +29,7 @@ export default defineNuxtConfig({
     authAuditRetentionDays: '5',
     adminAuditRetentionDays: '30',
     emailVerificationEnabled: 'false',
-    emailProvider: 'smtp',
+    emailProvider: runtimeProfile === 'cloudflare' ? 'plunk' : 'smtp',
     emailFrom: '',
     smtpHost: '',
     smtpPort: '587',
@@ -35,6 +41,12 @@ export default defineNuxtConfig({
     public: {
       registrationEnabled: 'true'
     }
+  },
+
+  alias: {
+    '../runtime/active': `./server/runtime/${runtimeProfile}.ts`,
+    '../runtime/auth-db.active': `./server/runtime/auth-db.${runtimeProfile}.ts`,
+    '../runtime/email.active': `./server/runtime/email.${runtimeProfile}.ts`
   },
 
   routeRules: {
@@ -58,10 +70,27 @@ export default defineNuxtConfig({
     }
   },
 
-  hub: {
-    db: 'sqlite',
-    blob: true
-  },
+  hub: runtimeProfile === 'cloudflare'
+    ? {
+        db: {
+          dialect: 'sqlite',
+          driver: 'd1',
+          connection: cloudflareD1DatabaseId
+            ? { databaseId: cloudflareD1DatabaseId }
+            : undefined
+        },
+        blob: cloudflareR2BucketName
+          ? {
+              driver: 'cloudflare-r2',
+              binding: 'BLOB',
+              bucketName: cloudflareR2BucketName
+            }
+          : true
+      }
+    : {
+        db: 'sqlite',
+        blob: true
+      },
 
   hooks: {
     'nitro:config'(nitroConfig) {

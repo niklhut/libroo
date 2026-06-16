@@ -4,6 +4,9 @@
   "type": "module",
   "scripts": {
     "build": "nuxt build",
+    "build:cloudflare": "NUXT_LIBROO_RUNTIME_PROFILE=cloudflare NITRO_PRESET=cloudflare_module nuxt build",
+    "build:selfhost": "NUXT_LIBROO_RUNTIME_PROFILE=selfhost NITRO_PRESET=node_server nuxt build",
+    "check:cloudflare-size": "pnpm build:cloudflare && pnpm dlx wrangler@latest --cwd .output deploy --dry-run --outdir /tmp/libroo-wrangler-dry-run",
     "dev": "nuxt dev",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",

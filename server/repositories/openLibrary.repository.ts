@@ -1,7 +1,7 @@
 import { Context, Effect, Layer, Data, Duration } from 'effect'
-import { HttpClient } from '@effect/platform'
+import * as HttpClient from '@effect/platform/HttpClient'
 import * as HCError from '@effect/platform/HttpClientError'
-import type { HttpClient as HttpClientType } from '@effect/platform'
+import type * as HttpClientType from '@effect/platform/HttpClient'
 
 // Error types
 export class OpenLibraryBookNotFoundError extends Data.TaggedError('OpenLibraryBookNotFoundError')<{
