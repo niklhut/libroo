@@ -2,6 +2,8 @@
 const runtimeProfile = process.env.NUXT_LIBROO_RUNTIME_PROFILE === 'cloudflare'
   ? 'cloudflare'
   : 'selfhost'
+const cloudflareD1DatabaseId = process.env.NUXT_HUB_CLOUDFLARE_DATABASE_ID
+const cloudflareR2BucketName = process.env.NUXT_HUB_CLOUDFLARE_BUCKET_NAME
 
 export default defineNuxtConfig({
   modules: [
@@ -68,10 +70,27 @@ export default defineNuxtConfig({
     }
   },
 
-  hub: {
-    db: 'sqlite',
-    blob: true
-  },
+  hub: runtimeProfile === 'cloudflare'
+    ? {
+        db: {
+          dialect: 'sqlite',
+          driver: 'd1',
+          connection: cloudflareD1DatabaseId
+            ? { databaseId: cloudflareD1DatabaseId }
+            : undefined
+        },
+        blob: cloudflareR2BucketName
+          ? {
+              driver: 'cloudflare-r2',
+              binding: 'BLOB',
+              bucketName: cloudflareR2BucketName
+            }
+          : true
+      }
+    : {
+        db: 'sqlite',
+        blob: true
+      },
 
   hooks: {
     'nitro:config'(nitroConfig) {
