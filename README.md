@@ -41,7 +41,12 @@ Hosted Cloudflare/NuxtHub:
 NUXT_LIBROO_RUNTIME_PROFILE=cloudflare
 NUXT_EMAIL_PROVIDER=plunk
 pnpm build:cloudflare
+
+# Verify the Worker bundle locally before deploying.
 pnpm dlx wrangler@latest --cwd .output deploy --dry-run --outdir /tmp/libroo-wrangler-dry-run
+
+# Deploy to Cloudflare after verification.
+pnpm dlx wrangler@latest --cwd .output deploy
 ```
 
 This profile uses NuxtHub D1, NuxtHub/R2 blob storage, Plunk email delivery, and stores cover images without server-side conversion. It does not import the self-hosted `sharp`, `nodemailer`, or local filesystem storage implementations.

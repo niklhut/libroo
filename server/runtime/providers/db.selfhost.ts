@@ -10,7 +10,7 @@ import type { DbServiceInterface } from '../../services/db.service'
 function getDatabaseUrl() {
   const configuredUrl = process.env.NUXT_DATABASE_URL || process.env.LIBROO_DATABASE_URL
   if (configuredUrl && configuredUrl.trim() !== '') {
-    return configuredUrl
+    return configuredUrl.trim()
   }
 
   if (process.env.NODE_ENV === 'production') {
