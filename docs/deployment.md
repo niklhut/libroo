@@ -177,10 +177,11 @@ For beta hosted deploys, CI runs on `push` to `main`:
 ```bash
 pnpm build:cloudflare
 pnpm exec wrangler d1 migrations apply DB --remote --config .output/server/wrangler.json
+# CI pipes required Worker secrets into wrangler secret bulk here.
 pnpm exec wrangler deploy --config .output/server/wrangler.json
 ```
 
-Migration files live in `server/db/migrations`. After beta, append new migrations; do not rewrite migration history for existing hosted data. For manual hosted migrations, use the same generated `.output/server/wrangler.json` after a Cloudflare build.
+Migration files live in `server/db/migrations/sqlite`. After beta, append new migrations; do not rewrite migration history for existing hosted data. For manual hosted migrations, use the same generated `.output/server/wrangler.json` after a Cloudflare build.
 
 Do not run hosted migrations from pull request workflows. If a PR contains a migration, it is validated by build/typecheck/test, then applied only after that PR is merged to protected `main`.
 
