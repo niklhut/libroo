@@ -19,11 +19,13 @@ jobs:
       NUXT_HUB_CLOUDFLARE_DATABASE_ID: ${{ secrets.NUXT_HUB_CLOUDFLARE_DATABASE_ID }}
       NUXT_HUB_CLOUDFLARE_BUCKET_NAME: ${{ secrets.NUXT_HUB_CLOUDFLARE_BUCKET_NAME }}
       NUXT_CLOUDFLARE_WORKER_NAME: libroo-beta
+      NUXT_CLOUDFLARE_CUSTOM_DOMAIN: ${{ vars.NUXT_CLOUDFLARE_CUSTOM_DOMAIN }}
       NUXT_BETTER_AUTH_SECRET: ${{ secrets.NUXT_BETTER_AUTH_SECRET }}
       NUXT_BETTER_AUTH_URL: ${{ secrets.NUXT_BETTER_AUTH_URL }}
       NUXT_PLUNK_API_KEY: ${{ secrets.NUXT_PLUNK_API_KEY }}
       NUXT_EMAIL_FROM: ${{ vars.NUXT_EMAIL_FROM }}
       NUXT_EMAIL_VERIFICATION_ENABLED: ${{ vars.NUXT_EMAIL_VERIFICATION_ENABLED || 'true' }}
+      NUXT_PLUNK_BASE_URL: ${{ vars.NUXT_PLUNK_BASE_URL }}
       NUXT_PUBLIC_REGISTRATION_ENABLED: ${{ vars.NUXT_PUBLIC_REGISTRATION_ENABLED || 'false' }}
 
     steps:
@@ -52,6 +54,27 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: pnpm exec wrangler d1 migrations apply DB --remote --config .output/server/wrangler.json
+
+      - name: Sync beta Worker secrets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          node <<'NODE' | pnpm exec wrangler secret bulk --config .output/server/wrangler.json
+          const secretNames = [
+            'NUXT_BETTER_AUTH_SECRET',
+            'NUXT_PLUNK_API_KEY'
+          ]
+          const missing = secretNames.filter(name => !process.env[name])
+          if (missing.length) {
+            console.error(`Missing required Worker secrets: ${missing.join(', ')}`)
+            process.exit(1)
+          }
+          process.stdout.write(JSON.stringify(Object.fromEntries(
+            secretNames.map(name => [name, process.env[name]])
+          )))
+          NODE
 
       - name: Deploy beta worker
         env:
