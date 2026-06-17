@@ -27,9 +27,12 @@ export const HealthRepositoryLive = Layer.effect(
               .from(user)
               .limit(1)
           },
-          catch: error => new HealthCheckError({
-            message: `Database health check failed: ${error}`
-          })
+          catch: (error) => {
+            console.error('Database health check failed', error)
+            return new HealthCheckError({
+              message: 'Database health check failed'
+            })
+          }
         })
     }
   })

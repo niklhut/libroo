@@ -36,6 +36,7 @@ VERSION=1.2.3
 
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
+  --push \
   --build-arg VERSION="$VERSION" \
   --build-arg REVISION="$(git rev-parse HEAD)" \
   --build-arg CREATED="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \

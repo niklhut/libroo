@@ -6,7 +6,7 @@
     "build": "nuxt build",
     "build:cloudflare": "NUXT_LIBROO_RUNTIME_PROFILE=cloudflare NITRO_PRESET=cloudflare_module nuxt build",
     "build:selfhost": "NUXT_LIBROO_RUNTIME_PROFILE=selfhost NITRO_PRESET=node_server nuxt build",
-    "check:cloudflare-size": "pnpm build:cloudflare && pnpm dlx wrangler@latest --cwd .output deploy --dry-run --outdir /tmp/libroo-wrangler-dry-run",
+    "check:cloudflare-size": "pnpm build:cloudflare && pnpm exec wrangler --cwd .output deploy --dry-run --outdir /tmp/libroo-wrangler-dry-run",
     "dev": "nuxt dev",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
@@ -52,7 +52,8 @@
     "eslint": "^10.3.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.6",
-    "vue-tsc": "^3.2.9"
+    "vue-tsc": "^3.2.9",
+    "wrangler": "4.101.0"
   },
   "engines": {
     "node": ">=22"

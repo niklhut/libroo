@@ -90,7 +90,7 @@ try {
   })
 } catch (error) {
   const cause = error?.cause
-  const code = cause?.code || cause?.cause?.code
+  const code = error?.code || cause?.code || cause?.cause?.code
   if (code === 'SQLITE_FULL') {
     throw new Error([
       'Libroo could not migrate the SQLite database because SQLite reported SQLITE_FULL.',
