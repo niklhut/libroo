@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-const migrationPath = resolve('server/db/migrations/0000_initial_beta.sql')
+const migrationPath = resolve('server/db/migrations/sqlite/0000_initial_beta.sql')
 
 describe('beta baseline migration', () => {
   it('enforces uniqueness separately for root locations and child siblings', () => {
