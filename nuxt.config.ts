@@ -48,6 +48,7 @@ export default defineNuxtConfig({
     emailVerificationEnabled: 'false',
     emailProvider: runtimeProfile === 'cloudflare' ? 'plunk' : 'smtp',
     emailFrom: '',
+    emailReplyTo: '',
     smtpHost: '',
     smtpPort: '587',
     smtpSecure: 'false',

@@ -83,6 +83,7 @@ Optional email and registration settings:
 | `NUXT_PUBLIC_REGISTRATION_ENABLED` | `true` | Set `false` after creating the first admin for invite-only operation. |
 | `NUXT_EMAIL_PROVIDER` | `smtp` | Self-host supports `smtp` or `plunk`. |
 | `NUXT_EMAIL_FROM` | empty | Required when email sending is enabled. |
+| `NUXT_EMAIL_REPLY_TO` | empty | Optional reply-to address for sent mail. |
 | `NUXT_SMTP_HOST` / `NUXT_SMTP_PORT` / `NUXT_SMTP_SECURE` | empty / `587` / `false` | SMTP transport settings. |
 | `NUXT_SMTP_USER` / `NUXT_SMTP_PASSWORD` | empty | SMTP credentials, if required by the provider. |
 | `NUXT_PLUNK_API_KEY` / `NUXT_PLUNK_BASE_URL` | empty / `https://next-api.useplunk.com` | Plunk delivery settings. |
@@ -165,7 +166,8 @@ Repository or environment variables:
 
 | Variable | Recommended value |
 | --- | --- |
-| `NUXT_EMAIL_FROM` | Hosted sender address. |
+| `NUXT_EMAIL_FROM` | Hosted sender address. Must be on a verified Plunk sender domain. |
+| `NUXT_EMAIL_REPLY_TO` | Optional hosted reply-to address. |
 | `NUXT_EMAIL_VERIFICATION_ENABLED` | `true` |
 | `NUXT_PUBLIC_REGISTRATION_ENABLED` | `false` after the first admin exists. |
 | `NUXT_CLOUDFLARE_WORKER_NAME` | Optional override. Defaults to `libroo`; hosted beta CI sets `libroo-beta`. |
