@@ -1,6 +1,4 @@
 import { Context, Data, Effect, Layer } from 'effect'
-import { sql } from 'drizzle-orm'
-import { user } from 'hub:db:schema'
 import { DbService } from '../services/db.service'
 
 export class HealthCheckError extends Data.TaggedError('HealthCheckError')<{
@@ -22,10 +20,7 @@ export const HealthRepositoryLive = Layer.effect(
       checkDatabase: () =>
         Effect.tryPromise({
           try: async () => {
-            await dbService.db
-              .select({ ok: sql<number>`1` })
-              .from(user)
-              .limit(1)
+            await dbService.db.run('select 1')
           },
           catch: (error) => {
             console.error('Database health check failed', error)
