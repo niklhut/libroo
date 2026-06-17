@@ -105,6 +105,13 @@ importers:
       vue-tsc:
         specifier: ^3.2.9
         version: 3.2.9(typescript@6.0.3)
+    optionalDependencies:
+      '@libsql/linux-arm64-musl':
+        specifier: 0.5.29
+        version: 0.5.29
+      '@libsql/linux-x64-musl':
+        specifier: 0.5.29
+        version: 0.5.29
 
 packages:
 

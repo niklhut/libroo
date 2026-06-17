@@ -40,6 +40,10 @@
     "vue-qrcode-reader": "^5.7.3",
     "zod": "^4.4.3"
   },
+  "optionalDependencies": {
+    "@libsql/linux-arm64-musl": "0.5.29",
+    "@libsql/linux-x64-musl": "0.5.29"
+  },
   "devDependencies": {
     "@nuxt/eslint": "^1.15.2",
     "@nuxt/test-utils": "^4.0.3",

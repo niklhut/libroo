@@ -20,14 +20,15 @@ const RepositoriesLive = Layer.provideMerge(
     LocationRepositoryLive,
     LibraryTransferRepositoryLive,
     AuthRepositoryLive,
-    SignupInviteRepositoryLive
+    SignupInviteRepositoryLive,
+    HealthRepositoryLive
   ),
   BaseServicesLive
 )
 
 // Service layer (depends on repositories)
 const ServicesLive = Layer.provideMerge(
-  Layer.mergeAll(BookServiceLive, LendingServiceLive, AdminServiceLive, AuditServiceLive, LocationServiceLive, LibraryTransferServiceLive, SignupInviteServiceLive, EmailCapabilityServiceLive),
+  Layer.mergeAll(BookServiceLive, LendingServiceLive, AdminServiceLive, AuditServiceLive, LocationServiceLive, LibraryTransferServiceLive, SignupInviteServiceLive, EmailCapabilityServiceLive, HealthServiceLive),
   RepositoriesLive
 )
 
@@ -48,6 +49,7 @@ export type MainServices
     | LibraryTransferRepository
     | AuthRepository
     | SignupInviteRepository
+    | HealthRepository
     | BookService
     | LendingService
     | AdminService
@@ -57,6 +59,7 @@ export type MainServices
     | SignupInviteService
     | EmailService
     | EmailCapabilityService
+    | HealthService
     | HttpClient.HttpClient
 
 // Helper to safely get property from unknown object
@@ -104,7 +107,8 @@ const errorStatusCodes: Record<string, number> = {
   InvalidSignupInviteError: 400,
   SignupInviteDeliveryError: 503,
   DatabaseError: 500,
-  StorageError: 500
+  StorageError: 500,
+  HealthCheckError: 503
 }
 
 // Custom error message formatters
