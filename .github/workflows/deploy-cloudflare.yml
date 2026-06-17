@@ -3,47 +3,14 @@ name: Deploy to Cloudflare
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
 
 concurrency:
   group: cloudflare-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: false
 
 jobs:
-  build:
-    name: Build Cloudflare worker
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    env:
-      NUXT_CLOUDFLARE_WORKER_NAME: libroo-beta
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v5
-
-      - name: Install node
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build Cloudflare worker
-        run: pnpm build:cloudflare
-
   deploy-beta:
     name: Deploy beta
-    needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read

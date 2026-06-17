@@ -117,7 +117,7 @@ NUXT_LIBROO_RUNTIME_PROFILE=cloudflare
 pnpm build:cloudflare
 ```
 
-The generated Worker uses NuxtHub D1 and R2 bindings from `nuxt.config.ts`. The project default Worker name is `libroo` through `nitro.cloudflare.wrangler.name`; set `NUXT_CLOUDFLARE_WORKER_NAME` to target a different Worker. The hosted beta CI sets it to `libroo-beta`. The CI workflow applies D1 migrations immediately before the beta deploy because Cloudflare D1 migrations are not applied by `wrangler deploy` automatically.
+The generated Worker uses NuxtHub D1 and R2 bindings from `nuxt.config.ts`. The project default Worker name is `libroo` through `nitro.cloudflare.wrangler.name`; set `NUXT_CLOUDFLARE_WORKER_NAME` to target a different Worker. The hosted beta CI sets it to `libroo-beta`. The PR-only `Build Cloudflare Worker` workflow validates the Cloudflare build. The push-only `Deploy to Cloudflare` workflow applies D1 migrations immediately before the beta deploy because Cloudflare D1 migrations are not applied by `wrangler deploy` automatically.
 
 ### Promotion Policy
 
@@ -176,8 +176,8 @@ For beta hosted deploys, CI runs on `push` to `main`:
 
 ```bash
 pnpm build:cloudflare
-pnpm dlx wrangler@latest d1 migrations apply DB --remote --config .output/server/wrangler.json
-pnpm dlx wrangler@latest deploy --config .output/server/wrangler.json
+pnpm exec wrangler d1 migrations apply DB --remote --config .output/server/wrangler.json
+pnpm exec wrangler deploy --config .output/server/wrangler.json
 ```
 
 Migration files live in `server/db/migrations`. After beta, append new migrations; do not rewrite migration history for existing hosted data. For manual hosted migrations, use the same generated `.output/server/wrangler.json` after a Cloudflare build.
