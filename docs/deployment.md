@@ -44,7 +44,7 @@ docker buildx build \
   .
 ```
 
-The Docker CI workflow builds `linux/amd64` on pull requests for a faster production-image smoke check. Pushes to `main` and release tags build both `linux/amd64` and `linux/arm64`. It uses Docker metadata rules so pull requests are tagged as `pr-<number>`, release tags like `v1.2.3` produce `1.2.3` and `1.2`, and branch/SHA tags are available for traceability. The same metadata is written as OCI image labels.
+The Docker CI workflow builds `linux/amd64` on pull requests for a faster production-image check. Same-repository pull requests push `ghcr.io/OWNER/libroo:pr-<number>` so the image can be inspected from GitHub Packages. Pull requests from forks are build-only and load the image into the runner instead of pushing, because forked PRs should not receive package write access. Pushes to `main` and release tags build and push both `linux/amd64` and `linux/arm64`. It uses Docker metadata rules so release tags like `v1.2.3` produce `1.2.3` and `1.2`, and branch/SHA tags are available for traceability. The same metadata is written as OCI image labels.
 
 Run locally with Docker Compose:
 
