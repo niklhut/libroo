@@ -79,6 +79,8 @@ Plunk delivery is available in both profiles and is the only email provider in t
 
 ```bash
 NUXT_EMAIL_VERIFICATION_ENABLED=true
+NUXT_EMAIL_FROM=no-reply@your-libroo.example.com
+NUXT_EMAIL_REPLY_TO=support@your-libroo.example.com
 NUXT_EMAIL_PROVIDER=plunk
 NUXT_PLUNK_API_KEY=sk_your_secret_key
 NUXT_PLUNK_BASE_URL=https://next-api.useplunk.com

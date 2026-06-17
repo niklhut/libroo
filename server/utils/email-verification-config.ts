@@ -4,6 +4,7 @@ export interface EmailVerificationConfig {
   enabled: boolean
   provider: EmailProvider
   from: string
+  replyTo: string
   smtp: {
     host: string
     port: number
@@ -88,11 +89,13 @@ export function getEmailDeliveryConfig(): EmailDeliveryConfig {
   const provider = getEmailProvider()
   const host = getConfigValue('NUXT_SMTP_HOST', 'smtpHost')
   const from = getConfigValue('NUXT_EMAIL_FROM', 'emailFrom') ?? ''
+  const replyTo = getConfigValue('NUXT_EMAIL_REPLY_TO', 'emailReplyTo') ?? ''
   const plunkApiKey = getConfigValue('NUXT_PLUNK_API_KEY', 'plunkApiKey')
 
   return {
     provider,
     from,
+    replyTo,
     smtp: provider === 'smtp' && host
       ? {
           host,
@@ -118,7 +121,7 @@ export function emailDeliveryConfigured(config = getEmailDeliveryConfig()) {
     return Boolean(config.from && config.smtp?.host && hasAuthPair)
   }
 
-  return Boolean(config.plunk?.apiKey && config.plunk?.baseUrl)
+  return Boolean(config.from && config.plunk?.apiKey && config.plunk?.baseUrl)
 }
 
 export function validateEmailVerificationConfig(config = getEmailVerificationConfig()) {
@@ -155,6 +158,7 @@ export function validateEmailDeliveryConfig(config = getEmailDeliveryConfig()) {
   }
 
   if (config.provider === 'plunk') {
+    if (!config.from) missing.push('NUXT_EMAIL_FROM')
     if (!config.plunk?.apiKey) missing.push('NUXT_PLUNK_API_KEY')
     if (!config.plunk?.baseUrl) missing.push('NUXT_PLUNK_BASE_URL')
   }

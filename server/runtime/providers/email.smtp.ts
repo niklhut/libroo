@@ -16,7 +16,11 @@ export const EmailServiceSmtpLive = Layer.succeed(EmailService, {
             throw new Error('Plunk is not configured')
           }
 
-          await sendWithPlunk(config.plunk, message)
+          await sendWithPlunk({
+            ...config.plunk,
+            from: config.from,
+            replyTo: config.replyTo
+          }, message)
           return
         }
 
@@ -39,6 +43,7 @@ export const EmailServiceSmtpLive = Layer.succeed(EmailService, {
         await transport.sendMail({
           from: config.from,
           to: message.to,
+          replyTo: config.replyTo || undefined,
           subject: message.subject,
           text: message.text,
           html: message.html
