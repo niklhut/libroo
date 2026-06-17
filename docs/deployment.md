@@ -1,6 +1,6 @@
 # Deployment
 
-Libroo supports two production paths:
+Libroo supports two deployment paths:
 
 - Self-hosted Docker for private installs that keep SQLite and uploaded assets on a mounted volume.
 - Hosted Cloudflare for the managed Libroo instance using NuxtHub, D1, and R2.
@@ -116,25 +116,25 @@ NUXT_LIBROO_RUNTIME_PROFILE=cloudflare
 pnpm build:cloudflare
 ```
 
-The generated Worker uses NuxtHub D1 and R2 bindings from `nuxt.config.ts`. The CI workflow applies D1 migrations immediately before the production deploy because Cloudflare D1 migrations are not applied by `wrangler deploy` automatically.
+The generated Worker uses NuxtHub D1 and R2 bindings from `nuxt.config.ts`. The project default Worker name is `libroo` through `nitro.cloudflare.wrangler.name`; set `NUXT_CLOUDFLARE_WORKER_NAME` to target a different Worker. The hosted beta CI sets it to `libroo-beta`. The CI workflow applies D1 migrations immediately before the beta deploy because Cloudflare D1 migrations are not applied by `wrangler deploy` automatically.
 
 ### Promotion Policy
 
-Default policy:
+Beta policy:
 
 - Protect `main`.
 - Require the `Lint`, `Unit Tests`, and `Docker Image` checks before merge.
 - Require the Cloudflare Worker build check before merge.
-- Merging to `main` is the production promotion event.
-- Production D1 migrations run only on `push` to `main`, after required checks have passed and the merge has completed.
+- Merging to `main` deploys the beta hosted Worker, `libroo-beta`.
+- Beta D1 migrations run only on `push` to `main`, after required checks have passed and the merge has completed.
 
-Pull requests build the Cloudflare profile but do not deploy and do not apply D1 migrations. This is intentional: a preview Worker that points at the production D1 database could mutate production data or apply schema migrations before the PR is merged.
+Pull requests build the Cloudflare profile but do not deploy and do not apply D1 migrations. This is intentional: a preview Worker that points at the hosted beta D1 database could mutate beta data or apply schema migrations before the PR is merged.
 
-Use a separate `staging` or `preview` branch only if manual QA starts requiring a long-lived environment. If manual promotion becomes necessary, prefer a GitHub Environment approval or a workflow dispatch input over a permanently diverging production branch.
+Use a separate `prod` branch and production Worker when Libroo reaches the 1.0 release path. Until then, `main` is the protected beta integration and deploy branch. If manual promotion becomes necessary, prefer a GitHub Environment approval or a workflow dispatch input over a permanently diverging production branch.
 
 ### Preview Deployments
 
-Preview deployments are disabled by default. They should not reuse the production D1 database or production R2 bucket.
+Preview deployments are disabled by default. They should not reuse the hosted beta D1 database or hosted beta R2 bucket.
 
 Safe preview options:
 
@@ -155,7 +155,7 @@ Repository or environment secrets:
 | `NUXT_HUB_CLOUDFLARE_DATABASE_ID` | D1 database ID used during the Cloudflare build. |
 | `NUXT_HUB_CLOUDFLARE_BUCKET_NAME` | R2 bucket name used during the Cloudflare build. |
 | `NUXT_BETTER_AUTH_SECRET` | Hosted auth secret. |
-| `NUXT_BETTER_AUTH_URL` | Production public origin. |
+| `NUXT_BETTER_AUTH_URL` | Hosted public origin. |
 | `NUXT_PLUNK_API_KEY` | Hosted email delivery. |
 
 Put these in repository or organization secrets. Pull request builds do not need these secrets because the deploy job only runs on `push` to protected `main`. If GitHub Environment protection is enabled later, move the same secrets into a `production` environment and add the workflow `environment` key back after confirming the repository validator accepts it.
@@ -167,10 +167,11 @@ Repository or environment variables:
 | `NUXT_EMAIL_FROM` | Hosted sender address. |
 | `NUXT_EMAIL_VERIFICATION_ENABLED` | `true` |
 | `NUXT_PUBLIC_REGISTRATION_ENABLED` | `false` after the first admin exists. |
+| `NUXT_CLOUDFLARE_WORKER_NAME` | Optional override. Defaults to `libroo`; hosted beta CI sets `libroo-beta`. |
 
 ### Hosted Migrations
 
-For production hosted deploys, CI runs on `push` to `main`:
+For beta hosted deploys, CI runs on `push` to `main`:
 
 ```bash
 pnpm build:cloudflare
@@ -180,7 +181,7 @@ pnpm dlx wrangler@latest deploy --config .output/server/wrangler.json
 
 Migration files live in `server/db/migrations`. After beta, append new migrations; do not rewrite migration history for existing hosted data. For manual hosted migrations, use the same generated `.output/server/wrangler.json` after a Cloudflare build.
 
-Do not run production migrations from pull request workflows. If a PR contains a migration, it is validated by build/typecheck/test, then applied only after that PR is merged to protected `main`.
+Do not run hosted migrations from pull request workflows. If a PR contains a migration, it is validated by build/typecheck/test, then applied only after that PR is merged to protected `main`.
 
 ### Hosted Rollback
 

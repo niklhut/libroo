@@ -4,6 +4,7 @@ const runtimeProfile = process.env.NUXT_LIBROO_RUNTIME_PROFILE === 'cloudflare'
   : 'selfhost'
 const cloudflareD1DatabaseId = process.env.NUXT_HUB_CLOUDFLARE_DATABASE_ID
 const cloudflareR2BucketName = process.env.NUXT_HUB_CLOUDFLARE_BUCKET_NAME
+const cloudflareWorkerName = process.env.NUXT_CLOUDFLARE_WORKER_NAME || 'libroo'
 
 export default defineNuxtConfig({
   modules: [
@@ -56,6 +57,13 @@ export default defineNuxtConfig({
   compatibilityDate: '2025-01-15',
 
   nitro: {
+    cloudflare: runtimeProfile === 'cloudflare'
+      ? {
+          wrangler: {
+            name: cloudflareWorkerName
+          }
+        }
+      : undefined,
     experimental: {
       tasks: true
     },

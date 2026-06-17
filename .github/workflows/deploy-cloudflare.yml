@@ -16,6 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      NUXT_CLOUDFLARE_WORKER_NAME: libroo-beta
 
     steps:
       - name: Checkout
@@ -36,8 +38,8 @@ jobs:
       - name: Build Cloudflare worker
         run: pnpm build:cloudflare
 
-  deploy-production:
-    name: Deploy production
+  deploy-beta:
+    name: Deploy beta
     needs: build
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
@@ -49,6 +51,7 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       NUXT_HUB_CLOUDFLARE_DATABASE_ID: ${{ secrets.NUXT_HUB_CLOUDFLARE_DATABASE_ID }}
       NUXT_HUB_CLOUDFLARE_BUCKET_NAME: ${{ secrets.NUXT_HUB_CLOUDFLARE_BUCKET_NAME }}
+      NUXT_CLOUDFLARE_WORKER_NAME: libroo-beta
       NUXT_BETTER_AUTH_SECRET: ${{ secrets.NUXT_BETTER_AUTH_SECRET }}
       NUXT_BETTER_AUTH_URL: ${{ secrets.NUXT_BETTER_AUTH_URL }}
       NUXT_PLUNK_API_KEY: ${{ secrets.NUXT_PLUNK_API_KEY }}
@@ -75,8 +78,8 @@ jobs:
       - name: Build Cloudflare worker
         run: pnpm build:cloudflare
 
-      - name: Apply production D1 migrations
+      - name: Apply beta D1 migrations
         run: pnpm dlx wrangler@latest d1 migrations apply DB --remote --config .output/server/wrangler.json
 
-      - name: Deploy production worker
+      - name: Deploy beta worker
         run: pnpm dlx wrangler@latest deploy --config .output/server/wrangler.json
