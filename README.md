@@ -35,33 +35,26 @@ NUXT_BETTER_AUTH_URL=https://your-libroo.example.com
 
 Libroo has two runtime profiles. Runtime-specific database, storage, email, and HTTP client implementations are composed as Effect layers under `server/runtime/`, so route handlers, services, and repositories stay shared. The build defaults to `selfhost`; set `NUXT_LIBROO_RUNTIME_PROFILE=cloudflare` explicitly for the hosted Worker profile.
 
-Hosted Cloudflare/NuxtHub:
+For production Docker, Compose, Cloudflare promotion, preview deployments, migrations, and rollback expectations, see [docs/deployment.md](docs/deployment.md).
+
+Hosted Cloudflare/NuxtHub build check:
 
 ```bash
 NUXT_LIBROO_RUNTIME_PROFILE=cloudflare
 NUXT_EMAIL_PROVIDER=plunk
 pnpm build:cloudflare
-
-# Verify the Worker bundle locally before deploying.
-pnpm dlx wrangler@latest --cwd .output deploy --dry-run --outdir /tmp/libroo-wrangler-dry-run
-
-# Deploy to Cloudflare after verification.
-pnpm dlx wrangler@latest --cwd .output deploy
 ```
 
-This profile uses NuxtHub D1, NuxtHub/R2 blob storage, Plunk email delivery, and stores cover images without server-side conversion. It does not import the self-hosted `sharp`, `nodemailer`, or local filesystem storage implementations.
+This profile uses NuxtHub D1, NuxtHub/R2 blob storage, and Plunk email delivery. Hosted deploys are promoted through the protected `main` branch policy documented in [docs/deployment.md](docs/deployment.md).
 
 Self-hosted Docker:
 
 ```bash
-NUXT_LIBROO_RUNTIME_PROFILE=selfhost
-NUXT_DATABASE_URL=file:.data/db/sqlite.db
-NUXT_LOCAL_STORAGE_DIR=.data/blob
-pnpm build:selfhost
-docker build .
+docker build -t libroo:local .
+docker compose up
 ```
 
-This profile uses local libSQL/SQLite storage through Drizzle, local filesystem blob storage, WebP cover conversion through `sharp`, and SMTP or Plunk email delivery. The Docker image defaults to `NUXT_DATABASE_URL=file:/data/db/sqlite.db` and `NUXT_LOCAL_STORAGE_DIR=/data/blob`; mount `/data` as the persistent volume. The image pre-creates `/data/db/` and `/data/blob/`, and the application also creates missing database and blob parent directories at runtime, so a fresh mounted `/data` volume can be empty.
+This profile uses local libSQL/SQLite storage through Drizzle, local filesystem blob storage, WebP cover conversion through `sharp`, and SMTP or Plunk email delivery. The image defaults to `NUXT_DATABASE_URL=file:/data/db/sqlite.db` and `NUXT_LOCAL_STORAGE_DIR=/data/blob`; mount `/data` as the persistent volume.
 
 ## Email Verification
 

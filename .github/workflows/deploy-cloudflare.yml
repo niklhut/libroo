@@ -1,0 +1,60 @@
+name: Deploy to Cloudflare
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: cloudflare-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy-beta:
+    name: Deploy beta
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+    env:
+      NUXT_HUB_CLOUDFLARE_DATABASE_ID: ${{ secrets.NUXT_HUB_CLOUDFLARE_DATABASE_ID }}
+      NUXT_HUB_CLOUDFLARE_BUCKET_NAME: ${{ secrets.NUXT_HUB_CLOUDFLARE_BUCKET_NAME }}
+      NUXT_CLOUDFLARE_WORKER_NAME: libroo-beta
+      NUXT_BETTER_AUTH_SECRET: ${{ secrets.NUXT_BETTER_AUTH_SECRET }}
+      NUXT_BETTER_AUTH_URL: ${{ secrets.NUXT_BETTER_AUTH_URL }}
+      NUXT_PLUNK_API_KEY: ${{ secrets.NUXT_PLUNK_API_KEY }}
+      NUXT_EMAIL_FROM: ${{ vars.NUXT_EMAIL_FROM }}
+      NUXT_EMAIL_VERIFICATION_ENABLED: ${{ vars.NUXT_EMAIL_VERIFICATION_ENABLED || 'true' }}
+      NUXT_PUBLIC_REGISTRATION_ENABLED: ${{ vars.NUXT_PUBLIC_REGISTRATION_ENABLED || 'false' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Install node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Cloudflare worker
+        run: pnpm build:cloudflare
+
+      - name: Apply beta D1 migrations
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: pnpm exec wrangler d1 migrations apply DB --remote --config .output/server/wrangler.json
+
+      - name: Deploy beta worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: pnpm exec wrangler deploy --config .output/server/wrangler.json
