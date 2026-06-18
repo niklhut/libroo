@@ -41,6 +41,7 @@ vi.mock('../../../../server/utils/email-verification-config', () => ({
     enabled: false,
     provider: 'smtp',
     from: '',
+    replyTo: '',
     smtp: null,
     plunk: null
   })),

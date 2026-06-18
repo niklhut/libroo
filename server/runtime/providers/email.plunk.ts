@@ -19,7 +19,11 @@ export const EmailServicePlunkLive = Layer.succeed(EmailService, {
           throw new Error('Plunk is not configured')
         }
 
-        await sendWithPlunk(config.plunk, message)
+        await sendWithPlunk({
+          ...config.plunk,
+          from: config.from,
+          replyTo: config.replyTo
+        }, message)
       },
       catch: error => new EmailDeliveryError({
         message: error instanceof Error ? error.message : 'Unable to send email'
@@ -28,7 +32,7 @@ export const EmailServicePlunkLive = Layer.succeed(EmailService, {
 })
 
 export async function sendWithPlunk(
-  config: { apiKey: string, baseUrl: string },
+  config: { apiKey: string, baseUrl: string, from: string, replyTo?: string },
   message: EmailMessage
 ) {
   const controller = new AbortController()
@@ -44,6 +48,8 @@ export async function sendWithPlunk(
       },
       body: JSON.stringify({
         to: message.to,
+        from: formatPlunkAddress(config.from),
+        ...(config.replyTo ? { reply: config.replyTo } : {}),
         subject: message.subject,
         body: message.html ?? message.text
       })
@@ -67,5 +73,17 @@ export async function sendWithPlunk(
     }
   } finally {
     clearTimeout(timeout)
+  }
+}
+
+function formatPlunkAddress(address: string) {
+  const trimmed = address.trim()
+  const match = trimmed.match(/^"?([^"<]+?)"?\s*<([^>]+)>$/)
+
+  if (!match) return trimmed
+
+  return {
+    name: match[1]?.trim(),
+    email: match[2]?.trim()
   }
 }

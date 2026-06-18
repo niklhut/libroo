@@ -5,6 +5,22 @@ const runtimeProfile = process.env.NUXT_LIBROO_RUNTIME_PROFILE === 'cloudflare'
 const cloudflareD1DatabaseId = process.env.NUXT_HUB_CLOUDFLARE_DATABASE_ID
 const cloudflareR2BucketName = process.env.NUXT_HUB_CLOUDFLARE_BUCKET_NAME
 const cloudflareWorkerName = process.env.NUXT_CLOUDFLARE_WORKER_NAME || 'libroo'
+const cloudflareCustomDomain = process.env.NUXT_CLOUDFLARE_CUSTOM_DOMAIN
+
+function definedEnvVars(vars: Record<string, string | undefined>) {
+  return Object.fromEntries(
+    Object.entries(vars).filter(([, value]) => value !== undefined && value !== '')
+  )
+}
+
+const cloudflareRuntimeVars = definedEnvVars({
+  NUXT_BETTER_AUTH_URL: process.env.NUXT_BETTER_AUTH_URL,
+  NUXT_EMAIL_FROM: process.env.NUXT_EMAIL_FROM,
+  NUXT_EMAIL_VERIFICATION_ENABLED: process.env.NUXT_EMAIL_VERIFICATION_ENABLED,
+  NUXT_PLUNK_BASE_URL: process.env.NUXT_PLUNK_BASE_URL,
+  NUXT_PUBLIC_REGISTRATION_ENABLED: process.env.NUXT_PUBLIC_REGISTRATION_ENABLED
+})
+const hasCloudflareRuntimeVars = Object.keys(cloudflareRuntimeVars).length > 0
 
 export default defineNuxtConfig({
   modules: [
@@ -33,6 +49,7 @@ export default defineNuxtConfig({
     emailVerificationEnabled: 'false',
     emailProvider: runtimeProfile === 'cloudflare' ? 'plunk' : 'smtp',
     emailFrom: '',
+    emailReplyTo: '',
     smtpHost: '',
     smtpPort: '587',
     smtpSecure: 'false',
@@ -65,7 +82,26 @@ export default defineNuxtConfig({
     cloudflare: runtimeProfile === 'cloudflare'
       ? {
           wrangler: {
-            name: cloudflareWorkerName
+            name: cloudflareWorkerName,
+            ...(cloudflareCustomDomain
+              ? {
+                  routes: [
+                    {
+                      pattern: cloudflareCustomDomain,
+                      custom_domain: true
+                    }
+                  ],
+                  workers_dev: false
+                }
+              : {}),
+            ...(hasCloudflareRuntimeVars ? { vars: cloudflareRuntimeVars } : {}),
+            observability: {
+              enabled: true,
+              logs: {
+                enabled: true
+              }
+            },
+            upload_source_maps: true
           }
         }
       : undefined,

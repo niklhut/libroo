@@ -86,7 +86,7 @@ const db = drizzle(client)
 
 try {
   await migrate(db, {
-    migrationsFolder: resolve('server/db/migrations')
+    migrationsFolder: resolve('server/db/migrations/sqlite')
   })
 } catch (error) {
   const cause = error?.cause

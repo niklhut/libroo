@@ -79,6 +79,8 @@ Plunk delivery is available in both profiles and is the only email provider in t
 
 ```bash
 NUXT_EMAIL_VERIFICATION_ENABLED=true
+NUXT_EMAIL_FROM=no-reply@your-libroo.example.com
+NUXT_EMAIL_REPLY_TO=support@your-libroo.example.com
 NUXT_EMAIL_PROVIDER=plunk
 NUXT_PLUNK_API_KEY=sk_your_secret_key
 NUXT_PLUNK_BASE_URL=https://next-api.useplunk.com
@@ -105,7 +107,7 @@ Deploy the application with an empty database, then open `/register` on your dep
 
 ## Database Migrations
 
-The beta release starts from a clean baseline migration at `server/db/migrations/0000_initial_beta.sql`, generated from the current Drizzle schema. Fresh installs should apply that baseline to an empty database; the obsolete development-era migration chain is archived under `docs/pre-beta-migrations/` for reference only and is not part of normal database initialization.
+The beta release starts from a clean baseline migration at `server/db/migrations/sqlite/0000_initial_beta.sql`, generated from the current Drizzle schema. Fresh installs should apply that baseline to an empty database; the obsolete development-era migration chain is archived under `docs/pre-beta-migrations/` for reference only and is not part of normal database initialization.
 
 This reset is a one-time beta boundary cleanup. After beta, keep migrations linear and append new Drizzle migrations instead of rewriting history. Databases created before the beta baseline are not guaranteed to upgrade automatically unless a one-off manual migration, export, or import path is provided for that specific deployment.
 
