@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { LibraryBook, BatchDeleteResult, BookLocationWithCount } from '~~/shared/types/book'
+import type { LibraryBook, BookLocationWithCount } from '~~/shared/types/book'
 import {
   buildLibraryRouteQuery,
   describeActiveLibraryFilters,
@@ -43,8 +43,6 @@ const {
 } = storeToRefs(dashboardStore)
 
 const {
-  removeBooks: removeBooksAction,
-  getLoadedPages: getLoadedPagesAction,
   clearNeedsSync: clearNeedsSyncAction,
   resetResults: resetResultsAction
 } = dashboardStore
@@ -83,10 +81,6 @@ const isLoadingMore = ref(false)
 const filterRefreshTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 const ALL_LOCATIONS_VALUE = '__all_locations__'
 const areFiltersExpanded = ref(false)
-
-// Selection state
-const isSelectMode = ref(false)
-const selectedBooks = shallowRef<Set<string>>(new Set())
 
 const shouldFetchInitial = allBooks.value.length === 0 || !paginationState.value
 
@@ -203,8 +197,6 @@ const activeAdvancedFilterCount = computed(() => getActiveLibraryFilterCount({
   groupByLocation: groupByLocation.value
 }))
 const hasActiveAdvancedFilters = computed(() => activeAdvancedFilterCount.value > 0)
-const selectedCount = computed(() => selectedBooks.value.size)
-const allSelected = computed(() => books.value.length > 0 && selectedBooks.value.size === books.value.length)
 const loanStatusItems = [
   { label: 'All loans', value: 'all' },
   { label: 'Available', value: 'available' },
@@ -285,8 +277,6 @@ watch(locationId, (nextLocationId) => {
 
 async function applyFilters() {
   resetResultsAction()
-  selectedBooks.value = new Set()
-  isSelectMode.value = false
 
   updateBrowserQuery({
     page: 1,
@@ -327,34 +317,6 @@ function clearFilters() {
   groupByLocation.value = false
 }
 
-// Toggle select mode
-function toggleSelectMode() {
-  isSelectMode.value = !isSelectMode.value
-  if (!isSelectMode.value) {
-    selectedBooks.value = new Set()
-  }
-}
-
-// Toggle book selection
-function toggleBookSelection(id: string) {
-  if (selectedBooks.value.has(id)) {
-    selectedBooks.value.delete(id)
-  } else {
-    selectedBooks.value.add(id)
-  }
-  // Force reactivity
-  selectedBooks.value = new Set(selectedBooks.value)
-}
-
-// Select all / deselect all
-function toggleSelectAll() {
-  if (allSelected.value) {
-    selectedBooks.value = new Set()
-  } else {
-    selectedBooks.value = new Set(books.value.map(b => b.id))
-  }
-}
-
 // Load more
 async function loadMore() {
   if (pagination.value?.hasMore && !isLoadingMore.value) {
@@ -388,72 +350,6 @@ async function syncLoadedPages(targetPages: number) {
     throw error
   }
 }
-
-// Delete selected books
-const isDeleting = ref(false)
-async function deleteSelected() {
-  if (selectedBooks.value.size === 0) return
-
-  isDeleting.value = true
-
-  try {
-    // Call the batch delete endpoint
-    const selectedIds = Array.from(selectedBooks.value)
-
-    const response = await $fetch<BatchDeleteResult>('/api/books/batch-delete', {
-      method: 'POST',
-      body: { ids: selectedIds }
-    })
-
-    const { removedIds, failedIds } = response
-
-    // Remove successfully deleted books from selection
-    if (removedIds.length > 0) {
-      removedIds.forEach(id => selectedBooks.value.delete(id))
-      // Force reactivity
-      selectedBooks.value = new Set(selectedBooks.value)
-    }
-
-    // Toggle off select mode only if everything was removed
-    if (selectedBooks.value.size === 0) {
-      isSelectMode.value = false
-    }
-
-    // Prepare toast message
-    if (failedIds.length === 0) {
-      toast.add({
-        title: 'Books removed',
-        description: `${removedIds.length} book(s) removed from your library`,
-        color: 'success'
-      })
-    } else {
-      const failedMessage = `Failed IDs: ${failedIds.join(', ')}`
-
-      toast.add({
-        title: 'Partial success',
-        description: `${removedIds.length} removed, ${failedIds.length} failed. ${failedMessage}`,
-        color: 'warning'
-      })
-    }
-
-    // Keep dashboard state intact while removing deleted books from cache
-    if (removedIds.length > 0) {
-      removeBooksAction(removedIds)
-      await syncLoadedPages(getLoadedPagesAction())
-    }
-  } catch (err: unknown) {
-    const message = err instanceof Error
-      ? err.message
-      : (err as { data?: { message?: string } })?.data?.message || 'An error occurred'
-    toast.add({
-      title: 'Error processing deletion',
-      description: message,
-      color: 'error'
-    })
-  } finally {
-    isDeleting.value = false
-  }
-}
 </script>
 
 <template>
@@ -464,18 +360,6 @@ async function deleteSelected() {
       :description="pagination ? `${pagination.totalItems} ${pagination.totalItems === 1 ? 'book' : 'books'}` : undefined"
     >
       <template #links>
-        <!-- Select mode toggle - fixed width -->
-        <UButton
-          v-if="hasBooks"
-          size="lg"
-          color="neutral"
-          variant="outline"
-          icon="i-lucide-check-square"
-          class="min-w-25"
-          @click="toggleSelectMode"
-        >
-          {{ isSelectMode ? 'Cancel' : 'Select' }}
-        </UButton>
         <UButton
           icon="i-lucide-map"
           size="lg"
@@ -622,44 +506,6 @@ async function deleteSelected() {
         </UCollapsible>
       </section>
 
-      <!-- Selection toolbar -->
-      <div
-        v-if="isSelectMode && hasBooks"
-        class="mb-6 p-4 bg-muted rounded-lg flex items-center justify-between"
-      >
-        <div class="flex items-center gap-4">
-          <UButton
-            color="neutral"
-            variant="ghost"
-            size="sm"
-            @click="toggleSelectAll"
-          >
-            {{ allSelected ? 'Deselect All' : 'Select All' }}
-          </UButton>
-          <span class="text-sm text-muted">
-            {{ selectedCount }} selected
-          </span>
-        </div>
-        <DeleteConfirmDialog
-          title="Delete selected books?"
-          :description="`This will permanently remove ${selectedCount} selected ${selectedCount === 1 ? 'book' : 'books'} from your library.`"
-          confirm-label="Delete Selected"
-          @confirm="deleteSelected"
-        >
-          <template #trigger="{ open }">
-            <UButton
-              color="error"
-              :disabled="selectedCount === 0 || isDeleting"
-              :loading="isDeleting"
-              icon="i-lucide-trash-2"
-              @click="open"
-            >
-              Delete Selected
-            </UButton>
-          </template>
-        </DeleteConfirmDialog>
-      </div>
-
       <!-- Loading State -->
       <div
         v-if="status === 'pending' && !hasBooks"
@@ -751,9 +597,6 @@ async function deleteSelected() {
                 :location="book.location"
                 :added-at="book.addedAt"
                 :active-loan="book.activeLoan"
-                :selectable="isSelectMode"
-                :selected="selectedBooks.has(book.id)"
-                @select="toggleBookSelection"
               />
             </div>
           </section>
@@ -775,9 +618,6 @@ async function deleteSelected() {
             :location="book.location"
             :added-at="book.addedAt"
             :active-loan="book.activeLoan"
-            :selectable="isSelectMode"
-            :selected="selectedBooks.has(book.id)"
-            @select="toggleBookSelection"
           />
         </div>
 
