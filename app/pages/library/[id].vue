@@ -1,5 +1,8 @@
 <script setup lang="ts">
+import { booleanConfigValue } from '~~/shared/utils/runtime-config'
+
 const route = useRoute()
+const config = useRuntimeConfig()
 const toast = useToast()
 const dashboardStore = useLibraryDashboardStore()
 const { removeBooks, getLoadedPages, markNeedsSync } = dashboardStore
@@ -55,6 +58,9 @@ function formatDate(dateInput: string | Date | null): string | null {
 // Format dates nicely
 const formattedAddedAt = computed(() => formatDate(book.value?.addedAt ?? null))
 const formattedPublishDate = computed(() => formatDate(book.value?.publishDate ?? null))
+const showOpenLibraryLinks = computed(() =>
+  booleanConfigValue(config.public.openLibraryLinksEnabled, false)
+)
 
 // Remove book
 async function removeBook(confirmActiveLoan = false) {
@@ -586,7 +592,7 @@ async function saveReadingProgress(progress: {
               Record loan
             </UButton>
             <UButton
-              v-if="book.openLibraryKey"
+              v-if="showOpenLibraryLinks && book.openLibraryKey"
               color="neutral"
               variant="outline"
               icon="i-lucide-external-link"
@@ -596,7 +602,7 @@ async function saveReadingProgress(progress: {
               View Edition
             </UButton>
             <UButton
-              v-if="book.workKey"
+              v-if="showOpenLibraryLinks && book.workKey"
               color="neutral"
               variant="outline"
               icon="i-lucide-library"

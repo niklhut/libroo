@@ -125,6 +125,18 @@ Invite emails use the same SMTP or Plunk settings as verification emails. Link-o
 
 For a new private hosted instance, leave public registration enabled until the first account is created and promoted automatically to administrator. Then set `NUXT_PUBLIC_REGISTRATION_ENABLED=false`, restart the deployment, and create invites from the admin users page.
 
+## Open Library Source Links
+
+Libroo uses Open Library metadata for ISBN lookup, but the hosted/product experience hides outbound Open Library edition and work links by default. This keeps book detail pages focused on the private library workflow and avoids nudging users from a hosted private catalog to a third-party site.
+
+Local development enables those links by default so metadata integration is easy to inspect while testing. Self-hosted and hosted operators can explicitly enable the links when source attribution, record debugging, or private catalog auditing matters:
+
+```bash
+NUXT_PUBLIC_OPEN_LIBRARY_LINKS_ENABLED=true
+```
+
+Leave the value unset or set it to `false` for public hosted installs. When disabled, Libroo removes the Open Library actions entirely instead of rendering empty or inactive buttons.
+
 ## Local Development
 
 ```bash

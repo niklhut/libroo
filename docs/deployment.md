@@ -81,6 +81,7 @@ Optional email and registration settings:
 | --- | --- | --- |
 | `NUXT_EMAIL_VERIFICATION_ENABLED` | `false` | Set `true` for public installs. |
 | `NUXT_PUBLIC_REGISTRATION_ENABLED` | `true` | Set `false` after creating the first admin for invite-only operation. |
+| `NUXT_PUBLIC_OPEN_LIBRARY_LINKS_ENABLED` | `false` in production, `true` in development | Shows outbound Open Library edition/work links on book detail pages. Keep disabled for the hosted/product experience; enable intentionally for self-hosted source visibility or metadata debugging. |
 | `NUXT_EMAIL_PROVIDER` | `smtp` | Self-host supports `smtp` or `plunk`. |
 | `NUXT_EMAIL_FROM` | empty | Required when email sending is enabled. |
 | `NUXT_EMAIL_REPLY_TO` | empty | Optional reply-to address for sent mail. |
@@ -186,6 +187,7 @@ Repository or environment variables:
 | `NUXT_EMAIL_REPLY_TO` | Optional hosted reply-to address. |
 | `NUXT_EMAIL_VERIFICATION_ENABLED` | `true` |
 | `NUXT_PUBLIC_REGISTRATION_ENABLED` | `false` after the first admin exists. |
+| `NUXT_PUBLIC_OPEN_LIBRARY_LINKS_ENABLED` | `false` unless the hosted operator intentionally wants third-party source links visible. |
 | `NUXT_CLOUDFLARE_WORKER_NAME` | Optional override. Defaults to `libroo`; hosted beta CI sets `libroo-beta`. |
 
 ### Hosted Migrations
