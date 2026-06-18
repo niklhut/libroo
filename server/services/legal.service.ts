@@ -1,5 +1,6 @@
 import { Context, Data, Effect, Layer } from 'effect'
 import type * as HttpClient from '@effect/platform/HttpClient'
+import { LegalRepository, type LegalDocumentFetchError } from '../repositories/legal.repository'
 import type { LegalDocument, LegalDocumentKind, LegalStatus } from '~~/shared/types/legal'
 
 export class InvalidLegalDocumentSourceError extends Data.TaggedError('InvalidLegalDocumentSourceError')<{
@@ -44,8 +45,8 @@ export const LegalServiceLive = Layer.effect(
     return {
       getStatus: () =>
         Effect.succeed({
-          privacy: Boolean(markdownUrlFor('privacy')),
-          imprint: Boolean(markdownUrlFor('imprint'))
+          privacy: validateMarkdownUrl(markdownUrlFor('privacy')),
+          imprint: validateMarkdownUrl(markdownUrlFor('imprint'))
         } satisfies LegalStatus),
 
       getDocument: kind =>

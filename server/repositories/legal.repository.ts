@@ -28,7 +28,6 @@ export const LegalRepositoryLive = Layer.succeed(LegalRepository, {
     HttpClient.get(url, {
       accept: 'text/markdown, text/plain;q=0.9, */*;q=0.1'
     }).pipe(
-      Effect.timeout(Duration.seconds(5)),
       Effect.flatMap((response) => {
         if (response.status < 200 || response.status >= 300) {
           return Effect.fail(legalDocumentFetchError(`Markdown source responded with ${response.status}.`))
@@ -49,6 +48,7 @@ export const LegalRepositoryLive = Layer.succeed(LegalRepository, {
           })
         )
       }),
+      Effect.timeout(Duration.seconds(5)),
       Effect.mapError((error) => {
         if (isLegalDocumentFetchError(error)) {
           return error

@@ -1,10 +1,20 @@
 <script setup lang="ts">
+import security from 'comark/plugins/security'
+
 defineProps<{
   title: string
   description: string
   text: string
   errorMessage?: string
 }>()
+
+const comarkPlugins = [
+  security({
+    blockedTags: ['script', 'iframe', 'object', 'embed'],
+    allowedProtocols: ['http', 'https', 'mailto'],
+    allowDataImages: false
+  })
+]
 </script>
 
 <template>
@@ -37,7 +47,10 @@ defineProps<{
         v-else
         class="legal-markdown max-w-3xl wrap-break-word text-sm leading-7 text-default"
       >
-        <Comark :markdown="text" />
+        <Comark
+          :markdown="text"
+          :plugins="comarkPlugins"
+        />
       </section>
     </UPageBody>
   </UContainer>

@@ -101,6 +101,9 @@ Libroo does not ship legally sufficient privacy-policy or imprint templates.
 | `NUXT_PUBLIC_LEGAL_PRIVACY_POLICY_URL` / `NUXT_PUBLIC_LEGAL_IMPRINT_URL` | empty | Canonical legal page URLs. If set, footer links point to these URLs and the local route redirects there. |
 | `NUXT_LEGAL_PRIVACY_POLICY_MARKDOWN_URL` / `NUXT_LEGAL_IMPRINT_MARKDOWN_URL` | empty | Server-side Markdown source URLs. Used only when the matching canonical URL is empty. |
 
+If both values for a legal page are empty, the footer link is hidden and the
+direct route shows an empty state.
+
 ### Persistent Data
 
 Mount `/data` as the durable volume. It contains:
