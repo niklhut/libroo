@@ -18,6 +18,7 @@ const cloudflareRuntimeVars = definedEnvVars({
   NUXT_EMAIL_FROM: process.env.NUXT_EMAIL_FROM,
   NUXT_EMAIL_VERIFICATION_ENABLED: process.env.NUXT_EMAIL_VERIFICATION_ENABLED,
   NUXT_PLUNK_BASE_URL: process.env.NUXT_PLUNK_BASE_URL,
+  NUXT_PUBLIC_OPEN_LIBRARY_LINKS_ENABLED: process.env.NUXT_PUBLIC_OPEN_LIBRARY_LINKS_ENABLED,
   NUXT_PUBLIC_REGISTRATION_ENABLED: process.env.NUXT_PUBLIC_REGISTRATION_ENABLED
 })
 const hasCloudflareRuntimeVars = Object.keys(cloudflareRuntimeVars).length > 0
@@ -61,6 +62,7 @@ export default defineNuxtConfig({
     legalImprintMarkdownUrl: '',
     public: {
       registrationEnabled: 'true',
+      openLibraryLinksEnabled: process.env.NODE_ENV === 'development' ? 'true' : 'false',
       legalPrivacyPolicyUrl: '',
       legalImprintUrl: ''
     }
