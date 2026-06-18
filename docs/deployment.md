@@ -188,6 +188,8 @@ Repository or environment variables:
 | `NUXT_EMAIL_VERIFICATION_ENABLED` | `true` |
 | `NUXT_PUBLIC_REGISTRATION_ENABLED` | `false` after the first admin exists. |
 | `NUXT_PUBLIC_OPEN_LIBRARY_LINKS_ENABLED` | `false` unless the hosted operator intentionally wants third-party source links visible. |
+| `NUXT_PUBLIC_LEGAL_PRIVACY_POLICY_URL` / `NUXT_PUBLIC_LEGAL_IMPRINT_URL` | Optional canonical hosted legal page URLs. |
+| `NUXT_LEGAL_PRIVACY_POLICY_MARKDOWN_URL` / `NUXT_LEGAL_IMPRINT_MARKDOWN_URL` | Optional Markdown source URLs, used when the matching canonical URL is empty. |
 | `NUXT_CLOUDFLARE_WORKER_NAME` | Optional override. Defaults to `libroo`; hosted beta CI sets `libroo-beta`. |
 
 ### Hosted Migrations
