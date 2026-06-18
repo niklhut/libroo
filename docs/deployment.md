@@ -87,6 +87,19 @@ Optional email and registration settings:
 | `NUXT_SMTP_USER` / `NUXT_SMTP_PASSWORD` | empty | SMTP credentials, if required by the provider. |
 | `NUXT_PLUNK_API_KEY` / `NUXT_PLUNK_BASE_URL` | empty / `https://next-api.useplunk.com` | Plunk delivery settings. |
 
+Optional legal page settings:
+
+For a hosted setup with a separate public information website, prefer making that
+website the canonical legal home and point the app at those pages with the URL
+variables below. Self-hosters who only deploy the application can point the app
+at Markdown documents hosted on S3, R2, a static web server, or a similar source.
+Libroo does not ship legally sufficient privacy-policy or imprint templates.
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `NUXT_PUBLIC_LEGAL_PRIVACY_POLICY_URL` / `NUXT_PUBLIC_LEGAL_IMPRINT_URL` | empty | Canonical legal page URLs. If set, footer links point to these URLs and the local route redirects there. |
+| `NUXT_LEGAL_PRIVACY_POLICY_MARKDOWN_URL` / `NUXT_LEGAL_IMPRINT_MARKDOWN_URL` | empty | Server-side Markdown source URLs. Used only when the matching canonical URL is empty. |
+
 ### Persistent Data
 
 Mount `/data` as the durable volume. It contains:

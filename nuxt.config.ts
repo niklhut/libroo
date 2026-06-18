@@ -15,7 +15,8 @@ export default defineNuxtConfig({
     '@nuxt/hints',
     '@nuxt/image',
     '@nuxt/scripts',
-    '@nuxt/test-utils'
+    '@nuxt/test-utils',
+    '@comark/nuxt'
   ],
 
   devtools: {
@@ -39,8 +40,12 @@ export default defineNuxtConfig({
     smtpPassword: '',
     plunkApiKey: '',
     plunkBaseUrl: 'https://next-api.useplunk.com',
+    legalPrivacyPolicyMarkdownUrl: '',
+    legalImprintMarkdownUrl: '',
     public: {
-      registrationEnabled: 'true'
+      registrationEnabled: 'true',
+      legalPrivacyPolicyUrl: '',
+      legalImprintUrl: ''
     }
   },
 
