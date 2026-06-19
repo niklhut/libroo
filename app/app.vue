@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { useHead, useRequestURL, useSeoMeta } from '#imports'
+import { appName, formatPageTitle } from '~/utils/page-title'
 
-const appName = 'Libroo'
 const appDescription = 'Private library management for inventory, lending, and shelf mapping.'
 const requestUrl = useRequestURL()
 const socialImage = new URL('/libroo-social-card.png', requestUrl.origin).href
 
 useHead({
-  titleTemplate: (title?: string) => title ? `${title} · ${appName}` : appName,
+  titleTemplate: (title?: string) => formatPageTitle(title),
   htmlAttrs: {
     lang: 'en'
   },
