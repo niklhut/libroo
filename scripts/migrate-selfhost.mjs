@@ -51,7 +51,7 @@ function assertDatabaseStorageReady(databasePath) {
       `Libroo cannot write to the database directory: ${databaseDirectory}`,
       'Check the Docker volume or bind-mount permissions for /data.',
       `Original error: ${error instanceof Error ? error.message : String(error)}`
-    ].join('\n'))
+    ].join('\n'), { cause: error })
   } finally {
     rmSync(probePath, { force: true })
   }
@@ -97,7 +97,7 @@ try {
       'The Docker volume mounted at /data is out of writable space or the Docker Desktop disk image is full.',
       'Free Docker disk space, increase the Docker disk image size, or recreate/move the libroo-data volume, then start the container again.',
       `Original error: ${error instanceof Error ? error.message : String(error)}`
-    ].join('\n'))
+    ].join('\n'), { cause: error })
   }
 
   throw error
