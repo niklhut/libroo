@@ -7,6 +7,8 @@ definePageMeta({
   auth: false
 })
 
+usePageTitle('Set New Password')
+
 const route = useRoute()
 const toast = useToast()
 const token = computed(() => {

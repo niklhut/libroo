@@ -4,6 +4,8 @@ import type { SignupInvite, SignupInviteCreateResult, SignupInviteList } from '~
 import { canShowInviteEmailInput } from '~~/shared/utils/email-capability-ui'
 import { booleanConfigValue } from '~~/shared/utils/runtime-config'
 
+usePageTitle('Admin Invites')
+
 const toast = useToast()
 const config = useRuntimeConfig()
 const route = useRoute()

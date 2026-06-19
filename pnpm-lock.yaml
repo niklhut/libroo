@@ -62,6 +62,9 @@ importers:
       effect:
         specifier: ^3.21.3
         version: 3.21.3
+      h3:
+        specifier: 1.15.11
+        version: 1.15.11
       jose:
         specifier: ^6.2.3
         version: 6.2.3

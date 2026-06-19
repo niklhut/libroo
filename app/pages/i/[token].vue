@@ -17,6 +17,8 @@ const { data: invite, status } = await useFetch<InvitePreview | null>(`/api/invi
   default: () => null
 })
 
+usePageTitle(computed(() => invite.value?.title ? `Invitation: ${invite.value.title}` : 'Book Invitation'))
+
 const coverUrl = computed(() => invite.value?.coverPath ? `/api/invite/${token}/cover` : null)
 const redirectPath = computed(() => `/i/${token}`)
 const isSignedIn = computed(() => Boolean(user.value))

@@ -5,6 +5,8 @@ definePageMeta({
   auth: false
 })
 
+usePageTitle('Email Verification')
+
 const route = useRoute()
 const status = ref<'pending' | 'success' | 'expired' | 'invalid' | 'failure'>('pending')
 const message = computed(() => {

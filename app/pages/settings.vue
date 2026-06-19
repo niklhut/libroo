@@ -10,6 +10,8 @@ import type { LibraryImportConflictStrategy, LibraryImportResult } from '~~/shar
 import { canShowVerificationResendAction, canUseVerifiedEmailChange, getPasswordUpdatedDescription } from '~~/shared/utils/email-capability-ui'
 import { authClient } from '~/utils/auth-client'
 
+usePageTitle('Settings')
+
 const toast = useToast()
 const route = useRoute()
 const authStore = useAuthStore()

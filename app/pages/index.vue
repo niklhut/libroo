@@ -7,6 +7,8 @@ definePageMeta({
   auth: false
 })
 
+usePageTitle('Loading')
+
 const authStore = useAuthStore()
 const { isAuthenticated, isPending } = storeToRefs(authStore)
 

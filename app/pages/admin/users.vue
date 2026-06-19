@@ -2,6 +2,8 @@
 import type { TableColumn, TableRow } from '@nuxt/ui/components/Table.vue'
 import type { AdminUser, AdminUsersPage } from '~~/shared/types/admin'
 
+usePageTitle('Admin Users')
+
 const toast = useToast()
 const route = useRoute()
 const router = useRouter()

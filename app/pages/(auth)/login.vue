@@ -7,6 +7,8 @@ definePageMeta({
   auth: false
 })
 
+usePageTitle('Login')
+
 const route = useRoute()
 const authStore = useAuthStore()
 const { user } = storeToRefs(authStore)

@@ -36,6 +36,8 @@ watch(data, (response) => {
 const author = computed(() => data.value?.author)
 const hasBooks = computed(() => allBooks.value.length > 0)
 
+usePageTitle(computed(() => author.value?.name ?? 'Author'))
+
 async function loadMore() {
   if (pagination.value?.hasMore && !isLoadingMore.value) {
     isLoadingMore.value = true
