@@ -133,7 +133,8 @@ export function validateEmailVerificationConfig(config = getEmailVerificationCon
     const message = error instanceof Error ? error.message : 'Email delivery is not configured.'
     throw new Error(
       `Email verification is enabled, but ${message.charAt(0).toLowerCase()}${message.slice(1)} `
-      + 'Set these values or disable NUXT_EMAIL_VERIFICATION_ENABLED.'
+      + 'Set these values or disable NUXT_EMAIL_VERIFICATION_ENABLED.',
+      { cause: error }
     )
   }
 }
