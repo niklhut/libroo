@@ -2,6 +2,8 @@
 import type { BookLocationTreeNode, BookLocationWithCount } from '~~/shared/types/book'
 import LocationTreeNode from '~~/app/components/LocationTreeNode.vue'
 
+usePageTitle('Locations')
+
 const toast = useToast()
 
 const newLocationName = ref('')

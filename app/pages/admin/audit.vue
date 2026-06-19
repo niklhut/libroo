@@ -2,6 +2,8 @@
 import type { TableColumn, TableRow } from '@nuxt/ui/components/Table.vue'
 import type { AdminAuditCategory, AdminAuditEntry, AdminAuditLogPage } from '~~/shared/types/admin-audit'
 
+usePageTitle('Admin Audit')
+
 const route = useRoute()
 const router = useRouter()
 const requestFetch = useRequestFetch()

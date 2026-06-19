@@ -1,4 +1,5 @@
 import { Effect } from 'effect'
+import { createError, defineEventHandler, toWebRequest } from 'h3'
 import { auth } from '../../utils/auth'
 import { getEmailCapabilities } from '../../utils/email-capabilities'
 import { getEmailVerificationConfig } from '../../utils/email-verification-config'

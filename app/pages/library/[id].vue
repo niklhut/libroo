@@ -22,6 +22,8 @@ const { data: book, status, refresh } = await useFetch<BookDetails>(`/api/books/
   headers: useRequestHeaders(['cookie'])
 })
 
+usePageTitle(computed(() => book.value?.title ?? 'Book'))
+
 // Computed cover URL
 const coverUrl = computed(() => {
   if (book.value?.coverPath) {

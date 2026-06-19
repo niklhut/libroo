@@ -1,6 +1,9 @@
 <script setup lang="ts">
 // Input mode tabs
 type InputMode = 'isbn' | 'manual' | 'scan' | 'bulk'
+
+usePageTitle('Add Book')
+
 const route = useRoute()
 const router = useRouter()
 

@@ -10,6 +10,8 @@ definePageMeta({
   auth: false
 })
 
+usePageTitle('Create Account')
+
 const route = useRoute()
 const config = useRuntimeConfig()
 const authStore = useAuthStore()

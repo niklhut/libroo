@@ -18,6 +18,8 @@ interface PaginatedResponse {
   }
 }
 
+usePageTitle('Library')
+
 const toast = useToast()
 const route = useRoute()
 

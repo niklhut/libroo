@@ -3,6 +3,8 @@ import type { BorrowedBook, OwnerLoan } from '~~/shared/types/book'
 
 type LoansView = 'loaned' | 'borrowed'
 
+usePageTitle('Loans')
+
 const toast = useToast()
 const route = useRoute()
 const router = useRouter()

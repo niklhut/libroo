@@ -1,5 +1,42 @@
 <script setup lang="ts">
-// App root - uses layout system
+import { useHead, useRequestURL, useSeoMeta } from '#imports'
+
+const appName = 'Libroo'
+const appDescription = 'Private library management for inventory, lending, and shelf mapping.'
+const requestUrl = useRequestURL()
+const socialImage = new URL('/libroo-social-card.png', requestUrl.origin).href
+
+useHead({
+  titleTemplate: (title?: string) => title ? `${title} · ${appName}` : appName,
+  htmlAttrs: {
+    lang: 'en'
+  },
+  link: [
+    { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
+    { rel: 'icon', type: 'image/png', sizes: '96x96', href: '/favicon-96x96.png' },
+    { rel: 'shortcut icon', href: '/favicon.ico' },
+    { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon.png' },
+    { rel: 'manifest', href: '/site.webmanifest' }
+  ],
+  meta: [
+    { name: 'application-name', content: appName },
+    { name: 'apple-mobile-web-app-title', content: appName },
+    { name: 'theme-color', content: '#ffffff' }
+  ]
+})
+
+useSeoMeta({
+  description: appDescription,
+  ogTitle: appName,
+  ogDescription: appDescription,
+  ogSiteName: appName,
+  ogType: 'website',
+  ogImage: socialImage,
+  twitterCard: 'summary_large_image',
+  twitterTitle: appName,
+  twitterDescription: appDescription,
+  twitterImage: socialImage
+})
 </script>
 
 <template>

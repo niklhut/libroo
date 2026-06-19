@@ -6,6 +6,8 @@ definePageMeta({
   auth: false
 })
 
+usePageTitle('Reset Password')
+
 const toast = useToast()
 const { data: emailCapabilities } = await useEmailCapabilities()
 const isSubmitting = ref(false)
