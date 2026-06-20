@@ -1,6 +1,7 @@
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { fileURLToPath } from 'node:url'
 import { Effect, Layer } from 'effect'
 import { createClient } from '@libsql/client'
 import { drizzle } from 'drizzle-orm/libsql'
@@ -12,14 +13,18 @@ import { DbService } from '../../../../server/services/db.service'
 describe('AccountDeletionRepository', () => {
   let db: ReturnType<typeof drizzle>
   let dbDir: string
+  let client: ReturnType<typeof createClient> | null = null
 
   beforeEach(async () => {
     dbDir = await mkdtemp(join(tmpdir(), 'libroo-account-deletion-'))
-    const client = createClient({ url: `file:${join(dbDir, 'test.db')}` })
+    client = createClient({ url: `file:${join(dbDir, 'test.db')}` })
     db = drizzle(client)
     await client.execute('PRAGMA foreign_keys = ON')
 
-    const migration = await readFile('server/db/migrations/sqlite/0000_initial_beta.sql', 'utf8')
+    const migrationPath = fileURLToPath(
+      new URL('../../../../server/db/migrations/sqlite/0000_initial_beta.sql', import.meta.url)
+    )
+    const migration = await readFile(migrationPath, 'utf8')
     for (const statement of migration.split('--> statement-breakpoint')) {
       const sql = statement.trim()
       if (sql) {
@@ -29,6 +34,8 @@ describe('AccountDeletionRepository', () => {
   })
 
   afterEach(async () => {
+    client?.close()
+    client = null
     await rm(dbDir, { recursive: true, force: true })
   })
 

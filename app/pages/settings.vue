@@ -94,6 +94,11 @@ watch(verificationStatus, (nextStatus) => {
   pendingEmailChange.value = nextStatus.pendingEmail ?? ''
 }, { immediate: true })
 
+watch(accountDeletionOpen, (isOpen) => {
+  if (isOpen) return
+  resetAccountDeletionForm()
+})
+
 if (route.query.verify === 'required') {
   toast.add({
     title: 'Verify your email',
@@ -110,6 +115,12 @@ function getFailureMessage(err: unknown, fallback: string) {
     || (err as { message?: string })?.message
     || (err instanceof Error ? err.message : undefined)
     || fallback
+}
+
+function resetAccountDeletionForm() {
+  deletionState.currentPassword = ''
+  deletionState.confirmation = ''
+  deletionForm.value?.clear()
 }
 
 async function changeEmail(payload: FormSubmitEvent<AccountEmailChangeSchema>) {
@@ -257,9 +268,7 @@ async function deleteAccount(payload: FormSubmitEvent<AccountDeletionSchema>) {
     })
 
     accountDeletionOpen.value = false
-    deletionState.currentPassword = ''
-    deletionState.confirmation = ''
-    deletionForm.value?.clear()
+    resetAccountDeletionForm()
     toast.add({
       title: 'Account deleted',
       description: 'Your Libroo account and personal library data were deleted.',

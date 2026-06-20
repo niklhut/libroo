@@ -40,10 +40,10 @@ Operators should prefer asking users to delete their own account from Settings b
 For manual support requests:
 
 1. Verify the requester's identity through the hosted support process or the self-hosted administrator's local policy.
-2. If the requester can still sign in, direct them to Settings > Delete account.
-3. If they cannot sign in, reset access first when appropriate, then have them use self-service deletion.
-4. If the requester is the last active admin, promote another trusted active admin before deletion.
-5. If self-service cannot be used, run the same application deletion service from an authenticated maintenance context rather than ad hoc SQL. Ad hoc database deletes can leave blob assets or manual metadata behind.
+2. When the requester can still sign in, direct them to Settings > Delete account.
+3. For requesters who cannot sign in, reset access first when appropriate, then have them use self-service deletion.
+4. Before deleting the last active admin, promote another trusted active admin.
+5. In cases where self-service cannot be used, run the same application deletion service from an authenticated maintenance context rather than ad hoc SQL. Ad hoc database deletes can leave blob assets or manual metadata behind.
 6. Record the support action without storing unnecessary personal details.
 7. Confirm whether backups may retain deleted data until the backup retention window expires.
 

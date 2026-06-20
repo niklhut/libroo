@@ -64,6 +64,7 @@ describe('AccountDeletionService', () => {
 
     expect(result._tag).toBe('Left')
     expect(result.left).toBeInstanceOf(UnauthorizedError)
+    expect(authMock.verifyPassword).toHaveBeenCalledTimes(1)
     expect(deleteAccountData).not.toHaveBeenCalled()
     expect(deleteBlob).not.toHaveBeenCalled()
   })
@@ -98,7 +99,9 @@ describe('AccountDeletionService', () => {
       headers: expect.any(Headers),
       body: { password: 'secret' }
     })
+    expect(deleteAccountData).toHaveBeenCalledTimes(1)
     expect(deleteAccountData).toHaveBeenCalledWith('user-1')
+    expect(deleteBlob).toHaveBeenCalledTimes(2)
     expect(deleteBlob).toHaveBeenCalledWith('covers/manual/user-1/a.webp')
     expect(deleteBlob).toHaveBeenCalledWith('profiles/user-1.webp')
   })
