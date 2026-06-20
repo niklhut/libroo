@@ -20,6 +20,7 @@ const RepositoriesLive = Layer.provideMerge(
     LocationRepositoryLive,
     LibraryTransferRepositoryLive,
     AuthRepositoryLive,
+    AccountDeletionRepositoryLive,
     SignupInviteRepositoryLive,
     HealthRepositoryLive,
     LegalRepositoryLive
@@ -29,7 +30,7 @@ const RepositoriesLive = Layer.provideMerge(
 
 // Service layer (depends on repositories)
 const ServicesLive = Layer.provideMerge(
-  Layer.mergeAll(BookServiceLive, LendingServiceLive, AdminServiceLive, AuditServiceLive, LocationServiceLive, LibraryTransferServiceLive, SignupInviteServiceLive, EmailCapabilityServiceLive, HealthServiceLive, LegalServiceLive),
+  Layer.mergeAll(BookServiceLive, LendingServiceLive, AdminServiceLive, AuditServiceLive, LocationServiceLive, LibraryTransferServiceLive, AccountDeletionServiceLive, SignupInviteServiceLive, EmailCapabilityServiceLive, HealthServiceLive, LegalServiceLive),
   RepositoriesLive
 )
 
@@ -49,6 +50,7 @@ export type MainServices
     | LocationRepository
     | LibraryTransferRepository
     | AuthRepository
+    | AccountDeletionRepository
     | SignupInviteRepository
     | HealthRepository
     | LegalRepository
@@ -58,6 +60,7 @@ export type MainServices
     | AuditService
     | LocationService
     | LibraryTransferService
+    | AccountDeletionService
     | SignupInviteService
     | EmailService
     | EmailCapabilityService
@@ -113,7 +116,9 @@ const errorStatusCodes: Record<string, number> = {
   StorageError: 500,
   HealthCheckError: 503,
   LegalDocumentFetchError: 502,
-  InvalidLegalDocumentSourceError: 500
+  InvalidLegalDocumentSourceError: 500,
+  InvalidAccountDeletionConfirmationError: 400,
+  LastAdminAccountDeletionError: 409
 }
 
 // Custom error message formatters
