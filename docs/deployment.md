@@ -116,6 +116,12 @@ The image creates both directories and runs `scripts/migrate-selfhost.mjs` befor
 
 Secrets should be injected through the orchestrator, an env file outside source control, or a secret manager. Do not bake secrets into the image.
 
+### Account Deletion Operations
+
+Users can delete their own accounts from Settings. Deletion is immediate after current-password verification and destructive confirmation. It removes the Better Auth account/session records, personal library records, owned loans, borrowed-loan associations, user-created manual metadata that is not still referenced by another user, and user-specific uploaded assets.
+
+Operators should use the self-service flow for support requests whenever possible. If an operator restores an old `/data` backup, they must re-run any account deletions that happened after the restored backup point. See [Account Deletion And Retention](./account-deletion.md) for the cleanup semantics, lending behavior, backup notes, and manual support process.
+
 ### Self-Hosted Troubleshooting
 
 If startup fails during migration with `SQLITE_FULL`, SQLite cannot write to the database volume. On Docker Desktop this often means the Docker disk image is full even when the host filesystem still has free space. Check `docker system df`, prune unused images/build cache/volumes, increase Docker Desktop's disk image size, or recreate the `libroo-data` volume after taking any needed backup.

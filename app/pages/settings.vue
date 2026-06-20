@@ -1,12 +1,16 @@
 <script setup lang="ts">
 import type { FormSubmitEvent } from '@nuxt/ui'
 import {
+  ACCOUNT_DELETION_CONFIRMATION_TEXT,
+  accountDeletionSchema,
   accountEmailChangeSchema,
   accountPasswordChangeSchema,
+  type AccountDeletionSchema,
   type AccountEmailChangeSchema,
   type AccountPasswordChangeSchema
 } from '~~/shared/utils/account-settings'
 import type { LibraryImportConflictStrategy, LibraryImportResult } from '~~/shared/types/library-transfer'
+import { roleIncludesAdmin } from '~~/shared/utils/auth-roles'
 import { canShowVerificationResendAction, canUseVerifiedEmailChange, getPasswordUpdatedDescription } from '~~/shared/utils/email-capability-ui'
 import { authClient } from '~/utils/auth-client'
 
@@ -27,9 +31,15 @@ const passwordState = reactive({
   newPassword: '',
   confirmPassword: ''
 })
+const deletionState = reactive({
+  currentPassword: '',
+  confirmation: ''
+})
 
 const isChangingEmail = ref(false)
 const isChangingPassword = ref(false)
+const isDeletingAccount = ref(false)
+const accountDeletionOpen = ref(false)
 const isResendingVerification = ref(false)
 const pendingEmailChange = ref('')
 const showEmailCurrentPassword = ref(false)
@@ -38,6 +48,7 @@ const showNewPassword = ref(false)
 const showConfirmPassword = ref(false)
 const emailForm = useTemplateRef<{ clear: (name?: string | RegExp) => void }>('emailForm')
 const passwordForm = useTemplateRef<{ clear: (name?: string | RegExp) => void }>('passwordForm')
+const deletionForm = useTemplateRef<{ clear: (name?: string | RegExp) => void }>('deletionForm')
 
 const { data: verificationStatus, refresh: refreshVerificationStatus } = await useFetch<{
   enabled: boolean
@@ -53,6 +64,7 @@ const { data: verificationStatus, refresh: refreshVerificationStatus } = await u
   })
 })
 const showVerificationResend = computed(() => canShowVerificationResendAction(emailCapabilities.value, verificationStatus.value))
+const currentUserIsAdmin = computed(() => roleIncludesAdmin(user.value?.role))
 
 const importFileInput = ref<HTMLInputElement | null>(null)
 const importFileName = ref('')
@@ -232,6 +244,36 @@ async function changePassword(payload: FormSubmitEvent<AccountPasswordChangeSche
     })
   } finally {
     isChangingPassword.value = false
+  }
+}
+
+async function deleteAccount(payload: FormSubmitEvent<AccountDeletionSchema>) {
+  isDeletingAccount.value = true
+
+  try {
+    await $fetch('/api/account', {
+      method: 'DELETE',
+      body: payload.data
+    })
+
+    accountDeletionOpen.value = false
+    deletionState.currentPassword = ''
+    deletionState.confirmation = ''
+    deletionForm.value?.clear()
+    toast.add({
+      title: 'Account deleted',
+      description: 'Your Libroo account and personal library data were deleted.',
+      color: 'success'
+    })
+    await navigateTo('/login')
+  } catch (err: unknown) {
+    toast.add({
+      title: 'Account deletion failed',
+      description: getFailureMessage(err, 'Unable to delete your account'),
+      color: 'error'
+    })
+  } finally {
+    isDeletingAccount.value = false
   }
 }
 
@@ -640,6 +682,45 @@ async function importLibraryCsvFile() {
         </div>
       </UCard>
 
+      <UCard class="mt-6 border-error/40">
+        <template #header>
+          <div class="flex items-center gap-2 text-error">
+            <UIcon
+              name="i-lucide-trash-2"
+              class="text-lg"
+            />
+            <span class="font-semibold">Delete account</span>
+          </div>
+        </template>
+
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div class="min-w-0 flex-1 space-y-2">
+            <p class="text-sm text-muted">
+              Permanently delete your account, active sessions, personal library records, loans you own, borrowed-book associations, locations, notes, ratings, reading state, invites, and manual uploaded cover assets.
+            </p>
+            <p class="text-sm text-muted">
+              Shared Open Library metadata can remain when it is not personal to you. Backups may retain deleted data for a limited operator retention window.
+            </p>
+            <p
+              v-if="currentUserIsAdmin"
+              class="text-sm text-muted"
+            >
+              The last active admin cannot delete their own account until another active admin exists.
+            </p>
+          </div>
+
+          <UButton
+            color="error"
+            variant="soft"
+            icon="i-lucide-trash-2"
+            class="w-fit shrink-0 whitespace-nowrap px-5"
+            @click="accountDeletionOpen = true"
+          >
+            Delete account
+          </UButton>
+        </div>
+      </UCard>
+
       <UModal
         v-model:open="importConfirmOpen"
         title="Import library CSV?"
@@ -677,6 +758,85 @@ async function importLibraryCsvFile() {
           >
             Confirm import
           </UButton>
+        </template>
+      </UModal>
+
+      <UModal
+        v-model:open="accountDeletionOpen"
+        title="Delete your account?"
+        description="This action is immediate and cannot be undone."
+        :ui="{ footer: 'justify-end gap-3' }"
+      >
+        <template #body>
+          <UForm
+            ref="deletionForm"
+            :schema="accountDeletionSchema"
+            :state="deletionState"
+            class="space-y-4"
+            @submit="deleteAccount"
+          >
+            <UAlert
+              color="error"
+              variant="soft"
+              icon="i-lucide-triangle-alert"
+              title="What will be deleted"
+              description="Your Better Auth user, accounts and sessions, Libroo library records, user-created tags on books, notes, ratings, locations, reading state, owned loans, borrowed associations, invites, settings, manual book rows that are not retained by another user, and user-specific uploaded assets."
+            />
+
+            <UAlert
+              color="neutral"
+              variant="soft"
+              icon="i-lucide-database"
+              title="What may remain"
+              description="Shared Open Library-derived metadata, minimal non-personal lending snapshots where another user's record still needs them, audit entries with user references removed, and encrypted or offline backups until the operator's backup retention window expires."
+            />
+
+            <UFormField
+              label="Current password"
+              name="currentPassword"
+              required
+            >
+              <UInput
+                v-model="deletionState.currentPassword"
+                type="password"
+                class="w-full"
+                autocomplete="current-password"
+              />
+            </UFormField>
+
+            <UFormField
+              :label="`Type ${ACCOUNT_DELETION_CONFIRMATION_TEXT}`"
+              name="confirmation"
+              required
+            >
+              <UInput
+                v-model="deletionState.confirmation"
+                class="w-full"
+                autocomplete="off"
+              />
+            </UFormField>
+
+            <div class="flex justify-end gap-3">
+              <UButton
+                type="button"
+                color="neutral"
+                variant="soft"
+                :disabled="isDeletingAccount"
+                @click="accountDeletionOpen = false"
+              >
+                Cancel
+              </UButton>
+              <UButton
+                type="submit"
+                color="error"
+                icon="i-lucide-trash-2"
+                :loading="isDeletingAccount"
+                :disabled="isDeletingAccount || deletionState.confirmation !== ACCOUNT_DELETION_CONFIRMATION_TEXT || !deletionState.currentPassword"
+              >
+                Delete permanently
+              </UButton>
+            </div>
+          </UForm>
         </template>
       </UModal>
     </UPageBody>

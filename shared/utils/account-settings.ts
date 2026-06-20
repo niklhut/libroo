@@ -23,3 +23,16 @@ export const accountPasswordChangeSchema = z.object({
 })
 
 export type AccountPasswordChangeSchema = z.infer<typeof accountPasswordChangeSchema>
+
+export const ACCOUNT_DELETION_CONFIRMATION_TEXT = 'DELETE MY ACCOUNT'
+
+export const accountDeletionSchema = z.object({
+  currentPassword: z.string({ error: 'Current password is required' })
+    .min(1, { error: 'Current password is required' }),
+  confirmation: z.string({ error: `Type ${ACCOUNT_DELETION_CONFIRMATION_TEXT} to confirm account deletion` })
+    .refine(value => value === ACCOUNT_DELETION_CONFIRMATION_TEXT, {
+      error: `Type ${ACCOUNT_DELETION_CONFIRMATION_TEXT} to confirm account deletion`
+    })
+})
+
+export type AccountDeletionSchema = z.infer<typeof accountDeletionSchema>
