@@ -141,25 +141,37 @@ NUXT_LIBROO_RUNTIME_PROFILE=cloudflare
 pnpm build:cloudflare
 ```
 
-The generated Worker uses NuxtHub D1 and R2 bindings from `nuxt.config.ts`. The project default Worker name is `libroo` through `nitro.cloudflare.wrangler.name`; set `NUXT_CLOUDFLARE_WORKER_NAME` to target a different Worker. The hosted beta CI sets it to `libroo-beta`. The PR-only `Build Cloudflare Worker` workflow validates the Cloudflare build. The push-only `Deploy to Cloudflare` workflow applies D1 migrations immediately before the beta deploy because Cloudflare D1 migrations are not applied by `wrangler deploy` automatically.
+The generated Worker uses NuxtHub D1 and R2 bindings from `nuxt.config.ts`. The project default Worker name is `libroo` through `nitro.cloudflare.wrangler.name`; set `NUXT_CLOUDFLARE_WORKER_NAME` to target a different Worker. The PR-only `Build Cloudflare Worker` workflow validates the Cloudflare build. The push-only `Deploy to Cloudflare` workflow applies D1 migrations immediately before deploy because Cloudflare D1 migrations are not applied by `wrangler deploy` automatically.
+
+### First Admin Setup
+
+Deploy the first hosted beta with an empty D1 database and public registration enabled:
+
+```bash
+NUXT_PUBLIC_REGISTRATION_ENABLED=true
+```
+
+Open `/register` on the hosted origin and create the first account. Libroo's Better Auth policy plugin promotes the first created user to `admin` by setting Better Auth's `user.role` field. Confirm that account can access `/admin/users`, then set `NUXT_PUBLIC_REGISTRATION_ENABLED=false` for invite-only operation and redeploy.
+
+Do not create a separate Libroo auth table. User roles and bans are Better Auth state: roles are read from `user.role`, and bans are read from `user.banned`, `user.ban_reason`, and `user.ban_expires`.
 
 ### Promotion Policy
 
-Beta policy:
+Hosted beta policy:
 
 - Protect `main`.
 - Require the `Lint`, `Unit Tests`, and `Docker Image` checks before merge.
 - Require the Cloudflare Worker build check before merge.
-- Merging to `main` deploys the beta hosted Worker, `libroo-beta`.
-- Beta D1 migrations run only on `push` to `main`, after required checks have passed and the merge has completed.
+- Merging to `main` deploys the configured hosted Worker.
+- D1 migrations run only on `push` to `main`, after required checks have passed and the merge has completed.
 
-Pull requests build the Cloudflare profile but do not deploy and do not apply D1 migrations. This is intentional: a preview Worker that points at the hosted beta D1 database could mutate beta data or apply schema migrations before the PR is merged.
+Pull requests build the Cloudflare profile but do not deploy and do not apply D1 migrations. This is intentional: a preview Worker that points at the hosted D1 database could mutate live data or apply schema migrations before the PR is merged.
 
-Use a separate `prod` branch and production Worker when Libroo reaches the 1.0 release path. Until then, `main` is the protected beta integration and deploy branch. If manual promotion becomes necessary, prefer a GitHub Environment approval or a workflow dispatch input over a permanently diverging production branch.
+If manual promotion becomes necessary, prefer a GitHub Environment approval or a workflow dispatch input over a permanently diverging production branch.
 
 ### Preview Deployments
 
-Preview deployments are disabled by default. They should not reuse the hosted beta D1 database or hosted beta R2 bucket.
+Preview deployments are disabled by default. They should not reuse the hosted D1 database or hosted R2 bucket.
 
 Safe preview options:
 
@@ -183,7 +195,7 @@ Repository or environment secrets:
 | `NUXT_BETTER_AUTH_URL` | Hosted public origin. |
 | `NUXT_PLUNK_API_KEY` | Hosted email delivery. |
 
-Put these in repository or organization secrets. Pull request builds do not need these secrets because the deploy job only runs on `push` to protected `main`. If GitHub Environment protection is enabled later, move the same secrets into a `production` environment and add the workflow `environment` key back after confirming the repository validator accepts it.
+Put these in repository or organization secrets. Pull request builds do not need these secrets because the deploy job only runs on `push` to protected `main`. If GitHub Environment protection is enabled later, move the same secrets into a `production` environment and add the workflow `environment` key after confirming the repository validator accepts it.
 
 Repository or environment variables:
 
@@ -196,11 +208,11 @@ Repository or environment variables:
 | `NUXT_PUBLIC_OPEN_LIBRARY_LINKS_ENABLED` | `false` unless the hosted operator intentionally wants third-party source links visible. |
 | `NUXT_PUBLIC_LEGAL_PRIVACY_POLICY_URL` / `NUXT_PUBLIC_LEGAL_IMPRINT_URL` | Optional canonical hosted legal page URLs. |
 | `NUXT_LEGAL_PRIVACY_POLICY_MARKDOWN_URL` / `NUXT_LEGAL_IMPRINT_MARKDOWN_URL` | Optional Markdown source URLs, used when the matching canonical URL is empty. |
-| `NUXT_CLOUDFLARE_WORKER_NAME` | Optional override. Defaults to `libroo`; hosted beta CI sets `libroo-beta`. |
+| `NUXT_CLOUDFLARE_WORKER_NAME` | Optional override. Defaults to `libroo`. |
 
 ### Hosted Migrations
 
-For beta hosted deploys, CI runs on `push` to `main`:
+For hosted deploys, CI runs on `push` to `main`:
 
 ```bash
 pnpm build:cloudflare
@@ -209,7 +221,7 @@ pnpm exec wrangler d1 migrations apply DB --remote --config .output/server/wrang
 pnpm exec wrangler deploy --config .output/server/wrangler.json
 ```
 
-Migration files live in `server/db/migrations/sqlite`. After beta, append new migrations; do not rewrite migration history for existing hosted data. For manual hosted migrations, use the same generated `.output/server/wrangler.json` after a Cloudflare build.
+Migration files live in `server/db/migrations/sqlite`. Append new migrations; do not rewrite migration history for existing hosted data. For manual hosted migrations, use the same generated `.output/server/wrangler.json` after a Cloudflare build.
 
 Do not run hosted migrations from pull request workflows. If a PR contains a migration, it is validated by build/typecheck/test, then applied only after that PR is merged to protected `main`.
 

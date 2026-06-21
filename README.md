@@ -1,71 +1,95 @@
 # Libroo
 
-Libroo is a personal library tracker built to help you manage your books, collections, and track who borrowed what.
+Libroo is a private, physical-first library management system for home and small-library inventories. It tracks books, shelf locations, reading state, lending logistics, borrower links, and admin-managed access.
 
-## Features
+## Current Stack
 
-- Add books manually or via ISBN using Open Library API
-- Organize books into custom collections
-- Track borrowing/lending history
-- Mark books as "reading", "finished", etc.
-- Rate and review finished books
+- Nuxt 4, Nuxt UI v4, Pinia, and Nuxt Image.
+- Effect services and repositories for server-side business logic.
+- Drizzle ORM with SQLite-compatible storage.
+- Better Auth for accounts, sessions, roles, bans, password reset, and email verification.
+- NuxtHub on Cloudflare for hosted D1 database and R2/blob storage.
+- Self-hosted Docker profile with local libSQL/SQLite, local blob storage, and Sharp WebP cover conversion.
 
-## Setup
+Database migrations live under `server/db/migrations/sqlite`.
 
-Create a production environment file from the example:
+## Beta Release Features
+
+- Email/password authentication through Better Auth.
+- First-user admin promotion for empty installs.
+- Admin user management, role changes, bans, invites, and audit log.
+- Optional public registration or invite-only registration.
+- Manual book creation and ISBN lookup with Open Library metadata.
+- Library list/detail views, authors, locations, tags, ratings, notes, and reading progress.
+- Borrowing and lending workflows, including public borrower invite links.
+- CSV import/export for library transfer.
+- Local and hosted cover/blob storage.
+- Optional SMTP or Plunk email delivery for verification, password reset, invites, and security notifications.
+- Self-hosted Docker deployment and hosted Cloudflare/NuxtHub deployment.
+
+## Requirements
+
+- Node.js 22 or newer.
+- pnpm 11.8.0, or Corepack configured for the package manager in `package.json`.
+- Docker, only for self-hosted container runs.
+- Wrangler and Cloudflare credentials, only for hosted Cloudflare deploys.
+
+## Local Development
 
 ```bash
+git clone https://github.com/niklhut/libroo
+cd libroo
+pnpm install
 cp .env.example .env
-```
-
-Generate a strong auth secret:
-
-```bash
 openssl rand -base64 32
 ```
 
-Set these values in `.env` or in your hosting provider's environment settings:
+Put the generated secret in `.env`:
 
 ```bash
 NUXT_BETTER_AUTH_SECRET=<output from openssl rand -base64 32>
-NUXT_BETTER_AUTH_URL=https://your-libroo.example.com
+NUXT_BETTER_AUTH_URL=http://localhost:3000
+NUXT_LIBROO_RUNTIME_PROFILE=selfhost
+NUXT_DATABASE_URL=file:.data/db/sqlite.db
+NUXT_LOCAL_STORAGE_DIR=.data/blob
 ```
 
-## Runtime Profiles
-
-Libroo has two runtime profiles. Runtime-specific database, storage, email, and HTTP client implementations are composed as Effect layers under `server/runtime/`, so route handlers, services, and repositories stay shared. The build defaults to `selfhost`; set `NUXT_LIBROO_RUNTIME_PROFILE=cloudflare` explicitly for the hosted Worker profile.
-
-For production Docker, Compose, Cloudflare promotion, preview deployments, migrations, and rollback expectations, see [docs/deployment.md](docs/deployment.md).
-
-Hosted Cloudflare/NuxtHub build check:
+Apply the SQLite baseline migration, then start Nuxt:
 
 ```bash
-NUXT_LIBROO_RUNTIME_PROFILE=cloudflare
-NUXT_EMAIL_PROVIDER=plunk
-pnpm build:cloudflare
+pnpm exec node scripts/migrate-selfhost.mjs
+pnpm dev
 ```
 
-This profile uses NuxtHub D1, NuxtHub/R2 blob storage, and Plunk email delivery. Hosted deploys are promoted through the protected `main` branch policy documented in [docs/deployment.md](docs/deployment.md).
+Open `http://localhost:3000/register` and create the first account. The Better Auth policy plugin in `server/utils/libroo-admin-auth-plugin.ts` promotes the first created user in an empty database to `admin`.
 
-Self-hosted Docker:
+Useful checks before shipping changes:
 
 ```bash
-docker build -t libroo:local .
-docker compose up
+pnpm lint:fix
+pnpm typecheck
+pnpm test:unit
 ```
 
-This profile uses local libSQL/SQLite storage through Drizzle, local filesystem blob storage, WebP cover conversion through `sharp`, and SMTP or Plunk email delivery. The image defaults to `NUXT_DATABASE_URL=file:/data/db/sqlite.db` and `NUXT_LOCAL_STORAGE_DIR=/data/blob`; mount `/data` as the persistent volume.
+## Environment Configuration
 
-## Email Verification
+Better Auth documentation refers to `BETTER_AUTH_SECRET` and `BETTER_AUTH_URL`. In this Nuxt app, set them with the Nuxt runtime-config prefix:
 
-Email verification is disabled by default so local and private installs keep the existing registration, sign-in, and email-change flow.
+| Variable | Required | Notes |
+| --- | --- | --- |
+| `NUXT_BETTER_AUTH_SECRET` | Production yes | Stable secret used to sign Better Auth sessions. Generate with `openssl rand -base64 32` and keep it unchanged across restarts. |
+| `NUXT_BETTER_AUTH_URL` | Production yes | Public origin of the app, for example `https://libroo.example.com` or `http://localhost:3000`. |
+| `NUXT_LIBROO_RUNTIME_PROFILE` | Optional | `selfhost` by default. Use `cloudflare` for NuxtHub/D1/R2 builds. |
+| `NUXT_DATABASE_URL` | Self-host | libSQL/SQLite URL. Local default is `file:.data/db/sqlite.db`; Docker uses `file:/data/db/sqlite.db`. |
+| `NUXT_LOCAL_STORAGE_DIR` | Self-host | Local blob directory. Local default is `.data/blob`; Docker uses `/data/blob`. |
+| `NUXT_PUBLIC_REGISTRATION_ENABLED` | Optional | `true` by default. Set `false` after the first admin exists to make registration invite-only. |
+| `NUXT_PUBLIC_OPEN_LIBRARY_LINKS_ENABLED` | Optional | `true` in development and `false` in production unless explicitly set. |
 
-For hosted or self-hosted deployments where account ownership should be enforced, enable verification and choose an email provider.
+Email is optional, but password reset, invite emails, security notifications, and verification emails require a provider.
 
-SMTP delivery is available in the self-hosted profile:
+SMTP is available in the self-hosted profile:
 
 ```bash
-NUXT_EMAIL_VERIFICATION_ENABLED=true
 NUXT_EMAIL_PROVIDER=smtp
 NUXT_EMAIL_FROM="Libroo <no-reply@your-libroo.example.com>"
 NUXT_SMTP_HOST=smtp.example.com
@@ -75,98 +99,139 @@ NUXT_SMTP_USER=your-smtp-user
 NUXT_SMTP_PASSWORD=your-smtp-password
 ```
 
-Plunk delivery is available in both profiles and is the only email provider in the hosted Cloudflare profile:
+Plunk is available in both profiles and is the hosted Cloudflare profile's email provider:
 
 ```bash
-NUXT_EMAIL_VERIFICATION_ENABLED=true
+NUXT_EMAIL_PROVIDER=plunk
 NUXT_EMAIL_FROM=no-reply@your-libroo.example.com
 NUXT_EMAIL_REPLY_TO=support@your-libroo.example.com
-NUXT_EMAIL_PROVIDER=plunk
 NUXT_PLUNK_API_KEY=sk_your_secret_key
 NUXT_PLUNK_BASE_URL=https://next-api.useplunk.com
 ```
 
-For a self-hosted Plunk instance, set `NUXT_PLUNK_BASE_URL` to your Plunk API origin. Libroo renders the email subject, HTML, and plain text locally, then sends the same rendered message through SMTP or Plunk.
-
-When verification is enabled, Libroo fails startup if required email delivery settings are missing. New users must verify before normal app access, and email changes remain pending until the new address is verified. Users can resend verification mail from Settings. Verification links show clear success, expired-link, and invalid-link states.
-
-If `NUXT_EMAIL_VERIFICATION_ENABLED=false` or unset, Libroo does not send verification mail and email changes apply immediately after the current password is confirmed. Security notifications, password reset emails, invite emails, and future reminder emails are available whenever SMTP or Plunk delivery is configured, even if email verification itself is disabled. If delivery is not configured, password changes still succeed without sending a notification and admins can create invite links instead of invite emails.
-
-## Email Capability Matrix
-
-Libroo derives email feature visibility from one server-side capability source. The client receives only safe boolean flags, never SMTP, Plunk, or sender configuration.
-
-| Deployment state | Visible behavior |
-| --- | --- |
-| No email configured | Forgot password, resend verification, invite email, and reminder email actions are hidden. Email changes are applied after current-password confirmation. Password changes complete without notification email. Admins can create invite links and share them manually. |
-| Email sending configured, verification disabled | Forgot password, invite email, password-change notification attempts, and future reminder email actions are available. Registration does not show verification messaging. Email changes apply after current-password confirmation. |
-| Email verification enabled | All sending-backed features are available. Registration tells users to verify by email. Unverified users are kept on Settings until verified. Resend verification and pending-email-change verification are available. |
-| Hosted/public deployments requiring verification or reset | Configure SMTP or Plunk and set `NUXT_EMAIL_VERIFICATION_ENABLED=true`. Password reset and verification actions are shown only when delivery is configured; otherwise the APIs reject email-only requests instead of pretending mail was sent. |
-
-Deploy the application with an empty database, then open `/register` on your deployed instance and create the first account. The first registered account becomes the administrator automatically.
+Set `NUXT_EMAIL_VERIFICATION_ENABLED=true` when users should verify email ownership before normal app access. When it is `false` or unset, registration and sign-in work without verification; email changes apply after current-password confirmation.
 
 ## Database Migrations
 
-The beta release starts from a clean baseline migration at `server/db/migrations/sqlite/0000_initial_beta.sql`, generated from the current Drizzle schema. Fresh installs should apply that baseline to an empty database; the obsolete development-era migration chain is archived under `docs/pre-beta-migrations/` for reference only and is not part of normal database initialization.
-
-This reset is a one-time beta boundary cleanup. After beta, keep migrations linear and append new Drizzle migrations instead of rewriting history. Databases created before the beta baseline are not guaranteed to upgrade automatically unless a one-off manual migration, export, or import path is provided for that specific deployment.
-
-## Invite-Only Hosted Mode
-
-Public registration is enabled by default. Hosted admins can turn it off so only invited users can join:
+The current baseline migration is `server/db/migrations/sqlite/0000_initial_beta.sql`. Fresh local and self-hosted installs should apply migrations to an empty SQLite database with:
 
 ```bash
-NUXT_PUBLIC_REGISTRATION_ENABLED=false
+pnpm exec node scripts/migrate-selfhost.mjs
 ```
 
-When public registration is disabled, `/register` requires an invite token. Admins can create invite links from `/admin/users`; if email delivery is configured, admins can also send invite emails. Invites start as pending, then become accepted after Better Auth creates the account, expired after their expiration date, or revoked when an admin cancels them. Expired and revoked invites cannot be used.
+The Docker image runs that script automatically before starting Nuxt. It creates the database directory, checks writable space, and applies migrations from `server/db/migrations/sqlite`.
 
-Invite emails use the same SMTP or Plunk settings as verification emails. Link-only invites can still be created without configuring email delivery.
-
-For a new private hosted instance, leave public registration enabled until the first account is created and promoted automatically to administrator. Then set `NUXT_PUBLIC_REGISTRATION_ENABLED=false`, restart the deployment, and create invites from the admin users page.
-
-## Open Library Source Links
-
-Libroo uses Open Library metadata for ISBN lookup, but the hosted/product experience hides outbound Open Library edition and work links by default. This keeps book detail pages focused on the private library workflow and avoids nudging users from a hosted private catalog to a third-party site.
-
-Local development enables those links by default so metadata integration is easy to inspect while testing. Self-hosted and hosted operators can explicitly enable the links when source attribution, record debugging, or private catalog auditing matters:
+Hosted Cloudflare deployments apply the same SQLite migration files to D1 after `pnpm build:cloudflare`:
 
 ```bash
-NUXT_PUBLIC_OPEN_LIBRARY_LINKS_ENABLED=true
+pnpm build:cloudflare
+pnpm exec wrangler d1 migrations apply DB --remote --config .output/server/wrangler.json
 ```
 
-Leave the value unset or set it to `false` for public hosted installs. When disabled, Libroo removes the Open Library actions entirely instead of rendering empty or inactive buttons.
+After the beta release, add new Drizzle migrations linearly. Do not rewrite existing migration history for installations with live data.
 
-## Local Development
+## Self-Hosted Docker
 
 ```bash
-git clone https://github.com/niklhut/libroo
-cd libroo
 cp .env.example .env
-pnpm install
-pnpm dev
+openssl rand -base64 32
+# Put the generated value in NUXT_BETTER_AUTH_SECRET.
+docker build -t libroo:local .
+docker compose up
 ```
 
-For local development, set `NUXT_BETTER_AUTH_URL=http://localhost:3000`. You can generate a local secret with the same `openssl rand -base64 32` command, or use any stable development-only value.
+The Compose file exposes `http://localhost:3000`, mounts a persistent `libroo-data` volume at `/data`, and stores:
 
-Open `http://localhost:3000/register` and create the first account. The first registered account becomes the administrator automatically.
+- `/data/db/sqlite.db` for the database.
+- `/data/blob` for uploaded assets and generated WebP covers.
 
-## Stack
+Back up the whole `/data` volume before upgrades. SQLite migrations are treated as forward-only unless a release explicitly ships a rollback plan.
 
-- [Nuxt 4](https://nuxt.com/)
-- [Nuxt UI](https://ui.nuxt.com)
-- [Drizzle ORM](https://orm.drizzle.team/)
-- [Better Auth](https://better-auth.com/)
-- [Open Library API](https://openlibrary.org/developers/api)
+## Hosted Cloudflare/NuxtHub
+
+The hosted profile uses NuxtHub with Cloudflare D1 and R2-compatible blob storage:
+
+```bash
+NUXT_LIBROO_RUNTIME_PROFILE=cloudflare pnpm build:cloudflare
+```
+
+Required hosted secrets or environment values:
+
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ACCOUNT_ID`
+- `NUXT_HUB_CLOUDFLARE_DATABASE_ID`
+- `NUXT_HUB_CLOUDFLARE_BUCKET_NAME`
+- `NUXT_BETTER_AUTH_SECRET`
+- `NUXT_BETTER_AUTH_URL`
+- `NUXT_PLUNK_API_KEY`, when email delivery is enabled
+
+Recommended hosted variables:
+
+- `NUXT_EMAIL_PROVIDER=plunk`
+- `NUXT_EMAIL_FROM=no-reply@your-domain.example`
+- `NUXT_EMAIL_VERIFICATION_ENABLED=true`
+- `NUXT_PUBLIC_REGISTRATION_ENABLED=false`, after the first admin account exists
+- `NUXT_PUBLIC_OPEN_LIBRARY_LINKS_ENABLED=false`
+
+Deployments should apply D1 migrations immediately before `wrangler deploy`. The repository's deployment notes include the CI promotion policy, preview caveats, rollback expectations, and full variable tables in [docs/deployment.md](docs/deployment.md).
+
+## First Admin Setup
+
+Start every new install with an empty database and public registration enabled:
+
+```bash
+NUXT_PUBLIC_REGISTRATION_ENABLED=true
+```
+
+Open `/register` and create the first account. The `librooAdminPolicyPlugin` runs after Better Auth creates the user and atomically assigns `user.role = 'admin'` if no admin user exists. After confirming the account can access `/admin/users`, set `NUXT_PUBLIC_REGISTRATION_ENABLED=false` for private or hosted invite-only operation and restart/redeploy.
+
+The policy also prevents common lockouts: admins cannot demote or ban themselves, and Libroo rejects demoting or banning the last active admin.
+
+## Operator Guide: Users And Auth
+
+Libroo uses Better Auth as the source of truth for user authentication and account state.
+
+- Roles are stored on Better Auth's `user.role` field. Libroo treats any role token containing `admin` as admin.
+- Bans are stored on Better Auth's `user.banned`, `user.ban_reason`, and `user.ban_expires` fields.
+- There is no separate Libroo user-auth table. Do not create or update a parallel user table for auth state.
+- Manage users from `/admin/users` whenever possible. That UI uses Better Auth admin APIs and Libroo policy/audit plugins.
+- Admin invite links live in `signup_invites` and create normal Better Auth users when accepted.
+- Account deletion removes Better Auth records and the user's Libroo library data. See [docs/account-deletion.md](docs/account-deletion.md) for retention and support operations.
+
+## Legal And Self-Hosting
+
+Libroo is licensed under the [GNU AGPLv3](LICENSE). You may use, modify, and self-host it. If you run a modified version as a network service for other users, the AGPL expects you to provide the corresponding source code for that modified version.
+
+The app does not ship legally sufficient privacy-policy or imprint text. Operators can configure public legal URLs or Markdown sources with:
+
+```bash
+NUXT_PUBLIC_LEGAL_PRIVACY_POLICY_URL=
+NUXT_PUBLIC_LEGAL_IMPRINT_URL=
+NUXT_LEGAL_PRIVACY_POLICY_MARKDOWN_URL=
+NUXT_LEGAL_IMPRINT_MARKDOWN_URL=
+```
 
 ## Roadmap
 
-- [ ] ISBN-based book search and auto-fill
-- [ ] Create/read/update/delete books
-- [ ] Lending tracker with borrower info
-- [ ] Collections UI
-- [ ] Reading status + rating
+Available in the beta release:
 
-## License
+- Core private-library catalog, locations, reading progress, ratings, notes, and tags.
+- ISBN lookup and manual entry.
+- Lending, borrower links, and loan return/cancel flows.
+- Better Auth-backed registration, login, password reset, email verification, first-admin promotion, invites, role management, bans, and audit log.
+- SQLite self-hosting and Cloudflare/NuxtHub hosted deployment.
+- CSV import/export and account deletion.
 
-This project is licensed under the [GNU AGPLv3](LICENSE). This means you are free to use, modify, and self-host the app, but if you run a modified version as a public service, you must also make your source code available.
+Future work toward v1:
+
+- Richer shelf mapping and physical inventory workflows.
+- Reminders and notification scheduling for loans.
+- Barcode scanner polish and bulk inventory flows.
+- More import sources and metadata reconciliation tools.
+- Backup/restore tooling for operators.
+- Hardened preview environments for Cloudflare deployments.
+
+## More Documentation
+
+- [Deployment](docs/deployment.md)
+- [Account Deletion And Retention](docs/account-deletion.md)
