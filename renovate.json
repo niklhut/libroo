@@ -4,6 +4,7 @@
     "github>nuxt/renovate-config-nuxt",
     ":enableVulnerabilityAlertsWithAdditionalLabel(security)"
   ],
+  "schedule": ["on Monday"],
   "labels": ["dependencies"],
   "osvVulnerabilityAlerts": true,
   "packageRules": [
