@@ -155,7 +155,7 @@ The hosted profile uses NuxtHub with Cloudflare D1 and R2-compatible blob storag
 NUXT_LIBROO_RUNTIME_PROFILE=cloudflare pnpm build:cloudflare
 ```
 
-Required hosted secrets or environment values:
+Hosted deployment secrets and environment variables:
 
 - `CLOUDFLARE_API_TOKEN`
 - `CLOUDFLARE_ACCOUNT_ID`
