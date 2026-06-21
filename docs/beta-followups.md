@@ -9,6 +9,18 @@ Manual refresh completed on 2026-06-19 before the first beta.
 - `pnpm peers check` still reports transitive optional-peer mismatches from Nuxt/UI/Effect internals (`rolldown`, Tiptap, `@effect/cluster`, TypeScript, and `vue-tsc`). These are not direct Libroo dependencies and are being treated as dependency ecosystem noise unless lint, typecheck, tests, or builds expose runtime impact.
 - No major upgrades were intentionally deferred in this refresh.
 
+## Renovate dependency updates
+
+Renovate configuration is enabled after the manual dependency refresh. Once the Renovate GitHub app is installed for the repository, it should open scheduled dependency update PRs weekly, plus vulnerability PRs when GitHub or OSV security alerts apply.
+
+Review and merge policy:
+
+- Dependency PRs must pass the normal protected-branch checks documented in `docs/deployment.md`: lint, unit tests, Docker image build, and Cloudflare Worker build.
+- Patch and minor PRs may be merged after a changelog/release-note skim confirms there are no Libroo-relevant behavior changes.
+- Major PRs require a closer review of migration notes, breaking changes, runtime compatibility, and any effect on Cloudflare, NuxtHub, Better Auth, Drizzle, or database migrations.
+- Security PRs should be reviewed before routine scheduled updates and can be merged outside the weekly cadence once checks pass.
+- Grouped PRs should be split or closed in favor of individual updates if one package in the group blocks CI or needs deeper manual review.
+
 ## Library bulk actions
 
 The pre-beta library select mode was removed from the visible library page because it only supported bulk deletion and did not match the broader action model Libroo needs.
