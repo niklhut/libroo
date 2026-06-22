@@ -9,6 +9,7 @@ import { librooAdminPolicyPlugin } from './libroo-admin-auth-plugin'
 import { librooAdminAuditPlugin } from './libroo-admin-audit-plugin'
 import { librooSecurityNotificationPlugin } from './libroo-security-notification-plugin'
 import { getEmailVerificationConfig, validateEmailVerificationConfig } from './email-verification-config'
+import { createTurnstileCaptchaPlugins } from './turnstile'
 import { sendEmailMessage } from '../services/email.service'
 
 interface EnvSecretOptions {
@@ -232,6 +233,7 @@ export const auth = betterAuth({
     // }
   },
   plugins: [
+    ...createTurnstileCaptchaPlugins(),
     admin({
       roles: {
         admin: adminRole,

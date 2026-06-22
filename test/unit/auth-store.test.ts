@@ -94,7 +94,8 @@ describe('useAuthStore', () => {
       email: 'ada@example.com',
       password: 'secret',
       name: 'Ada',
-      inviteToken: 'invite-token'
+      inviteToken: 'invite-token',
+      fetchOptions: undefined
     })
     expect(authClientMocks.signOut).toHaveBeenCalledTimes(1)
   })

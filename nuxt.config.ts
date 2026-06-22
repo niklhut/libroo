@@ -28,7 +28,10 @@ const cloudflareRuntimeVars = definedEnvVars({
   NUXT_PUBLIC_OPEN_LIBRARY_LINKS_ENABLED: process.env.NUXT_PUBLIC_OPEN_LIBRARY_LINKS_ENABLED,
   NUXT_PUBLIC_LEGAL_IMPRINT_URL: process.env.NUXT_PUBLIC_LEGAL_IMPRINT_URL,
   NUXT_PUBLIC_LEGAL_PRIVACY_POLICY_URL: process.env.NUXT_PUBLIC_LEGAL_PRIVACY_POLICY_URL,
-  NUXT_PUBLIC_REGISTRATION_ENABLED: process.env.NUXT_PUBLIC_REGISTRATION_ENABLED
+  NUXT_PUBLIC_REGISTRATION_ENABLED: process.env.NUXT_PUBLIC_REGISTRATION_ENABLED,
+  NUXT_PUBLIC_TURNSTILE_ENABLED: process.env.NUXT_PUBLIC_TURNSTILE_ENABLED,
+  NUXT_PUBLIC_TURNSTILE_SITE_KEY: process.env.NUXT_PUBLIC_TURNSTILE_SITE_KEY,
+  NUXT_TURNSTILE_ALLOWED_HOSTNAMES: process.env.NUXT_TURNSTILE_ALLOWED_HOSTNAMES
 })
 const hasCloudflareRuntimeVars = Object.keys(cloudflareRuntimeVars).length > 0
 
@@ -41,6 +44,7 @@ export default defineNuxtConfig({
     '@nuxt/hints',
     '@nuxt/image',
     '@nuxt/scripts',
+    '@nuxtjs/turnstile',
     '@nuxt/test-utils',
     '@comark/nuxt'
   ],
@@ -73,11 +77,20 @@ export default defineNuxtConfig({
     legalMarkdownFetchTimeoutSeconds: '5',
     legalPrivacyPolicyMarkdownUrl: '',
     legalImprintMarkdownUrl: '',
+    turnstile: {
+      secretKey: '',
+      allowedHostnames: '',
+      siteVerifyURLOverride: ''
+    },
     public: {
       registrationEnabled: 'true',
       openLibraryLinksEnabled: process.env.NODE_ENV === 'development' ? 'true' : 'false',
       legalPrivacyPolicyUrl: '',
-      legalImprintUrl: ''
+      legalImprintUrl: '',
+      turnstile: {
+        enabled: process.env.NUXT_PUBLIC_TURNSTILE_ENABLED ?? 'false',
+        siteKey: ''
+      }
     }
   },
 
@@ -198,5 +211,9 @@ export default defineNuxtConfig({
 
   image: {
     provider: 'none'
+  },
+
+  turnstile: {
+    siteKey: process.env.NUXT_PUBLIC_TURNSTILE_SITE_KEY
   }
 })

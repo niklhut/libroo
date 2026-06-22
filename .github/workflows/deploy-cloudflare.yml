@@ -28,6 +28,10 @@ jobs:
       NUXT_EMAIL_VERIFICATION_ENABLED: ${{ vars.NUXT_EMAIL_VERIFICATION_ENABLED || 'true' }}
       NUXT_PLUNK_BASE_URL: ${{ vars.NUXT_PLUNK_BASE_URL }}
       NUXT_PUBLIC_REGISTRATION_ENABLED: ${{ vars.NUXT_PUBLIC_REGISTRATION_ENABLED || 'false' }}
+      NUXT_PUBLIC_TURNSTILE_ENABLED: ${{ vars.NUXT_PUBLIC_TURNSTILE_ENABLED || 'true' }}
+      NUXT_PUBLIC_TURNSTILE_SITE_KEY: ${{ vars.NUXT_PUBLIC_TURNSTILE_SITE_KEY }}
+      NUXT_TURNSTILE_ALLOWED_HOSTNAMES: ${{ vars.NUXT_TURNSTILE_ALLOWED_HOSTNAMES }}
+      NUXT_TURNSTILE_SECRET_KEY: ${{ secrets.NUXT_TURNSTILE_SECRET_KEY }}
       NUXT_PUBLIC_LEGAL_PRIVACY_POLICY_URL: ${{ vars.NUXT_PUBLIC_LEGAL_PRIVACY_POLICY_URL }}
       NUXT_PUBLIC_LEGAL_IMPRINT_URL: ${{ vars.NUXT_PUBLIC_LEGAL_IMPRINT_URL }}
       NUXT_LEGAL_PRIVACY_POLICY_MARKDOWN_URL: ${{ vars.NUXT_LEGAL_PRIVACY_POLICY_MARKDOWN_URL }}
@@ -55,6 +59,20 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Validate beta Turnstile configuration
+        run: |
+          set -euo pipefail
+          if [[ "${NUXT_PUBLIC_TURNSTILE_ENABLED}" == "true" ]]; then
+            if [[ -z "${NUXT_PUBLIC_TURNSTILE_SITE_KEY}" ]]; then
+              echo "NUXT_PUBLIC_TURNSTILE_SITE_KEY is required when NUXT_PUBLIC_TURNSTILE_ENABLED=true."
+              exit 1
+            fi
+            if [[ -z "${NUXT_TURNSTILE_SECRET_KEY}" ]]; then
+              echo "NUXT_TURNSTILE_SECRET_KEY is required when NUXT_PUBLIC_TURNSTILE_ENABLED=true."
+              exit 1
+            fi
+          fi
+
       - name: Build Cloudflare worker
         run: pnpm build:cloudflare
 
@@ -75,6 +93,9 @@ jobs:
             'NUXT_BETTER_AUTH_SECRET',
             'NUXT_PLUNK_API_KEY'
           ]
+          if (process.env.NUXT_PUBLIC_TURNSTILE_ENABLED === 'true') {
+            secretNames.push('NUXT_TURNSTILE_SECRET_KEY')
+          }
           const missing = secretNames.filter(name => !process.env[name])
           if (missing.length) {
             console.error(`Missing required Worker secrets: ${missing.join(', ')}`)

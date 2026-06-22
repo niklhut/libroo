@@ -24,6 +24,8 @@ const isLoading = ref(false)
 const error = ref('')
 const showPassword = ref(false)
 const showConfirmPassword = ref(false)
+const turnstileToken = ref('')
+const turnstile = ref<{ reset: () => void } | null>(null)
 const verificationEmail = ref('')
 const isVerificationEmailSent = ref(false)
 const inviteToken = computed(() => {
@@ -32,6 +34,10 @@ const inviteToken = computed(() => {
 })
 const registrationEnabled = computed(() => booleanConfigValue(config.public.registrationEnabled, true))
 const registrationRequiresInvite = computed(() => !registrationEnabled.value && !inviteToken.value)
+const turnstileEnabled = computed(() => booleanConfigValue(config.public.turnstile?.enabled, false))
+const turnstileSiteKey = computed(() => typeof config.public.turnstile?.siteKey === 'string' ? config.public.turnstile.siteKey.trim() : '')
+const turnstileConfigured = computed(() => turnstileEnabled.value && Boolean(turnstileSiteKey.value))
+const turnstileMissingConfig = computed(() => turnstileEnabled.value && !turnstileSiteKey.value)
 
 const { data: invitePreview } = await useAsyncData<SignupInvitePreview | null>(
   'signup-invite-preview',
@@ -168,6 +174,13 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
     return
   }
 
+  if (turnstileEnabled.value && !turnstileToken.value) {
+    error.value = turnstileMissingConfig.value
+      ? 'Bot protection is enabled but the Turnstile site key is not configured.'
+      : 'Complete the bot protection check before creating an account.'
+    return
+  }
+
   isLoading.value = true
 
   try {
@@ -175,7 +188,8 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
       payload.data.email,
       payload.data.password,
       payload.data.name,
-      inviteToken.value
+      inviteToken.value,
+      turnstileToken.value
     )
 
     if (result.error) {
@@ -206,6 +220,10 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
     })
   } finally {
     isLoading.value = false
+    if (turnstileEnabled.value) {
+      turnstile.value?.reset()
+      turnstileToken.value = ''
+    }
   }
 }
 </script>
@@ -298,10 +316,29 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
         </template>
 
         <template
-          v-if="error"
           #validation
         >
+          <div
+            v-if="turnstileConfigured"
+            class="flex justify-center"
+          >
+            <NuxtTurnstile
+              ref="turnstile"
+              v-model="turnstileToken"
+              :site-key="turnstileSiteKey"
+              :options="{ size: 'normal' }"
+            />
+          </div>
+
           <UAlert
+            v-if="turnstileMissingConfig"
+            color="warning"
+            icon="i-lucide-shield-alert"
+            title="Bot protection is not configured"
+          />
+
+          <UAlert
+            v-if="error"
             color="error"
             icon="i-lucide-alert-circle"
             :title="error"
