@@ -71,6 +71,8 @@ pnpm typecheck
 pnpm test:unit
 ```
 
+The full first-release manual QA pass lives in [docs/first-release-qa.md](docs/first-release-qa.md).
+
 ## Environment Configuration
 
 Better Auth documentation refers to `BETTER_AUTH_SECRET` and `BETTER_AUTH_URL`. In this Nuxt app, set them with the Nuxt runtime-config prefix:

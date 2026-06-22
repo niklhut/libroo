@@ -13,6 +13,7 @@ node_modules
 # Logs
 logs
 *.log
+docs/qa-runs.local.md
 
 # Misc
 .DS_Store
