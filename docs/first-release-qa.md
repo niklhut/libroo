@@ -195,13 +195,8 @@ explicit decision to defer the release.
 
 ## Current Pass Notes
 
-- 2026-06-21: First checklist added for first-release QA coverage. Command and
-  local workflow results should be filled in during the release candidate pass.
-- 2026-06-21 local smoke pass on an isolated self-host database:
-  - `pnpm lint:fix`, `pnpm typecheck`, `pnpm test:unit`, and `pnpm build` passed.
-  - Verified signed-out auth redirect to `/login`, first-admin registration, logout, login, session persistence after reload, and admin user-list access.
-  - Verified manual book creation, library search hit/miss/clear, detail page metadata, tags, note display, rating update, location creation, and location assignment.
-  - Verified owner loan creation, invite self-accept rejection, borrower registration, invite acceptance, borrowed view, owner accepted-loan state, and return flow.
-  - Verified settings import/export controls are present. Export route has unit coverage for auth, banned-user rejection, CSV body, and attachment headers; browser automation did not capture the generated blob download event.
-  - Verified mobile 390 x 844 rendering without horizontal overflow for the library grid, add/scanner tab page, loans view, and admin users page.
-  - No release-blocking issue was found in this local smoke pass. Hosted environment, physical camera permission/scanning, real CSV file download, private uploaded-cover blob access, admin ban/unban recovery, and full mobile detail/admin-invites/admin-audit checks remain manual release-candidate checklist items.
+- Use this section during the active release candidate pass.
+- Record command results, environment details, workflow coverage, blockers, and
+  any manual checks that still need a hosted or device-specific follow-up.
+- Move completed dated notes into the gitignored `docs/qa-runs.local.md`
+  before reusing this checklist.
