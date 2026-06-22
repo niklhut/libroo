@@ -6,6 +6,10 @@ import type { EmailMessage } from '../email.core'
 const defaultPlunkSendTimeoutSeconds = 5
 
 function getPlunkSendTimeoutMs() {
+  if (typeof useRuntimeConfig !== 'function') {
+    return defaultPlunkSendTimeoutSeconds * 1000
+  }
+
   const config = useRuntimeConfig()
   const rawValue = config.plunkSendTimeoutSeconds
   const seconds = typeof rawValue === 'number'
