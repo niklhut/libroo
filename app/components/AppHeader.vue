@@ -101,9 +101,13 @@ const links = computed<NavigationMenuItem[]>(() => {
         :to="logoTo"
         class="flex items-center gap-2"
       >
-        <UIcon
-          name="i-lucide-book-open-check"
-          class="text-2xl text-primary"
+        <NuxtImg
+          src="/Libroo_Icon.svg"
+          alt=""
+          aria-hidden="true"
+          width="28"
+          height="28"
+          class="size-7 shrink-0"
         />
         <span class="font-bold text-xl">Libroo</span>
       </NuxtLink>
