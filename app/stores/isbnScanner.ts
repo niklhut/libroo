@@ -26,6 +26,38 @@ export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
     return (err as { data?: { message?: string } })?.data?.message || fallback
   }
 
+  const lookupUnavailableMessage = 'We could not look up this ISBN right now. Try again in a moment.'
+  const addUnavailableMessage = 'Could not add this book to your library. Try again in a moment.'
+
+  async function lookupScannedBook(book: ScannedBook) {
+    book.status = 'loading'
+    book.selected = true
+    book.errorMessage = undefined
+    book.result = undefined
+
+    try {
+      const result = await $fetch<BookLookupResult>('/api/books/lookup', {
+        method: 'POST',
+        body: { isbn: book.isbn }
+      })
+
+      book.result = result
+      if (result.found) {
+        book.status = result.existsLocally ? 'already_owned' : 'found'
+        if (result.existsLocally) {
+          book.selected = false
+        }
+      } else {
+        book.status = 'not_found'
+        book.selected = false
+      }
+    } catch {
+      book.status = 'error'
+      book.selected = false
+      book.errorMessage = lookupUnavailableMessage
+    }
+  }
+
   async function addIsbn(rawIsbn: string) {
     const normalizedIsbn = extractIsbn(rawIsbn) || rawIsbn.replace(/[-\s]/g, '')
 
@@ -45,33 +77,14 @@ export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
     }
     scannedBooks.value.unshift(newBook)
 
-    try {
-      const result = await $fetch<BookLookupResult>('/api/books/lookup', {
-        method: 'POST',
-        body: { isbn: normalizedIsbn }
-      })
+    await lookupScannedBook(newBook)
+  }
 
-      const book = scannedBooks.value.find(b => b.isbn === normalizedIsbn)
-      if (book) {
-        book.result = result
-        if (result.found) {
-          book.status = result.existsLocally ? 'already_owned' : 'found'
-          if (result.existsLocally) {
-            book.selected = false
-          }
-        } else {
-          book.status = 'not_found'
-          book.selected = false
-        }
-      }
-    } catch (err: unknown) {
-      const book = scannedBooks.value.find(b => b.isbn === normalizedIsbn)
-      if (book) {
-        book.status = 'error'
-        book.selected = false
-        book.errorMessage = getErrorMessage(err, 'Lookup failed')
-      }
-    }
+  async function retryIsbn(isbn: string) {
+    const book = scannedBooks.value.find(b => b.isbn === isbn)
+    if (!book || book.status === 'loading') return
+
+    await lookupScannedBook(book)
   }
 
   async function addMultipleIsbns(text: string) {
@@ -157,9 +170,15 @@ export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
       result.failed.forEach((f) => {
         const book = scannedBooks.value.find(b => b.isbn === f.isbn)
         if (book) {
-          book.status = 'error'
-          book.selected = false
-          book.errorMessage = f.error
+          if (f.error === 'BookAlreadyOwnedError') {
+            book.status = 'already_owned'
+            book.selected = false
+            book.errorMessage = 'This book is already in your library.'
+          } else {
+            book.status = 'found'
+            book.selected = true
+            book.errorMessage = addUnavailableMessage
+          }
         }
       })
 
@@ -222,6 +241,7 @@ export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
     isAddingBooks,
     counts,
     addIsbn,
+    retryIsbn,
     addMultipleIsbns,
     removeIsbn,
     toggleSelection,

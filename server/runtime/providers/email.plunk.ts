@@ -3,7 +3,19 @@ import { getEmailDeliveryConfig, validateEmailDeliveryConfig } from '../../utils
 import { EmailDeliveryError, EmailService } from '../email.core'
 import type { EmailMessage } from '../email.core'
 
-const PLUNK_SEND_TIMEOUT_MS = 5000
+const defaultPlunkSendTimeoutSeconds = 5
+
+function getPlunkSendTimeoutMs() {
+  const config = useRuntimeConfig()
+  const rawValue = config.plunkSendTimeoutSeconds
+  const seconds = typeof rawValue === 'number'
+    ? rawValue
+    : Number.parseInt(String(rawValue || ''), 10)
+
+  return (Number.isFinite(seconds) && seconds > 0
+    ? seconds
+    : defaultPlunkSendTimeoutSeconds) * 1000
+}
 
 export const EmailServicePlunkLive = Layer.succeed(EmailService, {
   sendEmail: message =>
@@ -36,7 +48,7 @@ export async function sendWithPlunk(
   message: EmailMessage
 ) {
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), PLUNK_SEND_TIMEOUT_MS)
+  const timeout = setTimeout(() => controller.abort(), getPlunkSendTimeoutMs())
 
   try {
     const response = await fetch(`${config.baseUrl.replace(/\/+$/, '')}/v1/send`, {

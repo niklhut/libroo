@@ -5,6 +5,10 @@ import { books, authors, bookAuthors, userBooks, tags, bookSystemTags, userBookT
 import { normalizeTagInput, normalizeSuggestedTags } from '../../shared/utils/tag-ingestion'
 import type { LibraryQueryFilters } from '../../shared/utils/library-query'
 import { escapeLocationLikePattern } from '../../shared/utils/location-hierarchy'
+import { DbService } from '../services/db.service'
+import type { StorageService } from '../services/storage.service'
+import { downloadCover, lookupByISBN } from './openLibrary.repository'
+import type { OpenLibraryApiError, OpenLibraryBookNotFoundError, OpenLibraryRepository } from './openLibrary.repository'
 
 // Error types
 export class BookNotFoundError extends Data.TaggedError('BookNotFoundError')<{
@@ -66,6 +70,11 @@ export interface UserBook {
 export interface BookTagRecord {
   id: string
   name: string
+}
+
+export interface MissingOpenLibraryCoverBook {
+  id: string
+  isbn: string
 }
 
 interface RepositoryBookAuthor {
@@ -130,6 +139,15 @@ export interface BookRepositoryInterface {
   ) => Effect.Effect<AuthorLibraryResult, BookNotFoundError | DatabaseError, DbService>
 
   getBookById: (bookId: string) => Effect.Effect<Book, BookNotFoundError | DatabaseError, DbService>
+
+  listOpenLibraryBooksMissingCovers: (
+    limit: number
+  ) => Effect.Effect<MissingOpenLibraryCoverBook[], DatabaseError, DbService>
+
+  updateOpenLibraryCoverPath: (
+    bookId: string,
+    coverPath: string
+  ) => Effect.Effect<boolean, DatabaseError, DbService>
 
   hasBookInUserLibrary: (
     userId: string,
@@ -661,10 +679,14 @@ export const BookRepositoryLive = Layer.effect(
 
             book = newBook
           } else {
-            // Reusing existing book: fetch OpenLibrary data to ensure system tags are hydrated
-            openLibraryData = yield* lookupByISBN(isbn)
-            // Idempotently hydrate system tags for the existing book (safe if already linked via onConflictDoNothing)
-            yield* hydrateSystemTagsForBook(book.id, openLibraryData.subjects || [])
+            const existingBook = book
+            // Reusing cached metadata should not depend on Open Library being reachable.
+            yield* lookupByISBN(isbn).pipe(
+              Effect.flatMap(data => hydrateSystemTagsForBook(existingBook.id, data.subjects || [])),
+              Effect.catchAll(error =>
+                Effect.logWarning(`Skipped Open Library tag hydration for existing ISBN ${isbn}: ${String(error)}`)
+              )
+            )
           }
 
           // Create userBooks entry
@@ -1183,6 +1205,52 @@ export const BookRepositoryLive = Layer.effect(
           const authorMap = yield* hydrateAuthorsForBookIds([book.id])
           return toBookModel(book, authorMap.get(book.id) || [])
         }),
+
+      listOpenLibraryBooksMissingCovers: limit =>
+        Effect.tryPromise({
+          try: () =>
+            dbService.db
+              .select({
+                id: books.id,
+                isbn: books.isbn
+              })
+              .from(books)
+              .where(and(
+                eq(books.source, 'open_library'),
+                isNull(books.coverPath),
+                sql`${books.isbn} IS NOT NULL`
+              ))
+              .orderBy(sql`random()`)
+              .limit(Math.max(1, limit)),
+          catch: error => new DatabaseError({
+            message: `Failed to list Open Library books missing covers: ${error}`,
+            operation: 'listOpenLibraryBooksMissingCovers'
+          })
+        }).pipe(
+          Effect.map(rows => rows
+            .filter((row): row is MissingOpenLibraryCoverBook => typeof row.isbn === 'string' && row.isbn.length > 0)
+          )
+        ),
+
+      updateOpenLibraryCoverPath: (bookId, coverPath) =>
+        Effect.tryPromise({
+          try: () =>
+            dbService.db
+              .update(books)
+              .set({ coverPath })
+              .where(and(
+                eq(books.id, bookId),
+                eq(books.source, 'open_library'),
+                isNull(books.coverPath)
+              ))
+              .returning({ id: books.id }),
+          catch: error => new DatabaseError({
+            message: `Failed to update Open Library cover path: ${error}`,
+            operation: 'updateOpenLibraryCoverPath'
+          })
+        }).pipe(
+          Effect.map(rows => rows.length > 0)
+        ),
 
       hasBookInUserLibrary: (userId, isbn) =>
         Effect.gen(function* () {
@@ -1726,6 +1794,12 @@ export const getLibraryByAuthor = (userId: string, authorId: string, pagination:
 
 export const getBookById = (bookId: string) =>
   Effect.flatMap(BookRepository, repo => repo.getBookById(bookId))
+
+export const listOpenLibraryBooksMissingCovers = (limit: number) =>
+  Effect.flatMap(BookRepository, repo => repo.listOpenLibraryBooksMissingCovers(limit))
+
+export const updateOpenLibraryCoverPath = (bookId: string, coverPath: string) =>
+  Effect.flatMap(BookRepository, repo => repo.updateOpenLibraryCoverPath(bookId, coverPath))
 
 export const removeFromLibrary = (
   userBookId: string,

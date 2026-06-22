@@ -16,6 +16,7 @@ const {
 const {
   addMultipleIsbns,
   removeIsbn,
+  retryIsbn,
   toggleSelection,
   selectAll,
   deselectAll,
@@ -108,6 +109,7 @@ defineExpose({ reset })
       :is-adding-books="isAddingBooks"
       :counts="counts"
       @remove="removeIsbn"
+      @retry="retryIsbn"
       @toggle="toggleSelection"
       @select-all="selectAll"
       @deselect-all="deselectAll"
