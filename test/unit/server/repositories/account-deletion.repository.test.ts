@@ -143,6 +143,27 @@ describe('AccountDeletionRepository', () => {
     await expect(selectIds(db, account)).resolves.toEqual(['account-admin-1'])
   })
 
+  it('preserves wrapped last-admin errors from transaction adapters', async () => {
+    const fakeDb = {
+      transaction: async () => {
+        throw {
+          _tag: 'LastAdminAccountDeletionError',
+          message: 'Cannot delete the last remaining active admin account'
+        }
+      }
+    }
+
+    const result = await runRepository(fakeDb as never, Effect.either(Effect.flatMap(AccountDeletionRepository, repository =>
+      repository.deleteAccountData('admin-1')
+    )))
+
+    expect(result._tag).toBe('Left')
+    expect(result.left).toMatchObject({
+      _tag: 'LastAdminAccountDeletionError',
+      message: 'Cannot delete the last remaining active admin account'
+    })
+  })
+
   it('allows an admin to delete their account when another active admin remains', async () => {
     const now = new Date('2026-06-19T10:00:00.000Z')
     await db.insert(user).values([

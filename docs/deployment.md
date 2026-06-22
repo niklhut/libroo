@@ -82,6 +82,10 @@ Optional email and registration settings:
 | `NUXT_EMAIL_VERIFICATION_ENABLED` | `false` | Set `true` for public installs. |
 | `NUXT_PUBLIC_REGISTRATION_ENABLED` | `true` | Set `false` after creating the first admin for invite-only operation. |
 | `NUXT_PUBLIC_OPEN_LIBRARY_LINKS_ENABLED` | `false` in production, `true` in development | Shows outbound Open Library edition/work links on book detail pages. Keep disabled for the hosted/product experience; enable intentionally for self-hosted source visibility or metadata debugging. |
+| `NUXT_OPEN_LIBRARY_REQUEST_TIMEOUT_SECONDS` | `12` | Timeout for Open Library metadata and cover existence requests. Increase if the upstream API is slow in your deployment region. |
+| `NUXT_OPEN_LIBRARY_COVER_TIMEOUT_SECONDS` | `20` | Timeout for downloading and repairing cover images from Open Library. |
+| `NUXT_LEGAL_MARKDOWN_FETCH_TIMEOUT_SECONDS` | `5` | Timeout for fetching configured legal Markdown source documents. |
+| `NUXT_PLUNK_SEND_TIMEOUT_SECONDS` | `5` | Timeout for Plunk email delivery requests. |
 | `NUXT_EMAIL_PROVIDER` | `smtp` | Self-host supports `smtp` or `plunk`. |
 | `NUXT_EMAIL_FROM` | empty | Required when email sending is enabled. |
 | `NUXT_EMAIL_REPLY_TO` | empty | Optional reply-to address for sent mail. |
@@ -115,6 +119,10 @@ Mount `/data` as the durable volume. It contains:
 The image creates both directories and runs `scripts/migrate-selfhost.mjs` before starting Nuxt. A fresh empty volume is migrated automatically. Before upgrading an existing install, back up the whole `/data` volume while the container is stopped.
 
 Secrets should be injected through the orchestrator, an env file outside source control, or a secret manager. Do not bake secrets into the image.
+
+### Scheduled Tasks
+
+Libroo runs a daily audit cleanup task at 03:00 and a daily Open Library cover repair task at 03:30. The cover repair task checks a small random batch of Open Library books that were saved without a generated cover image, retries the cover download, and fills `cover_path` only when a cover is successfully stored.
 
 ### Account Deletion Operations
 
@@ -206,6 +214,10 @@ Repository or environment variables:
 | `NUXT_EMAIL_VERIFICATION_ENABLED` | `true` |
 | `NUXT_PUBLIC_REGISTRATION_ENABLED` | `false` after the first admin exists. |
 | `NUXT_PUBLIC_OPEN_LIBRARY_LINKS_ENABLED` | `false` unless the hosted operator intentionally wants third-party source links visible. |
+| `NUXT_OPEN_LIBRARY_REQUEST_TIMEOUT_SECONDS` | `12` |
+| `NUXT_OPEN_LIBRARY_COVER_TIMEOUT_SECONDS` | `20` |
+| `NUXT_LEGAL_MARKDOWN_FETCH_TIMEOUT_SECONDS` | `5` |
+| `NUXT_PLUNK_SEND_TIMEOUT_SECONDS` | `5` |
 | `NUXT_PUBLIC_LEGAL_PRIVACY_POLICY_URL` / `NUXT_PUBLIC_LEGAL_IMPRINT_URL` | Optional canonical hosted legal page URLs. |
 | `NUXT_LEGAL_PRIVACY_POLICY_MARKDOWN_URL` / `NUXT_LEGAL_IMPRINT_MARKDOWN_URL` | Optional Markdown source URLs, used when the matching canonical URL is empty. |
 | `NUXT_CLOUDFLARE_WORKER_NAME` | Optional override. Defaults to `libroo`. |

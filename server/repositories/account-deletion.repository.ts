@@ -167,8 +167,9 @@ export const AccountDeletionRepositoryLive = Layer.effect(
             })
           },
           catch: (error) => {
-            if (error instanceof LastAdminAccountDeletionError) {
-              return error
+            const lastAdminError = toLastAdminAccountDeletionError(error)
+            if (lastAdminError) {
+              return lastAdminError
             }
 
             console.error('accountDeletion.deleteAccountData failed:', error)
@@ -187,6 +188,28 @@ export const deleteAccountData = (userId: string) =>
 
 function adminRoleTokenPredicate() {
   return sql`(',' || replace(${user.role}, ' ', '') || ',') LIKE ${'%,admin,%'}`
+}
+
+function toLastAdminAccountDeletionError(error: unknown) {
+  if (error instanceof LastAdminAccountDeletionError) {
+    return error
+  }
+
+  if (typeof error === 'object'
+    && error !== null
+    && '_tag' in error
+    && (error as { _tag?: unknown })._tag === 'LastAdminAccountDeletionError'
+  ) {
+    const taggedError = error as { message?: unknown }
+
+    return new LastAdminAccountDeletionError({
+      message: typeof taggedError.message === 'string'
+        ? taggedError.message
+        : 'Cannot delete the last remaining active admin account'
+    })
+  }
+
+  return null
 }
 
 function inactiveBanPredicate() {

@@ -17,6 +17,7 @@ const {
 const {
   addIsbn,
   removeIsbn,
+  retryIsbn,
   toggleSelection,
   selectAll,
   deselectAll,
@@ -61,6 +62,11 @@ async function onIsbnDetected(isbn: string) {
 
 // Add book to library (single scan mode) - uses composable's addSelectedToLibrary
 async function addBookToLibrary() {
+  if (singleScanBook.value?.result?.found && singleScanBook.value.status !== 'already_owned') {
+    singleScanBook.value.status = 'found'
+    singleScanBook.value.selected = true
+  }
+
   const result = await addSelectedToLibrary()
   if (result.success.length > 0 && result.failed.length === 0) {
     navigateTo('/library')
@@ -113,6 +119,14 @@ defineExpose({ reset })
 
     <!-- Single scan result preview -->
     <template v-if="singleScanBook?.result?.found">
+      <UAlert
+        v-if="singleScanBook.errorMessage"
+        color="error"
+        variant="subtle"
+        icon="i-lucide-alert-circle"
+        :description="singleScanBook.errorMessage"
+        class="mb-4"
+      />
       <BookPreview
         :book="singleScanBook.result"
         :is-adding="isAddingBooks"
@@ -188,6 +202,7 @@ defineExpose({ reset })
         :is-adding-books="isAddingBooks"
         :counts="counts"
         @remove="removeIsbn"
+        @retry="retryIsbn"
         @toggle="toggleSelection"
         @select-all="selectAll"
         @deselect-all="deselectAll"

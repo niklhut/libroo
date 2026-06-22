@@ -28,6 +28,13 @@ export class InvalidManualCoverError extends Data.TaggedError('InvalidManualCove
   message: string
 }> { }
 
+export interface RepairOpenLibraryCoversResult {
+  attempted: number
+  repaired: number
+  skipped: number
+  failed: number
+}
+
 export const toLibraryBook = (userBook: UserBookViewModel): LibraryBook => ({
   id: userBook.id,
   bookId: userBook.bookId,
@@ -72,6 +79,14 @@ export interface BookServiceInterface {
     LibraryBook,
     BookCreateError | InvalidManualCoverError | StorageError | DatabaseError,
     DbService | StorageService
+  >
+
+  repairMissingOpenLibraryCovers: (
+    limit?: number
+  ) => Effect.Effect<
+    RepairOpenLibraryCoversResult,
+    DatabaseError,
+    DbService | StorageService | OpenLibraryRepository | HttpClient.HttpClient
   >
 
   removeBookFromLibrary: (
@@ -262,6 +277,49 @@ export const BookServiceLive = Layer.effect(
           return toLibraryBook(userBook)
         }),
 
+      repairMissingOpenLibraryCovers: (limit = 20) =>
+        Effect.gen(function* () {
+          const normalizedLimit = Number.isFinite(limit) ? Math.floor(limit) : 20
+          const cappedLimit = Math.min(Math.max(1, normalizedLimit), 50)
+          const candidates = yield* bookRepo.listOpenLibraryBooksMissingCovers(cappedLimit)
+          const result: RepairOpenLibraryCoversResult = {
+            attempted: candidates.length,
+            repaired: 0,
+            skipped: 0,
+            failed: 0
+          }
+
+          yield* Effect.forEach(
+            candidates,
+            candidate =>
+              Effect.gen(function* () {
+                const coverPath = yield* downloadCover(candidate.isbn, 'L')
+                if (!coverPath) {
+                  result.skipped += 1
+                  return
+                }
+
+                const updated = yield* bookRepo.updateOpenLibraryCoverPath(candidate.id, coverPath)
+                if (updated) {
+                  result.repaired += 1
+                } else {
+                  result.skipped += 1
+                }
+              }).pipe(
+                Effect.catchAll(error =>
+                  Effect.logWarning(`Failed to repair Open Library cover for ISBN ${candidate.isbn}: ${String(error)}`).pipe(
+                    Effect.zipRight(Effect.sync(() => {
+                      result.failed += 1
+                    }))
+                  )
+                )
+              ),
+            { concurrency: 1 }
+          )
+
+          return result
+        }),
+
       getAuthorLibrary: (userId, authorId, pagination) =>
         Effect.gen(function* () {
           const result = yield* bookRepo.getLibraryByAuthor(userId, authorId, pagination)
@@ -417,6 +475,9 @@ export const addBookToLibrary = (userId: string, isbn: string) =>
 
 export const createManualBook = (userId: string, input: ManualBookCreateSchema) =>
   Effect.flatMap(BookService, service => service.createManualBook(userId, input))
+
+export const repairMissingOpenLibraryCovers = (limit?: number) =>
+  Effect.flatMap(BookService, service => service.repairMissingOpenLibraryCovers(limit))
 
 export const removeBookFromLibrary = (
   userBookId: string,

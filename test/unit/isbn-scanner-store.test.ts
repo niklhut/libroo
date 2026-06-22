@@ -77,6 +77,32 @@ describe('useIsbnScannerStore', () => {
     expect(store.scannedBooks[0]?.selected).toBe(false)
   })
 
+  it('uses a friendly lookup error and retries the same ISBN', async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce({ data: { message: 'API error: 502 Bad Gateway' } })
+      .mockResolvedValueOnce({
+        found: true,
+        isbn: '9781234567890',
+        title: 'Book A',
+        author: 'Author A'
+      })
+
+    ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
+
+    const store = useIsbnScannerStore()
+    await store.addIsbn('9781234567890')
+
+    expect(store.scannedBooks[0]?.status).toBe('error')
+    expect(store.scannedBooks[0]?.errorMessage).toBe('We could not look up this ISBN right now. Try again in a moment.')
+
+    await store.retryIsbn('9781234567890')
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(store.scannedBooks[0]?.status).toBe('found')
+    expect(store.scannedBooks[0]?.result?.title).toBe('Book A')
+    expect(store.scannedBooks[0]?.errorMessage).toBeUndefined()
+  })
+
   it('bulk-add success removes scanned books and marks dashboard sync', async () => {
     const lookupIsbn = '9781234567890'
     const fetchMock = vi.fn(async (url: string) => {
@@ -123,8 +149,84 @@ describe('useIsbnScannerStore', () => {
     expect(dashboardStore.shouldSync).toBe(true)
     expect(dashboardStore.syncTargetPages).toBe(2)
     expect(toastAdd).toHaveBeenCalledWith(expect.objectContaining({
-      title: 'Books added!',
+      title: 'Book added!',
       color: 'success'
     }))
+  })
+
+  it('keeps failed add books selected so they can be retried', async () => {
+    const lookupIsbn = '9781234567890'
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url === '/api/books/lookup') {
+        return {
+          found: true,
+          isbn: lookupIsbn,
+          title: 'Book A',
+          author: 'Author A'
+        }
+      }
+
+      if (url === '/api/books/bulk-add') {
+        return {
+          added: [],
+          failed: [{ isbn: lookupIsbn, error: 'BookCreateError' }]
+        }
+      }
+
+      throw new Error(`Unexpected URL ${url}`)
+    })
+
+    ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
+
+    const scannerStore = useIsbnScannerStore()
+    await scannerStore.addIsbn(lookupIsbn)
+
+    const result = await scannerStore.addSelectedToLibrary()
+
+    expect(result).toEqual({ success: [], failed: [lookupIsbn] })
+    expect(scannerStore.scannedBooks[0]).toMatchObject({
+      isbn: lookupIsbn,
+      status: 'found',
+      selected: true,
+      errorMessage: 'Could not add this book to your library. Try again in a moment.'
+    })
+    expect(scannerStore.counts.selected).toBe(1)
+  })
+
+  it('marks already-owned add failures as not selectable', async () => {
+    const lookupIsbn = '9781234567890'
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url === '/api/books/lookup') {
+        return {
+          found: true,
+          isbn: lookupIsbn,
+          title: 'Book A',
+          author: 'Author A'
+        }
+      }
+
+      if (url === '/api/books/bulk-add') {
+        return {
+          added: [],
+          failed: [{ isbn: lookupIsbn, error: 'BookAlreadyOwnedError' }]
+        }
+      }
+
+      throw new Error(`Unexpected URL ${url}`)
+    })
+
+    ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
+
+    const scannerStore = useIsbnScannerStore()
+    await scannerStore.addIsbn(lookupIsbn)
+
+    await scannerStore.addSelectedToLibrary()
+
+    expect(scannerStore.scannedBooks[0]).toMatchObject({
+      isbn: lookupIsbn,
+      status: 'already_owned',
+      selected: false,
+      errorMessage: 'This book is already in your library.'
+    })
   })
 })

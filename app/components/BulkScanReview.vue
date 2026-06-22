@@ -17,6 +17,7 @@ defineProps<{
 
 defineEmits<{
   remove: [isbn: string]
+  retry: [isbn: string]
   toggle: [isbn: string]
   selectAll: []
   deselectAll: []
@@ -224,6 +225,12 @@ function getStatusText(status: ScannedBook['status']) {
                       {{ book.isbn }}
                     </UBadge>
                   </div>
+                  <p
+                    v-if="book.errorMessage"
+                    class="text-sm text-error mt-2"
+                  >
+                    {{ book.errorMessage }}
+                  </p>
                 </div>
               </div>
             </template>
@@ -264,9 +271,19 @@ function getStatusText(status: ScannedBook['status']) {
 
           <!-- Right side: Remove button (and chevron for found books) -->
           <div
-            class="flex items-center"
+            class="flex items-center gap-1"
             :class="{ 'flex-col gap-1': book.result?.found }"
           >
+            <UButton
+              v-if="book.status === 'error'"
+              color="neutral"
+              variant="soft"
+              size="sm"
+              icon="i-lucide-rotate-cw"
+              @click.stop="$emit('retry', book.isbn)"
+            >
+              Retry
+            </UButton>
             <UButton
               color="neutral"
               variant="ghost"
@@ -360,13 +377,10 @@ function getStatusText(status: ScannedBook['status']) {
       <UButton
         block
         size="lg"
+        :icon="isAddingBooks ? undefined : 'i-lucide-plus'"
         :loading="isAddingBooks"
         @click="$emit('addSelected')"
       >
-        <UIcon
-          name="i-lucide-plus"
-          class="mr-2"
-        />
         Add {{ counts.selected }} Book{{ counts.selected > 1 ? 's' : '' }} to Library
       </UButton>
     </div>

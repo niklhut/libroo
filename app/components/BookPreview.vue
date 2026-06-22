@@ -110,7 +110,7 @@ defineEmits<{
         class="animate-spin text-2xl text-primary mb-2"
       />
       <p class="text-sm text-muted">
-        Adding book and downloading cover image...
+        Adding book...
       </p>
     </div>
 

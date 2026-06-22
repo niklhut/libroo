@@ -23,10 +23,10 @@ const bulkImportRef = ref<{ reset: () => void } | null>(null)
 
 // Tab items
 const modeItems = [
-  { value: 'isbn', label: 'ISBN Lookup', icon: 'i-lucide-keyboard' },
-  { value: 'manual', label: 'Manual Entry', icon: 'i-lucide-pencil-line' },
-  { value: 'scan', label: 'Camera Scan', icon: 'i-lucide-scan-barcode' },
-  { value: 'bulk', label: 'Bulk Import', icon: 'i-lucide-list' }
+  { value: 'isbn', label: 'ISBN', icon: 'i-lucide-keyboard' },
+  { value: 'manual', label: 'Manual', icon: 'i-lucide-pencil-line' },
+  { value: 'scan', label: 'Scan', icon: 'i-lucide-scan-barcode' },
+  { value: 'bulk', label: 'Bulk', icon: 'i-lucide-list' }
 ]
 
 watch(

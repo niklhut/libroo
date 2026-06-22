@@ -19,8 +19,12 @@ const cloudflareRuntimeVars = definedEnvVars({
   NUXT_EMAIL_REPLY_TO: process.env.NUXT_EMAIL_REPLY_TO,
   NUXT_EMAIL_VERIFICATION_ENABLED: process.env.NUXT_EMAIL_VERIFICATION_ENABLED,
   NUXT_LEGAL_IMPRINT_MARKDOWN_URL: process.env.NUXT_LEGAL_IMPRINT_MARKDOWN_URL,
+  NUXT_LEGAL_MARKDOWN_FETCH_TIMEOUT_SECONDS: process.env.NUXT_LEGAL_MARKDOWN_FETCH_TIMEOUT_SECONDS || '5',
   NUXT_LEGAL_PRIVACY_POLICY_MARKDOWN_URL: process.env.NUXT_LEGAL_PRIVACY_POLICY_MARKDOWN_URL,
+  NUXT_OPEN_LIBRARY_COVER_TIMEOUT_SECONDS: process.env.NUXT_OPEN_LIBRARY_COVER_TIMEOUT_SECONDS || '20',
+  NUXT_OPEN_LIBRARY_REQUEST_TIMEOUT_SECONDS: process.env.NUXT_OPEN_LIBRARY_REQUEST_TIMEOUT_SECONDS || '12',
   NUXT_PLUNK_BASE_URL: process.env.NUXT_PLUNK_BASE_URL,
+  NUXT_PLUNK_SEND_TIMEOUT_SECONDS: process.env.NUXT_PLUNK_SEND_TIMEOUT_SECONDS || '5',
   NUXT_PUBLIC_OPEN_LIBRARY_LINKS_ENABLED: process.env.NUXT_PUBLIC_OPEN_LIBRARY_LINKS_ENABLED,
   NUXT_PUBLIC_LEGAL_IMPRINT_URL: process.env.NUXT_PUBLIC_LEGAL_IMPRINT_URL,
   NUXT_PUBLIC_LEGAL_PRIVACY_POLICY_URL: process.env.NUXT_PUBLIC_LEGAL_PRIVACY_POLICY_URL,
@@ -63,6 +67,10 @@ export default defineNuxtConfig({
     smtpPassword: '',
     plunkApiKey: '',
     plunkBaseUrl: 'https://next-api.useplunk.com',
+    plunkSendTimeoutSeconds: '5',
+    openLibraryCoverTimeoutSeconds: '20',
+    openLibraryRequestTimeoutSeconds: '12',
+    legalMarkdownFetchTimeoutSeconds: '5',
     legalPrivacyPolicyMarkdownUrl: '',
     legalImprintMarkdownUrl: '',
     public: {
@@ -102,6 +110,9 @@ export default defineNuxtConfig({
                 }
               : {}),
             ...(hasCloudflareRuntimeVars ? { vars: cloudflareRuntimeVars } : {}),
+            triggers: {
+              crons: ['0 3 * * *', '30 3 * * *']
+            },
             observability: {
               enabled: true,
               logs: {
@@ -116,7 +127,8 @@ export default defineNuxtConfig({
       tasks: true
     },
     scheduledTasks: {
-      '0 3 * * *': 'audit:cleanup'
+      '0 3 * * *': 'audit:cleanup',
+      '30 3 * * *': 'books:repair-covers'
     },
     imports: {
       dirs: [
@@ -159,11 +171,16 @@ export default defineNuxtConfig({
         'audit:cleanup': {
           handler: './tasks/audit/cleanup.ts',
           description: 'Delete expired admin and auth audit log entries.'
+        },
+        'books:repair-covers': {
+          handler: './tasks/books/repair-covers.ts',
+          description: 'Try to fetch missing Open Library cover images for existing books.'
         }
       }
       nitroConfig.scheduledTasks = {
         ...nitroConfig.scheduledTasks,
-        '0 3 * * *': 'audit:cleanup'
+        '0 3 * * *': 'audit:cleanup',
+        '30 3 * * *': 'books:repair-covers'
       }
     }
   },

@@ -82,10 +82,37 @@ function normalizeISBN(isbn: string): string {
   return isbn.replace(/[-\s]/g, '')
 }
 
+const DEFAULT_OPEN_LIBRARY_TIMEOUT_SECONDS = 12
+const DEFAULT_OPEN_LIBRARY_COVER_TIMEOUT_SECONDS = 20
+
+function getOpenLibraryTimeout() {
+  const config = useRuntimeConfig()
+  const rawValue = config.openLibraryRequestTimeoutSeconds
+  const seconds = typeof rawValue === 'number'
+    ? rawValue
+    : Number(String(rawValue ?? '').trim())
+
+  return Duration.seconds(Number.isFinite(seconds) && seconds > 0
+    ? seconds
+    : DEFAULT_OPEN_LIBRARY_TIMEOUT_SECONDS)
+}
+
+function getOpenLibraryCoverTimeout() {
+  const config = useRuntimeConfig()
+  const rawValue = config.openLibraryCoverTimeoutSeconds
+  const seconds = typeof rawValue === 'number'
+    ? rawValue
+    : Number(String(rawValue ?? '').trim())
+
+  return Duration.seconds(Number.isFinite(seconds) && seconds > 0
+    ? seconds
+    : DEFAULT_OPEN_LIBRARY_COVER_TIMEOUT_SECONDS)
+}
+
 // Helper to make HTTP GET request with timeout and get JSON response
 const fetchJson = <T>(url: string) =>
   HttpClient.get(url).pipe(
-    Effect.timeout(Duration.seconds(5)),
+    Effect.timeout(getOpenLibraryTimeout()),
     Effect.flatMap(response => response.json),
     Effect.map(json => json as T),
     Effect.mapError(error => new OpenLibraryApiError({
@@ -98,7 +125,7 @@ const checkCoverExists = (coverUrl: string) =>
   HttpClient.head(
     coverUrl.includes('?') ? `${coverUrl}&default=false` : `${coverUrl}?default=false`
   ).pipe(
-    Effect.timeout(Duration.seconds(5)),
+    Effect.timeout(getOpenLibraryTimeout()),
     Effect.flatMap((response) => {
       if (response.status < 200 || response.status >= 300) {
         return Effect.succeed(false)
@@ -222,7 +249,7 @@ export const OpenLibraryRepositoryLive = Layer.succeed(OpenLibraryRepository, {
 
       // Fetch cover and read body in a single scoped operation
       const imageBuffer = yield* HttpClient.get(coverUrl).pipe(
-        Effect.timeout(Duration.seconds(10)),
+        Effect.timeout(getOpenLibraryCoverTimeout()),
         Effect.flatMap((response) => {
           if (response.status < 200 || response.status >= 300) {
             // No cover available, return null (not an error)

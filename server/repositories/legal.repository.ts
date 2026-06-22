@@ -4,6 +4,7 @@ import * as HCError from '@effect/platform/HttpClientError'
 import type * as HttpClientType from '@effect/platform/HttpClient'
 
 const maxLegalDocumentBytes = 256 * 1024
+const defaultLegalMarkdownFetchTimeoutSeconds = 5
 
 export class LegalDocumentFetchError extends Data.TaggedError('LegalDocumentFetchError')<{
   message: string
@@ -21,6 +22,18 @@ function isLegalDocumentFetchError(error: unknown): error is LegalDocumentFetchE
 
 function legalDocumentFetchError(message: string) {
   return new LegalDocumentFetchError({ message })
+}
+
+function getLegalMarkdownFetchTimeout() {
+  const config = useRuntimeConfig()
+  const rawValue = config.legalMarkdownFetchTimeoutSeconds
+  const seconds = typeof rawValue === 'number'
+    ? rawValue
+    : Number(String(rawValue ?? '').trim())
+
+  return Duration.seconds(Number.isFinite(seconds) && seconds > 0
+    ? seconds
+    : defaultLegalMarkdownFetchTimeoutSeconds)
 }
 
 export const LegalRepositoryLive = Layer.succeed(LegalRepository, {
@@ -48,7 +61,7 @@ export const LegalRepositoryLive = Layer.succeed(LegalRepository, {
           })
         )
       }),
-      Effect.timeout(Duration.seconds(5)),
+      Effect.timeout(getLegalMarkdownFetchTimeout()),
       Effect.mapError((error) => {
         if (isLegalDocumentFetchError(error)) {
           return error
