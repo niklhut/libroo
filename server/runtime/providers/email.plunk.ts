@@ -14,7 +14,7 @@ function getPlunkSendTimeoutMs() {
   const rawValue = config.plunkSendTimeoutSeconds
   const seconds = typeof rawValue === 'number'
     ? rawValue
-    : Number.parseInt(String(rawValue || ''), 10)
+    : Number(String(rawValue ?? '').trim())
 
   return (Number.isFinite(seconds) && seconds > 0
     ? seconds

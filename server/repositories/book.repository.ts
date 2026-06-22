@@ -491,6 +491,35 @@ export const BookRepositoryLive = Layer.effect(
         }
       })
 
+    const hasSystemTagsForBook = (bookId: string) =>
+      Effect.gen(function* () {
+        const rows = yield* Effect.tryPromise({
+          try: () => dbService.db
+            .select({ value: count() })
+            .from(bookSystemTags)
+            .where(eq(bookSystemTags.bookId, bookId)),
+          catch: error => new DatabaseError({
+            message: `Failed to count system tags: ${error}`,
+            operation: 'hasSystemTagsForBook'
+          })
+        })
+
+        return (rows[0]?.value ?? 0) > 0
+      })
+
+    const hydrateMissingSystemTagsForBook = (bookId: string, isbn: string) =>
+      Effect.gen(function* () {
+        const hasSystemTags = yield* hasSystemTagsForBook(bookId)
+        if (hasSystemTags) return
+
+        const data = yield* lookupByISBN(isbn)
+        yield* hydrateSystemTagsForBook(bookId, data.subjects || [])
+      }).pipe(
+        Effect.catchAll(error =>
+          Effect.logWarning(`Skipped Open Library tag hydration for existing ISBN ${isbn}: ${String(error)}`)
+        )
+      )
+
     const linkUserTag = (userBookId: string, tagId: string, client = dbService.db) =>
       Effect.tryPromise({
         try: () => client
@@ -678,20 +707,12 @@ export const BookRepositoryLive = Layer.effect(
             yield* hydrateSystemTagsForBook(newBookId, openLibraryData.subjects || [])
 
             book = newBook
-          } else {
-            const existingBook = book
-            // Reusing cached metadata should not depend on Open Library being reachable.
-            yield* lookupByISBN(isbn).pipe(
-              Effect.flatMap(data => hydrateSystemTagsForBook(existingBook.id, data.subjects || [])),
-              Effect.catchAll(error =>
-                Effect.logWarning(`Skipped Open Library tag hydration for existing ISBN ${isbn}: ${String(error)}`)
-              )
-            )
           }
 
           // Create userBooks entry
           const userBookId = generateId()
           const addedAt = new Date()
+          const isExistingOpenLibraryBook = !openLibraryData
 
           yield* Effect.tryPromise({
             try: () =>
@@ -703,6 +724,10 @@ export const BookRepositoryLive = Layer.effect(
               }),
             catch: error => new BookCreateError({ message: `Failed to add book to library: ${error}` })
           })
+
+          if (isExistingOpenLibraryBook) {
+            yield* hydrateMissingSystemTagsForBook(book.id, isbn)
+          }
 
           const authorMap = yield* hydrateAuthorsForBookIds([book.id])
           const hydratedBook = toBookModel(book, authorMap.get(book.id) || [])

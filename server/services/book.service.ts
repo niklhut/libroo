@@ -279,7 +279,8 @@ export const BookServiceLive = Layer.effect(
 
       repairMissingOpenLibraryCovers: (limit = 20) =>
         Effect.gen(function* () {
-          const cappedLimit = Math.min(Math.max(1, Math.floor(limit)), 50)
+          const normalizedLimit = Number.isFinite(limit) ? Math.floor(limit) : 20
+          const cappedLimit = Math.min(Math.max(1, normalizedLimit), 50)
           const candidates = yield* bookRepo.listOpenLibraryBooksMissingCovers(cappedLimit)
           const result: RepairOpenLibraryCoversResult = {
             attempted: candidates.length,

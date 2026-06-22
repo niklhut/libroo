@@ -90,7 +90,7 @@ function getOpenLibraryTimeout() {
   const rawValue = config.openLibraryRequestTimeoutSeconds
   const seconds = typeof rawValue === 'number'
     ? rawValue
-    : Number.parseInt(String(rawValue || ''), 10)
+    : Number(String(rawValue ?? '').trim())
 
   return Duration.seconds(Number.isFinite(seconds) && seconds > 0
     ? seconds
@@ -102,7 +102,7 @@ function getOpenLibraryCoverTimeout() {
   const rawValue = config.openLibraryCoverTimeoutSeconds
   const seconds = typeof rawValue === 'number'
     ? rawValue
-    : Number.parseInt(String(rawValue || ''), 10)
+    : Number(String(rawValue ?? '').trim())
 
   return Duration.seconds(Number.isFinite(seconds) && seconds > 0
     ? seconds

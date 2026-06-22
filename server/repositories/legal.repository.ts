@@ -29,7 +29,7 @@ function getLegalMarkdownFetchTimeout() {
   const rawValue = config.legalMarkdownFetchTimeoutSeconds
   const seconds = typeof rawValue === 'number'
     ? rawValue
-    : Number.parseInt(String(rawValue || ''), 10)
+    : Number(String(rawValue ?? '').trim())
 
   return Duration.seconds(Number.isFinite(seconds) && seconds > 0
     ? seconds
