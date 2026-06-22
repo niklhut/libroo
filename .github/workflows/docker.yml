@@ -52,7 +52,7 @@ jobs:
             org.opencontainers.image.description=Self-hosted Libroo library management app
 
       - name: Build production image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: Dockerfile
