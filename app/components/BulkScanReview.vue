@@ -360,13 +360,10 @@ function getStatusText(status: ScannedBook['status']) {
       <UButton
         block
         size="lg"
+        :icon="isAddingBooks ? undefined : 'i-lucide-plus'"
         :loading="isAddingBooks"
         @click="$emit('addSelected')"
       >
-        <UIcon
-          name="i-lucide-plus"
-          class="mr-2"
-        />
         Add {{ counts.selected }} Book{{ counts.selected > 1 ? 's' : '' }} to Library
       </UButton>
     </div>

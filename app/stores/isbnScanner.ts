@@ -167,7 +167,7 @@ export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
 
       if (success.length > 0 && failed.length === 0) {
         toast.add({
-          title: 'Books added!',
+          title: success.length === 1 ? 'Book added!' : 'Books added!',
           description: `Successfully added ${success.length} book${success.length > 1 ? 's' : ''} to your library`,
           color: 'success'
         })

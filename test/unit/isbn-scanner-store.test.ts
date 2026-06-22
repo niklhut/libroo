@@ -123,7 +123,7 @@ describe('useIsbnScannerStore', () => {
     expect(dashboardStore.shouldSync).toBe(true)
     expect(dashboardStore.syncTargetPages).toBe(2)
     expect(toastAdd).toHaveBeenCalledWith(expect.objectContaining({
-      title: 'Books added!',
+      title: 'Book added!',
       color: 'success'
     }))
   })
