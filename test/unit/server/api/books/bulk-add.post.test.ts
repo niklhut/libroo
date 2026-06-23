@@ -29,7 +29,7 @@ describe('server/api/books/bulk-add.post', () => {
 
     await expect(handler(makeEvent({
       body: {
-        isbns: ['9780306406157', '9780306406158']
+        isbns: ['978-0-306-40615-7', '9780306406158']
       }
     }))).resolves.toEqual({
       added: [{ isbn: '9780306406157' }],
