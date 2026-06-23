@@ -20,7 +20,7 @@ const { user } = storeToRefs(authStore)
 const { signUp } = authStore
 const toast = useToast()
 const { data: emailCapabilities } = await useEmailCapabilities()
-const { data: legalStatus } = await useFetch<LegalStatus>('/api/legal/status')
+const { data: legalStatus, error: legalStatusError } = await useFetch<LegalStatus>('/api/legal/status')
 
 const isLoading = ref(false)
 const error = ref('')
@@ -48,6 +48,7 @@ const termsUrl = computed(() => configuredLegalUrl(config.public.legalTermsUrl))
 const termsLink = computed(() => termsUrl.value || '/terms')
 const termsLinkExternal = computed(() => Boolean(termsUrl.value))
 const termsConfigured = computed(() => Boolean(termsUrl.value || legalStatus.value?.terms))
+const termsStatusUnknown = computed(() => !termsUrl.value && Boolean(legalStatusError.value))
 const authFormKey = computed(() => `${inviteEmail.value}:${termsConfigured.value}`)
 
 const { data: invitePreview } = await useAsyncData<SignupInvitePreview | null>(
@@ -108,7 +109,8 @@ const fields = computed<AuthFormField[]>(() => [
     name: 'name',
     type: 'text',
     label: 'Name',
-    placeholder: 'Enter your name'
+    placeholder: 'Enter your name',
+    required: true
   },
   {
     name: 'email',
@@ -116,26 +118,30 @@ const fields = computed<AuthFormField[]>(() => [
     label: 'Email',
     placeholder: 'Enter your email',
     defaultValue: inviteEmail.value,
-    disabled: Boolean(inviteEmail.value)
+    disabled: Boolean(inviteEmail.value),
+    required: true
   },
   {
     name: 'password',
     type: 'password',
     label: 'Password',
     placeholder: 'Enter your password',
-    hint: 'At least 8 characters'
+    hint: 'At least 8 characters',
+    required: true
   },
   {
     name: 'confirmPassword',
     type: 'password',
     label: 'Confirm Password',
-    placeholder: 'Confirm your password'
+    placeholder: 'Confirm your password',
+    required: true
   },
   ...(termsConfigured.value
     ? [{
         name: 'acceptTerms',
         type: 'checkbox' as const,
-        defaultValue: false
+        defaultValue: false,
+        required: true
       }]
     : [])
 ])
@@ -169,6 +175,7 @@ function inputFieldProps(field: AuthFormField) {
     name: inputField.name,
     placeholder: inputField.placeholder,
     autocomplete: inputField.autocomplete,
+    required: inputField.required,
     disabled: inputField.disabled
   }
 }
@@ -188,6 +195,11 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
 
   if (inviteEmail.value && payload.data.email.toLowerCase() !== inviteEmail.value) {
     error.value = 'Use the email address this invite was sent to'
+    return
+  }
+
+  if (termsStatusUnknown.value) {
+    error.value = 'Unable to verify Terms of Service availability. Please try again.'
     return
   }
 
@@ -211,7 +223,8 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
       payload.data.password,
       payload.data.name,
       inviteToken.value,
-      turnstileToken.value
+      turnstileToken.value,
+      payload.data.acceptTerms
     )
 
     if (result.error) {
@@ -275,6 +288,7 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
     <UPageCard v-else>
       <UAuthForm
         :key="authFormKey"
+        novalidate
         :schema="schema"
         :fields="fields"
         :loading="isLoading"
@@ -291,18 +305,6 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
           >
             Sign in
           </ULink>
-        </template>
-
-        <template #name-label>
-          Name <span class="text-error">*</span>
-        </template>
-
-        <template #email-label>
-          Email <span class="text-error">*</span>
-        </template>
-
-        <template #password-label>
-          Password <span class="text-error">*</span>
         </template>
 
         <template #password-field="{ state, field }">
@@ -325,10 +327,6 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
               />
             </template>
           </UInput>
-        </template>
-
-        <template #confirmPassword-label>
-          Confirm Password <span class="text-error">*</span>
         </template>
 
         <template #confirmPassword-field="{ state, field }">

@@ -25,13 +25,15 @@ const fields: AuthFormField[] = [
     name: 'newPassword',
     type: 'password',
     label: 'New password',
-    placeholder: 'Enter your new password'
+    placeholder: 'Enter your new password',
+    required: true
   },
   {
     name: 'confirmPassword',
     type: 'password',
     label: 'Confirm new password',
-    placeholder: 'Confirm your new password'
+    placeholder: 'Confirm your new password',
+    required: true
   }
 ]
 
@@ -48,6 +50,7 @@ type Schema = z.output<typeof schema>
 type AuthInputField = AuthFormField & {
   placeholder?: string
   autocomplete?: string
+  required?: boolean
 }
 
 function inputFieldProps(field: AuthFormField) {
@@ -55,7 +58,8 @@ function inputFieldProps(field: AuthFormField) {
   return {
     name: inputField.name,
     placeholder: inputField.placeholder,
-    autocomplete: inputField.autocomplete
+    autocomplete: inputField.autocomplete,
+    required: inputField.required
   }
 }
 
@@ -119,6 +123,7 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
 
     <UPageCard v-else>
       <UAuthForm
+        novalidate
         :schema="schema"
         :fields="fields"
         :loading="isSubmitting"
@@ -135,10 +140,6 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
           >
             Sign in
           </ULink>
-        </template>
-
-        <template #newPassword-label>
-          New password <span class="text-error">*</span>
         </template>
 
         <template #newPassword-field="{ state, field }">
@@ -161,10 +162,6 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
               />
             </template>
           </UInput>
-        </template>
-
-        <template #confirmPassword-label>
-          Confirm new password <span class="text-error">*</span>
         </template>
 
         <template #confirmPassword-field="{ state, field }">

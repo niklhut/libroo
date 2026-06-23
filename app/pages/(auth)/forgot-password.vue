@@ -26,7 +26,8 @@ const fields: AuthFormField[] = [
     name: 'email',
     type: 'email',
     label: 'Email',
-    placeholder: 'Enter your email'
+    placeholder: 'Enter your email',
+    required: true
   }
 ]
 
@@ -116,6 +117,7 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
 
     <UPageCard v-else>
       <UAuthForm
+        novalidate
         :schema="schema"
         :fields="fields"
         :loading="isSubmitting"
@@ -132,10 +134,6 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
           >
             Sign in
           </ULink>
-        </template>
-
-        <template #email-label>
-          Email <span class="text-error">*</span>
         </template>
 
         <template #validation>

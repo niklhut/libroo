@@ -45,9 +45,9 @@ export const LegalServiceLive = Layer.effect(
     return {
       getStatus: () =>
         Effect.succeed({
-          privacy: validateMarkdownUrl(markdownUrlFor('privacy')),
-          imprint: validateMarkdownUrl(markdownUrlFor('imprint')),
-          terms: validateMarkdownUrl(markdownUrlFor('terms'))
+          privacy: Boolean(markdownUrlFor('privacy')),
+          imprint: Boolean(markdownUrlFor('imprint')),
+          terms: Boolean(markdownUrlFor('terms'))
         } satisfies LegalStatus),
 
       getDocument: kind =>

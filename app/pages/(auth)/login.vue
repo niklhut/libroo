@@ -51,13 +51,15 @@ const fields: AuthFormField[] = [
     name: 'email',
     type: 'email',
     label: 'Email',
-    placeholder: 'Enter your email'
+    placeholder: 'Enter your email',
+    required: true
   },
   {
     name: 'password',
     type: 'password',
     label: 'Password',
-    placeholder: 'Enter your password'
+    placeholder: 'Enter your password',
+    required: true
   }
 ]
 
@@ -73,6 +75,7 @@ type AuthInputField = AuthFormField & {
   placeholder?: string
   autocomplete?: string
   disabled?: boolean
+  required?: boolean
 }
 
 function inputFieldProps(field: AuthFormField) {
@@ -81,6 +84,7 @@ function inputFieldProps(field: AuthFormField) {
     name: inputField.name,
     placeholder: inputField.placeholder,
     autocomplete: inputField.autocomplete,
+    required: inputField.required,
     disabled: inputField.disabled
   }
 }
@@ -127,6 +131,7 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
   <UContainer class="py-12 max-w-md">
     <UPageCard>
       <UAuthForm
+        novalidate
         :schema="schema"
         :fields="fields"
         :loading="isLoading"
@@ -152,14 +157,6 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
           >
             Forgot password?
           </ULink>
-        </template>
-
-        <template #email-label>
-          Email <span class="text-error">*</span>
-        </template>
-
-        <template #password-label>
-          Password <span class="text-error">*</span>
         </template>
 
         <template #password-field="{ state, field }">

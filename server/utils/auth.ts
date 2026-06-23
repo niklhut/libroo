@@ -8,6 +8,7 @@ import { db, schema } from '../runtime/auth-db.active'
 import { librooAdminPolicyPlugin } from './libroo-admin-auth-plugin'
 import { librooAdminAuditPlugin } from './libroo-admin-audit-plugin'
 import { librooSecurityNotificationPlugin } from './libroo-security-notification-plugin'
+import { librooTermsConsentPlugin } from './libroo-terms-consent-plugin'
 import { getEmailVerificationConfig, validateEmailVerificationConfig } from './email-verification-config'
 import { createTurnstileCaptchaPlugins } from './turnstile'
 import { sendEmailMessage } from '../services/email.service'
@@ -234,6 +235,7 @@ export const auth = betterAuth({
   },
   plugins: [
     ...createTurnstileCaptchaPlugins(),
+    librooTermsConsentPlugin(),
     admin({
       roles: {
         admin: adminRole,
