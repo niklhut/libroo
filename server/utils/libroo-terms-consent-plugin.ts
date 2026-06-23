@@ -16,16 +16,7 @@ export const librooTermsConsentPlugin = (): BetterAuthPlugin => ({
           user: {
             create: {
               before: async (data, context?: UserCreateContext | null) => {
-                if (context?.path !== SIGN_UP_EMAIL_PATH || !termsAreConfigured()) {
-                  return { data }
-                }
-
-                return {
-                  data: {
-                    ...data,
-                    termsAcceptedAt: new Date()
-                  }
-                }
+                return addTermsAcceptedAtToUserCreateData(data, context)
               }
             }
           }
@@ -38,18 +29,38 @@ export const librooTermsConsentPlugin = (): BetterAuthPlugin => ({
       {
         matcher: context => context.path === SIGN_UP_EMAIL_PATH,
         handler: createAuthMiddleware(async (ctx) => {
-          if (!termsAreConfigured()) return
-          if (readBooleanField(ctx.body, 'acceptTerms') === true) return
-
-          throw APIError.from('BAD_REQUEST', {
-            message: 'You must agree to the Terms of Service to create an account',
-            code: 'TERMS_ACCEPTANCE_REQUIRED'
-          })
+          enforceTermsAcceptance(ctx.body)
         })
       }
     ]
   }
 })
+
+export function enforceTermsAcceptance(body: unknown) {
+  if (!termsAreConfigured()) return
+  if (readBooleanField(body, 'acceptTerms') === true) return
+
+  throw APIError.from('BAD_REQUEST', {
+    message: 'You must agree to the Terms of Service to create an account',
+    code: 'TERMS_ACCEPTANCE_REQUIRED'
+  })
+}
+
+export function addTermsAcceptedAtToUserCreateData<T extends Record<string, unknown>>(
+  data: T,
+  context?: UserCreateContext | null
+) {
+  if (context?.path !== SIGN_UP_EMAIL_PATH || !termsAreConfigured()) {
+    return { data }
+  }
+
+  return {
+    data: {
+      ...data,
+      termsAcceptedAt: new Date()
+    }
+  }
+}
 
 export function termsAreConfigured() {
   const config = getTermsConfig()

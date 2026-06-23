@@ -28,7 +28,7 @@ export const useAuthStore = defineStore('auth', () => {
       password,
       name,
       inviteToken: inviteToken || undefined,
-      acceptTerms: acceptTerms || undefined,
+      acceptTerms: acceptTerms ?? undefined,
       fetchOptions: turnstileToken
         ? {
             headers: {
