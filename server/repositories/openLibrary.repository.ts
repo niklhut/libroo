@@ -120,26 +120,6 @@ const fetchJson = <T>(url: string) =>
     }))
   )
 
-// Helper to check if a cover URL exists using HEAD request
-const checkCoverExists = (coverUrl: string) =>
-  HttpClient.head(
-    coverUrl.includes('?') ? `${coverUrl}&default=false` : `${coverUrl}?default=false`
-  ).pipe(
-    Effect.timeout(getOpenLibraryTimeout()),
-    Effect.flatMap((response) => {
-      if (response.status < 200 || response.status >= 300) {
-        return Effect.succeed(false)
-      }
-      // Check content length to detect placeholder images (1x1 pixels are very small)
-      const contentLength = response.headers['content-length']
-      if (contentLength && parseInt(contentLength) < 1000) {
-        return Effect.succeed(false)
-      }
-      return Effect.succeed(true)
-    }),
-    Effect.catchAll(() => Effect.succeed(false))
-  )
-
 // Live implementation
 export const OpenLibraryRepositoryLive = Layer.succeed(OpenLibraryRepository, {
   lookupByISBN: isbn =>
@@ -167,8 +147,7 @@ export const OpenLibraryRepositoryLive = Layer.succeed(OpenLibraryRepository, {
       // Use the same cover URL format that downloadCover uses, so preview matches the downloaded image
       // The ISBN-based URL is the most reliable and follows redirects consistently
       const coverUrlToCheck = `https://covers.openlibrary.org/b/isbn/${normalizedISBN}-L.jpg?default=false`
-      const coverExists = yield* checkCoverExists(coverUrlToCheck)
-      const coverUrl = coverExists ? coverUrlToCheck : null
+      const coverUrl = bookData.cover ? coverUrlToCheck : null
 
       // Extract publishers
       const publishers = bookData.publishers?.map(p => p.name)

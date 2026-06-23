@@ -77,6 +77,10 @@ export interface MissingOpenLibraryCoverBook {
   isbn: string
 }
 
+export interface AddBookByISBNOptions {
+  previewCoverPath?: string | null
+}
+
 interface RepositoryBookAuthor {
   id: string
   name: string
@@ -115,7 +119,8 @@ export interface BookLibraryFilters extends LibraryQueryFilters {
 export interface BookRepositoryInterface {
   addBookByISBN: (
     userId: string,
-    isbn: string
+    isbn: string,
+    options?: AddBookByISBNOptions
   ) => Effect.Effect<
     UserBook,
     BookCreateError | BookAlreadyOwnedError | OpenLibraryBookNotFoundError | OpenLibraryApiError | DatabaseError,
@@ -230,6 +235,18 @@ export class BookRepository extends Context.Tag('BookRepository')<BookRepository
 // Generate unique ID
 function generateId(): string {
   return crypto.randomUUID()
+}
+
+function normalizeISBN(isbn: string): string {
+  return isbn.replace(/[-\s]/g, '')
+}
+
+function getTrustedPreviewCoverPath(isbn: string, previewCoverPath?: string | null): string | null {
+  const normalizedISBN = normalizeISBN(isbn)
+  const escapedISBN = normalizedISBN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(`^covers/${escapedISBN}\\.(?:webp|jpe?g|png|gif)$`).test(previewCoverPath ?? '')
+    ? previewCoverPath!
+    : null
 }
 
 // Live implementation
@@ -627,8 +644,11 @@ export const BookRepositoryLive = Layer.effect(
       })
 
     return {
-      addBookByISBN: (userId, isbn) =>
+      addBookByISBN: (userId, isbn, options = {}) =>
         Effect.gen(function* () {
+          const normalizedISBN = normalizeISBN(isbn)
+          const previewCoverPath = getTrustedPreviewCoverPath(normalizedISBN, options.previewCoverPath)
+
           // Check if user already owns a book with this ISBN
           const existingResult = yield* Effect.tryPromise({
             try: () =>
@@ -638,7 +658,7 @@ export const BookRepositoryLive = Layer.effect(
                 .innerJoin(books, eq(userBooks.bookId, books.id))
                 .where(and(
                   eq(userBooks.userId, userId),
-                  eq(books.isbn, isbn),
+                  eq(books.isbn, normalizedISBN),
                   eq(books.source, 'open_library'),
                   isNull(userBooks.removedAt)
                 ))
@@ -650,7 +670,7 @@ export const BookRepositoryLive = Layer.effect(
           })
 
           if (existingResult[0]) {
-            return yield* Effect.fail(new BookAlreadyOwnedError({ isbn }))
+            return yield* Effect.fail(new BookAlreadyOwnedError({ isbn: normalizedISBN }))
           }
 
           // Check if book already exists in database (shared)
@@ -659,7 +679,7 @@ export const BookRepositoryLive = Layer.effect(
               dbService.db
                 .select()
                 .from(books)
-                .where(and(eq(books.isbn, isbn), eq(books.source, 'open_library')))
+                .where(and(eq(books.isbn, normalizedISBN), eq(books.source, 'open_library')))
                 .limit(1),
             catch: error => new DatabaseError({
               message: `Failed to find existing book: ${error}`,
@@ -672,10 +692,10 @@ export const BookRepositoryLive = Layer.effect(
 
           // If book doesn't exist, fetch from OpenLibrary and create it
           if (!book) {
-            openLibraryData = yield* lookupByISBN(isbn)
+            openLibraryData = yield* lookupByISBN(normalizedISBN)
 
             // Download cover to local storage
-            const coverPath = yield* downloadCover(isbn, 'L')
+            const coverPath = previewCoverPath ?? (yield* downloadCover(normalizedISBN, 'L'))
 
             const newBookId = generateId()
             const now = new Date()
@@ -707,6 +727,25 @@ export const BookRepositoryLive = Layer.effect(
             yield* hydrateSystemTagsForBook(newBookId, openLibraryData.subjects || [])
 
             book = newBook
+          } else if (!book.coverPath && previewCoverPath) {
+            const existingBook = book
+            const updated = yield* Effect.tryPromise({
+              try: async () => {
+                const rows = await dbService.db
+                  .update(books)
+                  .set({ coverPath: previewCoverPath })
+                  .where(and(eq(books.id, existingBook.id), isNull(books.coverPath)))
+                  .returning()
+                return rows[0] ?? null
+              },
+              catch: error => new DatabaseError({
+                message: `Failed to update existing book cover: ${error}`,
+                operation: 'addBookByISBN.updateExistingCover'
+              })
+            })
+            if (updated) {
+              book = updated
+            }
           }
 
           // Create userBooks entry
@@ -726,7 +765,7 @@ export const BookRepositoryLive = Layer.effect(
           })
 
           if (isExistingOpenLibraryBook) {
-            yield* hydrateMissingSystemTagsForBook(book.id, isbn)
+            yield* hydrateMissingSystemTagsForBook(book.id, normalizedISBN)
           }
 
           const authorMap = yield* hydrateAuthorsForBookIds([book.id])

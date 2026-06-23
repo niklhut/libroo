@@ -111,7 +111,8 @@ describe('useIsbnScannerStore', () => {
           found: true,
           isbn: lookupIsbn,
           title: 'Book A',
-          author: 'Author A'
+          author: 'Author A',
+          previewCoverPath: 'covers/9781234567890.webp'
         }
       }
 
@@ -145,6 +146,12 @@ describe('useIsbnScannerStore', () => {
     const result = await scannerStore.addSelectedToLibrary()
 
     expect(result).toEqual({ success: [lookupIsbn], failed: [] })
+    expect(fetchMock).toHaveBeenCalledWith('/api/books/bulk-add', {
+      method: 'POST',
+      body: {
+        books: [{ isbn: lookupIsbn, previewCoverPath: 'covers/9781234567890.webp' }]
+      }
+    })
     expect(scannerStore.scannedBooks).toEqual([])
     expect(dashboardStore.shouldSync).toBe(true)
     expect(dashboardStore.syncTargetPages).toBe(2)

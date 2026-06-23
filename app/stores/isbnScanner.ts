@@ -156,10 +156,14 @@ export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
     isAddingBooks.value = true
 
     try {
-      const isbns = selectedBooks.map(b => b.isbn)
       const result = await $fetch<{ added: Array<{ isbn: string }>, failed: Array<{ isbn: string, error: string }> }>('/api/books/bulk-add', {
         method: 'POST',
-        body: { isbns }
+        body: {
+          books: selectedBooks.map(book => ({
+            isbn: book.isbn,
+            previewCoverPath: book.result?.previewCoverPath ?? null
+          }))
+        }
       })
 
       const success = result.added.map(b => b.isbn)
