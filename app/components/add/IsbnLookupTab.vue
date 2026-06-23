@@ -72,7 +72,7 @@ async function addBookToLibrary() {
     title: alreadyOwned ? 'Already in library' : 'Failed to add book',
     description: alreadyOwned
       ? `${lookupResult.value.title || 'This book'} is already in your library`
-      : failure?.error || 'Failed to add book',
+      : 'Could not add this book to your library. Try again in a moment.',
     color: alreadyOwned ? 'info' : 'error'
   })
 }

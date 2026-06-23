@@ -182,9 +182,10 @@ export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
         color: 'warning'
       })
     } else if (failed.length > 0) {
+      const requestFailed = isbnLookupStore.addError !== null && success.length === 0
       toast.add({
-        title: result.failed.some(f => f.error === isbnLookupStore.addError) ? 'Error' : 'Failed to add books',
-        description: result.failed.some(f => f.error === isbnLookupStore.addError)
+        title: requestFailed ? 'Error' : 'Failed to add books',
+        description: requestFailed
           ? isbnLookupStore.addError || 'Failed to add books'
           : `Could not add ${failed.length} book${failed.length > 1 ? 's' : ''}`,
         color: 'error'
