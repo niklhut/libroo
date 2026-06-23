@@ -1,4 +1,4 @@
-export interface AuthStatusUser {
+export interface AuthStatusUser extends Record<string, unknown> {
   banned?: boolean | null
   banExpires?: string | Date | null
 }

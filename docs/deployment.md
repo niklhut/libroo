@@ -81,6 +81,9 @@ Optional email and registration settings:
 | --- | --- | --- |
 | `NUXT_EMAIL_VERIFICATION_ENABLED` | `false` | Set `true` for public installs. |
 | `NUXT_PUBLIC_REGISTRATION_ENABLED` | `true` | Set `false` after creating the first admin for invite-only operation. |
+| `NUXT_PUBLIC_TURNSTILE_ENABLED` | `false` | Enables Cloudflare Turnstile server enforcement and client widget rendering for signup and password-reset email requests. Public installs should set it to `true`; private LAN, VPN/Tailscale, Cloudflare Access, or otherwise access-controlled installs may leave it `false` intentionally. |
+| `NUXT_PUBLIC_TURNSTILE_SITE_KEY` / `NUXT_TURNSTILE_SECRET_KEY` | empty | Cloudflare Turnstile site key and secret key. Required when Turnstile is enabled. |
+| `NUXT_TURNSTILE_ALLOWED_HOSTNAMES` | empty | Optional comma-separated hostname allow-list for Turnstile token responses, such as `libroo.example.com,beta.libroo.example.com`. |
 | `NUXT_PUBLIC_OPEN_LIBRARY_LINKS_ENABLED` | `false` in production, `true` in development | Shows outbound Open Library edition/work links on book detail pages. Keep disabled for the hosted/product experience; enable intentionally for self-hosted source visibility or metadata debugging. |
 | `NUXT_OPEN_LIBRARY_REQUEST_TIMEOUT_SECONDS` | `12` | Timeout for Open Library metadata and cover existence requests. Increase if the upstream API is slow in your deployment region. |
 | `NUXT_OPEN_LIBRARY_COVER_TIMEOUT_SECONDS` | `20` | Timeout for downloading and repairing cover images from Open Library. |
@@ -108,6 +111,25 @@ Libroo does not ship legally sufficient privacy-policy or imprint templates.
 
 If both values for a legal page are empty, the footer link is hidden and the
 direct route shows an empty state.
+
+### Turnstile Bot Protection
+
+Libroo can protect the public account creation flow and password-reset email request flow with Cloudflare Turnstile. This is operator-controlled rather than globally enforced by the application.
+
+Use Cloudflare's Turnstile dashboard to create a widget for the public hostname, then set:
+
+```bash
+NUXT_PUBLIC_TURNSTILE_ENABLED=true
+NUXT_PUBLIC_TURNSTILE_SITE_KEY=0x...
+NUXT_TURNSTILE_SECRET_KEY=0x...
+NUXT_TURNSTILE_ALLOWED_HOSTNAMES=libroo.example.com
+```
+
+When enabled, signup and password-reset email requests must include a valid Turnstile token. Missing or invalid tokens are rejected before Better Auth creates the account or sends a reset email. Login is not protected by Turnstile in this sprint.
+
+Public/hosted deployments should enable Turnstile before leaving public signup or password-reset email enabled. If those flows are public without Turnstile, operators should treat the deployment as more exposed to automated account creation and reset-email spam.
+
+Private self-hosted deployments may intentionally opt out by leaving `NUXT_PUBLIC_TURNSTILE_ENABLED=false`, especially when Libroo is only reachable on a LAN, behind VPN/Tailscale, behind Cloudflare Access, or behind another access-control layer. The app does not refuse to run when Turnstile is disabled.
 
 ### Persistent Data
 
@@ -202,8 +224,11 @@ Repository or environment secrets:
 | `NUXT_BETTER_AUTH_SECRET` | Hosted auth secret. |
 | `NUXT_BETTER_AUTH_URL` | Hosted public origin. |
 | `NUXT_PLUNK_API_KEY` | Hosted email delivery. |
+| `NUXT_TURNSTILE_SECRET_KEY` | Hosted Turnstile server-side verification secret. |
 
 Put these in repository or organization secrets. Pull request builds do not need these secrets because the deploy job only runs on `push` to protected `main`. If GitHub Environment protection is enabled later, move the same secrets into a `production` environment and add the workflow `environment` key after confirming the repository validator accepts it.
+
+The Cloudflare deploy workflow syncs `NUXT_BETTER_AUTH_SECRET`, `NUXT_PLUNK_API_KEY`, and, when Turnstile is enabled, `NUXT_TURNSTILE_SECRET_KEY` with `wrangler secret bulk`. Do not configure the Turnstile secret as a plain GitHub variable or Wrangler var.
 
 Repository or environment variables:
 
@@ -213,6 +238,9 @@ Repository or environment variables:
 | `NUXT_EMAIL_REPLY_TO` | Optional hosted reply-to address. |
 | `NUXT_EMAIL_VERIFICATION_ENABLED` | `true` |
 | `NUXT_PUBLIC_REGISTRATION_ENABLED` | `false` after the first admin exists. |
+| `NUXT_PUBLIC_TURNSTILE_ENABLED` | `true` for hosted public deployments. |
+| `NUXT_PUBLIC_TURNSTILE_SITE_KEY` | Hosted Turnstile public site key. |
+| `NUXT_TURNSTILE_ALLOWED_HOSTNAMES` | Hosted public hostname, or a comma-separated list if multiple hostnames serve the app. |
 | `NUXT_PUBLIC_OPEN_LIBRARY_LINKS_ENABLED` | `false` unless the hosted operator intentionally wants third-party source links visible. |
 | `NUXT_OPEN_LIBRARY_REQUEST_TIMEOUT_SECONDS` | `12` |
 | `NUXT_OPEN_LIBRARY_COVER_TIMEOUT_SECONDS` | `20` |
@@ -221,6 +249,8 @@ Repository or environment variables:
 | `NUXT_PUBLIC_LEGAL_PRIVACY_POLICY_URL` / `NUXT_PUBLIC_LEGAL_IMPRINT_URL` | Optional canonical hosted legal page URLs. |
 | `NUXT_LEGAL_PRIVACY_POLICY_MARKDOWN_URL` / `NUXT_LEGAL_IMPRINT_MARKDOWN_URL` | Optional Markdown source URLs, used when the matching canonical URL is empty. |
 | `NUXT_CLOUDFLARE_WORKER_NAME` | Optional override. Defaults to `libroo`. |
+
+The deploy workflow defaults hosted beta Turnstile enforcement to `true`. To intentionally deploy a private or access-controlled Cloudflare Worker without Turnstile, set repository variable `NUXT_PUBLIC_TURNSTILE_ENABLED=false`.
 
 ### Hosted Migrations
 

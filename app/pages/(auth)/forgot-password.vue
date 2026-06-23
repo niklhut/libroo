@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import * as z from 'zod'
 import type { AuthFormField, FormSubmitEvent } from '@nuxt/ui'
+import { booleanConfigValue } from '~~/shared/utils/runtime-config'
 
 definePageMeta({
   auth: false
@@ -9,9 +10,16 @@ definePageMeta({
 usePageTitle('Reset Password')
 
 const toast = useToast()
+const config = useRuntimeConfig()
 const { data: emailCapabilities } = await useEmailCapabilities()
 const isSubmitting = ref(false)
 const requestSent = ref(false)
+const turnstileToken = ref('')
+const turnstile = ref<{ reset: () => void } | null>(null)
+const turnstileEnabled = computed(() => booleanConfigValue(config.public.turnstile?.enabled, false))
+const turnstileSiteKey = computed(() => typeof config.public.turnstile?.siteKey === 'string' ? config.public.turnstile.siteKey.trim() : '')
+const turnstileConfigured = computed(() => turnstileEnabled.value && Boolean(turnstileSiteKey.value))
+const turnstileMissingConfig = computed(() => turnstileEnabled.value && !turnstileSiteKey.value)
 
 const fields: AuthFormField[] = [
   {
@@ -38,10 +46,26 @@ function getFailureMessage(err: unknown, fallback: string) {
 async function onSubmit(payload: FormSubmitEvent<Schema>) {
   if (!emailCapabilities.value.passwordResetEnabled || isSubmitting.value) return
 
+  if (turnstileEnabled.value && !turnstileToken.value) {
+    toast.add({
+      title: 'Reset unavailable',
+      description: turnstileMissingConfig.value
+        ? 'Bot protection is enabled but the Turnstile site key is not configured.'
+        : 'Complete the bot protection check before requesting a reset email.',
+      color: 'error'
+    })
+    return
+  }
+
   isSubmitting.value = true
   try {
     await $fetch('/api/auth/request-password-reset', {
       method: 'POST',
+      headers: turnstileToken.value
+        ? {
+            'x-captcha-response': turnstileToken.value
+          }
+        : undefined,
       body: {
         email: payload.data.email,
         redirectTo: '/reset-password'
@@ -61,6 +85,10 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
     })
   } finally {
     isSubmitting.value = false
+    if (turnstileEnabled.value) {
+      turnstile.value?.reset()
+      turnstileToken.value = ''
+    }
   }
 }
 </script>
@@ -105,6 +133,27 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
           >
             Sign in
           </ULink>
+        </template>
+
+        <template #validation>
+          <div
+            v-if="turnstileConfigured"
+            class="flex justify-center"
+          >
+            <NuxtTurnstile
+              ref="turnstile"
+              v-model="turnstileToken"
+              :site-key="turnstileSiteKey"
+              :options="{ size: 'normal' }"
+            />
+          </div>
+
+          <UAlert
+            v-if="turnstileMissingConfig"
+            color="warning"
+            icon="i-lucide-shield-alert"
+            title="Bot protection is not configured"
+          />
         </template>
 
         <template #footer>

@@ -94,8 +94,39 @@ describe('useAuthStore', () => {
       email: 'ada@example.com',
       password: 'secret',
       name: 'Ada',
-      inviteToken: 'invite-token'
+      inviteToken: 'invite-token',
+      fetchOptions: undefined
     })
     expect(authClientMocks.signOut).toHaveBeenCalledTimes(1)
+  })
+
+  it('passes the Turnstile token as a captcha response header on signup', async () => {
+    const session = {
+      data: ref(null),
+      error: ref<Error | null>(null),
+      isPending: ref(false)
+    }
+
+    ;(globalThis as unknown as { useNuxtApp: () => { $authSession: typeof session } }).useNuxtApp = () => ({
+      $authSession: session
+    })
+
+    authClientMocks.signUpEmail.mockResolvedValueOnce({ error: null })
+
+    const store = useAuthStore()
+
+    await expect(store.signUp('ada@example.com', 'secret', 'Ada', 'invite-token', 'turnstile-token')).resolves.toEqual({ error: null })
+
+    expect(authClientMocks.signUpEmail).toHaveBeenCalledWith({
+      email: 'ada@example.com',
+      password: 'secret',
+      name: 'Ada',
+      inviteToken: 'invite-token',
+      fetchOptions: {
+        headers: {
+          'x-captcha-response': 'turnstile-token'
+        }
+      }
+    })
   })
 })
