@@ -112,7 +112,7 @@ describe('BookRepository cover repair helpers', () => {
 
     const result = await runRepository(db, Effect.flatMap(BookRepository, repository =>
       repository.addBookByISBN('user-1', '9781234567890')
-    ), { lookupByISBN })
+    ), { lookupByISBN }, { get: () => Effect.succeed(null) })
 
     expect(result.bookId).toBe('book-1')
     expect(result.book.title).toBe('Cached Book')
@@ -143,7 +143,7 @@ describe('BookRepository cover repair helpers', () => {
     ]))
   })
 
-  it('falls back to downloading covers when a preview cover path is not in storage', async () => {
+  it('falls back to downloading covers when no stored Open Library cover exists', async () => {
     const now = new Date('2026-06-22T10:00:00.000Z')
     const lookupByISBN = vi.fn(() => Effect.succeed({
       title: 'Fresh Book',
@@ -168,9 +168,7 @@ describe('BookRepository cover repair helpers', () => {
     })
 
     const result = await runRepository(db, Effect.flatMap(BookRepository, repository =>
-      repository.addBookByISBN('user-1', '9781234567890', {
-        previewCoverPath: 'covers/9781234567890.webp'
-      })
+      repository.addBookByISBN('user-1', '9781234567890')
     ), { lookupByISBN, downloadCover }, { get })
 
     expect(result.book.coverPath).toBe('covers/downloaded.webp')
@@ -188,9 +186,9 @@ describe('BookRepository cover repair helpers', () => {
     }])
   })
 
-  it('uses a verified preview cover path without downloading it again', async () => {
+  it('uses a verified stored WebP cover path without downloading it again', async () => {
     const now = new Date('2026-06-22T10:00:00.000Z')
-    const previewCoverPath = 'covers/9781234567890.jpg'
+    const storedCoverPath = 'covers/9781234567890.webp'
     const lookupByISBN = vi.fn(() => Effect.succeed({
       title: 'Fresh Book',
       authors: ['Ada Author'],
@@ -201,7 +199,9 @@ describe('BookRepository cover repair helpers', () => {
       subjects: []
     }))
     const downloadCover = vi.fn(() => Effect.succeed('covers/downloaded.webp'))
-    const get = vi.fn(() => Effect.succeed(new Blob(['stored-cover'], { type: 'image/jpeg' })))
+    const get = vi.fn((pathname: string) =>
+      Effect.succeed(pathname === storedCoverPath ? new Blob(['stored-cover'], { type: 'image/webp' }) : null)
+    )
 
     await db.insert(user).values({
       id: 'user-1',
@@ -214,13 +214,11 @@ describe('BookRepository cover repair helpers', () => {
     })
 
     const result = await runRepository(db, Effect.flatMap(BookRepository, repository =>
-      repository.addBookByISBN('user-1', '9781234567890', {
-        previewCoverPath
-      })
+      repository.addBookByISBN('user-1', '9781234567890')
     ), { lookupByISBN, downloadCover }, { get })
 
-    expect(result.book.coverPath).toBe(previewCoverPath)
-    expect(get).toHaveBeenCalledWith(previewCoverPath)
+    expect(result.book.coverPath).toBe(storedCoverPath)
+    expect(get).toHaveBeenCalledWith(storedCoverPath)
     expect(downloadCover).not.toHaveBeenCalled()
 
     const rows = await db.select({
@@ -230,7 +228,54 @@ describe('BookRepository cover repair helpers', () => {
 
     expect(rows).toEqual([{
       isbn: '9781234567890',
-      coverPath: previewCoverPath
+      coverPath: storedCoverPath
+    }])
+  })
+
+  it('uses a verified provider-preserved JPEG cover path without downloading it again', async () => {
+    const now = new Date('2026-06-22T10:00:00.000Z')
+    const storedCoverPath = 'covers/9781234567890.jpg'
+    const lookupByISBN = vi.fn(() => Effect.succeed({
+      title: 'Fresh Book',
+      authors: ['Ada Author'],
+      isbn: '9781234567890',
+      openLibraryKey: '/books/OL1M',
+      workKey: '/works/OL1W',
+      coverUrl: 'https://covers.openlibrary.org/b/isbn/9781234567890-L.jpg?default=false',
+      subjects: []
+    }))
+    const downloadCover = vi.fn(() => Effect.succeed('covers/downloaded.webp'))
+    const get = vi.fn((pathname: string) =>
+      Effect.succeed(pathname === storedCoverPath ? new Blob(['stored-cover'], { type: 'image/jpeg' }) : null)
+    )
+
+    await db.insert(user).values({
+      id: 'user-1',
+      name: 'Ada',
+      email: 'ada@example.com',
+      emailVerified: true,
+      role: 'admin',
+      createdAt: now,
+      updatedAt: now
+    })
+
+    const result = await runRepository(db, Effect.flatMap(BookRepository, repository =>
+      repository.addBookByISBN('user-1', '9781234567890')
+    ), { lookupByISBN, downloadCover }, { get })
+
+    expect(result.book.coverPath).toBe(storedCoverPath)
+    expect(get).toHaveBeenCalledWith('covers/9781234567890.webp')
+    expect(get).toHaveBeenCalledWith(storedCoverPath)
+    expect(downloadCover).not.toHaveBeenCalled()
+
+    const rows = await db.select({
+      isbn: books.isbn,
+      coverPath: books.coverPath
+    }).from(books)
+
+    expect(rows).toEqual([{
+      isbn: '9781234567890',
+      coverPath: storedCoverPath
     }])
   })
 
@@ -271,7 +316,7 @@ describe('BookRepository cover repair helpers', () => {
 
     const result = await runRepository(db, Effect.flatMap(BookRepository, repository =>
       repository.addBookByISBN('user-1', '9781234567890')
-    ), { lookupByISBN })
+    ), { lookupByISBN }, { get: () => Effect.succeed(null) })
 
     expect(result.bookId).toBe('book-1')
     expect(lookupByISBN).not.toHaveBeenCalled()

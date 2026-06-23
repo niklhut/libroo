@@ -111,8 +111,7 @@ describe('useIsbnScannerStore', () => {
           found: true,
           isbn: lookupIsbn,
           title: 'Book A',
-          author: 'Author A',
-          previewCoverPath: 'covers/9781234567890.webp'
+          author: 'Author A'
         }
       }
 
@@ -149,7 +148,7 @@ describe('useIsbnScannerStore', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/books/bulk-add', {
       method: 'POST',
       body: {
-        books: [{ isbn: lookupIsbn, previewCoverPath: 'covers/9781234567890.webp' }]
+        isbns: [lookupIsbn]
       }
     })
     expect(scannerStore.scannedBooks).toEqual([])

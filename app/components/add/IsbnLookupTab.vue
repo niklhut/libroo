@@ -68,8 +68,7 @@ async function addBookToLibrary() {
     const addedBook = await $fetch<LibraryBook>('/api/books', {
       method: 'POST',
       body: {
-        isbn: lookupResult.value.isbn,
-        previewCoverPath: lookupResult.value.previewCoverPath ?? null
+        isbn: lookupResult.value.isbn
       }
     })
 

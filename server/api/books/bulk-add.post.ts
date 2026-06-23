@@ -2,8 +2,7 @@ import { Effect } from 'effect'
 import { z } from 'zod'
 
 const bulkAddBookSchema = z.object({
-  isbn: z.string().min(10).max(13),
-  previewCoverPath: z.string().nullable().optional()
+  isbn: z.string().min(10).max(13)
 })
 
 const bulkAddSchema = z.object({

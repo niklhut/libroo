@@ -77,10 +77,6 @@ export interface MissingOpenLibraryCoverBook {
   isbn: string
 }
 
-export interface AddBookByISBNOptions {
-  previewCoverPath?: string | null
-}
-
 interface RepositoryBookAuthor {
   id: string
   name: string
@@ -119,8 +115,7 @@ export interface BookLibraryFilters extends LibraryQueryFilters {
 export interface BookRepositoryInterface {
   addBookByISBN: (
     userId: string,
-    isbn: string,
-    options?: AddBookByISBNOptions
+    isbn: string
   ) => Effect.Effect<
     UserBook,
     BookCreateError | BookAlreadyOwnedError | OpenLibraryBookNotFoundError | OpenLibraryApiError | DatabaseError,
@@ -243,27 +238,28 @@ function normalizeISBN(isbn: string): string {
 
 const TRUSTED_COVER_EXTENSIONS = new Set(['webp', 'jpg', 'jpeg', 'png', 'gif'])
 
-function getTrustedPreviewCoverPath(isbn: string, previewCoverPath?: string | null): string | null {
+function findStoredOpenLibraryCover(isbn: string) {
   const normalizedISBN = normalizeISBN(isbn)
-  const prefix = `covers/${normalizedISBN}.`
-  if (!previewCoverPath?.startsWith(prefix)) return null
+  const candidatePaths = [...TRUSTED_COVER_EXTENSIONS].map(extension => `covers/${normalizedISBN}.${extension}`)
 
-  const extension = previewCoverPath.slice(prefix.length)
-  return TRUSTED_COVER_EXTENSIONS.has(extension) ? previewCoverPath : null
-}
-
-function resolvePreviewCoverPath(isbn: string, previewCoverPath?: string | null) {
-  const trustedPath = getTrustedPreviewCoverPath(isbn, previewCoverPath)
-  if (!trustedPath) return Effect.succeed(null)
-
-  return getBlob(trustedPath).pipe(
-    Effect.map(blob => blob ? trustedPath : null),
-    Effect.catchAll(error =>
-      Effect.logWarning(`Preview cover path ${trustedPath} could not be verified: ${String(error)}`).pipe(
-        Effect.as(null)
+  return Effect.gen(function* () {
+    for (const candidatePath of candidatePaths) {
+      const foundPath = yield* getBlob(candidatePath).pipe(
+        Effect.map(blob => blob ? candidatePath : null),
+        Effect.catchAll(error =>
+          Effect.logWarning(`Stored Open Library cover ${candidatePath} could not be verified: ${String(error)}`).pipe(
+            Effect.as(null)
+          )
+        )
       )
-    )
-  )
+
+      if (foundPath) {
+        return foundPath
+      }
+    }
+
+    return null
+  })
 }
 
 // Live implementation
@@ -661,10 +657,9 @@ export const BookRepositoryLive = Layer.effect(
       })
 
     return {
-      addBookByISBN: (userId, isbn, options = {}) =>
+      addBookByISBN: (userId, isbn) =>
         Effect.gen(function* () {
           const normalizedISBN = normalizeISBN(isbn)
-          const previewCoverPath = yield* resolvePreviewCoverPath(normalizedISBN, options.previewCoverPath)
 
           // Check if user already owns a book with this ISBN
           const existingResult = yield* Effect.tryPromise({
@@ -712,7 +707,8 @@ export const BookRepositoryLive = Layer.effect(
             openLibraryData = yield* lookupByISBN(normalizedISBN)
 
             // Download cover to local storage
-            const coverPath = previewCoverPath ?? (yield* downloadCover(normalizedISBN, 'L'))
+            const coverPath = (yield* findStoredOpenLibraryCover(normalizedISBN))
+              ?? (yield* downloadCover(normalizedISBN, 'L'))
 
             const newBookId = generateId()
             const now = new Date()
@@ -746,7 +742,8 @@ export const BookRepositoryLive = Layer.effect(
             book = newBook
           } else if (!book.coverPath) {
             const existingBook = book
-            const coverPath = previewCoverPath ?? (yield* downloadCover(normalizedISBN, 'L'))
+            const coverPath = (yield* findStoredOpenLibraryCover(normalizedISBN))
+              ?? (yield* downloadCover(normalizedISBN, 'L'))
             if (coverPath) {
               const updated = yield* Effect.tryPromise({
                 try: async () => {

@@ -57,7 +57,6 @@ export interface BookLookupResult {
   author?: string
   authors?: string[]
   coverUrl?: string | null
-  previewCoverPath?: string | null
   description?: string
   subjects?: string[] | null
   publishDate?: string
