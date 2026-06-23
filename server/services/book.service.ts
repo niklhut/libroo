@@ -204,10 +204,11 @@ export const BookServiceLive = Layer.effect(
 
     const getTrustedPreviewCoverPath = (isbn: string, previewCoverPath?: string | null): string | null => {
       const normalizedISBN = normalizeISBN(isbn)
-      const escapedISBN = normalizedISBN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      return new RegExp(`^covers/${escapedISBN}\\.(?:webp|jpe?g|png|gif)$`).test(previewCoverPath ?? '')
-        ? previewCoverPath!
-        : null
+      const prefix = `covers/${normalizedISBN}.`
+      if (!previewCoverPath?.startsWith(prefix)) return null
+
+      const extension = previewCoverPath.slice(prefix.length)
+      return ['webp', 'jpg', 'jpeg', 'png', 'gif'].includes(extension) ? previewCoverPath : null
     }
 
     const normalizeProgress = (

@@ -9,8 +9,23 @@ const bulkAddBookSchema = z.object({
 const bulkAddSchema = z.object({
   isbns: z.array(z.string().min(10).max(13)).max(20).optional(),
   books: z.array(bulkAddBookSchema).max(20).optional()
-}).refine(body => ((body.books?.length ?? 0) + (body.isbns?.length ?? 0)) > 0, {
-  message: 'At least one ISBN is required'
+}).superRefine((body, ctx) => {
+  const hasBooks = (body.books?.length ?? 0) > 0
+  const hasIsbns = (body.isbns?.length ?? 0) > 0
+
+  if (!hasBooks && !hasIsbns) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'At least one ISBN is required'
+    })
+  }
+
+  if (hasBooks && hasIsbns) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'Provide either books or isbns, not both'
+    })
+  }
 })
 
 export default effectHandler((event, user) =>

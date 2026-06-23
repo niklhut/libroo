@@ -53,4 +53,19 @@ describe('server/api/books/bulk-add.post', () => {
       message: 'Validation Error'
     })
   })
+
+  it('rejects requests that mix legacy ISBNs and book objects', async () => {
+    mockLoggedInUser()
+    const handler = await importRoute(route)
+
+    await expect(handler(makeEvent({
+      body: {
+        isbns: ['9780306406158'],
+        books: [{ isbn: '9780306406157', previewCoverPath: 'covers/9780306406157.webp' }]
+      }
+    }))).rejects.toMatchObject({
+      statusCode: 400,
+      message: 'Validation Error'
+    })
+  })
 })

@@ -6,7 +6,7 @@ import { normalizeTagInput, normalizeSuggestedTags } from '../../shared/utils/ta
 import type { LibraryQueryFilters } from '../../shared/utils/library-query'
 import { escapeLocationLikePattern } from '../../shared/utils/location-hierarchy'
 import { DbService } from '../services/db.service'
-import type { StorageService } from '../services/storage.service'
+import { getBlob, type StorageService } from '../services/storage.service'
 import { downloadCover, lookupByISBN } from './openLibrary.repository'
 import type { OpenLibraryApiError, OpenLibraryBookNotFoundError, OpenLibraryRepository } from './openLibrary.repository'
 
@@ -241,12 +241,29 @@ function normalizeISBN(isbn: string): string {
   return isbn.replace(/[-\s]/g, '')
 }
 
+const TRUSTED_COVER_EXTENSIONS = new Set(['webp', 'jpg', 'jpeg', 'png', 'gif'])
+
 function getTrustedPreviewCoverPath(isbn: string, previewCoverPath?: string | null): string | null {
   const normalizedISBN = normalizeISBN(isbn)
-  const escapedISBN = normalizedISBN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  return new RegExp(`^covers/${escapedISBN}\\.(?:webp|jpe?g|png|gif)$`).test(previewCoverPath ?? '')
-    ? previewCoverPath!
-    : null
+  const prefix = `covers/${normalizedISBN}.`
+  if (!previewCoverPath?.startsWith(prefix)) return null
+
+  const extension = previewCoverPath.slice(prefix.length)
+  return TRUSTED_COVER_EXTENSIONS.has(extension) ? previewCoverPath : null
+}
+
+function resolvePreviewCoverPath(isbn: string, previewCoverPath?: string | null) {
+  const trustedPath = getTrustedPreviewCoverPath(isbn, previewCoverPath)
+  if (!trustedPath) return Effect.succeed(null)
+
+  return getBlob(trustedPath).pipe(
+    Effect.map(blob => blob ? trustedPath : null),
+    Effect.catchAll(error =>
+      Effect.logWarning(`Preview cover path ${trustedPath} could not be verified: ${String(error)}`).pipe(
+        Effect.as(null)
+      )
+    )
+  )
 }
 
 // Live implementation
@@ -647,7 +664,7 @@ export const BookRepositoryLive = Layer.effect(
       addBookByISBN: (userId, isbn, options = {}) =>
         Effect.gen(function* () {
           const normalizedISBN = normalizeISBN(isbn)
-          const previewCoverPath = getTrustedPreviewCoverPath(normalizedISBN, options.previewCoverPath)
+          const previewCoverPath = yield* resolvePreviewCoverPath(normalizedISBN, options.previewCoverPath)
 
           // Check if user already owns a book with this ISBN
           const existingResult = yield* Effect.tryPromise({
@@ -727,24 +744,27 @@ export const BookRepositoryLive = Layer.effect(
             yield* hydrateSystemTagsForBook(newBookId, openLibraryData.subjects || [])
 
             book = newBook
-          } else if (!book.coverPath && previewCoverPath) {
+          } else if (!book.coverPath) {
             const existingBook = book
-            const updated = yield* Effect.tryPromise({
-              try: async () => {
-                const rows = await dbService.db
-                  .update(books)
-                  .set({ coverPath: previewCoverPath })
-                  .where(and(eq(books.id, existingBook.id), isNull(books.coverPath)))
-                  .returning()
-                return rows[0] ?? null
-              },
-              catch: error => new DatabaseError({
-                message: `Failed to update existing book cover: ${error}`,
-                operation: 'addBookByISBN.updateExistingCover'
+            const coverPath = previewCoverPath ?? (yield* downloadCover(normalizedISBN, 'L'))
+            if (coverPath) {
+              const updated = yield* Effect.tryPromise({
+                try: async () => {
+                  const rows = await dbService.db
+                    .update(books)
+                    .set({ coverPath })
+                    .where(and(eq(books.id, existingBook.id), isNull(books.coverPath)))
+                    .returning()
+                  return rows[0] ?? null
+                },
+                catch: error => new DatabaseError({
+                  message: `Failed to update existing book cover: ${error}`,
+                  operation: 'addBookByISBN.updateExistingCover'
+                })
               })
-            })
-            if (updated) {
-              book = updated
+              if (updated) {
+                book = updated
+              }
             }
           }
 
