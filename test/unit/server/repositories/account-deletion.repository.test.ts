@@ -21,14 +21,16 @@ describe('AccountDeletionRepository', () => {
     db = drizzle(client)
     await client.execute('PRAGMA foreign_keys = ON')
 
-    const migrationPath = fileURLToPath(
-      new URL('../../../../server/db/migrations/sqlite/0000_initial_beta.sql', import.meta.url)
-    )
-    const migration = await readFile(migrationPath, 'utf8')
-    for (const statement of migration.split('--> statement-breakpoint')) {
-      const sql = statement.trim()
-      if (sql) {
-        await client.execute(sql)
+    for (const migrationFile of ['0000_initial_beta.sql', '0001_add_terms_acceptance.sql']) {
+      const migrationPath = fileURLToPath(
+        new URL(`../../../../server/db/migrations/sqlite/${migrationFile}`, import.meta.url)
+      )
+      const migration = await readFile(migrationPath, 'utf8')
+      for (const statement of migration.split('--> statement-breakpoint')) {
+        const sql = statement.trim()
+        if (sql) {
+          await client.execute(sql)
+        }
       }
     }
   })

@@ -117,6 +117,7 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
 
     <UPageCard v-else>
       <UAuthForm
+        novalidate
         :schema="schema"
         :fields="fields"
         :loading="isSubmitting"

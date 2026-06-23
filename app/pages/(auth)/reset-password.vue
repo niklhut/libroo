@@ -50,6 +50,7 @@ type Schema = z.output<typeof schema>
 type AuthInputField = AuthFormField & {
   placeholder?: string
   autocomplete?: string
+  required?: boolean
 }
 
 function inputFieldProps(field: AuthFormField) {
@@ -122,6 +123,7 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
 
     <UPageCard v-else>
       <UAuthForm
+        novalidate
         :schema="schema"
         :fields="fields"
         :loading="isSubmitting"

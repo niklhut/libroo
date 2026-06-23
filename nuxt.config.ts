@@ -21,6 +21,7 @@ const cloudflareRuntimeVars = definedEnvVars({
   NUXT_LEGAL_IMPRINT_MARKDOWN_URL: process.env.NUXT_LEGAL_IMPRINT_MARKDOWN_URL,
   NUXT_LEGAL_MARKDOWN_FETCH_TIMEOUT_SECONDS: process.env.NUXT_LEGAL_MARKDOWN_FETCH_TIMEOUT_SECONDS || '5',
   NUXT_LEGAL_PRIVACY_POLICY_MARKDOWN_URL: process.env.NUXT_LEGAL_PRIVACY_POLICY_MARKDOWN_URL,
+  NUXT_LEGAL_TERMS_MARKDOWN_URL: process.env.NUXT_LEGAL_TERMS_MARKDOWN_URL,
   NUXT_OPEN_LIBRARY_COVER_TIMEOUT_SECONDS: process.env.NUXT_OPEN_LIBRARY_COVER_TIMEOUT_SECONDS || '20',
   NUXT_OPEN_LIBRARY_REQUEST_TIMEOUT_SECONDS: process.env.NUXT_OPEN_LIBRARY_REQUEST_TIMEOUT_SECONDS || '12',
   NUXT_PLUNK_BASE_URL: process.env.NUXT_PLUNK_BASE_URL,
@@ -28,6 +29,7 @@ const cloudflareRuntimeVars = definedEnvVars({
   NUXT_PUBLIC_OPEN_LIBRARY_LINKS_ENABLED: process.env.NUXT_PUBLIC_OPEN_LIBRARY_LINKS_ENABLED,
   NUXT_PUBLIC_LEGAL_IMPRINT_URL: process.env.NUXT_PUBLIC_LEGAL_IMPRINT_URL,
   NUXT_PUBLIC_LEGAL_PRIVACY_POLICY_URL: process.env.NUXT_PUBLIC_LEGAL_PRIVACY_POLICY_URL,
+  NUXT_PUBLIC_LEGAL_TERMS_URL: process.env.NUXT_PUBLIC_LEGAL_TERMS_URL,
   NUXT_PUBLIC_REGISTRATION_ENABLED: process.env.NUXT_PUBLIC_REGISTRATION_ENABLED,
   NUXT_PUBLIC_TURNSTILE_ENABLED: process.env.NUXT_PUBLIC_TURNSTILE_ENABLED,
   NUXT_PUBLIC_TURNSTILE_SITE_KEY: process.env.NUXT_PUBLIC_TURNSTILE_SITE_KEY,
@@ -77,6 +79,7 @@ export default defineNuxtConfig({
     legalMarkdownFetchTimeoutSeconds: '5',
     legalPrivacyPolicyMarkdownUrl: '',
     legalImprintMarkdownUrl: '',
+    legalTermsMarkdownUrl: '',
     turnstile: {
       secretKey: '',
       allowedHostnames: '',
@@ -87,6 +90,7 @@ export default defineNuxtConfig({
       openLibraryLinksEnabled: process.env.NODE_ENV === 'development' ? 'true' : 'false',
       legalPrivacyPolicyUrl: '',
       legalImprintUrl: '',
+      legalTermsUrl: '',
       turnstile: {
         enabled: process.env.NUXT_PUBLIC_TURNSTILE_ENABLED ?? 'false',
         siteKey: ''

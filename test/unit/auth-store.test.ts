@@ -95,6 +95,7 @@ describe('useAuthStore', () => {
       password: 'secret',
       name: 'Ada',
       inviteToken: 'invite-token',
+      acceptTerms: undefined,
       fetchOptions: undefined
     })
     expect(authClientMocks.signOut).toHaveBeenCalledTimes(1)
@@ -122,11 +123,39 @@ describe('useAuthStore', () => {
       password: 'secret',
       name: 'Ada',
       inviteToken: 'invite-token',
+      acceptTerms: undefined,
       fetchOptions: {
         headers: {
           'x-captcha-response': 'turnstile-token'
         }
       }
+    })
+  })
+
+  it('passes Terms acceptance on signup', async () => {
+    const session = {
+      data: ref(null),
+      error: ref<Error | null>(null),
+      isPending: ref(false)
+    }
+
+    ;(globalThis as unknown as { useNuxtApp: () => { $authSession: typeof session } }).useNuxtApp = () => ({
+      $authSession: session
+    })
+
+    authClientMocks.signUpEmail.mockResolvedValueOnce({ error: null })
+
+    const store = useAuthStore()
+
+    await expect(store.signUp('ada@example.com', 'secret', 'Ada', null, null, true)).resolves.toEqual({ error: null })
+
+    expect(authClientMocks.signUpEmail).toHaveBeenCalledWith({
+      email: 'ada@example.com',
+      password: 'secret',
+      name: 'Ada',
+      inviteToken: undefined,
+      acceptTerms: true,
+      fetchOptions: undefined
     })
   })
 })

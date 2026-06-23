@@ -75,6 +75,7 @@ type AuthInputField = AuthFormField & {
   placeholder?: string
   autocomplete?: string
   disabled?: boolean
+  required?: boolean
 }
 
 function inputFieldProps(field: AuthFormField) {
@@ -130,6 +131,7 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
   <UContainer class="py-12 max-w-md">
     <UPageCard>
       <UAuthForm
+        novalidate
         :schema="schema"
         :fields="fields"
         :loading="isLoading"

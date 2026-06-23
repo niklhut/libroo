@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import * as z from 'zod'
 import type { FormSubmitEvent, AuthFormField } from '@nuxt/ui'
+import type { LegalStatus } from '~~/shared/types/legal'
 import type { SignupInvitePreview } from '~~/shared/types/signup-invite'
 import { getRegistrationSuccessDescription } from '~~/shared/utils/email-capability-ui'
 import { newPasswordSchema } from '~~/shared/utils/password'
@@ -19,6 +20,7 @@ const { user } = storeToRefs(authStore)
 const { signUp } = authStore
 const toast = useToast()
 const { data: emailCapabilities } = await useEmailCapabilities()
+const { data: legalStatus, error: legalStatusError } = await useFetch<LegalStatus>('/api/legal/status')
 
 const isLoading = ref(false)
 const error = ref('')
@@ -38,6 +40,16 @@ const turnstileEnabled = computed(() => booleanConfigValue(config.public.turnsti
 const turnstileSiteKey = computed(() => typeof config.public.turnstile?.siteKey === 'string' ? config.public.turnstile.siteKey.trim() : '')
 const turnstileConfigured = computed(() => turnstileEnabled.value && Boolean(turnstileSiteKey.value))
 const turnstileMissingConfig = computed(() => turnstileEnabled.value && !turnstileSiteKey.value)
+const privacyPolicyUrl = computed(() => configuredLegalUrl(config.public.legalPrivacyPolicyUrl))
+const privacyPolicyLink = computed(() => privacyPolicyUrl.value || '/privacy')
+const privacyPolicyLinkExternal = computed(() => Boolean(privacyPolicyUrl.value))
+const privacyPolicyConfigured = computed(() => Boolean(privacyPolicyUrl.value || legalStatus.value?.privacy))
+const termsUrl = computed(() => configuredLegalUrl(config.public.legalTermsUrl))
+const termsLink = computed(() => termsUrl.value || '/terms')
+const termsLinkExternal = computed(() => Boolean(termsUrl.value))
+const termsConfigured = computed(() => Boolean(termsUrl.value || legalStatus.value?.terms))
+const termsStatusUnknown = computed(() => !termsUrl.value && Boolean(legalStatusError.value))
+const authFormKey = computed(() => `${inviteEmail.value}:${termsConfigured.value}`)
 
 const { data: invitePreview } = await useAsyncData<SignupInvitePreview | null>(
   'signup-invite-preview',
@@ -123,7 +135,15 @@ const fields = computed<AuthFormField[]>(() => [
     label: 'Confirm Password',
     placeholder: 'Confirm your password',
     required: true
-  }
+  },
+  ...(termsConfigured.value
+    ? [{
+        name: 'acceptTerms',
+        type: 'checkbox' as const,
+        defaultValue: false,
+        required: true
+      }]
+    : [])
 ])
 
 // Validation schema
@@ -131,11 +151,15 @@ const schema = z.object({
   name: z.string({ error: 'Name is required' }).min(1, { error: 'Name is required' }),
   email: z.email({ error: 'Please enter a valid email address' }),
   password: newPasswordSchema(),
-  confirmPassword: z.string({ error: 'Confirm Password is required' }).min(1, { error: 'Please confirm your password' })
-}).refine(data => data.password === data.confirmPassword, {
-  error: 'Passwords do not match',
-  path: ['confirmPassword']
+  confirmPassword: z.string({ error: 'Confirm Password is required' }).min(1, { error: 'Please confirm your password' }),
+  acceptTerms: z.boolean().optional().refine(value => !termsConfigured.value || value === true, {
+    error: 'You must agree to the Terms of Service to create an account'
+  })
 })
+  .refine(data => data.password === data.confirmPassword, {
+    error: 'Passwords do not match',
+    path: ['confirmPassword']
+  })
 
 type Schema = z.output<typeof schema>
 
@@ -174,6 +198,16 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
     return
   }
 
+  if (termsStatusUnknown.value) {
+    error.value = 'Unable to verify Terms of Service availability. Please try again.'
+    return
+  }
+
+  if (termsConfigured.value && !payload.data.acceptTerms) {
+    error.value = 'You must agree to the Terms of Service to create an account'
+    return
+  }
+
   if (turnstileEnabled.value && !turnstileToken.value) {
     error.value = turnstileMissingConfig.value
       ? 'Bot protection is enabled but the Turnstile site key is not configured.'
@@ -189,7 +223,8 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
       payload.data.password,
       payload.data.name,
       inviteToken.value,
-      turnstileToken.value
+      turnstileToken.value,
+      payload.data.acceptTerms
     )
 
     if (result.error) {
@@ -252,7 +287,8 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
 
     <UPageCard v-else>
       <UAuthForm
-        :key="inviteEmail"
+        :key="authFormKey"
+        novalidate
         :schema="schema"
         :fields="fields"
         :loading="isLoading"
@@ -315,6 +351,26 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
           </UInput>
         </template>
 
+        <template #acceptTerms-field="{ state, field }">
+          <UCheckbox
+            v-model="state.acceptTerms"
+            v-bind="inputFieldProps(field)"
+          >
+            <template #label>
+              I agree to the
+              <ULink
+                :to="termsLink"
+                :target="termsLinkExternal ? '_blank' : undefined"
+                :rel="termsLinkExternal ? 'noopener noreferrer' : undefined"
+                class="text-primary font-medium"
+                @click.stop
+              >
+                Terms of Service
+              </ULink>
+            </template>
+          </UCheckbox>
+        </template>
+
         <template
           #validation
         >
@@ -337,18 +393,27 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
             title="Bot protection is not configured"
           />
 
+          <p
+            v-if="privacyPolicyConfigured"
+            class="text-center text-sm text-muted"
+          >
+            By creating an account, you acknowledge that your personal data will be processed as described in the
+            <ULink
+              :to="privacyPolicyLink"
+              :target="privacyPolicyLinkExternal ? '_blank' : undefined"
+              :rel="privacyPolicyLinkExternal ? 'noopener noreferrer' : undefined"
+              class="text-primary font-medium"
+            >
+              Privacy Policy
+            </ULink>.
+          </p>
+
           <UAlert
             v-if="error"
             color="error"
             icon="i-lucide-alert-circle"
             :title="error"
           />
-        </template>
-
-        <template #footer>
-          <p class="text-center text-sm text-muted">
-            Libroo - Your Library, Managed
-          </p>
         </template>
       </UAuthForm>
     </UPageCard>

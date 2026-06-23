@@ -22,12 +22,13 @@ export const useAuthStore = defineStore('auth', () => {
     })
   }
 
-  async function signUp(email: string, password: string, name: string, inviteToken?: string | null, turnstileToken?: string | null) {
+  async function signUp(email: string, password: string, name: string, inviteToken?: string | null, turnstileToken?: string | null, acceptTerms?: boolean | null) {
     const body = {
       email,
       password,
       name,
       inviteToken: inviteToken || undefined,
+      acceptTerms: acceptTerms ?? undefined,
       fetchOptions: turnstileToken
         ? {
             headers: {
@@ -35,7 +36,7 @@ export const useAuthStore = defineStore('auth', () => {
             }
           }
         : undefined
-    } as Parameters<typeof authClient.signUp.email>[0] & { inviteToken?: string }
+    } as Parameters<typeof authClient.signUp.email>[0] & { inviteToken?: string, acceptTerms?: boolean }
 
     return authClient.signUp.email(body)
   }

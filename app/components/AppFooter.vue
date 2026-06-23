@@ -6,11 +6,15 @@ const { data: legalStatus } = await useFetch<LegalStatus>('/api/legal/status')
 
 const privacyPolicyUrl = computed(() => configuredLegalUrl(config.public.legalPrivacyPolicyUrl))
 const imprintUrl = computed(() => configuredLegalUrl(config.public.legalImprintUrl))
+const termsUrl = computed(() => configuredLegalUrl(config.public.legalTermsUrl))
 const privacyPolicyConfigured = computed(() =>
   privacyPolicyUrl.value || legalStatus.value?.privacy
 )
 const imprintConfigured = computed(() =>
   imprintUrl.value || legalStatus.value?.imprint
+)
+const termsConfigured = computed(() =>
+  termsUrl.value || legalStatus.value?.terms
 )
 
 const links = computed(() => [
@@ -26,6 +30,13 @@ const links = computed(() => [
         label: 'Imprint',
         to: imprintUrl.value || '/imprint',
         external: Boolean(imprintUrl.value)
+      }]
+    : []),
+  ...(termsConfigured.value
+    ? [{
+        label: 'Terms',
+        to: termsUrl.value || '/terms',
+        external: Boolean(termsUrl.value)
       }]
     : [])
 ])

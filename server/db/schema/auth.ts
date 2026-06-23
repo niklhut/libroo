@@ -11,6 +11,7 @@ export const user = sqliteTable('user', {
   emailVerified: integer('email_verified', { mode: 'boolean' }).notNull().default(false),
   pendingEmail: text('pending_email'),
   image: text('image'),
+  termsAcceptedAt: integer('terms_accepted_at', { mode: 'timestamp' }),
   role: text('role').notNull().default('user'),
   banned: integer('banned', { mode: 'boolean' }).notNull().default(false),
   banReason: text('ban_reason'),

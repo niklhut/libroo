@@ -20,9 +20,9 @@ function configString(value: unknown) {
 
 function markdownUrlFor(kind: LegalDocumentKind) {
   const config = useRuntimeConfig()
-  return kind === 'privacy'
-    ? configString(config.legalPrivacyPolicyMarkdownUrl)
-    : configString(config.legalImprintMarkdownUrl)
+  if (kind === 'privacy') return configString(config.legalPrivacyPolicyMarkdownUrl)
+  if (kind === 'terms') return configString(config.legalTermsMarkdownUrl)
+  return configString(config.legalImprintMarkdownUrl)
 }
 
 function validateMarkdownUrl(url: string) {
@@ -45,8 +45,9 @@ export const LegalServiceLive = Layer.effect(
     return {
       getStatus: () =>
         Effect.succeed({
-          privacy: validateMarkdownUrl(markdownUrlFor('privacy')),
-          imprint: validateMarkdownUrl(markdownUrlFor('imprint'))
+          privacy: Boolean(markdownUrlFor('privacy')),
+          imprint: Boolean(markdownUrlFor('imprint')),
+          terms: Boolean(markdownUrlFor('terms'))
         } satisfies LegalStatus),
 
       getDocument: kind =>

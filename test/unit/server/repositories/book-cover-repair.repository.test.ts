@@ -1,4 +1,5 @@
-import migration from '../../../../server/db/migrations/sqlite/0000_initial_beta.sql?raw'
+import initialMigration from '../../../../server/db/migrations/sqlite/0000_initial_beta.sql?raw'
+import termsAcceptanceMigration from '../../../../server/db/migrations/sqlite/0001_add_terms_acceptance.sql?raw'
 import { Effect, Layer } from 'effect'
 import * as HttpClient from '@effect/platform/HttpClient'
 import { createClient } from '@libsql/client'
@@ -20,10 +21,12 @@ describe('BookRepository cover repair helpers', () => {
     db = drizzle(client)
     await client.execute('PRAGMA foreign_keys = ON')
 
-    for (const statement of migration.split('--> statement-breakpoint')) {
-      const sql = statement.trim()
-      if (sql) {
-        await client.execute(sql)
+    for (const migration of [initialMigration, termsAcceptanceMigration]) {
+      for (const statement of migration.split('--> statement-breakpoint')) {
+        const sql = statement.trim()
+        if (sql) {
+          await client.execute(sql)
+        }
       }
     }
   })
