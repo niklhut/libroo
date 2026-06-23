@@ -188,6 +188,52 @@ describe('BookRepository cover repair helpers', () => {
     }])
   })
 
+  it('uses a verified preview cover path without downloading it again', async () => {
+    const now = new Date('2026-06-22T10:00:00.000Z')
+    const previewCoverPath = 'covers/9781234567890.jpg'
+    const lookupByISBN = vi.fn(() => Effect.succeed({
+      title: 'Fresh Book',
+      authors: ['Ada Author'],
+      isbn: '9781234567890',
+      openLibraryKey: '/books/OL1M',
+      workKey: '/works/OL1W',
+      coverUrl: 'https://covers.openlibrary.org/b/isbn/9781234567890-L.jpg?default=false',
+      subjects: []
+    }))
+    const downloadCover = vi.fn(() => Effect.succeed('covers/downloaded.webp'))
+    const get = vi.fn(() => Effect.succeed(new Blob(['stored-cover'], { type: 'image/jpeg' })))
+
+    await db.insert(user).values({
+      id: 'user-1',
+      name: 'Ada',
+      email: 'ada@example.com',
+      emailVerified: true,
+      role: 'admin',
+      createdAt: now,
+      updatedAt: now
+    })
+
+    const result = await runRepository(db, Effect.flatMap(BookRepository, repository =>
+      repository.addBookByISBN('user-1', '9781234567890', {
+        previewCoverPath
+      })
+    ), { lookupByISBN, downloadCover }, { get })
+
+    expect(result.book.coverPath).toBe(previewCoverPath)
+    expect(get).toHaveBeenCalledWith(previewCoverPath)
+    expect(downloadCover).not.toHaveBeenCalled()
+
+    const rows = await db.select({
+      isbn: books.isbn,
+      coverPath: books.coverPath
+    }).from(books)
+
+    expect(rows).toEqual([{
+      isbn: '9781234567890',
+      coverPath: previewCoverPath
+    }])
+  })
+
   it('does not call Open Library when an existing book already has system tags', async () => {
     const now = new Date('2026-06-22T10:00:00.000Z')
     const lookupByISBN = vi.fn(() => Effect.die('Open Library should not be called when tags exist'))
