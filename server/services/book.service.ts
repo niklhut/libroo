@@ -35,11 +35,7 @@ export interface RepairOpenLibraryCoversResult {
   failed: number
 }
 
-export interface AddBookToLibraryOptions {
-  previewCoverPath?: string | null
-}
-
-export interface BulkAddBookInput extends AddBookToLibraryOptions {
+export interface BulkAddBookInput {
   isbn: string
 }
 
@@ -78,8 +74,7 @@ export interface BookServiceInterface {
 
   addBookToLibrary: (
     userId: string,
-    isbn: string,
-    options?: AddBookToLibraryOptions
+    isbn: string
   ) => Effect.Effect<
     LibraryBook,
     BookCreateError | BookAlreadyOwnedError | OpenLibraryBookNotFoundError | OpenLibraryApiError | DatabaseError,
@@ -202,15 +197,6 @@ export const BookServiceLive = Layer.effect(
 
     const normalizeISBN = (isbn: string) => isbn.replace(/[-\s]/g, '')
 
-    const getTrustedPreviewCoverPath = (isbn: string, previewCoverPath?: string | null): string | null => {
-      const normalizedISBN = normalizeISBN(isbn)
-      const prefix = `covers/${normalizedISBN}.`
-      if (!previewCoverPath?.startsWith(prefix)) return null
-
-      const extension = previewCoverPath.slice(prefix.length)
-      return ['webp', 'jpg', 'jpeg', 'png', 'gif'].includes(extension) ? previewCoverPath : null
-    }
-
     const normalizeProgress = (
       details: BookDetails,
       input: BookReadingProgressSchema
@@ -257,11 +243,10 @@ export const BookServiceLive = Layer.effect(
           }
         }),
 
-      addBookToLibrary: (userId, isbn, options = {}) =>
+      addBookToLibrary: (userId, isbn) =>
         Effect.gen(function* () {
           const normalizedISBN = normalizeISBN(isbn)
-          const previewCoverPath = getTrustedPreviewCoverPath(normalizedISBN, options.previewCoverPath)
-          const userBook = yield* bookRepo.addBookByISBN(userId, normalizedISBN, { previewCoverPath })
+          const userBook = yield* bookRepo.addBookByISBN(userId, normalizedISBN)
 
           return toLibraryBook(userBook)
         }),
@@ -271,16 +256,13 @@ export const BookServiceLive = Layer.effect(
           const added: Array<{ isbn: string }> = []
           const failed: Array<{ isbn: string, error: string }> = []
           const normalizedBooks = books.map(book => ({
-            isbn: normalizeISBN(book.isbn),
-            previewCoverPath: book.previewCoverPath ?? null
+            isbn: normalizeISBN(book.isbn)
           }))
 
           const results = yield* Effect.forEach(
             normalizedBooks,
             book => Effect.either(
-              bookRepo.addBookByISBN(userId, book.isbn, {
-                previewCoverPath: getTrustedPreviewCoverPath(book.isbn, book.previewCoverPath)
-              }).pipe(
+              bookRepo.addBookByISBN(userId, book.isbn).pipe(
                 Effect.map(() => ({ isbn: book.isbn }))
               )
             ),
@@ -468,7 +450,7 @@ export const BookServiceLive = Layer.effect(
           const lookupEffect = lookupByISBN(normalizedISBN).pipe(
             Effect.flatMap((bookData: OpenLibraryBookData) =>
               Effect.gen(function* () {
-                const previewCoverPath = bookData.coverUrl
+                const coverPath = bookData.coverUrl
                   ? yield* downloadCover(bookData.isbn, 'L')
                   : null
 
@@ -478,8 +460,7 @@ export const BookServiceLive = Layer.effect(
                   title: bookData.title,
                   author: bookData.authors.join(', '),
                   authors: bookData.authors,
-                  coverUrl: previewCoverPath ? `/api/blob/${previewCoverPath}` : null,
-                  previewCoverPath,
+                  coverUrl: coverPath ? `/api/blob/${coverPath}` : null,
                   description: bookData.description,
                   subjects: bookData.subjects ?? null,
                   publishDate: bookData.publishDate,
@@ -552,13 +533,6 @@ export const getAuthorLibrary = (userId: string, authorId: string, pagination: P
 
 export const addBookToLibrary = (userId: string, isbn: string) =>
   Effect.flatMap(BookService, service => service.addBookToLibrary(userId, isbn))
-
-export const addBookToLibraryWithPreviewCover = (
-  userId: string,
-  isbn: string,
-  options?: AddBookToLibraryOptions
-) =>
-  Effect.flatMap(BookService, service => service.addBookToLibrary(userId, isbn, options))
 
 export const bulkAddBooks = (userId: string, books: BulkAddBookInput[]) =>
   Effect.flatMap(BookService, service => service.bulkAddBooks(userId, books))

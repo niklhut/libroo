@@ -1,13 +1,10 @@
 import { Effect } from 'effect'
 import { z } from 'zod'
 
-const bulkAddBookSchema = z.object({
-  isbn: z.string().min(10).max(13),
-  previewCoverPath: z.string().nullable().optional()
-})
+const bulkAddBookSchema = bookIsbnSchema
 
 const bulkAddSchema = z.object({
-  isbns: z.array(z.string().min(10).max(13)).max(20).optional(),
+  isbns: z.array(bookIsbnSchema.shape.isbn).max(20).optional(),
   books: z.array(bulkAddBookSchema).max(20).optional()
 }).superRefine((body, ctx) => {
   const hasBooks = (body.books?.length ?? 0) > 0

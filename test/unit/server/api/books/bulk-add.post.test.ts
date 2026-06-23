@@ -29,17 +29,14 @@ describe('server/api/books/bulk-add.post', () => {
 
     await expect(handler(makeEvent({
       body: {
-        books: [
-          { isbn: '9780306406157', previewCoverPath: 'covers/9780306406157.webp' },
-          { isbn: '9780306406158' }
-        ]
+        isbns: ['978-0-306-40615-7', '9780306406158']
       }
     }))).resolves.toEqual({
       added: [{ isbn: '9780306406157' }],
       failed: [{ isbn: '9780306406158', error: 'BookAlreadyOwnedError' }]
     })
     expect(serviceMocks.bulkAddBooks).toHaveBeenCalledWith('user-1', [
-      { isbn: '9780306406157', previewCoverPath: 'covers/9780306406157.webp' },
+      { isbn: '9780306406157' },
       { isbn: '9780306406158' }
     ])
   })
@@ -61,7 +58,7 @@ describe('server/api/books/bulk-add.post', () => {
     await expect(handler(makeEvent({
       body: {
         isbns: ['9780306406158'],
-        books: [{ isbn: '9780306406157', previewCoverPath: 'covers/9780306406157.webp' }]
+        books: [{ isbn: '9780306406157' }]
       }
     }))).rejects.toMatchObject({
       statusCode: 400,
