@@ -1,7 +1,7 @@
 import { extractIsbn } from '~~/shared/utils/schemas'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { useLibraryDashboardStore } from './libraryDashboard'
+import { useIsbnLookupStore } from './isbnLookup'
 
 export interface ScannedBook {
   isbn: string
@@ -13,21 +13,16 @@ export interface ScannedBook {
 
 export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
   const toast = useToast()
-  const dashboardStore = useLibraryDashboardStore()
+  const isbnLookupStore = useIsbnLookupStore()
 
   const scannedBooks = ref<ScannedBook[]>([])
-  const isLookingUp = ref(false)
-  const isAddingBooks = ref(false)
-
-  function getErrorMessage(err: unknown, fallback: string): string {
-    if (err instanceof Error) {
-      return err.message
-    }
-    return (err as { data?: { message?: string } })?.data?.message || fallback
-  }
+  const isBulkLookingUp = ref(false)
 
   const lookupUnavailableMessage = 'We could not look up this ISBN right now. Try again in a moment.'
   const addUnavailableMessage = 'Could not add this book to your library. Try again in a moment.'
+
+  const isLookingUp = computed(() => isBulkLookingUp.value || isbnLookupStore.isLookingUp)
+  const isAddingBooks = computed(() => isbnLookupStore.isAdding)
 
   async function lookupScannedBook(book: ScannedBook) {
     book.status = 'loading'
@@ -35,26 +30,26 @@ export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
     book.errorMessage = undefined
     book.result = undefined
 
-    try {
-      const result = await $fetch<BookLookupResult>('/api/books/lookup', {
-        method: 'POST',
-        body: { isbn: book.isbn }
-      })
+    const lookup = await isbnLookupStore.lookupIsbn(book.isbn, {
+      fallbackMessage: lookupUnavailableMessage
+    })
 
-      book.result = result
-      if (result.found) {
-        book.status = result.existsLocally ? 'already_owned' : 'found'
-        if (result.existsLocally) {
-          book.selected = false
-        }
-      } else {
-        book.status = 'not_found'
-        book.selected = false
-      }
-    } catch {
+    if (!lookup.ok) {
       book.status = 'error'
       book.selected = false
       book.errorMessage = lookupUnavailableMessage
+      return
+    }
+
+    book.result = lookup.result
+    if (lookup.result.found) {
+      book.status = lookup.result.existsLocally ? 'already_owned' : 'found'
+      if (lookup.result.existsLocally) {
+        book.selected = false
+      }
+    } else {
+      book.status = 'not_found'
+      book.selected = false
     }
   }
 
@@ -102,12 +97,12 @@ export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
       return
     }
 
-    isLookingUp.value = true
+    isBulkLookingUp.value = true
 
     try {
       await Promise.all(inputs.map(isbn => addIsbn(isbn)))
     } finally {
-      isLookingUp.value = false
+      isBulkLookingUp.value = false
     }
   }
 
@@ -153,73 +148,50 @@ export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
       return { success: [], failed: [] }
     }
 
-    isAddingBooks.value = true
+    const result = await isbnLookupStore.addIsbnsToLibrary(selectedBooks.map(book => book.isbn))
+    const success = result.success
+    const failed = result.failedIsbns
 
-    try {
-      const result = await $fetch<{ added: Array<{ isbn: string }>, failed: Array<{ isbn: string, error: string }> }>('/api/books/bulk-add', {
-        method: 'POST',
-        body: {
-          isbns: selectedBooks.map(book => book.isbn)
+    success.forEach(isbn => removeIsbn(isbn))
+
+    result.failed.forEach((f) => {
+      const book = scannedBooks.value.find(b => b.isbn === f.isbn)
+      if (book) {
+        if (f.error === 'BookAlreadyOwnedError') {
+          book.status = 'already_owned'
+          book.selected = false
+          book.errorMessage = 'This book is already in your library.'
+        } else {
+          book.status = 'found'
+          book.selected = true
+          book.errorMessage = addUnavailableMessage
         }
-      })
-
-      const success = result.added.map(b => b.isbn)
-      const failed = result.failed.map(b => b.isbn)
-
-      success.forEach(isbn => removeIsbn(isbn))
-
-      result.failed.forEach((f) => {
-        const book = scannedBooks.value.find(b => b.isbn === f.isbn)
-        if (book) {
-          if (f.error === 'BookAlreadyOwnedError') {
-            book.status = 'already_owned'
-            book.selected = false
-            book.errorMessage = 'This book is already in your library.'
-          } else {
-            book.status = 'found'
-            book.selected = true
-            book.errorMessage = addUnavailableMessage
-          }
-        }
-      })
-
-      isAddingBooks.value = false
-
-      if (success.length > 0 && failed.length === 0) {
-        toast.add({
-          title: success.length === 1 ? 'Book added!' : 'Books added!',
-          description: `Successfully added ${success.length} book${success.length > 1 ? 's' : ''} to your library`,
-          color: 'success'
-        })
-      } else if (success.length > 0 && failed.length > 0) {
-        toast.add({
-          title: 'Partial success',
-          description: `Added ${success.length}, failed ${failed.length}`,
-          color: 'warning'
-        })
-      } else if (failed.length > 0) {
-        toast.add({
-          title: 'Failed to add books',
-          description: `Could not add ${failed.length} book${failed.length > 1 ? 's' : ''}`,
-          color: 'error'
-        })
       }
+    })
 
-      if (success.length > 0) {
-        dashboardStore.markNeedsSync(dashboardStore.getLoadedPages())
-      }
-
-      return { success, failed }
-    } catch (err: unknown) {
-      isAddingBooks.value = false
-      const message = getErrorMessage(err, 'Failed to add books')
+    if (success.length > 0 && failed.length === 0) {
       toast.add({
-        title: 'Error',
-        description: message,
+        title: success.length === 1 ? 'Book added!' : 'Books added!',
+        description: `Successfully added ${success.length} book${success.length > 1 ? 's' : ''} to your library`,
+        color: 'success'
+      })
+    } else if (success.length > 0 && failed.length > 0) {
+      toast.add({
+        title: 'Partial success',
+        description: `Added ${success.length}, failed ${failed.length}`,
+        color: 'warning'
+      })
+    } else if (failed.length > 0) {
+      toast.add({
+        title: result.failed.some(f => f.error === isbnLookupStore.addError) ? 'Error' : 'Failed to add books',
+        description: result.failed.some(f => f.error === isbnLookupStore.addError)
+          ? isbnLookupStore.addError || 'Failed to add books'
+          : `Could not add ${failed.length} book${failed.length > 1 ? 's' : ''}`,
         color: 'error'
       })
-      return { success: [], failed: selectedBooks.map(b => b.isbn) }
     }
+
+    return { success, failed }
   }
 
   function clearAll() {

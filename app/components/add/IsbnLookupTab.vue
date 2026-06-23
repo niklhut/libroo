@@ -1,34 +1,26 @@
 <script setup lang="ts">
 import type { FormSubmitEvent } from '@nuxt/ui'
-import type { LibraryBook } from '~~/shared/types/book'
+import { storeToRefs } from 'pinia'
 
 const toast = useToast()
-const dashboardStore = useLibraryDashboardStore()
-const { addBook, getLoadedPages, markNeedsSync } = dashboardStore
+const isbnLookupStore = useIsbnLookupStore()
+const { isLookingUp, isAdding } = storeToRefs(isbnLookupStore)
+const { lookupIsbn, addIsbnsToLibrary } = isbnLookupStore
 
 const formState = reactive({
   isbn: ''
 })
 
-const isLookingUp = ref(false)
-const isAdding = ref(false)
 const lookupResult = ref<BookLookupResult | null>(null)
-
-function getErrorMessage(err: unknown, fallback: string): string {
-  return (err as { data?: { message?: string } })?.data?.message
-    || (err instanceof Error ? err.message : fallback)
-}
 
 // Lookup book by ISBN
 async function lookupISBN(payload: FormSubmitEvent<BookIsbnSchema>) {
-  isLookingUp.value = true
   lookupResult.value = null
 
-  try {
-    const result = await $fetch<BookLookupResult>('/api/books/lookup', {
-      method: 'POST',
-      body: { isbn: payload.data.isbn }
-    })
+  const lookup = await lookupIsbn(payload.data.isbn)
+
+  if (lookup.ok) {
+    const result = lookup.result
     lookupResult.value = result
 
     if (result.found && result.existsLocally) {
@@ -44,15 +36,12 @@ async function lookupISBN(payload: FormSubmitEvent<BookIsbnSchema>) {
         color: 'warning'
       })
     }
-  } catch (err: unknown) {
-    const message = getErrorMessage(err, 'Failed to lookup book')
+  } else {
     toast.add({
       title: 'Lookup failed',
-      description: message,
+      description: lookup.message,
       color: 'error'
     })
-  } finally {
-    isLookingUp.value = false
   }
 }
 
@@ -60,21 +49,9 @@ async function lookupISBN(payload: FormSubmitEvent<BookIsbnSchema>) {
 async function addBookToLibrary() {
   if (!lookupResult.value?.found || lookupResult.value.existsLocally) return
 
-  isAdding.value = true
+  const result = await addIsbnsToLibrary([lookupResult.value.isbn])
 
-  try {
-    const loadedPagesBeforeAdd = getLoadedPages()
-
-    const addedBook = await $fetch<LibraryBook>('/api/books', {
-      method: 'POST',
-      body: {
-        isbn: lookupResult.value.isbn
-      }
-    })
-
-    addBook(addedBook)
-    markNeedsSync(loadedPagesBeforeAdd)
-
+  if (result.success.length === 1) {
     toast.add({
       title: 'Book added!',
       description: `${lookupResult.value.title} has been added to your library`,
@@ -82,18 +59,22 @@ async function addBookToLibrary() {
     })
 
     navigateTo('/library')
-  } catch (err: unknown) {
-    const message = err instanceof Error
-      ? err.message
-      : (err as { data?: { message?: string } })?.data?.message || 'Failed to add book'
-    toast.add({
-      title: 'Failed to add book',
-      description: message,
-      color: 'error'
-    })
-  } finally {
-    isAdding.value = false
+    return
   }
+
+  const failure = result.failed[0]
+  const alreadyOwned = failure?.error === 'BookAlreadyOwnedError'
+  if (alreadyOwned && lookupResult.value) {
+    lookupResult.value.existsLocally = true
+  }
+
+  toast.add({
+    title: alreadyOwned ? 'Already in library' : 'Failed to add book',
+    description: alreadyOwned
+      ? `${lookupResult.value.title || 'This book'} is already in your library`
+      : failure?.error || 'Failed to add book',
+    color: alreadyOwned ? 'info' : 'error'
+  })
 }
 
 function reset() {
