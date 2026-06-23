@@ -100,6 +100,8 @@ interface ApiRouteTestGlobals {
   setHeader: (event: TestEvent, key: string, value: string) => void
   effectHandler: unknown
   addBookToLibrary: (...args: unknown[]) => unknown
+  addBookToLibraryWithPreviewCover: (...args: unknown[]) => unknown
+  bulkAddBooks: (...args: unknown[]) => unknown
   createManualBook: (...args: unknown[]) => unknown
   getUserLibrary: (...args: unknown[]) => unknown
   getAuthorLibrary: (...args: unknown[]) => unknown
@@ -153,6 +155,8 @@ export const testUser = {
 
 export const serviceMocks = {
   addBookToLibrary: vi.fn(),
+  addBookToLibraryWithPreviewCover: vi.fn(),
+  bulkAddBooks: vi.fn(),
   createManualBook: vi.fn(),
   getUserLibrary: vi.fn(),
   getAuthorLibrary: vi.fn(),
@@ -201,6 +205,8 @@ const originalGlobals = {
   setHeader: testGlobal.setHeader,
   effectHandler: testGlobal.effectHandler,
   addBookToLibrary: testGlobal.addBookToLibrary,
+  addBookToLibraryWithPreviewCover: testGlobal.addBookToLibraryWithPreviewCover,
+  bulkAddBooks: testGlobal.bulkAddBooks,
   createManualBook: testGlobal.createManualBook,
   getUserLibrary: testGlobal.getUserLibrary,
   getAuthorLibrary: testGlobal.getAuthorLibrary,
@@ -294,6 +300,8 @@ export async function setupApiRouteTest() {
   testGlobal.effectHandler = effectHandler
 
   testGlobal.addBookToLibrary = (...args: unknown[]) => serviceMocks.addBookToLibrary(...args)
+  testGlobal.addBookToLibraryWithPreviewCover = (...args: unknown[]) => serviceMocks.addBookToLibraryWithPreviewCover(...args)
+  testGlobal.bulkAddBooks = (...args: unknown[]) => serviceMocks.bulkAddBooks(...args)
   testGlobal.createManualBook = (...args: unknown[]) => serviceMocks.createManualBook(...args)
   testGlobal.getUserLibrary = (...args: unknown[]) => serviceMocks.getUserLibrary(...args)
   testGlobal.getAuthorLibrary = (...args: unknown[]) => serviceMocks.getAuthorLibrary(...args)

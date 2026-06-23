@@ -21,15 +21,27 @@ describe('server/api/books/bulk-add.post', () => {
 
   it('bulk-adds ISBNs and reports per-item failures', async () => {
     mockLoggedInUser()
-    serviceMocks.addBookToLibrary
-      .mockReturnValueOnce(Effect.succeed({ id: 'ub-1' }))
-      .mockReturnValueOnce(Effect.fail({ _tag: 'BookAlreadyOwnedError' }))
+    serviceMocks.bulkAddBooks.mockReturnValueOnce(Effect.succeed({
+      added: [{ isbn: '9780306406157' }],
+      failed: [{ isbn: '9780306406158', error: 'BookAlreadyOwnedError' }]
+    }))
     const handler = await importRoute(route)
 
-    await expect(handler(makeEvent({ body: { isbns: ['9780306406157', '9780306406158'] } }))).resolves.toEqual({
+    await expect(handler(makeEvent({
+      body: {
+        books: [
+          { isbn: '9780306406157', previewCoverPath: 'covers/9780306406157.webp' },
+          { isbn: '9780306406158' }
+        ]
+      }
+    }))).resolves.toEqual({
       added: [{ isbn: '9780306406157' }],
       failed: [{ isbn: '9780306406158', error: 'BookAlreadyOwnedError' }]
     })
+    expect(serviceMocks.bulkAddBooks).toHaveBeenCalledWith('user-1', [
+      { isbn: '9780306406157', previewCoverPath: 'covers/9780306406157.webp' },
+      { isbn: '9780306406158' }
+    ])
   })
 
   it('rejects empty bulk-add requests', async () => {
@@ -37,6 +49,21 @@ describe('server/api/books/bulk-add.post', () => {
     const handler = await importRoute(route)
 
     await expect(handler(makeEvent({ body: { isbns: [] } }))).rejects.toMatchObject({
+      statusCode: 400,
+      message: 'Validation Error'
+    })
+  })
+
+  it('rejects requests that mix legacy ISBNs and book objects', async () => {
+    mockLoggedInUser()
+    const handler = await importRoute(route)
+
+    await expect(handler(makeEvent({
+      body: {
+        isbns: ['9780306406158'],
+        books: [{ isbn: '9780306406157', previewCoverPath: 'covers/9780306406157.webp' }]
+      }
+    }))).rejects.toMatchObject({
       statusCode: 400,
       message: 'Validation Error'
     })

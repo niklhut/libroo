@@ -35,6 +35,19 @@ export interface RepairOpenLibraryCoversResult {
   failed: number
 }
 
+export interface AddBookToLibraryOptions {
+  previewCoverPath?: string | null
+}
+
+export interface BulkAddBookInput extends AddBookToLibraryOptions {
+  isbn: string
+}
+
+export interface BulkAddBooksResult {
+  added: Array<{ isbn: string }>
+  failed: Array<{ isbn: string, error: string }>
+}
+
 export const toLibraryBook = (userBook: UserBookViewModel): LibraryBook => ({
   id: userBook.id,
   bookId: userBook.bookId,
@@ -65,10 +78,20 @@ export interface BookServiceInterface {
 
   addBookToLibrary: (
     userId: string,
-    isbn: string
+    isbn: string,
+    options?: AddBookToLibraryOptions
   ) => Effect.Effect<
     LibraryBook,
     BookCreateError | BookAlreadyOwnedError | OpenLibraryBookNotFoundError | OpenLibraryApiError | DatabaseError,
+    DbService | StorageService | OpenLibraryRepository | HttpClient.HttpClient
+  >
+
+  bulkAddBooks: (
+    userId: string,
+    books: BulkAddBookInput[]
+  ) => Effect.Effect<
+    BulkAddBooksResult,
+    never,
     DbService | StorageService | OpenLibraryRepository | HttpClient.HttpClient
   >
 
@@ -137,7 +160,7 @@ export interface BookServiceInterface {
   ) => Effect.Effect<
     BookLookupResult,
     DatabaseError | OpenLibraryApiError,
-    DbService | OpenLibraryRepository | HttpClient.HttpClient
+    DbService | StorageService | OpenLibraryRepository | HttpClient.HttpClient
   >
 
   updateRating: (
@@ -176,6 +199,17 @@ export const BookServiceLive = Layer.effect(
   Effect.gen(function* () {
     const bookRepo = yield* BookRepository
     const locationRepo = yield* LocationRepository
+
+    const normalizeISBN = (isbn: string) => isbn.replace(/[-\s]/g, '')
+
+    const getTrustedPreviewCoverPath = (isbn: string, previewCoverPath?: string | null): string | null => {
+      const normalizedISBN = normalizeISBN(isbn)
+      const prefix = `covers/${normalizedISBN}.`
+      if (!previewCoverPath?.startsWith(prefix)) return null
+
+      const extension = previewCoverPath.slice(prefix.length)
+      return ['webp', 'jpg', 'jpeg', 'png', 'gif'].includes(extension) ? previewCoverPath : null
+    }
 
     const normalizeProgress = (
       details: BookDetails,
@@ -223,11 +257,48 @@ export const BookServiceLive = Layer.effect(
           }
         }),
 
-      addBookToLibrary: (userId, isbn) =>
+      addBookToLibrary: (userId, isbn, options = {}) =>
         Effect.gen(function* () {
-          const userBook = yield* bookRepo.addBookByISBN(userId, isbn)
+          const normalizedISBN = normalizeISBN(isbn)
+          const previewCoverPath = getTrustedPreviewCoverPath(normalizedISBN, options.previewCoverPath)
+          const userBook = yield* bookRepo.addBookByISBN(userId, normalizedISBN, { previewCoverPath })
 
           return toLibraryBook(userBook)
+        }),
+
+      bulkAddBooks: (userId, books) =>
+        Effect.gen(function* () {
+          const added: Array<{ isbn: string }> = []
+          const failed: Array<{ isbn: string, error: string }> = []
+          const normalizedBooks = books.map(book => ({
+            isbn: normalizeISBN(book.isbn),
+            previewCoverPath: book.previewCoverPath ?? null
+          }))
+
+          const results = yield* Effect.forEach(
+            normalizedBooks,
+            book => Effect.either(
+              bookRepo.addBookByISBN(userId, book.isbn, {
+                previewCoverPath: getTrustedPreviewCoverPath(book.isbn, book.previewCoverPath)
+              }).pipe(
+                Effect.map(() => ({ isbn: book.isbn }))
+              )
+            ),
+            { concurrency: 3 }
+          )
+
+          results.forEach((result, index) => {
+            const isbn = normalizedBooks[index]!.isbn
+            if (Either.isRight(result)) {
+              added.push({ isbn })
+            } else {
+              const error = result.left
+              const message = '_tag' in error ? String(error._tag) : 'Unknown error'
+              failed.push({ isbn, error: message })
+            }
+          })
+
+          return { added, failed }
         }),
 
       createManualBook: (userId, input) =>
@@ -368,7 +439,7 @@ export const BookServiceLive = Layer.effect(
 
       lookupBook: (userId, isbn) =>
         Effect.gen(function* () {
-          const normalizedISBN = isbn.replace(/[-\s]/g, '')
+          const normalizedISBN = normalizeISBN(isbn)
           const existsInUserLibrary = yield* bookRepo.hasBookInUserLibrary(userId, normalizedISBN)
 
           // First check if book exists locally
@@ -395,20 +466,29 @@ export const BookServiceLive = Layer.effect(
 
           // Not found locally, try OpenLibrary
           const lookupEffect = lookupByISBN(normalizedISBN).pipe(
-            Effect.map((bookData: OpenLibraryBookData): BookLookupResult => ({
-              found: true,
-              isbn: bookData.isbn,
-              title: bookData.title,
-              author: bookData.authors.join(', '),
-              authors: bookData.authors,
-              coverUrl: bookData.coverUrl,
-              description: bookData.description,
-              subjects: bookData.subjects ?? null,
-              publishDate: bookData.publishDate,
-              publishers: bookData.publishers ?? null,
-              numberOfPages: bookData.numberOfPages,
-              existsLocally: false
-            })),
+            Effect.flatMap((bookData: OpenLibraryBookData) =>
+              Effect.gen(function* () {
+                const previewCoverPath = bookData.coverUrl
+                  ? yield* downloadCover(bookData.isbn, 'L')
+                  : null
+
+                return {
+                  found: true,
+                  isbn: bookData.isbn,
+                  title: bookData.title,
+                  author: bookData.authors.join(', '),
+                  authors: bookData.authors,
+                  coverUrl: previewCoverPath ? `/api/blob/${previewCoverPath}` : null,
+                  previewCoverPath,
+                  description: bookData.description,
+                  subjects: bookData.subjects ?? null,
+                  publishDate: bookData.publishDate,
+                  publishers: bookData.publishers ?? null,
+                  numberOfPages: bookData.numberOfPages,
+                  existsLocally: false
+                } satisfies BookLookupResult
+              })
+            ),
             Effect.catchTag('OpenLibraryBookNotFoundError', () =>
               Effect.succeed({
                 found: false,
@@ -472,6 +552,16 @@ export const getAuthorLibrary = (userId: string, authorId: string, pagination: P
 
 export const addBookToLibrary = (userId: string, isbn: string) =>
   Effect.flatMap(BookService, service => service.addBookToLibrary(userId, isbn))
+
+export const addBookToLibraryWithPreviewCover = (
+  userId: string,
+  isbn: string,
+  options?: AddBookToLibraryOptions
+) =>
+  Effect.flatMap(BookService, service => service.addBookToLibrary(userId, isbn, options))
+
+export const bulkAddBooks = (userId: string, books: BulkAddBookInput[]) =>
+  Effect.flatMap(BookService, service => service.bulkAddBooks(userId, books))
 
 export const createManualBook = (userId: string, input: ManualBookCreateSchema) =>
   Effect.flatMap(BookService, service => service.createManualBook(userId, input))

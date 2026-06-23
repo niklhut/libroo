@@ -1,43 +1,43 @@
-import { Effect, Either } from 'effect'
+import { Effect } from 'effect'
 import { z } from 'zod'
 
+const bulkAddBookSchema = z.object({
+  isbn: z.string().min(10).max(13),
+  previewCoverPath: z.string().nullable().optional()
+})
+
 const bulkAddSchema = z.object({
-  isbns: z.array(z.string().min(10).max(13)).min(1).max(20)
+  isbns: z.array(z.string().min(10).max(13)).max(20).optional(),
+  books: z.array(bulkAddBookSchema).max(20).optional()
+}).superRefine((body, ctx) => {
+  const hasBooks = (body.books?.length ?? 0) > 0
+  const hasIsbns = (body.isbns?.length ?? 0) > 0
+
+  if (!hasBooks && !hasIsbns) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'At least one ISBN is required'
+    })
+  }
+
+  if (hasBooks && hasIsbns) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'Provide either books or isbns, not both'
+    })
+  }
 })
 
 export default effectHandler((event, user) =>
   Effect.gen(function* () {
-    // Read request body
     const body = yield* Effect.tryPromise({
       try: () => readValidatedBody(event, bulkAddSchema.parse),
       catch: e => createError({ statusCode: 400, message: 'Validation Error', data: e })
     })
 
-    const userId = user.id
-    const added: Array<{ isbn: string }> = []
-    const failed: Array<{ isbn: string, error: string }> = []
-
-    // Add books with concurrency of 3 to balance speed vs resource usage
-    const results = yield* Effect.forEach(
-      body.isbns,
-      (isbn: string) => Effect.either(addBookToLibrary(userId, isbn).pipe(
-        Effect.map(() => ({ isbn, success: true as const }))
-      )),
-      { concurrency: 3 }
-    )
-
-    // Process results
-    results.forEach((result, index) => {
-      const isbn = body.isbns[index]!
-      if (Either.isRight(result)) {
-        added.push({ isbn })
-      } else {
-        const error = result.left
-        const message = '_tag' in error ? String(error._tag) : 'Unknown error'
-        failed.push({ isbn, error: message })
-      }
-    })
-
-    return { added, failed }
+    const books = body.books?.length
+      ? body.books
+      : body.isbns!.map((isbn: string) => ({ isbn }))
+    return yield* bulkAddBooks(user.id, books)
   })
 )
