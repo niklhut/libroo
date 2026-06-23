@@ -51,15 +51,13 @@ const fields: AuthFormField[] = [
     name: 'email',
     type: 'email',
     label: 'Email',
-    placeholder: 'Enter your email',
-    required: true
+    placeholder: 'Enter your email'
   },
   {
     name: 'password',
     type: 'password',
     label: 'Password',
-    placeholder: 'Enter your password',
-    required: true
+    placeholder: 'Enter your password'
   }
 ]
 
@@ -83,7 +81,6 @@ function inputFieldProps(field: AuthFormField) {
     name: inputField.name,
     placeholder: inputField.placeholder,
     autocomplete: inputField.autocomplete,
-    required: inputField.required,
     disabled: inputField.disabled
   }
 }
@@ -155,6 +152,14 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
           >
             Forgot password?
           </ULink>
+        </template>
+
+        <template #email-label>
+          Email <span class="text-error">*</span>
+        </template>
+
+        <template #password-label>
+          Password <span class="text-error">*</span>
         </template>
 
         <template #password-field="{ state, field }">

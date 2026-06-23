@@ -102,12 +102,12 @@ For a hosted setup with a separate public information website, prefer making tha
 website the canonical legal home and point the app at those pages with the URL
 variables below. Self-hosters who only deploy the application can point the app
 at Markdown documents hosted on S3, R2, a static web server, or a similar source.
-Libroo does not ship legally sufficient privacy-policy or imprint templates.
+Libroo does not ship legally sufficient privacy-policy, imprint, or terms templates.
 
 | Variable | Default | Notes |
 | --- | --- | --- |
-| `NUXT_PUBLIC_LEGAL_PRIVACY_POLICY_URL` / `NUXT_PUBLIC_LEGAL_IMPRINT_URL` | empty | Canonical legal page URLs. If set, footer links point to these URLs and the local route redirects there. |
-| `NUXT_LEGAL_PRIVACY_POLICY_MARKDOWN_URL` / `NUXT_LEGAL_IMPRINT_MARKDOWN_URL` | empty | Server-side Markdown source URLs. Used only when the matching canonical URL is empty. |
+| `NUXT_PUBLIC_LEGAL_PRIVACY_POLICY_URL` / `NUXT_PUBLIC_LEGAL_IMPRINT_URL` / `NUXT_PUBLIC_LEGAL_TERMS_URL` | empty | Canonical legal page URLs. If set, footer links point to these URLs and the local route redirects there. |
+| `NUXT_LEGAL_PRIVACY_POLICY_MARKDOWN_URL` / `NUXT_LEGAL_IMPRINT_MARKDOWN_URL` / `NUXT_LEGAL_TERMS_MARKDOWN_URL` | empty | Server-side Markdown source URLs. Used only when the matching canonical URL is empty. |
 
 If both values for a legal page are empty, the footer link is hidden and the
 direct route shows an empty state.
@@ -246,8 +246,8 @@ Repository or environment variables:
 | `NUXT_OPEN_LIBRARY_COVER_TIMEOUT_SECONDS` | `20` |
 | `NUXT_LEGAL_MARKDOWN_FETCH_TIMEOUT_SECONDS` | `5` |
 | `NUXT_PLUNK_SEND_TIMEOUT_SECONDS` | `5` |
-| `NUXT_PUBLIC_LEGAL_PRIVACY_POLICY_URL` / `NUXT_PUBLIC_LEGAL_IMPRINT_URL` | Optional canonical hosted legal page URLs. |
-| `NUXT_LEGAL_PRIVACY_POLICY_MARKDOWN_URL` / `NUXT_LEGAL_IMPRINT_MARKDOWN_URL` | Optional Markdown source URLs, used when the matching canonical URL is empty. |
+| `NUXT_PUBLIC_LEGAL_PRIVACY_POLICY_URL` / `NUXT_PUBLIC_LEGAL_IMPRINT_URL` / `NUXT_PUBLIC_LEGAL_TERMS_URL` | Optional canonical hosted legal page URLs. |
+| `NUXT_LEGAL_PRIVACY_POLICY_MARKDOWN_URL` / `NUXT_LEGAL_IMPRINT_MARKDOWN_URL` / `NUXT_LEGAL_TERMS_MARKDOWN_URL` | Optional Markdown source URLs, used when the matching canonical URL is empty. |
 | `NUXT_CLOUDFLARE_WORKER_NAME` | Optional override. Defaults to `libroo`. |
 
 The deploy workflow defaults hosted beta Turnstile enforcement to `true`. To intentionally deploy a private or access-controlled Cloudflare Worker without Turnstile, set repository variable `NUXT_PUBLIC_TURNSTILE_ENABLED=false`.

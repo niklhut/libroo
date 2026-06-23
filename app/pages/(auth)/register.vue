@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import * as z from 'zod'
 import type { FormSubmitEvent, AuthFormField } from '@nuxt/ui'
+import type { LegalStatus } from '~~/shared/types/legal'
 import type { SignupInvitePreview } from '~~/shared/types/signup-invite'
 import { getRegistrationSuccessDescription } from '~~/shared/utils/email-capability-ui'
 import { newPasswordSchema } from '~~/shared/utils/password'
@@ -19,6 +20,7 @@ const { user } = storeToRefs(authStore)
 const { signUp } = authStore
 const toast = useToast()
 const { data: emailCapabilities } = await useEmailCapabilities()
+const { data: legalStatus } = await useFetch<LegalStatus>('/api/legal/status')
 
 const isLoading = ref(false)
 const error = ref('')
@@ -38,6 +40,15 @@ const turnstileEnabled = computed(() => booleanConfigValue(config.public.turnsti
 const turnstileSiteKey = computed(() => typeof config.public.turnstile?.siteKey === 'string' ? config.public.turnstile.siteKey.trim() : '')
 const turnstileConfigured = computed(() => turnstileEnabled.value && Boolean(turnstileSiteKey.value))
 const turnstileMissingConfig = computed(() => turnstileEnabled.value && !turnstileSiteKey.value)
+const privacyPolicyUrl = computed(() => configuredLegalUrl(config.public.legalPrivacyPolicyUrl))
+const privacyPolicyLink = computed(() => privacyPolicyUrl.value || '/privacy')
+const privacyPolicyLinkExternal = computed(() => Boolean(privacyPolicyUrl.value))
+const privacyPolicyConfigured = computed(() => Boolean(privacyPolicyUrl.value || legalStatus.value?.privacy))
+const termsUrl = computed(() => configuredLegalUrl(config.public.legalTermsUrl))
+const termsLink = computed(() => termsUrl.value || '/terms')
+const termsLinkExternal = computed(() => Boolean(termsUrl.value))
+const termsConfigured = computed(() => Boolean(termsUrl.value || legalStatus.value?.terms))
+const authFormKey = computed(() => `${inviteEmail.value}:${termsConfigured.value}`)
 
 const { data: invitePreview } = await useAsyncData<SignupInvitePreview | null>(
   'signup-invite-preview',
@@ -97,8 +108,7 @@ const fields = computed<AuthFormField[]>(() => [
     name: 'name',
     type: 'text',
     label: 'Name',
-    placeholder: 'Enter your name',
-    required: true
+    placeholder: 'Enter your name'
   },
   {
     name: 'email',
@@ -106,24 +116,28 @@ const fields = computed<AuthFormField[]>(() => [
     label: 'Email',
     placeholder: 'Enter your email',
     defaultValue: inviteEmail.value,
-    disabled: Boolean(inviteEmail.value),
-    required: true
+    disabled: Boolean(inviteEmail.value)
   },
   {
     name: 'password',
     type: 'password',
     label: 'Password',
     placeholder: 'Enter your password',
-    hint: 'At least 8 characters',
-    required: true
+    hint: 'At least 8 characters'
   },
   {
     name: 'confirmPassword',
     type: 'password',
     label: 'Confirm Password',
-    placeholder: 'Confirm your password',
-    required: true
-  }
+    placeholder: 'Confirm your password'
+  },
+  ...(termsConfigured.value
+    ? [{
+        name: 'acceptTerms',
+        type: 'checkbox' as const,
+        defaultValue: false
+      }]
+    : [])
 ])
 
 // Validation schema
@@ -131,11 +145,15 @@ const schema = z.object({
   name: z.string({ error: 'Name is required' }).min(1, { error: 'Name is required' }),
   email: z.email({ error: 'Please enter a valid email address' }),
   password: newPasswordSchema(),
-  confirmPassword: z.string({ error: 'Confirm Password is required' }).min(1, { error: 'Please confirm your password' })
-}).refine(data => data.password === data.confirmPassword, {
-  error: 'Passwords do not match',
-  path: ['confirmPassword']
+  confirmPassword: z.string({ error: 'Confirm Password is required' }).min(1, { error: 'Please confirm your password' }),
+  acceptTerms: z.boolean().optional().refine(value => !termsConfigured.value || value === true, {
+    error: 'You must agree to the Terms of Service to create an account'
+  })
 })
+  .refine(data => data.password === data.confirmPassword, {
+    error: 'Passwords do not match',
+    path: ['confirmPassword']
+  })
 
 type Schema = z.output<typeof schema>
 
@@ -151,7 +169,6 @@ function inputFieldProps(field: AuthFormField) {
     name: inputField.name,
     placeholder: inputField.placeholder,
     autocomplete: inputField.autocomplete,
-    required: inputField.required,
     disabled: inputField.disabled
   }
 }
@@ -171,6 +188,11 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
 
   if (inviteEmail.value && payload.data.email.toLowerCase() !== inviteEmail.value) {
     error.value = 'Use the email address this invite was sent to'
+    return
+  }
+
+  if (termsConfigured.value && !payload.data.acceptTerms) {
+    error.value = 'You must agree to the Terms of Service to create an account'
     return
   }
 
@@ -252,7 +274,7 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
 
     <UPageCard v-else>
       <UAuthForm
-        :key="inviteEmail"
+        :key="authFormKey"
         :schema="schema"
         :fields="fields"
         :loading="isLoading"
@@ -269,6 +291,18 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
           >
             Sign in
           </ULink>
+        </template>
+
+        <template #name-label>
+          Name <span class="text-error">*</span>
+        </template>
+
+        <template #email-label>
+          Email <span class="text-error">*</span>
+        </template>
+
+        <template #password-label>
+          Password <span class="text-error">*</span>
         </template>
 
         <template #password-field="{ state, field }">
@@ -293,6 +327,10 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
           </UInput>
         </template>
 
+        <template #confirmPassword-label>
+          Confirm Password <span class="text-error">*</span>
+        </template>
+
         <template #confirmPassword-field="{ state, field }">
           <UInput
             v-model="state.confirmPassword"
@@ -313,6 +351,26 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
               />
             </template>
           </UInput>
+        </template>
+
+        <template #acceptTerms-field="{ state, field }">
+          <UCheckbox
+            v-model="state.acceptTerms"
+            v-bind="inputFieldProps(field)"
+          >
+            <template #label>
+              I agree to the
+              <ULink
+                :to="termsLink"
+                :target="termsLinkExternal ? '_blank' : undefined"
+                :rel="termsLinkExternal ? 'noopener noreferrer' : undefined"
+                class="text-primary font-medium"
+                @click.stop
+              >
+                Terms of Service
+              </ULink>
+            </template>
+          </UCheckbox>
         </template>
 
         <template
@@ -337,18 +395,27 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
             title="Bot protection is not configured"
           />
 
+          <p
+            v-if="privacyPolicyConfigured"
+            class="text-center text-sm text-muted"
+          >
+            By creating an account, you acknowledge that your personal data will be processed as described in the
+            <ULink
+              :to="privacyPolicyLink"
+              :target="privacyPolicyLinkExternal ? '_blank' : undefined"
+              :rel="privacyPolicyLinkExternal ? 'noopener noreferrer' : undefined"
+              class="text-primary font-medium"
+            >
+              Privacy Policy
+            </ULink>.
+          </p>
+
           <UAlert
             v-if="error"
             color="error"
             icon="i-lucide-alert-circle"
             :title="error"
           />
-        </template>
-
-        <template #footer>
-          <p class="text-center text-sm text-muted">
-            Libroo - Your Library, Managed
-          </p>
         </template>
       </UAuthForm>
     </UPageCard>

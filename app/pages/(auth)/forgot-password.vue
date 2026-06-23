@@ -26,8 +26,7 @@ const fields: AuthFormField[] = [
     name: 'email',
     type: 'email',
     label: 'Email',
-    placeholder: 'Enter your email',
-    required: true
+    placeholder: 'Enter your email'
   }
 ]
 
@@ -133,6 +132,10 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
           >
             Sign in
           </ULink>
+        </template>
+
+        <template #email-label>
+          Email <span class="text-error">*</span>
         </template>
 
         <template #validation>

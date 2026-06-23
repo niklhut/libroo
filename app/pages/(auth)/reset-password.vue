@@ -25,15 +25,13 @@ const fields: AuthFormField[] = [
     name: 'newPassword',
     type: 'password',
     label: 'New password',
-    placeholder: 'Enter your new password',
-    required: true
+    placeholder: 'Enter your new password'
   },
   {
     name: 'confirmPassword',
     type: 'password',
     label: 'Confirm new password',
-    placeholder: 'Confirm your new password',
-    required: true
+    placeholder: 'Confirm your new password'
   }
 ]
 
@@ -57,8 +55,7 @@ function inputFieldProps(field: AuthFormField) {
   return {
     name: inputField.name,
     placeholder: inputField.placeholder,
-    autocomplete: inputField.autocomplete,
-    required: inputField.required
+    autocomplete: inputField.autocomplete
   }
 }
 
@@ -140,6 +137,10 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
           </ULink>
         </template>
 
+        <template #newPassword-label>
+          New password <span class="text-error">*</span>
+        </template>
+
         <template #newPassword-field="{ state, field }">
           <UInput
             v-model="state.newPassword"
@@ -160,6 +161,10 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
               />
             </template>
           </UInput>
+        </template>
+
+        <template #confirmPassword-label>
+          Confirm new password <span class="text-error">*</span>
         </template>
 
         <template #confirmPassword-field="{ state, field }">
