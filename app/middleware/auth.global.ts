@@ -1,7 +1,6 @@
 import { roleIncludesAdmin } from '~~/shared/utils/auth-roles'
 import { isActiveBan } from '~~/shared/utils/auth-status'
 import { unref } from 'vue'
-import { useAuth } from '~/composables/useAuth'
 import { authClient } from '~/utils/auth-client'
 
 export default defineNuxtRouteMiddleware(async (to) => {
@@ -35,10 +34,14 @@ export default defineNuxtRouteMiddleware(async (to) => {
   }
 
   if (isActiveBan(session.value.user)) {
-    const client = import.meta.server ? useAuth() : authClient
-    await client.signOut().catch(() => undefined)
+    if (import.meta.client) {
+      await authClient.signOut().catch(() => undefined)
+    }
     session.value = null
-    return navigateTo('/login')
+    return navigateTo({
+      path: '/login',
+      query: { signout: 'true' }
+    })
   }
 
   const { data: emailCapabilities, error: emailCapabilitiesError } = await useEmailCapabilities()
