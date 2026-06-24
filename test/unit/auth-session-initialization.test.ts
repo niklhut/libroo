@@ -2,7 +2,6 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { ref } from 'vue'
 
 const authClientMocks = vi.hoisted(() => ({
-  getSession: vi.fn(),
   signOut: vi.fn(),
   useSession: vi.fn()
 }))
@@ -12,14 +11,6 @@ vi.mock('~/utils/auth-client', () => ({
     signOut: authClientMocks.signOut,
     useSession: authClientMocks.useSession
   }
-}))
-
-vi.mock('~/composables/useAuth', () => ({
-  useAuth: vi.fn(() => ({
-    getSession: authClientMocks.getSession,
-    signOut: authClientMocks.signOut,
-    useSession: authClientMocks.useSession
-  }))
 }))
 
 type PluginResult = {
@@ -49,7 +40,7 @@ const originalGlobals = {
   useRoute: globalThis.useRoute
 }
 
-let initializeAuthSession: (server?: boolean) => Promise<PluginResult['provide']['authSession']>
+let initializeAuthSession: (typeof import('../../app/utils/auth-session'))['initializeAuthSession']
 let authMiddleware: RouteMiddleware
 let routeMeta: { auth?: boolean, authSession?: boolean }
 let nuxtApp: { $authSession: PluginResult['provide']['authSession'] }
@@ -68,12 +59,11 @@ beforeAll(async () => {
   vi.stubGlobal('useRoute', () => ({ meta: routeMeta }))
   vi.stubGlobal('useNuxtApp', () => nuxtApp)
 
-  initializeAuthSession = (await import('../../app/plugins/auth')).initializeAuthSession as typeof initializeAuthSession
+  initializeAuthSession = (await import('../../app/utils/auth-session')).initializeAuthSession as typeof initializeAuthSession
   authMiddleware = (await import('../../app/middleware/auth.global')).default as unknown as RouteMiddleware
 })
 
 beforeEach(() => {
-  authClientMocks.getSession.mockReset()
   authClientMocks.signOut.mockReset()
   authClientMocks.useSession.mockReset()
   navigateTo.mockReset()
@@ -92,6 +82,7 @@ afterAll(() => {
 
 describe('auth session initialization', () => {
   it('fetches once in the plugin and reuses the injected session in middleware', async () => {
+    const publicFetch = vi.spyOn(globalThis, 'fetch')
     const session = {
       data: ref({
         user: {
@@ -105,13 +96,10 @@ describe('auth session initialization', () => {
       error: ref(null),
       isPending: ref(false)
     }
-    authClientMocks.getSession.mockResolvedValueOnce({
-      data: session.data.value,
-      error: null
-    })
     authClientMocks.useSession.mockResolvedValueOnce(session)
+    const resolveServerSession = vi.fn().mockResolvedValueOnce(session.data.value)
 
-    const authSession = await initializeAuthSession(true)
+    const authSession = await initializeAuthSession(true, resolveServerSession)
     nuxtApp = { $authSession: authSession }
 
     await expect(authMiddleware({
@@ -120,19 +108,22 @@ describe('auth session initialization', () => {
       path: '/library'
     })).resolves.toBeUndefined()
 
-    expect(authClientMocks.getSession).toHaveBeenCalledTimes(1)
+    expect(resolveServerSession).toHaveBeenCalledTimes(1)
+    expect(publicFetch).not.toHaveBeenCalled()
     expect(authClientMocks.useSession).not.toHaveBeenCalled()
     expect(nuxtApp.$authSession.data.value).toEqual(session.data.value)
     expect(navigateTo).not.toHaveBeenCalled()
+    publicFetch.mockRestore()
   })
 
   it('skips server initialization for public routes that do not need auth state', async () => {
     routeMeta = { auth: false }
 
-    const authSession = await initializeAuthSession(true)
+    const resolveServerSession = vi.fn()
+    const authSession = await initializeAuthSession(true, resolveServerSession)
 
     expect(authClientMocks.useSession).not.toHaveBeenCalled()
-    expect(authClientMocks.getSession).not.toHaveBeenCalled()
+    expect(resolveServerSession).not.toHaveBeenCalled()
     expect(authSession.data.value).toBeNull()
     expect(authSession.isPending.value).toBe(false)
   })
@@ -144,13 +135,10 @@ describe('auth session initialization', () => {
       error: ref(null),
       isPending: ref(false)
     }
-    authClientMocks.getSession.mockResolvedValueOnce({
-      data: null,
-      error: null
-    })
     authClientMocks.useSession.mockResolvedValueOnce(session)
+    const resolveServerSession = vi.fn().mockResolvedValueOnce(null)
 
-    const authSession = await initializeAuthSession(true)
+    const authSession = await initializeAuthSession(true, resolveServerSession)
     nuxtApp = { $authSession: authSession }
 
     await expect(authMiddleware({
@@ -159,7 +147,7 @@ describe('auth session initialization', () => {
       path: '/login'
     })).resolves.toBeUndefined()
 
-    expect(authClientMocks.getSession).toHaveBeenCalledTimes(1)
+    expect(resolveServerSession).toHaveBeenCalledTimes(1)
     expect(authClientMocks.useSession).not.toHaveBeenCalled()
     expect(nuxtApp.$authSession.data.value).toBeNull()
   })
@@ -170,12 +158,9 @@ describe('auth session initialization', () => {
       status: 500,
       statusText: 'Internal Server Error'
     }
-    authClientMocks.getSession.mockResolvedValueOnce({
-      data: null,
-      error: sessionFetchError
-    })
+    const resolveServerSession = vi.fn().mockRejectedValueOnce(sessionFetchError)
 
-    const authSession = await initializeAuthSession(true)
+    const authSession = await initializeAuthSession(true, resolveServerSession)
     nuxtApp = { $authSession: authSession }
 
     await expect(authMiddleware({
@@ -188,6 +173,7 @@ describe('auth session initialization', () => {
     })
 
     expect(authSession.error.value).toEqual(sessionFetchError)
+    expect(resolveServerSession).toHaveBeenCalledTimes(1)
     expect(navigateTo).not.toHaveBeenCalled()
   })
 })

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { TableColumn, TableRow } from '@nuxt/ui/components/Table.vue'
 import type { AdminUser, AdminUsersPage } from '~~/shared/types/admin'
+import { authClient } from '~/utils/auth-client'
 
 usePageTitle('Admin Users')
 
@@ -11,7 +12,7 @@ const authStore = useAuthStore()
 const { user: currentUser } = storeToRefs(authStore)
 const roleUpdatingUserIds = ref(new Set<string>())
 const statusUpdatingUserIds = ref(new Set<string>())
-const adminAuth = useAuth()
+const adminAuth = authClient
 const requestFetch = useRequestFetch()
 const pageSize = 25
 
