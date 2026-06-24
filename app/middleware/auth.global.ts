@@ -8,6 +8,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
     return
   }
 
+  const authClient = useAuth()
   const { data: session } = await authClient.useSession(useFetch)
 
   // If no session and auth is required, redirect to login
@@ -21,7 +22,10 @@ export default defineNuxtRouteMiddleware(async (to) => {
   if (isActiveBan(session.value.user)) {
     await authClient.signOut().catch(() => undefined)
     session.value = null
-    return navigateTo('/login')
+    return navigateTo({
+      path: '/login',
+      query: { signout: 'true' }
+    })
   }
 
   const { data: emailCapabilities, error: emailCapabilitiesError } = await useEmailCapabilities()
