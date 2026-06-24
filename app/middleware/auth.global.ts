@@ -1,5 +1,6 @@
 import { roleIncludesAdmin } from '~~/shared/utils/auth-roles'
 import { isActiveBan } from '~~/shared/utils/auth-status'
+import { unref } from 'vue'
 import { useAuth } from '~/composables/useAuth'
 import { authClient } from '~/utils/auth-client'
 
@@ -12,6 +13,18 @@ export default defineNuxtRouteMiddleware(async (to) => {
 
   const { $authSession } = useNuxtApp()
   const { data: session } = $authSession
+  const sessionError = unref($authSession.error)
+
+  if (sessionError) {
+    console.error('Unable to authorize route because session initialization failed', {
+      path: to.fullPath,
+      error: sessionError
+    })
+    throw createError({
+      statusCode: 503,
+      statusMessage: 'Unable to verify authentication'
+    })
+  }
 
   // If no session and auth is required, redirect to login
   if (!session.value?.user) {
