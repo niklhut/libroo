@@ -1,5 +1,7 @@
 import { roleIncludesAdmin } from '~~/shared/utils/auth-roles'
 import { isActiveBan } from '~~/shared/utils/auth-status'
+import { useAuth } from '~/composables/useAuth'
+import { authClient } from '~/utils/auth-client'
 
 export default defineNuxtRouteMiddleware(async (to) => {
   // Skip auth check for pages explicitly marked as public
@@ -8,7 +10,8 @@ export default defineNuxtRouteMiddleware(async (to) => {
     return
   }
 
-  const { data: session } = await authClient.useSession(useFetch)
+  const { $authSession } = useNuxtApp()
+  const { data: session } = $authSession
 
   // If no session and auth is required, redirect to login
   if (!session.value?.user) {
@@ -19,7 +22,8 @@ export default defineNuxtRouteMiddleware(async (to) => {
   }
 
   if (isActiveBan(session.value.user)) {
-    await authClient.signOut().catch(() => undefined)
+    const client = import.meta.server ? useAuth() : authClient
+    await client.signOut().catch(() => undefined)
     session.value = null
     return navigateTo('/login')
   }

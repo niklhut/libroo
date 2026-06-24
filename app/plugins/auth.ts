@@ -1,9 +1,29 @@
+import { ref } from 'vue'
+import { useAuth } from '~/composables/useAuth'
+import { authClient } from '~/utils/auth-client'
+
 export default defineNuxtPlugin(async () => {
+  const route = useRoute()
+  const shouldInitializeSession = import.meta.client
+    || route.meta.auth !== false
+    || route.meta.authSession === true
+
+  if (!shouldInitializeSession) {
+    return {
+      provide: {
+        authSession: {
+          data: ref(null),
+          error: ref(null),
+          isPending: ref(false)
+        }
+      }
+    }
+  }
+
   let session
   try {
-    // Initialize better-auth session once at app startup
-    // This awaits the promise and stores the reactive session object
-    session = await authClient.useSession(useFetch)
+    const client = import.meta.server ? useAuth() : authClient
+    session = await client.useSession(useFetch)
   } catch (error) {
     console.error('Failed to initialize auth session', error)
 
