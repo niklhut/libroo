@@ -2,28 +2,37 @@ import { ref } from 'vue'
 import { useAuth } from '~/composables/useAuth'
 import { authClient } from '~/utils/auth-client'
 
-export default defineNuxtPlugin(async () => {
+export async function initializeAuthSession(server = import.meta.server) {
   const route = useRoute()
-  const shouldInitializeSession = import.meta.client
+  const shouldInitializeSession = !server
     || route.meta.auth !== false
     || route.meta.authSession === true
 
   if (!shouldInitializeSession) {
     return {
-      provide: {
-        authSession: {
-          data: ref(null),
-          error: ref(null),
-          isPending: ref(false)
-        }
-      }
+      data: ref(null),
+      error: ref(null),
+      isPending: ref(false)
     }
   }
 
   let session
   try {
-    const client = import.meta.server ? useAuth() : authClient
-    session = await client.useSession(useFetch)
+    if (server) {
+      const result = await useAuth().getSession()
+
+      if (result.error) {
+        throw result.error
+      }
+
+      session = {
+        data: ref(result.data),
+        error: ref(null),
+        isPending: ref(false)
+      }
+    } else {
+      session = await authClient.useSession(useFetch)
+    }
   } catch (error) {
     console.error('Failed to initialize auth session', error)
 
@@ -34,9 +43,13 @@ export default defineNuxtPlugin(async () => {
     }
   }
 
+  return session
+}
+
+export default defineNuxtPlugin(async () => {
   return {
     provide: {
-      authSession: session
+      authSession: await initializeAuthSession()
     }
   }
 })
