@@ -3,6 +3,7 @@ import { getEmailVerificationConfig, validateEmailDeliveryConfig, validateEmailV
 import { getEmailCapabilities } from '../../../../server/utils/email-capabilities'
 
 const envKeys = [
+  'NUXT_LIBROO_RUNTIME_PROFILE',
   'NUXT_EMAIL_VERIFICATION_ENABLED',
   'NUXT_EMAIL_PROVIDER',
   'NUXT_EMAIL_FROM',
@@ -106,6 +107,24 @@ describe('email verification config', () => {
       plunk: {
         apiKey: 'sk_test',
         baseUrl: 'https://plunk.example.com'
+      }
+    })
+    expect(() => validateEmailVerificationConfig()).not.toThrow()
+  })
+
+  it('selects Plunk from the Cloudflare runtime profile during prerender', () => {
+    process.env.NUXT_LIBROO_RUNTIME_PROFILE = 'cloudflare'
+    process.env.NUXT_EMAIL_VERIFICATION_ENABLED = 'true'
+    process.env.NUXT_EMAIL_FROM = 'no-reply@example.com'
+    process.env.NUXT_PLUNK_API_KEY = 'sk_test'
+
+    expect(getEmailVerificationConfig()).toMatchObject({
+      enabled: true,
+      provider: 'plunk',
+      smtp: null,
+      plunk: {
+        apiKey: 'sk_test',
+        baseUrl: 'https://next-api.useplunk.com'
       }
     })
     expect(() => validateEmailVerificationConfig()).not.toThrow()
