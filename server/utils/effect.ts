@@ -139,7 +139,9 @@ const errorMessageFormatters: Record<string, (error: unknown) => string> = {
   },
   ActiveLoanExistsError: () => {
     return 'This book is already lent out.'
-  }
+  },
+  LocationUpdateError: () => 'The location could not be updated. Please try again.',
+  LocationDeleteError: () => 'The location could not be deleted. Please try again.'
 }
 
 /**
@@ -161,11 +163,13 @@ export function handleError(error: unknown): Effect.Effect<never> {
     if (tag) {
       const statusCode = errorStatusCodes[tag] ?? 500
       const formatter = errorMessageFormatters[tag]
+      const underlyingMessage = getProp<string>(error, 'message') ?? tag
       const message = formatter
         ? formatter(error)
-        : getProp<string>(error, 'message') ?? tag
+        : underlyingMessage
+      const operation = getProp<string>(error, 'operation')
 
-      yield* Effect.logError(`[${tag}] ${message}`)
+      yield* Effect.logError(`[${tag}${operation ? `:${operation}` : ''}] ${underlyingMessage}`)
       return yield* Effect.die(createError({ statusCode, message }))
     }
 

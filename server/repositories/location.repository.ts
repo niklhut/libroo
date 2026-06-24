@@ -2,6 +2,7 @@ import { Context, Effect, Layer, Data } from 'effect'
 import { asc, count, eq, isNull, and, sql, or, inArray } from 'drizzle-orm'
 import { locations, userBooks } from 'hub:db:schema'
 import { normalizeBookLocationKey } from '../../shared/utils/book-location'
+import { DbService } from '../services/db.service'
 import {
   calculateLocationCounts,
   computeLocationRepath,
@@ -19,10 +20,12 @@ export class LocationCreateError extends Data.TaggedError('LocationCreateError')
 
 export class LocationUpdateError extends Data.TaggedError('LocationUpdateError')<{
   message: string
+  operation: 'renameLocation' | 'moveLocation'
 }> { }
 
 export class LocationDeleteError extends Data.TaggedError('LocationDeleteError')<{
   message: string
+  operation: 'deleteLocation'
 }> { }
 
 export interface LocationBookCounts {
@@ -228,24 +231,35 @@ export const LocationRepositoryLive = Layer.effect(
       renameLocation: (userId, location, name) =>
         Effect.gen(function* () {
           const now = new Date()
-
-          return yield* Effect.tryPromise({
-            try: () => dbService.db.transaction(async (tx) => {
-              const parent = location.parentLocationId
-                ? await tx
-                    .select()
-                    .from(locations)
-                    .where(and(eq(locations.id, location.parentLocationId), eq(locations.userId, userId)))
-                    .limit(1)
-                    .then(rows => rows[0] ? toLocationRecord(rows[0]) : null)
-                : null
-              const descendants = await tx
+          const parentLocationId = location.parentLocationId
+          const parent = parentLocationId
+            ? yield* Effect.tryPromise({
+              try: () => dbService.db
                 .select()
                 .from(locations)
-                .where(and(eq(locations.userId, userId), sql`${locations.path} like ${locationDescendantPathLike(location)} escape '\\'`))
-              const repath = computeLocationRepath(location, descendants.map(toLocationRecord), parent, name)
+                .where(and(eq(locations.id, parentLocationId), eq(locations.userId, userId)))
+                .limit(1),
+              catch: error => new LocationUpdateError({
+                message: `Failed to rename location while loading its parent: ${error}`,
+                operation: 'renameLocation'
+              })
+            }).pipe(Effect.map(rows => rows[0] ? toLocationRecord(rows[0]) : null))
+            : null
+          const descendants = yield* Effect.tryPromise({
+            try: () => dbService.db
+              .select()
+              .from(locations)
+              .where(and(eq(locations.userId, userId), sql`${locations.path} like ${locationDescendantPathLike(location)} escape '\\'`)),
+            catch: error => new LocationUpdateError({
+              message: `Failed to rename location while loading descendants: ${error}`,
+              operation: 'renameLocation'
+            })
+          })
+          const repath = computeLocationRepath(location, descendants.map(toLocationRecord), parent, name)
 
-              await tx.update(locations)
+          yield* Effect.tryPromise({
+            try: () => dbService.executeAtomic(database => [
+              database.update(locations)
                 .set({
                   name,
                   normalizedName: normalizeBookLocationKey(name),
@@ -253,58 +267,68 @@ export const LocationRepositoryLive = Layer.effect(
                   depth: repath.location.depth,
                   updatedAt: now
                 })
-                .where(and(eq(locations.id, location.id), eq(locations.userId, userId)))
-
-              for (const descendant of repath.descendants) {
-                await tx.update(locations)
+                .where(and(eq(locations.id, location.id), eq(locations.userId, userId))),
+              ...repath.descendants.map(descendant =>
+                database.update(locations)
                   .set({
                     path: descendant.path,
                     depth: descendant.depth,
                     updatedAt: now
                   })
-                  .where(eq(locations.id, descendant.id))
-              }
-              return repath.location
-            }),
-            catch: error => new LocationUpdateError({ message: `Failed to rename location: ${error}` })
+                  .where(and(eq(locations.id, descendant.id), eq(locations.userId, userId)))
+              )
+            ]),
+            catch: error => new LocationUpdateError({
+              message: `Failed to rename location: ${error}`,
+              operation: 'renameLocation'
+            })
           })
+
+          return repath.location
         }),
 
       moveLocation: (userId, location, parent) =>
         Effect.gen(function* () {
           const now = new Date()
+          const descendants = yield* Effect.tryPromise({
+            try: () => dbService.db
+              .select()
+              .from(locations)
+              .where(and(eq(locations.userId, userId), sql`${locations.path} like ${locationDescendantPathLike(location)} escape '\\'`)),
+            catch: error => new LocationUpdateError({
+              message: `Failed to move location while loading descendants: ${error}`,
+              operation: 'moveLocation'
+            })
+          })
+          const repath = computeLocationRepath(location, descendants.map(toLocationRecord), parent)
 
           yield* Effect.tryPromise({
-            try: () => dbService.db.transaction(async (tx) => {
-              const descendants = await tx
-                .select()
-                .from(locations)
-                .where(and(eq(locations.userId, userId), sql`${locations.path} like ${locationDescendantPathLike(location)} escape '\\'`))
-              const repath = computeLocationRepath(location, descendants.map(toLocationRecord), parent)
-
-              await tx.update(locations)
+            try: () => dbService.executeAtomic(database => [
+              database.update(locations)
                 .set({
                   parentLocationId: parent?.id ?? null,
                   path: repath.location.path,
                   depth: repath.location.depth,
                   updatedAt: now
                 })
-                .where(and(eq(locations.id, location.id), eq(locations.userId, userId)))
-
-              for (const descendant of repath.descendants) {
-                await tx.update(locations)
+                .where(and(eq(locations.id, location.id), eq(locations.userId, userId))),
+              ...repath.descendants.map(descendant =>
+                database.update(locations)
                   .set({
                     path: descendant.path,
                     depth: descendant.depth,
                     updatedAt: now
                   })
-                  .where(eq(locations.id, descendant.id))
-              }
-            }),
-            catch: error => new LocationUpdateError({ message: `Failed to move location: ${error}` })
+                  .where(and(eq(locations.id, descendant.id), eq(locations.userId, userId)))
+              )
+            ]),
+            catch: error => new LocationUpdateError({
+              message: `Failed to move location: ${error}`,
+              operation: 'moveLocation'
+            })
           })
 
-          return computeLocationRepath(location, [], parent).location
+          return repath.location
         }),
 
       deleteLocation: (userId, location, mode, targetLocation) =>
@@ -323,15 +347,17 @@ export const LocationRepositoryLive = Layer.effect(
           if (locationIds.length === 0) return
 
           yield* Effect.tryPromise({
-            try: () => dbService.db.transaction(async (tx) => {
-              await tx.update(userBooks)
+            try: () => dbService.executeAtomic(database => [
+              database.update(userBooks)
                 .set({ locationId: mode === 'move' ? targetLocation?.id ?? null : null })
-                .where(and(eq(userBooks.userId, userId), inArray(userBooks.locationId, locationIds), isNull(userBooks.removedAt)))
-
-              await tx.delete(locations)
+                .where(and(eq(userBooks.userId, userId), inArray(userBooks.locationId, locationIds), isNull(userBooks.removedAt))),
+              database.delete(locations)
                 .where(and(eq(locations.userId, userId), inArray(locations.id, locationIds)))
-            }),
-            catch: error => new LocationDeleteError({ message: `Failed to delete location: ${error}` })
+            ]),
+            catch: error => new LocationDeleteError({
+              message: `Failed to delete location: ${error}`,
+              operation: 'deleteLocation'
+            })
           })
         })
     }
