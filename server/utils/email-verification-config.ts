@@ -63,11 +63,7 @@ function getNumberConfig(key: string, runtimeKey: string, fallback: number) {
 
 function getEmailProvider(): EmailProvider {
   const provider = getConfigValue('NUXT_EMAIL_PROVIDER', 'emailProvider')
-  if (provider === 'plunk' || provider === 'smtp') {
-    return provider
-  }
-
-  return process.env.NUXT_LIBROO_RUNTIME_PROFILE === 'cloudflare' ? 'plunk' : 'smtp'
+  return provider === 'plunk' ? 'plunk' : 'smtp'
 }
 
 export function getEmailVerificationConfig(): EmailVerificationConfig {

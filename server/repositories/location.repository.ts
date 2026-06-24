@@ -3,14 +3,14 @@ import { asc, count, eq, isNull, and, sql, or, inArray, exists } from 'drizzle-o
 import { alias } from 'drizzle-orm/sqlite-core'
 import type { AnySQLiteColumn } from 'drizzle-orm/sqlite-core'
 import { locations, userBooks } from 'hub:db:schema'
-import { normalizeBookLocationKey } from '~~/shared/utils/book-location'
+import { normalizeBookLocationKey } from '../../shared/utils/book-location'
 import { DbService } from '../services/db.service'
 import {
   calculateLocationCounts,
   computeLocationRepath,
   locationChildPath,
   locationDescendantPathLike
-} from '~~/shared/utils/location-hierarchy'
+} from '../../shared/utils/location-hierarchy'
 
 export class LocationNotFoundError extends Data.TaggedError('LocationNotFoundError')<{
   locationId: string
