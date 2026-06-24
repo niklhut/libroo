@@ -1,5 +1,7 @@
 import { Context, Effect, Layer, Data } from 'effect'
-import { asc, count, eq, isNull, and, sql, or, inArray } from 'drizzle-orm'
+import { asc, count, eq, isNull, and, sql, or, inArray, exists } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/sqlite-core'
+import type { AnySQLiteColumn } from 'drizzle-orm/sqlite-core'
 import { locations, userBooks } from 'hub:db:schema'
 import { normalizeBookLocationKey } from '../../shared/utils/book-location'
 import { DbService } from '../services/db.service'
@@ -86,6 +88,41 @@ function toLocationRecord(location: typeof locations.$inferSelect): LocationReco
 
 const descendantWhere = (location: LocationRecord) =>
   or(eq(locations.id, location.id), sql`${locations.path} like ${locationDescendantPathLike(location)} escape '\\'`)
+
+interface LocationStateColumns {
+  id: AnySQLiteColumn
+  userId: AnySQLiteColumn
+  name: AnySQLiteColumn
+  parentLocationId: AnySQLiteColumn
+  path: AnySQLiteColumn
+  depth: AnySQLiteColumn
+}
+
+const locationStateWhere = (
+  table: LocationStateColumns,
+  userId: string,
+  location: LocationRecord
+) => and(
+  eq(table.id, location.id),
+  eq(table.userId, userId),
+  eq(table.name, location.name),
+  location.parentLocationId === null
+    ? isNull(table.parentLocationId)
+    : eq(table.parentLocationId, location.parentLocationId),
+  eq(table.path, location.path),
+  eq(table.depth, location.depth)
+)
+
+function affectedRows(result: unknown): number {
+  if (!result || typeof result !== 'object') return 0
+  if ('rowsAffected' in result && typeof result.rowsAffected === 'number') {
+    return result.rowsAffected
+  }
+  if ('meta' in result && result.meta && typeof result.meta === 'object' && 'changes' in result.meta) {
+    return typeof result.meta.changes === 'number' ? result.meta.changes : 0
+  }
+  return 0
+}
 
 export const LocationRepositoryLive = Layer.effect(
   LocationRepository,
@@ -245,44 +282,52 @@ export const LocationRepositoryLive = Layer.effect(
               })
             }).pipe(Effect.map(rows => rows[0] ? toLocationRecord(rows[0]) : null))
             : null
-          const descendants = yield* Effect.tryPromise({
-            try: () => dbService.db
-              .select()
-              .from(locations)
-              .where(and(eq(locations.userId, userId), sql`${locations.path} like ${locationDescendantPathLike(location)} escape '\\'`)),
-            catch: error => new LocationUpdateError({
-              message: `Failed to rename location while loading descendants: ${error}`,
-              operation: 'renameLocation'
-            })
-          })
-          const repath = computeLocationRepath(location, descendants.map(toLocationRecord), parent, name)
+          const repath = computeLocationRepath(location, [], parent, name)
 
-          yield* Effect.tryPromise({
-            try: () => dbService.executeAtomic(database => [
-              database.update(locations)
-                .set({
-                  name,
-                  normalizedName: normalizeBookLocationKey(name),
-                  path: repath.location.path,
-                  depth: repath.location.depth,
-                  updatedAt: now
-                })
-                .where(and(eq(locations.id, location.id), eq(locations.userId, userId))),
-              ...repath.descendants.map(descendant =>
+          const results = yield* Effect.tryPromise({
+            try: () => dbService.executeAtomic((database) => {
+              const mutationRoot = alias(locations, 'mutation_root')
+              const rootIsCurrent = exists(
+                database.select({ id: mutationRoot.id })
+                  .from(mutationRoot)
+                  .where(locationStateWhere(mutationRoot, userId, location))
+              )
+              const depthDelta = repath.location.depth - location.depth
+
+              return [
                 database.update(locations)
                   .set({
-                    path: descendant.path,
-                    depth: descendant.depth,
+                    path: sql`${repath.location.path} || substr(${locations.path}, ${location.path.length + 1})`,
+                    depth: sql`${locations.depth} + ${depthDelta}`,
                     updatedAt: now
                   })
-                  .where(and(eq(locations.id, descendant.id), eq(locations.userId, userId)))
-              )
-            ]),
+                  .where(and(
+                    eq(locations.userId, userId),
+                    sql`${locations.path} like ${locationDescendantPathLike(location)} escape '\\'`,
+                    rootIsCurrent
+                  )),
+                database.update(locations)
+                  .set({
+                    name,
+                    normalizedName: normalizeBookLocationKey(name),
+                    path: repath.location.path,
+                    depth: repath.location.depth,
+                    updatedAt: now
+                  })
+                  .where(locationStateWhere(locations, userId, location))
+              ]
+            }),
             catch: error => new LocationUpdateError({
               message: `Failed to rename location: ${error}`,
               operation: 'renameLocation'
             })
           })
+          if (affectedRows(results.at(-1)) !== 1) {
+            return yield* Effect.fail(new LocationUpdateError({
+              message: 'Failed to rename location because the hierarchy changed during the operation',
+              operation: 'renameLocation'
+            }))
+          }
 
           return repath.location
         }),
@@ -290,75 +335,122 @@ export const LocationRepositoryLive = Layer.effect(
       moveLocation: (userId, location, parent) =>
         Effect.gen(function* () {
           const now = new Date()
-          const descendants = yield* Effect.tryPromise({
-            try: () => dbService.db
-              .select()
-              .from(locations)
-              .where(and(eq(locations.userId, userId), sql`${locations.path} like ${locationDescendantPathLike(location)} escape '\\'`)),
-            catch: error => new LocationUpdateError({
-              message: `Failed to move location while loading descendants: ${error}`,
-              operation: 'moveLocation'
-            })
-          })
-          const repath = computeLocationRepath(location, descendants.map(toLocationRecord), parent)
+          const repath = computeLocationRepath(location, [], parent)
 
-          yield* Effect.tryPromise({
-            try: () => dbService.executeAtomic(database => [
-              database.update(locations)
-                .set({
-                  parentLocationId: parent?.id ?? null,
-                  path: repath.location.path,
-                  depth: repath.location.depth,
-                  updatedAt: now
-                })
-                .where(and(eq(locations.id, location.id), eq(locations.userId, userId))),
-              ...repath.descendants.map(descendant =>
+          const results = yield* Effect.tryPromise({
+            try: () => dbService.executeAtomic((database) => {
+              const mutationRoot = alias(locations, 'mutation_root')
+              const rootIsCurrent = exists(
+                database.select({ id: mutationRoot.id })
+                  .from(mutationRoot)
+                  .where(locationStateWhere(mutationRoot, userId, location))
+              )
+              const mutationParent = alias(locations, 'mutation_parent')
+              const parentIsCurrent = parent
+                ? exists(
+                    database.select({ id: mutationParent.id })
+                      .from(mutationParent)
+                      .where(locationStateWhere(mutationParent, userId, parent))
+                  )
+                : sql`1 = 1`
+              const mutationIsCurrent = and(rootIsCurrent, parentIsCurrent)
+              const depthDelta = repath.location.depth - location.depth
+
+              return [
                 database.update(locations)
                   .set({
-                    path: descendant.path,
-                    depth: descendant.depth,
+                    path: sql`${repath.location.path} || substr(${locations.path}, ${location.path.length + 1})`,
+                    depth: sql`${locations.depth} + ${depthDelta}`,
                     updatedAt: now
                   })
-                  .where(and(eq(locations.id, descendant.id), eq(locations.userId, userId)))
-              )
-            ]),
+                  .where(and(
+                    eq(locations.userId, userId),
+                    sql`${locations.path} like ${locationDescendantPathLike(location)} escape '\\'`,
+                    mutationIsCurrent
+                  )),
+                database.update(locations)
+                  .set({
+                    parentLocationId: parent?.id ?? null,
+                    path: repath.location.path,
+                    depth: repath.location.depth,
+                    updatedAt: now
+                  })
+                  .where(and(
+                    locationStateWhere(locations, userId, location),
+                    parentIsCurrent
+                  ))
+              ]
+            }),
             catch: error => new LocationUpdateError({
               message: `Failed to move location: ${error}`,
               operation: 'moveLocation'
             })
           })
+          if (affectedRows(results.at(-1)) !== 1) {
+            return yield* Effect.fail(new LocationUpdateError({
+              message: 'Failed to move location because the hierarchy changed during the operation',
+              operation: 'moveLocation'
+            }))
+          }
 
           return repath.location
         }),
 
       deleteLocation: (userId, location, mode, targetLocation) =>
         Effect.gen(function* () {
-          const descendantLocations = yield* Effect.tryPromise({
-            try: () => dbService.db
-              .select({ id: locations.id })
-              .from(locations)
-              .where(and(eq(locations.userId, userId), descendantWhere(location))),
-            catch: error => new DatabaseError({
-              message: `Failed to load locations for delete: ${error}`,
-              operation: 'deleteLocation.loadScope'
-            })
-          })
-          const locationIds = descendantLocations.map(row => row.id)
-          if (locationIds.length === 0) return
+          const results = yield* Effect.tryPromise({
+            try: () => dbService.executeAtomic((database) => {
+              const mutationRoot = alias(locations, 'mutation_root')
+              const rootIsCurrent = exists(
+                database.select({ id: mutationRoot.id })
+                  .from(mutationRoot)
+                  .where(locationStateWhere(mutationRoot, userId, location))
+              )
+              const mutationTarget = alias(locations, 'mutation_target')
+              const targetIsCurrent = targetLocation
+                ? exists(
+                    database.select({ id: mutationTarget.id })
+                      .from(mutationTarget)
+                      .where(locationStateWhere(mutationTarget, userId, targetLocation))
+                  )
+                : sql`1 = 1`
+              const mutationIsCurrent = and(rootIsCurrent, targetIsCurrent)
+              const scopedLocationIds = database
+                .select({ id: locations.id })
+                .from(locations)
+                .where(and(
+                  eq(locations.userId, userId),
+                  descendantWhere(location),
+                  mutationIsCurrent
+                ))
 
-          yield* Effect.tryPromise({
-            try: () => dbService.executeAtomic(database => [
-              database.update(userBooks)
-                .set({ locationId: mode === 'move' ? targetLocation?.id ?? null : null })
-                .where(and(eq(userBooks.userId, userId), inArray(userBooks.locationId, locationIds), isNull(userBooks.removedAt))),
-              database.delete(locations)
-                .where(and(eq(locations.userId, userId), inArray(locations.id, locationIds)))
-            ]),
+              return [
+                database.update(userBooks)
+                  .set({ locationId: mode === 'move' ? targetLocation?.id ?? null : null })
+                  .where(and(
+                    eq(userBooks.userId, userId),
+                    inArray(userBooks.locationId, scopedLocationIds),
+                    isNull(userBooks.removedAt)
+                  )),
+                database.delete(locations)
+                  .where(and(
+                    eq(locations.userId, userId),
+                    descendantWhere(location),
+                    mutationIsCurrent
+                  ))
+              ]
+            }),
             catch: error => new LocationDeleteError({
               message: `Failed to delete location: ${error}`,
               operation: 'deleteLocation'
             })
           })
+          if (affectedRows(results.at(-1)) === 0) {
+            return yield* Effect.fail(new LocationDeleteError({
+              message: 'Failed to delete location because the hierarchy changed during the operation',
+              operation: 'deleteLocation'
+            }))
+          }
         })
     }
   })

@@ -4,7 +4,5 @@ import { DbService } from '../../services/db.service'
 
 export const DbServiceCloudflareLive = Layer.sync(DbService, () => ({
   db,
-  executeAtomic: async (buildStatements) => {
-    await db.batch(buildStatements(db))
-  }
+  executeAtomic: buildStatements => db.batch(buildStatements(db))
 }))

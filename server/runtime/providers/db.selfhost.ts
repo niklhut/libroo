@@ -49,10 +49,12 @@ export const DbServiceSelfHostLive = Layer.sync(DbService, () => {
   return {
     db,
     executeAtomic: async (buildStatements) => {
-      await db.transaction(async (tx) => {
+      return db.transaction(async (tx) => {
+        const results: unknown[] = []
         for (const statement of buildStatements(tx as unknown as DbServiceInterface['db'])) {
-          await statement
+          results.push(await statement)
         }
+        return results
       })
     }
   }

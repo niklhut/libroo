@@ -9,7 +9,7 @@ export interface DbServiceInterface {
   readonly db: typeof hubDb
   readonly executeAtomic: (
     buildStatements: (database: typeof hubDb) => AtomicDbStatements
-  ) => Promise<void>
+  ) => Promise<readonly unknown[]>
 }
 
 export class DbService extends Context.Tag('DbService')<DbService, DbServiceInterface>() { }
