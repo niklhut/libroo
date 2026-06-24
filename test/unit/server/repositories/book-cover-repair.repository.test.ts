@@ -345,6 +345,11 @@ function runRepository<A, E>(
       ...storageOverrides
     })),
     Effect.provide(Layer.succeed(HttpClient.HttpClient, {} as never)),
-    Effect.provide(Layer.succeed(DbService, { db: db as never }))
+    Effect.provide(Layer.succeed(DbService, {
+      db: db as never,
+      executeAtomic: async () => {
+        throw new Error('executeAtomic is not used by BookRepository cover repair')
+      }
+    }))
   ))
 }

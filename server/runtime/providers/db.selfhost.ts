@@ -44,7 +44,18 @@ export const DbServiceSelfHostLive = Layer.sync(DbService, () => {
     url: databaseUrl
   })
 
+  const db = drizzle(client, { schema }) as unknown as DbServiceInterface['db']
+
   return {
-    db: drizzle(client, { schema }) as unknown as DbServiceInterface['db']
+    db,
+    executeAtomic: async (buildStatements) => {
+      return db.transaction(async (tx) => {
+        const results: unknown[] = []
+        for (const statement of buildStatements(tx as unknown as DbServiceInterface['db'])) {
+          results.push(await statement)
+        }
+        return results
+      })
+    }
   }
 })
