@@ -8,8 +8,7 @@ import { newPasswordSchema } from '~~/shared/utils/password'
 import { booleanConfigValue } from '~~/shared/utils/runtime-config'
 
 definePageMeta({
-  auth: false,
-  authSession: true
+  auth: false
 })
 
 usePageTitle('Create Account')

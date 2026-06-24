@@ -1,7 +1,5 @@
 import { roleIncludesAdmin } from '~~/shared/utils/auth-roles'
 import { isActiveBan } from '~~/shared/utils/auth-status'
-import { unref } from 'vue'
-import { authClient } from '~/utils/auth-client'
 
 export default defineNuxtRouteMiddleware(async (to) => {
   // Skip auth check for pages explicitly marked as public
@@ -10,20 +8,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
     return
   }
 
-  const { $authSession } = useNuxtApp()
-  const { data: session } = $authSession
-  const sessionError = unref($authSession.error)
-
-  if (sessionError) {
-    console.error('Unable to authorize route because session initialization failed', {
-      path: to.fullPath,
-      error: sessionError
-    })
-    throw createError({
-      statusCode: 503,
-      statusMessage: 'Unable to verify authentication'
-    })
-  }
+  const { data: session } = await authClient.useSession(useFetch)
 
   // If no session and auth is required, redirect to login
   if (!session.value?.user) {
@@ -34,14 +19,9 @@ export default defineNuxtRouteMiddleware(async (to) => {
   }
 
   if (isActiveBan(session.value.user)) {
-    if (import.meta.client) {
-      await authClient.signOut().catch(() => undefined)
-    }
+    await authClient.signOut().catch(() => undefined)
     session.value = null
-    return navigateTo({
-      path: '/login',
-      query: { signout: 'true' }
-    })
+    return navigateTo('/login')
   }
 
   const { data: emailCapabilities, error: emailCapabilitiesError } = await useEmailCapabilities()

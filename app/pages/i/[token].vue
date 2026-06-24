@@ -2,8 +2,7 @@
 import type { BorrowedBook, InvitePreview } from '~~/shared/types/book'
 
 definePageMeta({
-  auth: false,
-  authSession: true
+  auth: false
 })
 
 const route = useRoute()

@@ -4,8 +4,7 @@ import type { FormSubmitEvent, AuthFormField } from '@nuxt/ui'
 import { canShowForgotPasswordAction } from '~~/shared/utils/email-capability-ui'
 
 definePageMeta({
-  auth: false,
-  authSession: true
+  auth: false
 })
 
 usePageTitle('Login')

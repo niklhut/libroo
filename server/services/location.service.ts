@@ -1,6 +1,6 @@
 import { Context, Effect, Layer, Data } from 'effect'
-import { normalizeBookLocationName } from '~~/shared/utils/book-location'
-import type { LocationDeleteSchema, LocationMoveSchema, LocationRenameSchema } from '~~/shared/utils/schemas'
+import { normalizeBookLocationName } from '../../shared/utils/book-location'
+import type { LocationDeleteSchema, LocationMoveSchema, LocationRenameSchema } from '../../shared/utils/schemas'
 
 export class InvalidLocationError extends Data.TaggedError('InvalidLocationError')<{
   message: string
