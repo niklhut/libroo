@@ -9,7 +9,9 @@ export default defineNuxtRouteMiddleware(async (to) => {
   }
 
   const authClient = useAuth()
-  const { data: session } = await authClient.useSession(useFetch)
+  const { data: session } = await authClient.useSession(useFetch).catch(() => ({
+    data: ref(null)
+  }))
 
   // If no session and auth is required, redirect to login
   if (!session.value?.user) {
