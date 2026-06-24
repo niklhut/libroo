@@ -5,13 +5,13 @@ import {
   parseCsvList,
   parseLibraryCsv,
   type LibraryCsvRow
-} from '../../shared/utils/library-transfer-csv'
+} from '~~/shared/utils/library-transfer-csv'
 import type {
   LibraryImportBookInput,
   LibraryImportConflictStrategy,
   LibraryImportResult
-} from '../../shared/types/library-transfer'
-import type { ReadingStatus } from '../../shared/types/book'
+} from '~~/shared/types/library-transfer'
+import type { ReadingStatus } from '~~/shared/types/book'
 
 export class InvalidLibraryCsvError extends Data.TaggedError('InvalidLibraryCsvError')<{
   message: string
