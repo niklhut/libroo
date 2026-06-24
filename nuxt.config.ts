@@ -1,3 +1,5 @@
+import { fileURLToPath } from 'node:url'
+
 // https://nuxt.com/docs/api/configuration/nuxt-config
 const runtimeProfile = process.env.NUXT_LIBROO_RUNTIME_PROFILE === 'cloudflare'
   ? 'cloudflare'
@@ -6,6 +8,7 @@ const cloudflareD1DatabaseId = process.env.NUXT_HUB_CLOUDFLARE_DATABASE_ID
 const cloudflareR2BucketName = process.env.NUXT_HUB_CLOUDFLARE_BUCKET_NAME
 const cloudflareWorkerName = process.env.NUXT_CLOUDFLARE_WORKER_NAME || 'libroo'
 const cloudflareCustomDomain = process.env.NUXT_CLOUDFLARE_CUSTOM_DOMAIN
+const runtimePath = (file: string) => fileURLToPath(new URL(`./server/runtime/${file}`, import.meta.url))
 
 function definedEnvVars(vars: Record<string, string | undefined>) {
   return Object.fromEntries(
@@ -99,9 +102,9 @@ export default defineNuxtConfig({
   },
 
   alias: {
-    '../runtime/active': `./server/runtime/${runtimeProfile}.ts`,
-    '../runtime/auth-db.active': `./server/runtime/auth-db.${runtimeProfile}.ts`,
-    '../runtime/email.active': `./server/runtime/email.${runtimeProfile}.ts`
+    '../runtime/active': runtimePath(`${runtimeProfile}.ts`),
+    '../runtime/auth-db.active': runtimePath(`auth-db.${runtimeProfile}.ts`),
+    '../runtime/email.active': runtimePath(`email.${runtimeProfile}.ts`)
   },
 
   routeRules: {
