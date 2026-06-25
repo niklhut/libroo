@@ -47,7 +47,7 @@ type BanReservationResult
   = | { reserved: true }
     | { reserved: false, reason: 'last_admin' | 'concurrent' }
 
-export const IMPERSONATION_DISABLED_MESSAGE = 'Admin impersonation is disabled for this Libroo beta.'
+export const IMPERSONATION_DISABLED_MESSAGE = 'Admin impersonation is disabled for this Libroo deployment.'
 
 const isEffectiveAdmin = (user: UserWithRole) =>
   roleIncludesAdmin(user.role)
