@@ -389,7 +389,7 @@ Repository or environment secrets:
 
 | Secret | Purpose |
 | --- | --- |
-| `CLOUDFLARE_API_TOKEN` | Wrangler deploy and D1 migration access. |
+| `CLOUDFLARE_API_TOKEN` | Wrangler deploy, D1 migration, R2, and custom-domain route access. |
 | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account for Wrangler. |
 | `NUXT_HUB_CLOUDFLARE_DATABASE_ID` | D1 database ID used during the Cloudflare build. |
 | `NUXT_HUB_CLOUDFLARE_BUCKET_NAME` | R2 bucket name used during the Cloudflare build. |
@@ -421,6 +421,20 @@ Wrangler route, for example `libroo.example.com`; the workflow converts it to
 an HTTPS URL for GitHub deployment statuses. Keep the native GitHub Environment
 URL set to the same canonical HTTPS origin.
 
+The production Cloudflare token needs these permissions:
+
+- Account scope for the production account: D1 Read/Write, Workers Scripts
+  Read/Write, Workers R2 Storage Read/Write, and Account Settings Read.
+- Zone scope for the custom-domain zone: Workers Routes Write. Cloudflare may
+  label this permission **Workers Routes Edit** in parts of the dashboard.
+
+Add `CLOUDFLARE_ZONE_ID` as a `production` Environment variable using the zone
+ID that contains `NUXT_CLOUDFLARE_CUSTOM_DOMAIN`. Before building, registering
+a deployment, or migrating D1, the workflow creates and immediately deletes a
+uniquely named route on an unused hostname beneath the custom domain. This
+proves zone-level Workers Routes Write access without changing the production
+hostname.
+
 Separately, retain the `preview` GitHub Environment with preview-scoped
 `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, and
 `NUXT_BETTER_AUTH_SECRET`, plus the `CLOUDFLARE_ACCESS_IDP_ID`,
@@ -435,6 +449,7 @@ Repository or environment variables:
 
 | Variable | Recommended value |
 | --- | --- |
+| `CLOUDFLARE_ZONE_ID` | Zone ID containing the production custom domain. |
 | `NUXT_BETTER_AUTH_URL` | Canonical production origin, including `https://`. |
 | `NUXT_EMAIL_FROM` | Hosted sender address. Must be on a verified Plunk sender domain. |
 | `NUXT_EMAIL_REPLY_TO` | Optional hosted reply-to address. |
