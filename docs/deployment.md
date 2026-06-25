@@ -429,9 +429,11 @@ The production Cloudflare token needs these permissions:
   label this permission **Workers Routes Edit** in parts of the dashboard.
 
 Add `CLOUDFLARE_ZONE_ID` as a `production` Environment variable using the zone
-ID that contains `NUXT_CLOUDFLARE_CUSTOM_DOMAIN`. The workflow reads the
-zone-level Workers Routes endpoint before building, registering a deployment,
-or migrating D1 so an incorrectly scoped token fails early.
+ID that contains `NUXT_CLOUDFLARE_CUSTOM_DOMAIN`. Before building, registering
+a deployment, or migrating D1, the workflow creates and immediately deletes a
+uniquely named route on an unused hostname beneath the custom domain. This
+proves zone-level Workers Routes Write access without changing the production
+hostname.
 
 Separately, retain the `preview` GitHub Environment with preview-scoped
 `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, and

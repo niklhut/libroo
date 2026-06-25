@@ -66,10 +66,31 @@ jobs:
       - name: Validate production runtime configuration
         run: |
           set -euo pipefail
-          if [[ ! "${NUXT_BETTER_AUTH_URL}" =~ ^https:// ]]; then
-            echo "NUXT_BETTER_AUTH_URL must be the canonical HTTPS production origin."
-            exit 1
-          fi
+          node <<'NODE'
+          const fail = (message) => {
+            console.error(`::error::${message}`)
+            process.exit(1)
+          }
+          const customDomain = process.env.NUXT_CLOUDFLARE_CUSTOM_DOMAIN
+          if (!customDomain) {
+            fail('NUXT_CLOUDFLARE_CUSTOM_DOMAIN must be configured.')
+          }
+          try {
+            const expectedUrl = new URL(
+              /^https?:\/\//.test(customDomain)
+                ? customDomain
+                : `https://${customDomain}`
+            )
+            const expectedOrigin = `https://${expectedUrl.host}`
+            const authUrlValue = process.env.NUXT_BETTER_AUTH_URL || ''
+            const authUrl = new URL(authUrlValue)
+            if (authUrl.origin !== expectedOrigin || authUrlValue !== authUrl.origin) {
+              fail(`NUXT_BETTER_AUTH_URL must exactly match ${expectedOrigin}.`)
+            }
+          } catch {
+            fail('NUXT_BETTER_AUTH_URL must be a valid canonical HTTPS production origin.')
+          }
+          NODE
           if [[ "${NUXT_PUBLIC_TURNSTILE_ENABLED}" == "true" ]]; then
             if [[ -z "${NUXT_PUBLIC_TURNSTILE_SITE_KEY}" ]]; then
               echo "NUXT_PUBLIC_TURNSTILE_SITE_KEY is required when NUXT_PUBLIC_TURNSTILE_ENABLED=true."
@@ -90,13 +111,40 @@ jobs:
             echo "::error::CLOUDFLARE_ZONE_ID must be configured on the production Environment."
             exit 1
           fi
-          if ! curl --fail-with-body --silent --show-error \
+          custom_hostname="$(node -e '
+            const value = process.env.NUXT_CLOUDFLARE_CUSTOM_DOMAIN
+            const url = new URL(/^https?:\/\//.test(value) ? value : `https://${value}`)
+            process.stdout.write(url.hostname)
+          ')"
+          route_pattern="libroo-route-check-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.${custom_hostname}/*"
+          route_id=""
+          cleanup_route() {
+            if [[ -n "${route_id}" ]]; then
+              curl --fail-with-body --silent --show-error \
+                --request DELETE \
+                --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+                "https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/workers/routes/${route_id}" \
+                > /dev/null
+            fi
+          }
+          trap cleanup_route EXIT
+          if ! route_response="$(curl --fail-with-body --silent --show-error \
+            --request POST \
             --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-            "https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/workers/routes" \
-            > "${RUNNER_TEMP}/cloudflare-worker-routes.json"; then
+            --header "Content-Type: application/json" \
+            --data "$(jq --null-input --arg pattern "${route_pattern}" '{ pattern: $pattern }')" \
+            "https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/workers/routes")"; then
             echo "::error::The production Cloudflare token needs Workers Routes Write access to the custom-domain zone."
             exit 1
           fi
+          route_id="$(jq --raw-output '.result.id // empty' <<< "${route_response}")"
+          if [[ -z "${route_id}" ]]; then
+            echo "::error::Cloudflare did not return the temporary route ID."
+            exit 1
+          fi
+          cleanup_route
+          route_id=""
+          trap - EXIT
 
       - name: Build Cloudflare worker
         run: pnpm build:cloudflare
