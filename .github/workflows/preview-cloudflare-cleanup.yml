@@ -51,9 +51,7 @@ jobs:
           failures=()
 
           worker_safe=false
-          worker_output="$(pnpm exec wrangler delete "${WORKER_NAME}" --force 2>&1)"
-          worker_status=$?
-          if [[ "${worker_status}" -eq 0 ]]; then
+          if worker_output="$(pnpm exec wrangler delete "${WORKER_NAME}" --force 2>&1)"; then
             echo "${worker_output}"
             worker_safe=true
           elif grep -Eqi 'not found|does not exist|could not find' <<< "${worker_output}"; then
@@ -119,17 +117,13 @@ jobs:
             echo "R2 bucket ${RESOURCE_NAME} is already absent."
           fi
 
-          d1_output="$(pnpm exec wrangler d1 delete "${RESOURCE_NAME}" --skip-confirmation 2>&1)"
-          d1_status=$?
-          if [[ "${d1_status}" -ne 0 ]]; then
-            if grep -Eqi 'not found|does not exist|could not find' <<< "${d1_output}"; then
-              echo "D1 database ${RESOURCE_NAME} is already absent."
-            else
-              echo "${d1_output}"
-              failures+=("D1 database ${RESOURCE_NAME}")
-            fi
+          if d1_output="$(pnpm exec wrangler d1 delete "${RESOURCE_NAME}" --skip-confirmation 2>&1)"; then
+            echo "${d1_output}"
+          elif grep -Eqi 'not found|does not exist|could not find' <<< "${d1_output}"; then
+            echo "D1 database ${RESOURCE_NAME} is already absent."
           else
             echo "${d1_output}"
+            failures+=("D1 database ${RESOURCE_NAME}")
           fi
 
           if (( ${#failures[@]} > 0 )); then
