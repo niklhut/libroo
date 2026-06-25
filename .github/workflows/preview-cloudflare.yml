@@ -148,13 +148,19 @@ jobs:
             exit 1
           fi
 
-          pnpm exec wrangler d1 list --json > "${RUNNER_TEMP}/d1.json"
-          NO_COLOR=1 pnpm exec wrangler r2 bucket list > "${RUNNER_TEMP}/r2.txt"
+          if ! pnpm exec wrangler d1 list --json > "${RUNNER_TEMP}/d1.json"; then
+            echo "Unable to list D1 databases for the preview quota check."
+            exit 1
+          fi
+          if ! NO_COLOR=1 pnpm exec wrangler r2 bucket list > "${RUNNER_TEMP}/r2.txt"; then
+            echo "Unable to list R2 buckets for the preview quota check."
+            exit 1
+          fi
 
           read -r d1_count d1_exists < <(node -e '
             const databases = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))
             const matching = databases.filter(database => database.name.startsWith("libroo-preview-"))
-            process.stdout.write(`${matching.length} ${matching.some(database => database.name === process.argv[2])}`)
+            console.log(`${matching.length} ${matching.some(database => database.name === process.argv[2])}`)
           ' "${RUNNER_TEMP}/d1.json" "${PREVIEW_D1_DATABASE_NAME}")
           mapfile -t r2_buckets < <(sed -n 's/^name:[[:space:]]*//p' "${RUNNER_TEMP}/r2.txt")
           r2_count=0
