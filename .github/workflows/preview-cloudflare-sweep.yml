@@ -1,0 +1,201 @@
+name: Sweep Cloudflare Preview Resources
+
+on:
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: cloudflare-preview-lifecycle
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    name: Delete orphaned previews
+    runs-on: ubuntu-latest
+    environment: preview
+    permissions:
+      contents: read
+      pull-requests: read
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Install node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Find and delete orphaned resources
+        run: |
+          set -euo pipefail
+          failures=()
+          deleted=()
+
+          gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" \
+            --jq '.[].number' | sort -n > "${RUNNER_TEMP}/open-prs.txt"
+          pnpm exec wrangler d1 list --json > "${RUNNER_TEMP}/d1.json"
+          NO_COLOR=1 pnpm exec wrangler r2 bucket list > "${RUNNER_TEMP}/r2.txt"
+          node scripts/preview/access-app.mjs list > "${RUNNER_TEMP}/access.json"
+          node scripts/preview/worker-list.mjs > "${RUNNER_TEMP}/workers.json"
+
+          node -e '
+            const databases = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))
+            for (const database of databases) {
+              if (/^libroo-preview-pr-[0-9]+$/.test(database.name)) console.log(database.name)
+            }
+          ' "${RUNNER_TEMP}/d1.json" > "${RUNNER_TEMP}/d1-preview.txt"
+          sed -n 's/^name:[[:space:]]*//p' "${RUNNER_TEMP}/r2.txt" \
+            | grep -E '^libroo-preview-pr-[0-9]+$' \
+            > "${RUNNER_TEMP}/r2-preview.txt" || true
+          node -e '
+            const applications = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))
+            for (const application of applications) {
+              if (/^libroo-preview-pr-[0-9]+$/.test(application.name)) {
+                console.log(application.name)
+              }
+            }
+          ' "${RUNNER_TEMP}/access.json" > "${RUNNER_TEMP}/access-preview.txt"
+          node -e '
+            const workers = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))
+            for (const worker of workers) {
+              const match = /^libroo-pr-([0-9]+)$/.exec(worker)
+              if (match) console.log(`libroo-preview-pr-${match[1]}`)
+            }
+          ' "${RUNNER_TEMP}/workers.json" > "${RUNNER_TEMP}/worker-preview.txt"
+          cat \
+            "${RUNNER_TEMP}/d1-preview.txt" \
+            "${RUNNER_TEMP}/r2-preview.txt" \
+            "${RUNNER_TEMP}/access-preview.txt" \
+            "${RUNNER_TEMP}/worker-preview.txt" \
+            | sort -u > "${RUNNER_TEMP}/preview-resources.txt"
+
+          empty_r2_bucket() {
+            local bucket="$1"
+            local port="$2"
+            local cleaner_config="${RUNNER_TEMP}/wrangler-r2-cleaner-${port}.json"
+            node -e '
+              const fs = require("fs")
+              fs.writeFileSync(process.argv[1], JSON.stringify({
+                name: `libroo-sweep-${process.argv[2]}`,
+                main: process.argv[3],
+                compatibility_date: "2025-01-15",
+                r2_buckets: [{ binding: "BLOB", bucket_name: process.argv[2] }]
+              }))
+            ' "${cleaner_config}" "${bucket}" "${GITHUB_WORKSPACE}/scripts/preview/empty-r2-worker.mjs"
+
+            pnpm exec wrangler dev --remote --config "${cleaner_config}" \
+              --ip 127.0.0.1 --port "${port}" --log-level error \
+              > "${RUNNER_TEMP}/r2-cleaner-${port}.log" 2>&1 &
+            local cleaner_pid=$!
+            local ready=false
+            for _ in {1..30}; do
+              if curl --fail --silent --show-error --request POST \
+                "http://127.0.0.1:${port}" > "${RUNNER_TEMP}/r2-clean-result-${port}.json"; then
+                ready=true
+                break
+              fi
+              sleep 2
+            done
+            kill "${cleaner_pid}" 2>/dev/null || true
+            wait "${cleaner_pid}" 2>/dev/null || true
+            [[ "${ready}" == "true" ]]
+          }
+
+          detected_count="$(wc -l < "${RUNNER_TEMP}/preview-resources.txt" | tr -d ' ')"
+          port=8790
+          while IFS= read -r resource; do
+            [[ -z "${resource}" ]] && continue
+            pr_number="${resource##*-}"
+            if grep -Fxq "${pr_number}" "${RUNNER_TEMP}/open-prs.txt"; then
+              echo "Keeping ${resource}; PR #${pr_number} is open."
+              continue
+            fi
+
+            echo "Deleting orphaned resources for PR #${pr_number}."
+            worker="libroo-pr-${pr_number}"
+            worker_safe=false
+            if worker_output="$(pnpm exec wrangler delete "${worker}" --force 2>&1)"; then
+              worker_safe=true
+              if grep -Fxq "${resource}" "${RUNNER_TEMP}/worker-preview.txt"; then
+                deleted+=("Worker ${worker}")
+              fi
+            elif grep -Eqi 'not found|does not exist|could not find' <<< "${worker_output}"; then
+              worker_safe=true
+              echo "Worker ${worker} is already absent."
+            else
+              echo "${worker_output}"
+              failures+=("Worker ${worker}")
+            fi
+
+            if [[ "${worker_safe}" == "true" ]] \
+              && grep -Fxq "${resource}" "${RUNNER_TEMP}/access-preview.txt"; then
+              if node scripts/preview/access-app.mjs delete "${resource}"; then
+                deleted+=("Access ${resource}")
+              else
+                failures+=("Access ${resource}")
+              fi
+            elif [[ "${worker_safe}" != "true" ]] \
+              && grep -Fxq "${resource}" "${RUNNER_TEMP}/access-preview.txt"; then
+              echo "Keeping Access ${resource} because Worker deletion failed."
+            fi
+
+            if grep -Fxq "${resource}" "${RUNNER_TEMP}/r2-preview.txt"; then
+              if empty_r2_bucket "${resource}" "${port}" \
+                && pnpm exec wrangler r2 bucket delete "${resource}"; then
+                deleted+=("R2 ${resource}")
+              else
+                cat "${RUNNER_TEMP}/r2-cleaner-${port}.log" 2>/dev/null || true
+                failures+=("R2 ${resource}")
+              fi
+              port=$((port + 1))
+            fi
+
+            if grep -Fxq "${resource}" "${RUNNER_TEMP}/d1-preview.txt"; then
+              if pnpm exec wrangler d1 delete "${resource}" --skip-confirmation; then
+                deleted+=("D1 ${resource}")
+              else
+                failures+=("D1 ${resource}")
+              fi
+            fi
+
+          done < "${RUNNER_TEMP}/preview-resources.txt"
+
+          {
+            echo "## Cloudflare preview orphan sweep"
+            echo
+            echo "- Open PRs: $(wc -l < "${RUNNER_TEMP}/open-prs.txt" | tr -d ' ')"
+            echo "- Distinct preview resource names detected: ${detected_count}"
+            echo "- Resources deleted: ${#deleted[@]}"
+            echo "- Failures: ${#failures[@]}"
+            if (( ${#deleted[@]} > 0 )); then
+              echo
+              echo "### Deleted"
+              printf -- '- %s\n' "${deleted[@]}"
+            fi
+            if (( ${#failures[@]} > 0 )); then
+              echo
+              echo "### Manual remediation required"
+              printf -- '- %s\n' "${failures[@]}"
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+          if (( ${#failures[@]} > 0 )); then
+            printf 'Sweep failed to delete: %s\n' "${failures[*]}"
+            exit 1
+          fi

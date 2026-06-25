@@ -6,6 +6,7 @@ const cloudflareD1DatabaseId = process.env.NUXT_HUB_CLOUDFLARE_DATABASE_ID
 const cloudflareR2BucketName = process.env.NUXT_HUB_CLOUDFLARE_BUCKET_NAME
 const cloudflareWorkerName = process.env.NUXT_CLOUDFLARE_WORKER_NAME || 'libroo'
 const cloudflareCustomDomain = process.env.NUXT_CLOUDFLARE_CUSTOM_DOMAIN
+const cloudflarePreview = process.env.NUXT_CLOUDFLARE_PREVIEW === 'true'
 
 function definedEnvVars(vars: Record<string, string | undefined>) {
   return Object.fromEntries(
@@ -15,6 +16,9 @@ function definedEnvVars(vars: Record<string, string | undefined>) {
 
 const cloudflareRuntimeVars = definedEnvVars({
   NUXT_BETTER_AUTH_URL: process.env.NUXT_BETTER_AUTH_URL,
+  NUXT_CLOUDFLARE_ACCESS_AUDIENCE: process.env.NUXT_CLOUDFLARE_ACCESS_AUDIENCE,
+  NUXT_CLOUDFLARE_ACCESS_TEAM_DOMAIN: process.env.NUXT_CLOUDFLARE_ACCESS_TEAM_DOMAIN,
+  NUXT_CLOUDFLARE_PREVIEW: cloudflarePreview ? 'true' : undefined,
   NUXT_EMAIL_FROM: process.env.NUXT_EMAIL_FROM,
   NUXT_EMAIL_REPLY_TO: process.env.NUXT_EMAIL_REPLY_TO,
   NUXT_EMAIL_VERIFICATION_ENABLED: process.env.NUXT_EMAIL_VERIFICATION_ENABLED,
@@ -33,7 +37,10 @@ const cloudflareRuntimeVars = definedEnvVars({
   NUXT_PUBLIC_REGISTRATION_ENABLED: process.env.NUXT_PUBLIC_REGISTRATION_ENABLED,
   NUXT_PUBLIC_TURNSTILE_ENABLED: process.env.NUXT_PUBLIC_TURNSTILE_ENABLED,
   NUXT_PUBLIC_TURNSTILE_SITE_KEY: process.env.NUXT_PUBLIC_TURNSTILE_SITE_KEY,
-  NUXT_TURNSTILE_ALLOWED_HOSTNAMES: process.env.NUXT_TURNSTILE_ALLOWED_HOSTNAMES
+  NUXT_TURNSTILE_ALLOWED_HOSTNAMES: process.env.NUXT_TURNSTILE_ALLOWED_HOSTNAMES,
+  ...(cloudflarePreview
+    ? { NUXT_TURNSTILE_SECRET_KEY: process.env.NUXT_TURNSTILE_SECRET_KEY }
+    : {})
 })
 const hasCloudflareRuntimeVars = Object.keys(cloudflareRuntimeVars).length > 0
 
@@ -60,6 +67,9 @@ export default defineNuxtConfig({
   runtimeConfig: {
     betterAuthSecret: '',
     betterAuthUrl: '',
+    cloudflareAccessAudience: '',
+    cloudflareAccessTeamDomain: '',
+    cloudflarePreview: '',
     authAuditRetentionDays: '5',
     adminAuditRetentionDays: '30',
     emailVerificationEnabled: 'false',
@@ -125,11 +135,15 @@ export default defineNuxtConfig({
                   ],
                   workers_dev: false
                 }
-              : {}),
+              : { workers_dev: true }),
             ...(hasCloudflareRuntimeVars ? { vars: cloudflareRuntimeVars } : {}),
-            triggers: {
-              crons: ['0 3 * * *', '30 3 * * *']
-            },
+            ...(!cloudflarePreview
+              ? {
+                  triggers: {
+                    crons: ['0 3 * * *', '30 3 * * *']
+                  }
+                }
+              : {}),
             observability: {
               enabled: true,
               logs: {

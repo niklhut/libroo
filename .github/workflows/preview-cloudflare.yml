@@ -1,0 +1,367 @@
+name: Deploy Cloudflare Preview
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: cloudflare-preview-lifecycle
+  cancel-in-progress: false
+
+jobs:
+  deploy-preview:
+    name: Deploy PR preview
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    environment: preview
+    permissions:
+      contents: read
+      deployments: write
+      pull-requests: write
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_ACCESS_IDP_ID: ${{ vars.CLOUDFLARE_ACCESS_IDP_ID }}
+      CLOUDFLARE_ACCESS_POLICY_ID: ${{ vars.CLOUDFLARE_ACCESS_POLICY_ID }}
+      NUXT_BETTER_AUTH_SECRET: ${{ secrets.NUXT_BETTER_AUTH_SECRET }}
+      NUXT_CLOUDFLARE_ACCESS_TEAM_DOMAIN: ${{ vars.CLOUDFLARE_ACCESS_TEAM_DOMAIN }}
+      PREVIEW_CONCURRENT_LIMIT: ${{ vars.PREVIEW_CONCURRENT_LIMIT || '10' }}
+      PREVIEW_SEED_ENABLED: ${{ vars.PREVIEW_SEED_ENABLED || 'false' }}
+      NUXT_CLOUDFLARE_PREVIEW: 'true'
+      NUXT_CLOUDFLARE_WORKER_NAME: libroo-pr-${{ github.event.pull_request.number }}
+      PREVIEW_ACCESS_APP_NAME: libroo-preview-pr-${{ github.event.pull_request.number }}
+      PREVIEW_D1_DATABASE_NAME: libroo-preview-pr-${{ github.event.pull_request.number }}
+      NUXT_HUB_CLOUDFLARE_BUCKET_NAME: libroo-preview-pr-${{ github.event.pull_request.number }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Install node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate preview Environment
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in \
+            CLOUDFLARE_API_TOKEN \
+            CLOUDFLARE_ACCOUNT_ID \
+            CLOUDFLARE_ACCESS_IDP_ID \
+            CLOUDFLARE_ACCESS_POLICY_ID \
+            NUXT_BETTER_AUTH_SECRET \
+            NUXT_CLOUDFLARE_ACCESS_TEAM_DOMAIN; do
+            [[ -n "${!name:-}" ]] || missing+=("${name}")
+          done
+          if (( ${#missing[@]} > 0 )); then
+            printf 'Missing required preview Environment values: %s\n' "${missing[*]}"
+            exit 1
+          fi
+          node -e '
+            const url = new URL(process.env.NUXT_CLOUDFLARE_ACCESS_TEAM_DOMAIN)
+            if (url.protocol !== "https:" || !url.hostname.endsWith(".cloudflareaccess.com")) {
+              throw new Error("CLOUDFLARE_ACCESS_TEAM_DOMAIN must be an HTTPS *.cloudflareaccess.com URL")
+            }
+          '
+
+      - name: Resolve workers.dev preview URL
+        id: preview
+        run: |
+          set -euo pipefail
+          response="$(curl --fail-with-body --silent --show-error \
+            --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/subdomain")"
+          subdomain="$(node -e '
+            const response = JSON.parse(process.argv[1])
+            if (!response.success || !response.result?.subdomain) process.exit(1)
+            process.stdout.write(response.result.subdomain)
+          ' "${response}")"
+          preview_url="https://${NUXT_CLOUDFLARE_WORKER_NAME}.${subdomain}.workers.dev"
+          echo "url=${preview_url}" >> "${GITHUB_OUTPUT}"
+          echo "NUXT_BETTER_AUTH_URL=${preview_url}" >> "${GITHUB_ENV}"
+
+      - name: Enforce preview resource ceiling
+        id: resources
+        run: |
+          set -euo pipefail
+          if ! [[ "${PREVIEW_CONCURRENT_LIMIT}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "PREVIEW_CONCURRENT_LIMIT must be a positive integer; got '${PREVIEW_CONCURRENT_LIMIT}'."
+            exit 1
+          fi
+
+          if ! pnpm exec wrangler d1 list --json > "${RUNNER_TEMP}/d1.json"; then
+            echo "Unable to list D1 databases for the preview quota check."
+            exit 1
+          fi
+          if ! NO_COLOR=1 pnpm exec wrangler r2 bucket list > "${RUNNER_TEMP}/r2.txt"; then
+            echo "Unable to list R2 buckets for the preview quota check."
+            exit 1
+          fi
+
+          read -r d1_count d1_exists < <(node -e '
+            const databases = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))
+            const matching = databases.filter(database => database.name.startsWith("libroo-preview-"))
+            console.log(`${matching.length} ${matching.some(database => database.name === process.argv[2])}`)
+          ' "${RUNNER_TEMP}/d1.json" "${PREVIEW_D1_DATABASE_NAME}")
+          mapfile -t r2_buckets < <(sed -n 's/^name:[[:space:]]*//p' "${RUNNER_TEMP}/r2.txt")
+          r2_count=0
+          r2_exists=false
+          for bucket in "${r2_buckets[@]}"; do
+            if [[ "${bucket}" == libroo-preview-* ]]; then
+              r2_count=$((r2_count + 1))
+            fi
+            if [[ "${bucket}" == "${NUXT_HUB_CLOUDFLARE_BUCKET_NAME}" ]]; then
+              r2_exists=true
+            fi
+          done
+
+          if [[ "${d1_exists}" == "false" && "${d1_count}" -ge "${PREVIEW_CONCURRENT_LIMIT}" ]]; then
+            echo "Preview D1 ceiling reached: ${d1_count}/${PREVIEW_CONCURRENT_LIMIT} databases already exist."
+            echo "Close stale PR previews, run the sweep workflow, or raise PREVIEW_CONCURRENT_LIMIT in the preview environment."
+            exit 1
+          fi
+          if [[ "${r2_exists}" == "false" && "${r2_count}" -ge "${PREVIEW_CONCURRENT_LIMIT}" ]]; then
+            echo "Preview R2 ceiling reached: ${r2_count}/${PREVIEW_CONCURRENT_LIMIT} buckets already exist."
+            echo "Close stale PR previews, run the sweep workflow, or raise PREVIEW_CONCURRENT_LIMIT in the preview environment."
+            exit 1
+          fi
+
+          echo "D1 previews: ${d1_count}/${PREVIEW_CONCURRENT_LIMIT}"
+          echo "R2 previews: ${r2_count}/${PREVIEW_CONCURRENT_LIMIT}"
+
+      - name: Protect preview with Cloudflare Access
+        id: access
+        env:
+          PREVIEW_HOSTNAME: ${{ steps.preview.outputs.url }}
+        run: |
+          set -euo pipefail
+          hostname="${PREVIEW_HOSTNAME#https://}"
+          access_json="$(node scripts/preview/access-app.mjs \
+            upsert \
+            "${PREVIEW_ACCESS_APP_NAME}" \
+            "${hostname}")"
+          audience="$(node -e '
+            const application = JSON.parse(process.argv[1])
+            if (!application.audience) process.exit(1)
+            process.stdout.write(application.audience)
+          ' "${access_json}")"
+          echo "application=${access_json}" >> "${GITHUB_OUTPUT}"
+          echo "NUXT_CLOUDFLARE_ACCESS_AUDIENCE=${audience}" >> "${GITHUB_ENV}"
+          echo "Protected ${hostname} with Access application ${PREVIEW_ACCESS_APP_NAME}."
+
+      - name: Register GitHub deployment
+        id: deployment
+        uses: actions/github-script@v8
+        env:
+          PREVIEW_URL: ${{ steps.preview.outputs.url }}
+        with:
+          script: |
+            const deployment = await github.rest.repos.createDeployment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.payload.pull_request.head.sha,
+              environment: 'preview',
+              description: `Cloudflare preview for PR #${context.issue.number}`,
+              auto_merge: false,
+              required_contexts: [],
+              transient_environment: true,
+              production_environment: false
+            })
+            core.setOutput('deployment_id', deployment.data.id)
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: deployment.data.id,
+              state: 'in_progress',
+              environment: 'preview',
+              environment_url: process.env.PREVIEW_URL,
+              description: 'Provisioning isolated Cloudflare preview resources'
+            })
+
+      - name: Provision preview D1 database
+        id: d1
+        run: |
+          set -euo pipefail
+          d1_name="${PREVIEW_D1_DATABASE_NAME}"
+          pnpm exec wrangler d1 list --json > "${RUNNER_TEMP}/d1-before.json"
+          database_id="$(node -e '
+            const databases = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))
+            const database = databases.find(item => item.name === process.argv[2])
+            if (database) process.stdout.write(database.uuid)
+          ' "${RUNNER_TEMP}/d1-before.json" "${d1_name}")"
+
+          if [[ -z "${database_id}" ]]; then
+            create_output="$(pnpm exec wrangler d1 create "${d1_name}" 2>&1)" || {
+              if [[ "${create_output}" != *"already exists"* ]]; then
+                echo "${create_output}"
+                exit 1
+              fi
+            }
+            echo "${create_output}"
+            pnpm exec wrangler d1 list --json > "${RUNNER_TEMP}/d1-after.json"
+            database_id="$(node -e '
+              const databases = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))
+              const database = databases.find(item => item.name === process.argv[2])
+              if (!database) process.exit(1)
+              process.stdout.write(database.uuid)
+            ' "${RUNNER_TEMP}/d1-after.json" "${d1_name}")"
+          else
+            echo "D1 database ${d1_name} already exists."
+          fi
+
+          echo "database_id=${database_id}" >> "${GITHUB_OUTPUT}"
+          echo "NUXT_HUB_CLOUDFLARE_DATABASE_ID=${database_id}" >> "${GITHUB_ENV}"
+
+      - name: Provision preview R2 bucket
+        run: |
+          set -euo pipefail
+          NO_COLOR=1 pnpm exec wrangler r2 bucket list > "${RUNNER_TEMP}/r2-before.txt"
+          if sed -n 's/^name:[[:space:]]*//p' "${RUNNER_TEMP}/r2-before.txt" | grep -Fxq "${NUXT_HUB_CLOUDFLARE_BUCKET_NAME}"; then
+            echo "R2 bucket ${NUXT_HUB_CLOUDFLARE_BUCKET_NAME} already exists."
+          else
+            create_output="$(pnpm exec wrangler r2 bucket create "${NUXT_HUB_CLOUDFLARE_BUCKET_NAME}" 2>&1)" || {
+              if [[ "${create_output}" != *"already exists"* ]]; then
+                echo "${create_output}"
+                exit 1
+              fi
+            }
+            echo "${create_output}"
+          fi
+
+      - name: Load canonical preview runtime values
+        run: |
+          set -euo pipefail
+          while IFS= read -r line || [[ -n "${line}" ]]; do
+            [[ -z "${line}" || "${line}" == \#* ]] && continue
+            echo "${line}" >> "${GITHUB_ENV}"
+          done < scripts/preview/runtime.env
+          echo "NUXT_CLOUDFLARE_CUSTOM_DOMAIN=" >> "${GITHUB_ENV}"
+
+      - name: Validate preview configuration
+        run: |
+          set -euo pipefail
+          if [[ -n "${NUXT_CLOUDFLARE_CUSTOM_DOMAIN:-}" ]]; then
+            echo "NUXT_CLOUDFLARE_CUSTOM_DOMAIN must not be set for previews."
+            exit 1
+          fi
+          if [[ -z "${NUXT_BETTER_AUTH_SECRET}" ]]; then
+            echo "The preview environment must provide NUXT_BETTER_AUTH_SECRET."
+            exit 1
+          fi
+          if [[ -z "${NUXT_CLOUDFLARE_ACCESS_AUDIENCE:-}" ]]; then
+            echo "The preview Access application did not provide an audience."
+            exit 1
+          fi
+
+      - name: Build Cloudflare preview
+        run: pnpm build:cloudflare
+
+      - name: Verify isolated preview bindings
+        run: |
+          set -euo pipefail
+          pnpm exec wrangler d1 list --json > "${RUNNER_TEMP}/d1-verify.json"
+          node scripts/preview/validate-wrangler-config.mjs \
+            .output/server/wrangler.json \
+            "${RUNNER_TEMP}/d1-verify.json"
+
+      - name: Apply preview D1 migrations
+        run: pnpm exec wrangler d1 migrations apply DB --remote --config .output/server/wrangler.json
+
+      - name: Seed synthetic preview data
+        if: env.PREVIEW_SEED_ENABLED == 'true'
+        run: pnpm exec wrangler d1 execute DB --remote --file scripts/preview/seed.sql --config .output/server/wrangler.json
+
+      - name: Sync preview Worker secret
+        run: |
+          set -euo pipefail
+          node <<'NODE' | pnpm exec wrangler secret bulk --config .output/server/wrangler.json
+          if (!process.env.NUXT_BETTER_AUTH_SECRET) {
+            console.error('Missing preview NUXT_BETTER_AUTH_SECRET.')
+            process.exit(1)
+          }
+          process.stdout.write(JSON.stringify({
+            NUXT_BETTER_AUTH_SECRET: process.env.NUXT_BETTER_AUTH_SECRET
+          }))
+          NODE
+
+      - name: Deploy preview Worker
+        id: deploy
+        run: pnpm exec wrangler deploy --config .output/server/wrangler.json
+
+      - name: Publish preview status
+        if: always()
+        uses: actions/github-script@v8
+        env:
+          DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
+          PREVIEW_URL: ${{ steps.preview.outputs.url }}
+          WORKFLOW_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const marker = '<!-- libroo-cloudflare-preview -->'
+            const success = process.env.WORKFLOW_STATUS === 'success'
+            const url = process.env.PREVIEW_URL
+            const body = [
+              marker,
+              '## Cloudflare preview',
+              '',
+              success
+                ? `✅ Preview deployed: ${url}`
+                : '❌ Preview deployment failed. Check the workflow logs for provisioning, migration, or deployment errors.',
+              '',
+              `Worker: \`${process.env.NUXT_CLOUDFLARE_WORKER_NAME}\``,
+              `D1 / R2: \`${process.env.NUXT_HUB_CLOUDFLARE_BUCKET_NAME}\``,
+              `Access: \`${process.env.PREVIEW_ACCESS_APP_NAME}\``,
+              '',
+              `[View workflow run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`
+            ].join('\n')
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              per_page: 100
+            })
+            const existing = comments.find(comment =>
+              comment.user?.type === 'Bot' && comment.body?.includes(marker)
+            )
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body
+              })
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body
+              })
+            }
+
+            if (process.env.DEPLOYMENT_ID) {
+              await github.rest.repos.createDeploymentStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                deployment_id: Number(process.env.DEPLOYMENT_ID),
+                state: success ? 'success' : 'failure',
+                environment: 'preview',
+                environment_url: url || undefined,
+                description: success
+                  ? 'Cloudflare preview is ready'
+                  : 'Cloudflare preview deployment failed'
+              })
+            }
