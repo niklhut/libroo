@@ -51,11 +51,8 @@ jobs:
           failures=()
 
           worker_safe=false
-          if worker_output="$(pnpm exec wrangler delete "${WORKER_NAME}" --force 2>&1)"; then
-            echo "${worker_output}"
-            worker_safe=true
-          elif grep -Eqi 'not found|does not exist|could not find' <<< "${worker_output}"; then
-            echo "Worker ${WORKER_NAME} is already absent."
+          if worker_output="$(node scripts/preview/worker-delete.mjs "${WORKER_NAME}" 2>&1)"; then
+            echo "Worker cleanup: ${worker_output}"
             worker_safe=true
           else
             echo "${worker_output}"

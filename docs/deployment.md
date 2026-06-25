@@ -351,7 +351,7 @@ pnpm exec wrangler r2 object delete libroo-preview-pr-123/path/to/object
 pnpm exec wrangler r2 bucket delete libroo-preview-pr-123
 
 pnpm exec wrangler d1 delete libroo-preview-pr-123 --skip-confirmation
-pnpm exec wrangler delete libroo-pr-123 --force
+node scripts/preview/worker-delete.mjs libroo-pr-123
 
 # Find and delete a leaked Access application.
 curl --fail-with-body --silent --show-error \
@@ -366,7 +366,7 @@ curl --fail-with-body --request DELETE --silent --show-error \
 
 If the R2 bucket contains unknown object keys, prefer re-running the cleanup workflow because it uses `scripts/preview/empty-r2-worker.mjs` to list and delete every object through the bucket binding. The Cloudflare dashboard is the other practical way to inspect and remove unknown objects before running `wrangler r2 bucket delete`.
 
-All delete operations are intended to be idempotent: an already-absent resource is success. If a command fails for another reason, verify that the token in the `preview` Environment has D1, R2, and Workers edit permissions and that `CLOUDFLARE_ACCOUNT_ID` targets the expected account.
+All delete operations are intended to be idempotent: an already-absent resource is success. Worker cleanup uses Cloudflare's Workers service API directly instead of `wrangler delete`, because Wrangler also queries legacy Workers KV asset namespaces and would otherwise require unrelated KV permissions. If a command fails for another reason, verify that the token in the `preview` Environment has D1, R2, and Workers edit permissions and that `CLOUDFLARE_ACCOUNT_ID` targets the expected account.
 
 ### Required GitHub Configuration
 
