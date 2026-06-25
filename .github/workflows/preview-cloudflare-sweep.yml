@@ -130,14 +130,12 @@ jobs:
             echo "Deleting orphaned resources for PR #${pr_number}."
             worker="libroo-pr-${pr_number}"
             worker_safe=false
-            if worker_output="$(pnpm exec wrangler delete "${worker}" --force 2>&1)"; then
+            if worker_output="$(node scripts/preview/worker-delete.mjs "${worker}" 2>&1)"; then
               worker_safe=true
+              echo "Worker cleanup: ${worker_output}"
               if grep -Fxq "${resource}" "${RUNNER_TEMP}/worker-preview.txt"; then
                 deleted+=("Worker ${worker}")
               fi
-            elif grep -Eqi 'not found|does not exist|could not find' <<< "${worker_output}"; then
-              worker_safe=true
-              echo "Worker ${worker} is already absent."
             else
               echo "${worker_output}"
               failures+=("Worker ${worker}")
