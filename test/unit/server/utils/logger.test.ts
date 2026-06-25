@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { Effect, Logger, LogLevel } from 'effect'
+import { Cause, Effect, Logger, LogLevel } from 'effect'
 import { StructuredLoggerLive } from '../../../../server/utils/logger'
 
 const consoleMethods = ['error', 'warn', 'info', 'debug', 'log'] as const
@@ -38,6 +38,18 @@ describe('structuredLogger', () => {
     expect(spies[method]).toHaveBeenCalledWith(expect.objectContaining({
       level: expect.any(String),
       message: expect.any(String)
+    }))
+  })
+
+  it('formats non-empty causes as readable strings', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await runWithStructuredLogger(
+      Effect.logError('operation failed', Cause.fail('expected failure'))
+    )
+
+    expect(errorSpy).toHaveBeenCalledWith(expect.objectContaining({
+      cause: expect.stringContaining('expected failure')
     }))
   })
 })

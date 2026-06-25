@@ -23,7 +23,7 @@ export const structuredLogger = Logger.make<unknown, undefined>((options) => {
   }
 
   if (!Cause.isEmpty(options.cause)) {
-    payload.cause = options.cause
+    payload.cause = Cause.pretty(options.cause)
   }
 
   switch (options.logLevel._tag) {
