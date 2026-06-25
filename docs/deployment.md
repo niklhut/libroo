@@ -204,13 +204,17 @@ Do not create a separate Libroo auth table. User roles and bans are Better Auth 
 Hosted production policy:
 
 - Protect `main`.
-- Require the `Lint`, `Unit Tests`, and `Docker Image` checks before merge.
-- Require the Cloudflare Worker build check before merge.
+- Require the `Lint`, `Typecheck`, `Unit Tests`, `Docker Image`, and
+  `Build Cloudflare Worker` checks before merge.
 - Merging to `main` deploys `libroo-production` through the protected
   `production` GitHub Environment.
 - D1 migrations run only on `push` to `main`, after required checks have passed and the merge has completed.
 
 Same-repository pull requests receive isolated Cloudflare previews. Fork pull requests remain build-only because they must not receive the `preview` GitHub Environment secrets. Production D1 migrations still run only after merge to protected `main`.
+
+After the `Typecheck` workflow has completed at least once, add
+`Typecheck` to the required status checks in the `main` branch protection
+settings before relying on it as a merge gate.
 
 If manual promotion becomes necessary, prefer a GitHub Environment approval or a workflow dispatch input over a permanently diverging production branch.
 
@@ -497,7 +501,10 @@ is safely skipped.
 
 Migration files live in `server/db/migrations/sqlite`. Append new migrations; do not rewrite migration history for existing hosted data. For manual hosted migrations, use the same generated `.output/server/wrangler.json` after a Cloudflare build.
 
-Do not run hosted migrations from pull request workflows. If a PR contains a migration, it is validated by build/typecheck/test, then applied only after that PR is merged to protected `main`.
+Do not run hosted migrations from pull request workflows. If a PR contains a
+migration, it is validated by the `Lint`, `Typecheck`, `Unit Tests`,
+`Docker Image`, and `Build Cloudflare Worker` checks, then applied only after
+that PR is merged to protected `main`.
 
 ### Hosted Rollback
 
