@@ -9,19 +9,20 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy-beta:
-    name: Deploy beta
+  deploy-production:
+    name: Deploy production
     runs-on: ubuntu-latest
+    environment: production
     permissions:
       contents: read
       deployments: write
     env:
       NUXT_HUB_CLOUDFLARE_DATABASE_ID: ${{ secrets.NUXT_HUB_CLOUDFLARE_DATABASE_ID }}
       NUXT_HUB_CLOUDFLARE_BUCKET_NAME: ${{ secrets.NUXT_HUB_CLOUDFLARE_BUCKET_NAME }}
-      NUXT_CLOUDFLARE_WORKER_NAME: libroo-beta
+      NUXT_CLOUDFLARE_WORKER_NAME: libroo-production
       NUXT_CLOUDFLARE_CUSTOM_DOMAIN: ${{ vars.NUXT_CLOUDFLARE_CUSTOM_DOMAIN }}
       NUXT_BETTER_AUTH_SECRET: ${{ secrets.NUXT_BETTER_AUTH_SECRET }}
-      NUXT_BETTER_AUTH_URL: ${{ secrets.NUXT_BETTER_AUTH_URL }}
+      NUXT_BETTER_AUTH_URL: ${{ vars.NUXT_BETTER_AUTH_URL }}
       NUXT_PLUNK_API_KEY: ${{ secrets.NUXT_PLUNK_API_KEY }}
       NUXT_EMAIL_FROM: ${{ vars.NUXT_EMAIL_FROM }}
       NUXT_EMAIL_REPLY_TO: ${{ vars.NUXT_EMAIL_REPLY_TO }}
@@ -61,7 +62,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Validate beta Turnstile configuration
+      - name: Validate production Turnstile configuration
         run: |
           set -euo pipefail
           if [[ "${NUXT_PUBLIC_TURNSTILE_ENABLED}" == "true" ]]; then
@@ -78,13 +79,47 @@ jobs:
       - name: Build Cloudflare worker
         run: pnpm build:cloudflare
 
-      - name: Apply beta D1 migrations
+      - name: Validate production Wrangler configuration
+        run: node scripts/production/validate-wrangler-config.mjs .output/server/wrangler.json
+
+      - name: Register GitHub deployment
+        id: deployment
+        uses: actions/github-script@v8
+        env:
+          PRODUCTION_ORIGIN: ${{ vars.NUXT_CLOUDFLARE_CUSTOM_DOMAIN }}
+        with:
+          script: |
+            const environmentUrl = /^https?:\/\//.test(process.env.PRODUCTION_ORIGIN)
+              ? process.env.PRODUCTION_ORIGIN
+              : `https://${process.env.PRODUCTION_ORIGIN}`
+            const deployment = await github.rest.repos.createDeployment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.sha,
+              environment: 'production',
+              auto_merge: false,
+              required_contexts: [],
+              transient_environment: false,
+              production_environment: true
+            })
+            core.setOutput('deployment_id', deployment.data.id)
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: deployment.data.id,
+              state: 'in_progress',
+              environment: 'production',
+              environment_url: environmentUrl,
+              description: 'Deploying the production Cloudflare Worker'
+            })
+
+      - name: Apply production D1 migrations
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: pnpm exec wrangler d1 migrations apply DB --remote --config .output/server/wrangler.json
 
-      - name: Sync beta Worker secrets
+      - name: Sync production Worker secrets
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -108,8 +143,36 @@ jobs:
           )))
           NODE
 
-      - name: Deploy beta worker
+      - name: Deploy production worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: pnpm exec wrangler deploy --config .output/server/wrangler.json
+
+      - name: Publish production status
+        if: always()
+        uses: actions/github-script@v8
+        env:
+          DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
+          JOB_STATUS: ${{ job.status }}
+          PRODUCTION_ORIGIN: ${{ vars.NUXT_CLOUDFLARE_CUSTOM_DOMAIN }}
+        with:
+          script: |
+            if (!process.env.DEPLOYMENT_ID) {
+              core.info('Skipping production status because deployment registration did not complete.')
+              return
+            }
+            const environmentUrl = /^https?:\/\//.test(process.env.PRODUCTION_ORIGIN)
+              ? process.env.PRODUCTION_ORIGIN
+              : `https://${process.env.PRODUCTION_ORIGIN}`
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: Number(process.env.DEPLOYMENT_ID),
+              state: process.env.JOB_STATUS === 'success' ? 'success' : 'failure',
+              environment: 'production',
+              environment_url: environmentUrl,
+              description: process.env.JOB_STATUS === 'success'
+                ? 'Production Cloudflare Worker deployed successfully'
+                : 'Production Cloudflare Worker deployment failed'
+            })

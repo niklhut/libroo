@@ -16,7 +16,7 @@ jobs:
     permissions:
       contents: read
     env:
-      NUXT_CLOUDFLARE_WORKER_NAME: libroo-beta
+      NUXT_CLOUDFLARE_WORKER_NAME: libroo-production
       NUXT_LEGAL_MARKDOWN_FETCH_TIMEOUT_SECONDS: 5
       NUXT_LEGAL_TERMS_MARKDOWN_URL: ''
       NUXT_OPEN_LIBRARY_COVER_TIMEOUT_SECONDS: 20

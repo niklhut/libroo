@@ -83,7 +83,7 @@ Optional email and registration settings:
 | `NUXT_PUBLIC_REGISTRATION_ENABLED` | `true` | Set `false` after creating the first admin for invite-only operation. |
 | `NUXT_PUBLIC_TURNSTILE_ENABLED` | `false` | Enables Cloudflare Turnstile server enforcement and client widget rendering for signup and password-reset email requests. Public installs should set it to `true`; private LAN, VPN/Tailscale, Cloudflare Access, or otherwise access-controlled installs may leave it `false` intentionally. |
 | `NUXT_PUBLIC_TURNSTILE_SITE_KEY` / `NUXT_TURNSTILE_SECRET_KEY` | empty | Cloudflare Turnstile site key and secret key. Required when Turnstile is enabled. |
-| `NUXT_TURNSTILE_ALLOWED_HOSTNAMES` | empty | Optional comma-separated hostname allow-list for Turnstile token responses, such as `libroo.example.com,beta.libroo.example.com`. |
+| `NUXT_TURNSTILE_ALLOWED_HOSTNAMES` | empty | Optional comma-separated hostname allow-list for Turnstile token responses, such as `libroo.example.com,app.libroo.example.com`. |
 | `NUXT_PUBLIC_OPEN_LIBRARY_LINKS_ENABLED` | `false` in production, `true` in development | Shows outbound Open Library edition/work links on book detail pages. Keep disabled for the hosted/product experience; enable intentionally for self-hosted source visibility or metadata debugging. |
 | `NUXT_OPEN_LIBRARY_REQUEST_TIMEOUT_SECONDS` | `12` | Timeout for Open Library metadata and cover existence requests. Increase if the upstream API is slow in your deployment region. |
 | `NUXT_OPEN_LIBRARY_COVER_TIMEOUT_SECONDS` | `20` | Timeout for downloading and repairing cover images from Open Library. |
@@ -171,11 +171,25 @@ NUXT_LIBROO_RUNTIME_PROFILE=cloudflare
 pnpm build:cloudflare
 ```
 
-The generated Worker uses NuxtHub D1 and R2 bindings from `nuxt.config.ts`. The project default Worker name is `libroo` through `nitro.cloudflare.wrangler.name`; set `NUXT_CLOUDFLARE_WORKER_NAME` to target a different Worker. Same-repository PRs validate the Cloudflare build as part of their full preview deployment. The `Build Cloudflare Worker` workflow is retained only for fork PRs, which cannot receive preview Environment secrets. The push-only `Deploy to Cloudflare` workflow applies D1 migrations immediately before deploy because Cloudflare D1 migrations are not applied by `wrangler deploy` automatically.
+The generated Worker uses NuxtHub D1 and R2 bindings from `nuxt.config.ts`. The
+active production resources are:
+
+- Worker: `libroo-production`
+- D1 database: `libroo-production`
+- R2 bucket: `libroo-production`
+
+Set `NUXT_CLOUDFLARE_WORKER_NAME` to select the Worker; the production workflow
+pins it to `libroo-production`. Same-repository PRs validate the Cloudflare
+build as part of their full preview deployment. The `Build Cloudflare Worker`
+workflow is retained only for fork PRs, which cannot receive preview
+Environment secrets. The push-only `Deploy to Cloudflare` workflow validates
+the generated Wrangler configuration and applies D1 migrations immediately
+before deploy because Cloudflare D1 migrations are not applied by
+`wrangler deploy` automatically.
 
 ### First Admin Setup
 
-Deploy the first hosted beta with an empty D1 database and public registration enabled:
+Deploy the first hosted production instance with an empty D1 database and public registration enabled:
 
 ```bash
 NUXT_PUBLIC_REGISTRATION_ENABLED=true
@@ -187,12 +201,13 @@ Do not create a separate Libroo auth table. User roles and bans are Better Auth 
 
 ### Promotion Policy
 
-Hosted beta policy:
+Hosted production policy:
 
 - Protect `main`.
 - Require the `Lint`, `Unit Tests`, and `Docker Image` checks before merge.
 - Require the Cloudflare Worker build check before merge.
-- Merging to `main` deploys the configured hosted Worker.
+- Merging to `main` deploys `libroo-production` through the protected
+  `production` GitHub Environment.
 - D1 migrations run only on `push` to `main`, after required checks have passed and the merge has completed.
 
 Same-repository pull requests receive isolated Cloudflare previews. Fork pull requests remain build-only because they must not receive the `preview` GitHub Environment secrets. Production D1 migrations still run only after merge to protected `main`.
@@ -379,11 +394,40 @@ Repository or environment secrets:
 | `NUXT_HUB_CLOUDFLARE_DATABASE_ID` | D1 database ID used during the Cloudflare build. |
 | `NUXT_HUB_CLOUDFLARE_BUCKET_NAME` | R2 bucket name used during the Cloudflare build. |
 | `NUXT_BETTER_AUTH_SECRET` | Hosted auth secret. |
-| `NUXT_BETTER_AUTH_URL` | Hosted public origin. |
 | `NUXT_PLUNK_API_KEY` | Hosted email delivery. |
 | `NUXT_TURNSTILE_SECRET_KEY` | Hosted Turnstile server-side verification secret. |
 
-Production deploy secrets can remain repository-scoped or move to a protected production Environment. Separately, create a `preview` GitHub Environment containing preview-scoped `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, and `NUXT_BETTER_AUTH_SECRET`, plus the `CLOUDFLARE_ACCESS_IDP_ID`, `CLOUDFLARE_ACCESS_POLICY_ID`, and `CLOUDFLARE_ACCESS_TEAM_DOMAIN` variables documented above. Do not put `NUXT_PLUNK_API_KEY`, the production Better Auth secret, or production resource IDs in the preview Environment.
+Create a GitHub Environment named `production`, mirroring the general shape of
+the `preview` Environment but containing only production values. Restrict
+deployment branches to `main`, optionally require reviewer approval, and set
+the Environment URL to the canonical production origin. The
+`.github/workflows/deploy-cloudflare.yml` job binds to this Environment so its
+secrets and variables are unavailable until protection rules pass.
+
+Move these secrets from repository scope to the `production` Environment:
+
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ACCOUNT_ID`
+- `NUXT_HUB_CLOUDFLARE_DATABASE_ID`
+- `NUXT_HUB_CLOUDFLARE_BUCKET_NAME`
+- `NUXT_BETTER_AUTH_SECRET`
+- `NUXT_PLUNK_API_KEY`
+- `NUXT_TURNSTILE_SECRET_KEY`
+
+Move all production runtime settings, including
+`NUXT_CLOUDFLARE_CUSTOM_DOMAIN`, into `production` Environment variables using
+the same generic names. Store the custom domain as the hostname expected in the
+Wrangler route, for example `libroo.example.com`; the workflow converts it to
+an HTTPS URL for GitHub deployment statuses. Keep the native GitHub Environment
+URL set to the same canonical HTTPS origin.
+
+Separately, retain the `preview` GitHub Environment with preview-scoped
+`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, and
+`NUXT_BETTER_AUTH_SECRET`, plus the `CLOUDFLARE_ACCESS_IDP_ID`,
+`CLOUDFLARE_ACCESS_POLICY_ID`, and `CLOUDFLARE_ACCESS_TEAM_DOMAIN` variables
+documented above. Do not put `NUXT_PLUNK_API_KEY`, the production Better Auth
+secret, or production resource IDs in the preview Environment. No preview
+workflow may reference the `production` Environment.
 
 The Cloudflare deploy workflow syncs `NUXT_BETTER_AUTH_SECRET`, `NUXT_PLUNK_API_KEY`, and, when Turnstile is enabled, `NUXT_TURNSTILE_SECRET_KEY` with `wrangler secret bulk`. Do not configure the Turnstile secret as a plain GitHub variable or Wrangler var.
 
@@ -391,6 +435,7 @@ Repository or environment variables:
 
 | Variable | Recommended value |
 | --- | --- |
+| `NUXT_BETTER_AUTH_URL` | Canonical production origin, including `https://`. |
 | `NUXT_EMAIL_FROM` | Hosted sender address. Must be on a verified Plunk sender domain. |
 | `NUXT_EMAIL_REPLY_TO` | Optional hosted reply-to address. |
 | `NUXT_EMAIL_VERIFICATION_ENABLED` | `true` |
@@ -405,20 +450,35 @@ Repository or environment variables:
 | `NUXT_PLUNK_SEND_TIMEOUT_SECONDS` | `5` |
 | `NUXT_PUBLIC_LEGAL_PRIVACY_POLICY_URL` / `NUXT_PUBLIC_LEGAL_IMPRINT_URL` / `NUXT_PUBLIC_LEGAL_TERMS_URL` | Optional canonical hosted legal page URLs. |
 | `NUXT_LEGAL_PRIVACY_POLICY_MARKDOWN_URL` / `NUXT_LEGAL_IMPRINT_MARKDOWN_URL` / `NUXT_LEGAL_TERMS_MARKDOWN_URL` | Optional Markdown source URLs, used when the matching canonical URL is empty. |
-| `NUXT_CLOUDFLARE_WORKER_NAME` | Optional override. Defaults to `libroo`. |
+| `NUXT_CLOUDFLARE_CUSTOM_DOMAIN` | Production hostname used for the Wrangler custom-domain route and GitHub deployment URL. |
+| `NUXT_CLOUDFLARE_WORKER_NAME` | The workflow pins this to `libroo-production`. |
 
-The deploy workflow defaults hosted beta Turnstile enforcement to `true`. To intentionally deploy a private or access-controlled Cloudflare Worker without Turnstile, set repository variable `NUXT_PUBLIC_TURNSTILE_ENABLED=false`.
+The deploy workflow defaults hosted production Turnstile enforcement to `true`.
+To intentionally deploy a private or access-controlled Cloudflare Worker
+without Turnstile, set the `production` Environment variable
+`NUXT_PUBLIC_TURNSTILE_ENABLED=false`.
 
 ### Hosted Migrations
 
-For hosted deploys, CI runs on `push` to `main`:
+For hosted deploys, CI runs on `push` to `main` in this order:
 
 ```bash
 pnpm build:cloudflare
+node scripts/production/validate-wrangler-config.mjs .output/server/wrangler.json
 pnpm exec wrangler d1 migrations apply DB --remote --config .output/server/wrangler.json
 # CI pipes required Worker secrets into wrangler secret bulk here.
 pnpm exec wrangler deploy --config .output/server/wrangler.json
 ```
+
+Before migration, the workflow registers a non-transient production deployment
+through the GitHub Deployments API and publishes an `in_progress` status with
+the production Environment URL. The validator fails closed unless the generated
+config targets `libroo-production`, the configured production custom domain,
+both scheduled tasks, and exactly the configured production D1 and R2
+bindings. Migration and deploy cannot run if validation fails. A final
+always-running step publishes `success` or `failure` against the captured
+deployment ID; if registration failed before returning an ID, the status call
+is safely skipped.
 
 Migration files live in `server/db/migrations/sqlite`. Append new migrations; do not rewrite migration history for existing hosted data. For manual hosted migrations, use the same generated `.output/server/wrangler.json` after a Cloudflare build.
 
@@ -429,3 +489,210 @@ Do not run hosted migrations from pull request workflows. If a PR contains a mig
 Rollback application code through the Cloudflare or NuxtHub deployment history by promoting the previous known-good deployment. Database migrations are forward-only unless a release explicitly ships a rollback plan. If a bad deploy includes a destructive migration, restore D1 from backup or apply a corrective forward migration, then redeploy the known-good application version.
 
 Before promoting a release that changes schema or storage behavior, confirm that export/import or backup coverage is current for the hosted instance.
+
+## Production Resource Migration Runbook
+
+This is the operator-executed cutover from the historical `libroo-beta`
+Worker, D1 database, and R2 bucket to the new production resources. Record every
+resource ID, export location, object-copy report, verification result, cutover
+time, and approval in the migration ticket. Do not alter the old resources
+during the rollback window.
+
+### Create Production Resources (pre-maintenance)
+
+1. Authenticate Wrangler to the production Cloudflare account and confirm the
+   account ID before creating anything:
+
+   ```bash
+   export CLOUDFLARE_API_TOKEN=...
+   export CLOUDFLARE_ACCOUNT_ID=...
+   pnpm exec wrangler whoami
+   ```
+
+2. Create the D1 database and capture its UUID from both command output and a
+   fresh inventory:
+
+   ```bash
+   pnpm exec wrangler d1 create libroo-production
+   pnpm exec wrangler d1 list --json | tee d1-inventory-production.json
+   ```
+
+   Record the UUID for `libroo-production` as the future
+   `NUXT_HUB_CLOUDFLARE_DATABASE_ID`.
+
+3. Build a production config with the new UUID and resource names, then apply
+   the complete checked-in migration history:
+
+   ```bash
+   export NUXT_CLOUDFLARE_WORKER_NAME=libroo-production
+   export NUXT_CLOUDFLARE_CUSTOM_DOMAIN=libroo.example.com
+   export NUXT_HUB_CLOUDFLARE_DATABASE_ID=NEW_D1_UUID
+   export NUXT_HUB_CLOUDFLARE_BUCKET_NAME=libroo-production
+   pnpm build:cloudflare
+   node scripts/production/validate-wrangler-config.mjs .output/server/wrangler.json
+   pnpm exec wrangler d1 migrations apply DB --remote \
+     --config .output/server/wrangler.json
+   ```
+
+4. Create the R2 bucket and reproduce the existing beta bucket's region,
+   jurisdiction, storage-class, CORS, lifecycle, and private-access posture.
+   Do not add public development URLs or public bucket access:
+
+   ```bash
+   pnpm exec wrangler r2 bucket create libroo-production
+   pnpm exec wrangler r2 bucket list
+   ```
+
+   Record `libroo-production` as the future
+   `NUXT_HUB_CLOUDFLARE_BUCKET_NAME`.
+
+5. Take an initial full D1 export from the beta database using Cloudflare's
+   supported D1 export command. Keep this timestamped file immutable. Then
+   create a data-only export of application tables so the already-applied
+   production schema and `_hub_migrations` state are not overwritten:
+
+   ```bash
+   pnpm exec wrangler d1 export libroo-beta --remote \
+     --output beta-initial-YYYYMMDDTHHMMSSZ.sql
+   pnpm exec wrangler d1 export libroo-beta --remote --no-schema \
+     --table account \
+     --table admin_audit_log \
+     --table session \
+     --table signup_invites \
+     --table user \
+     --table verification \
+     --table authors \
+     --table book_authors \
+     --table book_system_tags \
+     --table books \
+     --table loans \
+     --table locations \
+     --table tags \
+     --table user_book_tags \
+     --table user_books \
+     --output beta-initial-data-YYYYMMDDTHHMMSSZ.sql
+   pnpm exec wrangler d1 execute libroo-production --remote \
+     --file beta-initial-data-YYYYMMDDTHHMMSSZ.sql
+   ```
+
+   Update the explicit table list whenever the schema gains a table. Review the
+   export for transaction/pragma statements required by the current Wrangler
+   version. Rehearse the export/import against a disposable D1 database before
+   touching `libroo-production`, and verify that the import does not replace or
+   duplicate migration-history rows.
+
+6. Configure audited S3-compatible remotes for the beta and production R2
+   buckets, then perform the initial bulk copy with `rclone` or an equivalent
+   tool. Use copy semantics, not move or sync-with-delete:
+
+   ```bash
+   rclone copy r2-beta:libroo-beta r2-production:libroo-production \
+     --checksum --fast-list --log-file r2-initial-copy.log --log-level INFO
+   rclone check r2-beta:libroo-beta r2-production:libroo-production \
+     --checksum --one-way --combined r2-initial-check.txt
+   ```
+
+   Prefer the checksum-based `rclone check` above. If either R2 remote cannot
+   expose compatible hashes, rerun it with `--size-only` and record that result
+   as a coarse key-and-size sanity check rather than integrity verification.
+   Preserve the command version, configuration scope, logs, object counts, and
+   bytes transferred in the migration record. Never expose private cover
+   objects to make copying easier.
+
+### Final Synchronization (maintenance window)
+
+1. Announce the maintenance window and put the existing application into
+   maintenance/read-only mode. Block account changes, invites, loans, library
+   edits, metadata edits, and blob uploads. Confirm no background or operator
+   process can write to D1 or R2.
+2. Wait for in-flight requests to finish, then take a final full timestamped D1
+   export from `libroo-beta`. Repeat the data-only export with the complete
+   application-table list above. Use the rehearsed clear-and-reimport procedure
+   or an audited delta import so the initial copy is replaced without duplicate
+   rows while the target schema and `_hub_migrations` state remain intact.
+3. Run a final `rclone copy` from the beta bucket to `libroo-production`, again
+   without deletion, followed by `rclone check`.
+4. Verify D1 row counts table by table and inspect representative critical
+   records:
+
+   - Better Auth users, accounts, sessions, verification records, and auth
+     secrets/identifiers where applicable.
+   - Roles, bans, invites, admin audit, and auth audit records.
+   - Books, authors, locations, tags, loans, user-library records, and their
+     join tables.
+   - The D1 migration table and its applied migration sequence.
+
+   Save source and destination query output. Counts must match unless a
+   documented transformation explains the difference.
+5. Compare R2 object counts and total bytes. Use checksums where the tool and
+   object metadata support them; otherwise compare keys and sizes, and manually
+   read a representative sample including private cover objects.
+6. Update the `production` GitHub Environment secret
+   `NUXT_HUB_CLOUDFLARE_DATABASE_ID` to the new D1 UUID and
+   `NUXT_HUB_CLOUDFLARE_BUCKET_NAME` to `libroo-production`. Reconfirm all
+   production runtime variables and secrets before allowing the deployment.
+
+### Deploy Production Worker and Custom Domain Cutover
+
+1. Merge or push the approved release commit to protected `main` to trigger
+   `.github/workflows/deploy-cloudflare.yml`.
+2. Confirm the workflow binds to the `production` Environment, registers the
+   GitHub deployment, builds, validates, migrates, syncs secrets, and deploys in
+   that order.
+3. In Cloudflare, inspect `libroo-production` before cutover:
+
+   - Cron triggers are `0 3 * * *` and `30 3 * * *`.
+   - Observability and logs are enabled.
+   - Source maps are uploaded.
+   - Runtime variables and encrypted Worker secrets contain production values.
+   - `workers_dev` is disabled and the intended custom-domain route is present.
+   - D1 `DB` and R2 `BLOB` point to the new production resources.
+
+4. Remove or detach the canonical custom-domain route from `libroo-beta`, then
+   attach the same custom domain to `libroo-production`. Make only one Worker
+   authoritative for the hostname. Verify DNS, certificate, route ownership,
+   and an HTTPS response from the canonical origin.
+5. Run the post-cutover smoke checklist while writes remain controlled:
+
+   - Login, logout, signup/invite policy, password reset, and auth callbacks.
+   - Plunk email delivery and configured sender/reply-to behavior.
+   - Turnstile on every enabled public flow.
+   - Representative D1 reads and writes, including admin/audit behavior.
+   - R2 read and write, including private cover upload and retrieval.
+   - Privacy policy, imprint, and terms links/content.
+   - Manual execution or observation of both scheduled tasks.
+
+6. Treat the deployment as accepted only after the smoke checklist passes.
+   Preserve the results with the GitHub deployment/migration record. The
+   workflow publishes its terminal API status from the job result; if smoke
+   testing finds a defect afterward, immediately publish a failed/inactive
+   operational status in the incident record and begin rollback.
+7. Exit maintenance/read-only mode and resume writes only after acceptance.
+
+### Rollback Window and Retirement
+
+Keep `libroo-beta`, its old D1 database, and its old R2 bucket unchanged and
+read-only for the explicitly recorded rollback window. Do not run cleanup,
+migrations, lifecycle changes, or object deletions against them.
+
+If rollback is required:
+
+1. Re-enter maintenance/read-only mode and stop writes to
+   `libroo-production`.
+2. Assess whether production accepted writes after cutover. Export and preserve
+   them before rollback; do not silently discard them.
+3. Detach the canonical custom domain from `libroo-production` and reattach it
+   to `libroo-beta`.
+4. Verify DNS/certificate routing, run the critical smoke checks against the
+   beta Worker, then resume writes only when the rollback target is healthy.
+5. Record the failed release, data divergence, exports, and follow-up recovery
+   plan.
+
+Delete the beta Worker, old D1 database, or old R2 bucket only after all of the
+following gates are satisfied:
+
+- The rollback window has expired.
+- Production smoke tests and normal usage remain healthy.
+- D1 and R2 migration verification is recorded and approved.
+- Required backups/exports and copy logs are retained under the backup policy.
+- An authorized operator gives explicit deletion approval.
