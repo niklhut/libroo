@@ -394,7 +394,6 @@ Repository or environment secrets:
 | `NUXT_HUB_CLOUDFLARE_DATABASE_ID` | D1 database ID used during the Cloudflare build. |
 | `NUXT_HUB_CLOUDFLARE_BUCKET_NAME` | R2 bucket name used during the Cloudflare build. |
 | `NUXT_BETTER_AUTH_SECRET` | Hosted auth secret. |
-| `NUXT_BETTER_AUTH_URL` | Hosted public origin. |
 | `NUXT_PLUNK_API_KEY` | Hosted email delivery. |
 | `NUXT_TURNSTILE_SECRET_KEY` | Hosted Turnstile server-side verification secret. |
 
@@ -412,7 +411,6 @@ Move these secrets from repository scope to the `production` Environment:
 - `NUXT_HUB_CLOUDFLARE_DATABASE_ID`
 - `NUXT_HUB_CLOUDFLARE_BUCKET_NAME`
 - `NUXT_BETTER_AUTH_SECRET`
-- `NUXT_BETTER_AUTH_URL`
 - `NUXT_PLUNK_API_KEY`
 - `NUXT_TURNSTILE_SECRET_KEY`
 
@@ -437,6 +435,7 @@ Repository or environment variables:
 
 | Variable | Recommended value |
 | --- | --- |
+| `NUXT_BETTER_AUTH_URL` | Canonical production origin, including `https://`. |
 | `NUXT_EMAIL_FROM` | Hosted sender address. Must be on a verified Plunk sender domain. |
 | `NUXT_EMAIL_REPLY_TO` | Optional hosted reply-to address. |
 | `NUXT_EMAIL_VERIFICATION_ENABLED` | `true` |
