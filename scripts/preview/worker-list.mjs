@@ -8,6 +8,7 @@ if (!accountId || !apiToken) {
 const response = await fetch(
   `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts`,
   {
+    signal: AbortSignal.timeout(15_000),
     headers: {
       Authorization: `Bearer ${apiToken}`
     }

@@ -257,7 +257,7 @@ The canonical checked-in values are in `scripts/preview/runtime.env`; the deploy
 | Legal Markdown and canonical URLs | Empty, so no production legal content endpoint is contacted. |
 | Registration | Enabled for tester convenience. |
 | Scheduled tasks | Wrangler cron triggers are omitted when `NUXT_CLOUDFLARE_PREVIEW=true`. |
-| Better Auth origin | `NUXT_BETTER_AUTH_URL` is the exact per-PR `https://*.workers.dev` origin. |
+| Better Auth origin | `NUXT_BETTER_AUTH_URL` is the exact generated origin, `https://libroo-pr-<number>.<account-subdomain>.workers.dev`. |
 | Custom domain | `NUXT_CLOUDFLARE_CUSTOM_DOMAIN` must be unset. The generated Worker keeps `workers_dev: true`. |
 
 The optional seed is disabled unless the `preview` Environment variable `PREVIEW_SEED_ENABLED` is `true`. `scripts/preview/seed.sql` contains only obviously fictional `example.invalid` users and imaginary books. It never contains production-derived data. Because seeded users can affect first-user role behavior, leave seeding disabled when testing initial admin setup.
@@ -312,9 +312,9 @@ Libroo's `server/middleware/preview-access.ts` is defense in depth behind Cloudf
 
 #### Cost and Quota Safeguards
 
-One open same-repository PR consumes one Access application, one Worker, one D1 database, and one R2 bucket. The expected steady state is therefore the number of open same-repository PRs, bounded by `PREVIEW_CONCURRENT_LIMIT`; the default workflow value is `10`.
+One open same-repository PR consumes one Access application, one Worker, one D1 database, and one R2 bucket. The expected steady state is therefore one complete resource set per open same-repository PR.
 
-Set `PREVIEW_CONCURRENT_LIMIT` as a variable on the `preview` GitHub Environment to lower or raise the ceiling. Before creating anything, the deploy workflow counts existing `libroo-preview-` D1 databases and R2 buckets. It fails with a remediation message when a new resource would exceed the ceiling. Updating an already-provisioned PR remains allowed at the ceiling.
+Set `PREVIEW_CONCURRENT_LIMIT` as a variable on the `preview` GitHub Environment to lower or raise the D1/R2 ceiling; the default workflow value is `10`. Before creating anything, the deploy workflow counts existing `libroo-preview-` D1 databases and R2 buckets. It fails with a remediation message when either resource type would exceed the ceiling. Updating an already-provisioned PR remains allowed at the ceiling. Workers and Access applications are not independently counted by this gate; close cleanup and the orphan sweep inventory all four resource types so incomplete or leaked sets are still removed.
 
 Current Cloudflare allowances should be checked before changing the ceiling:
 
@@ -323,7 +323,7 @@ Current Cloudflare allowances should be checked before changing the ceiling:
 - [Workers limits](https://developers.cloudflare.com/workers/platform/limits/) currently include 100,000 requests per day on the Free plan. Preview Workers share the account limit; they do not each receive a separate allowance.
 - [Cloudflare One account limits](https://developers.cloudflare.com/cloudflare-one/account-limits/) currently allow 500 Access applications by default. Cleanup and sweeping prevent disposable preview applications from accumulating toward that account-wide limit.
 
-The daily orphan sweep is the quota backstop behind close-event cleanup. In a healthy steady state, every `libroo-preview-pr-<number>` resource maps to an open pull request and the count stays at or below the configured ceiling. Orphan count should normally be zero.
+The daily orphan sweep is the quota backstop behind close-event cleanup. In a healthy steady state, every preview Worker, Access application, D1 database, and R2 bucket maps to an open pull request. D1 and R2 counts stay at or below the configured ceiling; orphan count across every resource type should normally be zero.
 
 #### Preview Limitations
 
