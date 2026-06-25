@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { verifyCloudflareAccessJwt } from '../../../../server/utils/cloudflare-access'
+import { JWTExpired, JWKSTimeout } from 'jose/errors'
+import {
+  CloudflareAccessConfigurationError,
+  isCloudflareAccessTokenError,
+  verifyCloudflareAccessJwt
+} from '../../../../server/utils/cloudflare-access'
 
 const joseMock = vi.hoisted(() => ({
   createRemoteJWKSet: vi.fn(),
@@ -45,9 +50,19 @@ describe('Cloudflare Access JWT verification', () => {
       token: 'access-token',
       audience: 'preview-audience',
       teamDomain: 'http://libroo.cloudflareaccess.com'
-    })).rejects.toThrow('must use HTTPS')
+    })).rejects.toBeInstanceOf(CloudflareAccessConfigurationError)
 
     expect(joseMock.createRemoteJWKSet).not.toHaveBeenCalled()
     expect(joseMock.jwtVerify).not.toHaveBeenCalled()
+  })
+
+  it('classifies token failures separately from verifier infrastructure failures', () => {
+    expect(isCloudflareAccessTokenError(new JWTExpired('expired', {
+      claim: 'exp',
+      reason: 'check_failed',
+      payload: {}
+    }))).toBe(true)
+    expect(isCloudflareAccessTokenError(new JWKSTimeout())).toBe(false)
+    expect(isCloudflareAccessTokenError(new TypeError('network unavailable'))).toBe(false)
   })
 })

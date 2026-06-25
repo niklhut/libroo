@@ -6,7 +6,7 @@ on:
     types: [closed]
 
 concurrency:
-  group: cloudflare-preview-${{ github.event.pull_request.number }}
+  group: cloudflare-preview-lifecycle
   cancel-in-progress: false
 
 jobs:
@@ -50,11 +50,29 @@ jobs:
           set -uo pipefail
           failures=()
 
-          if access_output="$(node scripts/preview/access-app.mjs delete "${ACCESS_APP_NAME}" 2>&1)"; then
-            echo "Access cleanup: ${access_output}"
+          worker_safe=false
+          worker_output="$(pnpm exec wrangler delete "${WORKER_NAME}" --force 2>&1)"
+          worker_status=$?
+          if [[ "${worker_status}" -eq 0 ]]; then
+            echo "${worker_output}"
+            worker_safe=true
+          elif grep -Eqi 'not found|does not exist|could not find' <<< "${worker_output}"; then
+            echo "Worker ${WORKER_NAME} is already absent."
+            worker_safe=true
           else
-            echo "${access_output}"
-            failures+=("Access application ${ACCESS_APP_NAME}")
+            echo "${worker_output}"
+            failures+=("Worker ${WORKER_NAME}")
+          fi
+
+          if [[ "${worker_safe}" == "true" ]]; then
+            if access_output="$(node scripts/preview/access-app.mjs delete "${ACCESS_APP_NAME}" 2>&1)"; then
+              echo "Access cleanup: ${access_output}"
+            else
+              echo "${access_output}"
+              failures+=("Access application ${ACCESS_APP_NAME}")
+            fi
+          else
+            echo "Keeping Access application ${ACCESS_APP_NAME} because Worker deletion failed."
           fi
 
           if ! NO_COLOR=1 pnpm exec wrangler r2 bucket list > "${RUNNER_TEMP}/r2.txt" 2>&1; then
@@ -112,19 +130,6 @@ jobs:
             fi
           else
             echo "${d1_output}"
-          fi
-
-          worker_output="$(pnpm exec wrangler delete "${WORKER_NAME}" --force 2>&1)"
-          worker_status=$?
-          if [[ "${worker_status}" -ne 0 ]]; then
-            if grep -Eqi 'not found|does not exist|could not find' <<< "${worker_output}"; then
-              echo "Worker ${WORKER_NAME} is already absent."
-            else
-              echo "${worker_output}"
-              failures+=("Worker ${WORKER_NAME}")
-            fi
-          else
-            echo "${worker_output}"
           fi
 
           if (( ${#failures[@]} > 0 )); then

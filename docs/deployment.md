@@ -235,8 +235,13 @@ The lifecycle is:
 5. It builds the Worker with the Access audience and captured D1 ID, validates the generated bindings, applies migrations to that isolated database, and optionally loads synthetic fixtures.
 6. It syncs only the preview Better Auth secret and deploys the Worker.
 7. It registers a transient GitHub deployment and creates or updates a sticky PR comment with the Access-protected `workers.dev` URL and status.
-8. When the pull request closes, `.github/workflows/preview-cloudflare-cleanup.yml` deletes the Access application, empties and deletes R2, then deletes D1 and the Worker.
-9. `.github/workflows/preview-cloudflare-sweep.yml` runs daily as a backstop and removes prefixed Access, D1, and R2 resources whose PR is no longer open.
+8. When the pull request closes, `.github/workflows/preview-cloudflare-cleanup.yml` deletes the Worker first, removes its Access application only after the Worker is confirmed absent, then deletes D1 and R2.
+9. `.github/workflows/preview-cloudflare-sweep.yml` runs daily as a backstop and removes prefixed Worker, Access, D1, and R2 resources whose PR is no longer open.
+
+Deploy, close cleanup, and scheduled sweep workflows share the
+`cloudflare-preview-lifecycle` concurrency group. This serializes the quota
+check with resource creation and prevents simultaneous PR runs from both
+claiming the final available preview slot.
 
 Fork pull requests never receive preview credentials. They continue through the build-only `.github/workflows/build-cloudflare.yml` path.
 
@@ -268,6 +273,8 @@ The preview workflow creates the applications; do not manually create an applica
 - attaches the configured reusable policy;
 - is hidden from the App Launcher;
 - uses a 24-hour application session;
+- uses `SameSite=Lax` for the application authorization cookie so redirects
+  from external identity providers can complete;
 - supplies its unique audience to the Worker for JWT verification.
 
 Configure these variables on the GitHub `preview` Environment:

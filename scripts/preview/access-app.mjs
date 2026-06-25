@@ -71,7 +71,7 @@ async function upsertApplication() {
     policies: [{ id: policyId, precedence: 1 }],
     app_launcher_visible: false,
     http_only_cookie_attribute: true,
-    same_site_cookie_attribute: 'strict',
+    same_site_cookie_attribute: 'lax',
     session_duration: '24h',
     skip_interstitial: true
   }

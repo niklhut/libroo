@@ -6,7 +6,7 @@ const cloudflareD1DatabaseId = process.env.NUXT_HUB_CLOUDFLARE_DATABASE_ID
 const cloudflareR2BucketName = process.env.NUXT_HUB_CLOUDFLARE_BUCKET_NAME
 const cloudflareWorkerName = process.env.NUXT_CLOUDFLARE_WORKER_NAME || 'libroo'
 const cloudflareCustomDomain = process.env.NUXT_CLOUDFLARE_CUSTOM_DOMAIN
-const cloudflarePreview = process.env.NUXT_CLOUDFLARE_PREVIEW
+const cloudflarePreview = process.env.NUXT_CLOUDFLARE_PREVIEW === 'true'
 
 function definedEnvVars(vars: Record<string, string | undefined>) {
   return Object.fromEntries(
@@ -18,7 +18,7 @@ const cloudflareRuntimeVars = definedEnvVars({
   NUXT_BETTER_AUTH_URL: process.env.NUXT_BETTER_AUTH_URL,
   NUXT_CLOUDFLARE_ACCESS_AUDIENCE: process.env.NUXT_CLOUDFLARE_ACCESS_AUDIENCE,
   NUXT_CLOUDFLARE_ACCESS_TEAM_DOMAIN: process.env.NUXT_CLOUDFLARE_ACCESS_TEAM_DOMAIN,
-  NUXT_CLOUDFLARE_PREVIEW: process.env.NUXT_CLOUDFLARE_PREVIEW,
+  NUXT_CLOUDFLARE_PREVIEW: cloudflarePreview ? 'true' : undefined,
   NUXT_EMAIL_FROM: process.env.NUXT_EMAIL_FROM,
   NUXT_EMAIL_REPLY_TO: process.env.NUXT_EMAIL_REPLY_TO,
   NUXT_EMAIL_VERIFICATION_ENABLED: process.env.NUXT_EMAIL_VERIFICATION_ENABLED,

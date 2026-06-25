@@ -1,6 +1,6 @@
 -- Synthetic preview-only fixtures. These records are deliberately fictional
 -- and must never be replaced with production-derived data.
-INSERT OR IGNORE INTO `user` (
+INSERT INTO `user` (
   `id`,
   `name`,
   `email`,
@@ -29,9 +29,16 @@ INSERT OR IGNORE INTO `user` (
     0,
     1704067200000,
     1704067200000
-  );
+  )
+ON CONFLICT(`id`) DO UPDATE SET
+  `name` = excluded.`name`,
+  `email` = excluded.`email`,
+  `email_verified` = excluded.`email_verified`,
+  `role` = excluded.`role`,
+  `banned` = excluded.`banned`,
+  `updated_at` = excluded.`updated_at`;
 
-INSERT OR IGNORE INTO `books` (
+INSERT INTO `books` (
   `id`,
   `isbn`,
   `title`,
@@ -66,4 +73,13 @@ INSERT OR IGNORE INTO `books` (
     'manual',
     'preview-user-linus',
     1704067200000
-  );
+  )
+ON CONFLICT(`id`) DO UPDATE SET
+  `isbn` = excluded.`isbn`,
+  `title` = excluded.`title`,
+  `description` = excluded.`description`,
+  `publish_date` = excluded.`publish_date`,
+  `publishers` = excluded.`publishers`,
+  `number_of_pages` = excluded.`number_of_pages`,
+  `source` = excluded.`source`,
+  `created_by_user_id` = excluded.`created_by_user_id`;

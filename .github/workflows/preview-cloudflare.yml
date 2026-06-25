@@ -6,8 +6,8 @@ on:
     types: [opened, synchronize, reopened]
 
 concurrency:
-  group: cloudflare-preview-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  group: cloudflare-preview-lifecycle
+  cancel-in-progress: false
 
 jobs:
   deploy-preview:
@@ -90,55 +90,6 @@ jobs:
           echo "url=${preview_url}" >> "${GITHUB_OUTPUT}"
           echo "NUXT_BETTER_AUTH_URL=${preview_url}" >> "${GITHUB_ENV}"
 
-      - name: Protect preview with Cloudflare Access
-        id: access
-        env:
-          PREVIEW_HOSTNAME: ${{ steps.preview.outputs.url }}
-        run: |
-          set -euo pipefail
-          hostname="${PREVIEW_HOSTNAME#https://}"
-          access_json="$(node scripts/preview/access-app.mjs \
-            upsert \
-            "${PREVIEW_ACCESS_APP_NAME}" \
-            "${hostname}")"
-          audience="$(node -e '
-            const application = JSON.parse(process.argv[1])
-            if (!application.audience) process.exit(1)
-            process.stdout.write(application.audience)
-          ' "${access_json}")"
-          echo "application=${access_json}" >> "${GITHUB_OUTPUT}"
-          echo "NUXT_CLOUDFLARE_ACCESS_AUDIENCE=${audience}" >> "${GITHUB_ENV}"
-          echo "Protected ${hostname} with Access application ${PREVIEW_ACCESS_APP_NAME}."
-
-      - name: Register GitHub deployment
-        id: deployment
-        uses: actions/github-script@v8
-        env:
-          PREVIEW_URL: ${{ steps.preview.outputs.url }}
-        with:
-          script: |
-            const deployment = await github.rest.repos.createDeployment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              ref: context.payload.pull_request.head.sha,
-              environment: 'preview',
-              description: `Cloudflare preview for PR #${context.issue.number}`,
-              auto_merge: false,
-              required_contexts: [],
-              transient_environment: true,
-              production_environment: false
-            })
-            core.setOutput('deployment_id', deployment.data.id)
-            await github.rest.repos.createDeploymentStatus({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              deployment_id: deployment.data.id,
-              state: 'in_progress',
-              environment: 'preview',
-              environment_url: process.env.PREVIEW_URL,
-              description: 'Provisioning isolated Cloudflare preview resources'
-            })
-
       - name: Enforce preview resource ceiling
         id: resources
         run: |
@@ -187,6 +138,55 @@ jobs:
 
           echo "D1 previews: ${d1_count}/${PREVIEW_CONCURRENT_LIMIT}"
           echo "R2 previews: ${r2_count}/${PREVIEW_CONCURRENT_LIMIT}"
+
+      - name: Protect preview with Cloudflare Access
+        id: access
+        env:
+          PREVIEW_HOSTNAME: ${{ steps.preview.outputs.url }}
+        run: |
+          set -euo pipefail
+          hostname="${PREVIEW_HOSTNAME#https://}"
+          access_json="$(node scripts/preview/access-app.mjs \
+            upsert \
+            "${PREVIEW_ACCESS_APP_NAME}" \
+            "${hostname}")"
+          audience="$(node -e '
+            const application = JSON.parse(process.argv[1])
+            if (!application.audience) process.exit(1)
+            process.stdout.write(application.audience)
+          ' "${access_json}")"
+          echo "application=${access_json}" >> "${GITHUB_OUTPUT}"
+          echo "NUXT_CLOUDFLARE_ACCESS_AUDIENCE=${audience}" >> "${GITHUB_ENV}"
+          echo "Protected ${hostname} with Access application ${PREVIEW_ACCESS_APP_NAME}."
+
+      - name: Register GitHub deployment
+        id: deployment
+        uses: actions/github-script@v8
+        env:
+          PREVIEW_URL: ${{ steps.preview.outputs.url }}
+        with:
+          script: |
+            const deployment = await github.rest.repos.createDeployment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.payload.pull_request.head.sha,
+              environment: 'preview',
+              description: `Cloudflare preview for PR #${context.issue.number}`,
+              auto_merge: false,
+              required_contexts: [],
+              transient_environment: true,
+              production_environment: false
+            })
+            core.setOutput('deployment_id', deployment.data.id)
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: deployment.data.id,
+              state: 'in_progress',
+              environment: 'preview',
+              environment_url: process.env.PREVIEW_URL,
+              description: 'Provisioning isolated Cloudflare preview resources'
+            })
 
       - name: Provision preview D1 database
         id: d1

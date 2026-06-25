@@ -1,5 +1,8 @@
 import { createError, defineEventHandler, getHeader } from 'h3'
-import { verifyCloudflareAccessJwt } from '../utils/cloudflare-access'
+import {
+  isCloudflareAccessTokenError,
+  verifyCloudflareAccessJwt
+} from '../utils/cloudflare-access'
 
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig(event)
@@ -30,10 +33,18 @@ export default defineEventHandler(async (event) => {
       audience,
       teamDomain
     })
-  } catch {
+  } catch (error) {
+    if (isCloudflareAccessTokenError(error)) {
+      throw createError({
+        statusCode: 403,
+        statusMessage: 'Cloudflare Access authentication is invalid'
+      })
+    }
+
+    console.error('Cloudflare Access verification is unavailable', error)
     throw createError({
-      statusCode: 403,
-      statusMessage: 'Cloudflare Access authentication is invalid'
+      statusCode: 503,
+      statusMessage: 'Preview access verification is unavailable'
     })
   }
 })

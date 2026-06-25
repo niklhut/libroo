@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: cloudflare-preview-sweep
+  group: cloudflare-preview-lifecycle
   cancel-in-progress: false
 
 jobs:
@@ -52,6 +52,7 @@ jobs:
           pnpm exec wrangler d1 list --json > "${RUNNER_TEMP}/d1.json"
           NO_COLOR=1 pnpm exec wrangler r2 bucket list > "${RUNNER_TEMP}/r2.txt"
           node scripts/preview/access-app.mjs list > "${RUNNER_TEMP}/access.json"
+          node scripts/preview/worker-list.mjs > "${RUNNER_TEMP}/workers.json"
 
           node -e '
             const databases = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))
@@ -64,12 +65,24 @@ jobs:
             > "${RUNNER_TEMP}/r2-preview.txt" || true
           node -e '
             const applications = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))
-            for (const application of applications) console.log(application.name)
+            for (const application of applications) {
+              if (/^libroo-preview-pr-[0-9]+$/.test(application.name)) {
+                console.log(application.name)
+              }
+            }
           ' "${RUNNER_TEMP}/access.json" > "${RUNNER_TEMP}/access-preview.txt"
+          node -e '
+            const workers = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))
+            for (const worker of workers) {
+              const match = /^libroo-pr-([0-9]+)$/.exec(worker)
+              if (match) console.log(`libroo-preview-pr-${match[1]}`)
+            }
+          ' "${RUNNER_TEMP}/workers.json" > "${RUNNER_TEMP}/worker-preview.txt"
           cat \
             "${RUNNER_TEMP}/d1-preview.txt" \
             "${RUNNER_TEMP}/r2-preview.txt" \
             "${RUNNER_TEMP}/access-preview.txt" \
+            "${RUNNER_TEMP}/worker-preview.txt" \
             | sort -u > "${RUNNER_TEMP}/preview-resources.txt"
 
           empty_r2_bucket() {
@@ -115,12 +128,31 @@ jobs:
             fi
 
             echo "Deleting orphaned resources for PR #${pr_number}."
-            if grep -Fxq "${resource}" "${RUNNER_TEMP}/access-preview.txt"; then
+            worker="libroo-pr-${pr_number}"
+            worker_safe=false
+            if worker_output="$(pnpm exec wrangler delete "${worker}" --force 2>&1)"; then
+              worker_safe=true
+              if grep -Fxq "${resource}" "${RUNNER_TEMP}/worker-preview.txt"; then
+                deleted+=("Worker ${worker}")
+              fi
+            elif grep -Eqi 'not found|does not exist|could not find' <<< "${worker_output}"; then
+              worker_safe=true
+              echo "Worker ${worker} is already absent."
+            else
+              echo "${worker_output}"
+              failures+=("Worker ${worker}")
+            fi
+
+            if [[ "${worker_safe}" == "true" ]] \
+              && grep -Fxq "${resource}" "${RUNNER_TEMP}/access-preview.txt"; then
               if node scripts/preview/access-app.mjs delete "${resource}"; then
                 deleted+=("Access ${resource}")
               else
                 failures+=("Access ${resource}")
               fi
+            elif [[ "${worker_safe}" != "true" ]] \
+              && grep -Fxq "${resource}" "${RUNNER_TEMP}/access-preview.txt"; then
+              echo "Keeping Access ${resource} because Worker deletion failed."
             fi
 
             if grep -Fxq "${resource}" "${RUNNER_TEMP}/r2-preview.txt"; then
@@ -142,13 +174,6 @@ jobs:
               fi
             fi
 
-            worker="libroo-pr-${pr_number}"
-            if worker_output="$(pnpm exec wrangler delete "${worker}" --force 2>&1)"; then
-              deleted+=("Worker ${worker}")
-            elif ! grep -Eqi 'not found|does not exist|could not find' <<< "${worker_output}"; then
-              echo "${worker_output}"
-              failures+=("Worker ${worker}")
-            fi
           done < "${RUNNER_TEMP}/preview-resources.txt"
 
           {
