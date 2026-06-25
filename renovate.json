@@ -2,7 +2,8 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "github>nuxt/renovate-config-nuxt",
-    ":enableVulnerabilityAlertsWithAdditionalLabel(security)"
+    ":enableVulnerabilityAlertsWithAdditionalLabel(security)",
+    "helpers:pinGitHubActionDigests"
   ],
   "schedule": ["on Monday"],
   "labels": ["dependencies"],
@@ -14,7 +15,9 @@
     },
     {
       "matchManagers": ["github-actions"],
-      "addLabels": ["github-actions"]
+      "addLabels": ["github-actions"],
+      "groupName": "GitHub Actions",
+      "groupSlug": "github-actions"
     },
     {
       "matchUpdateTypes": ["major"],
