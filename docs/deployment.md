@@ -590,9 +590,12 @@ during the rollback window.
    rclone copy r2-beta:libroo-beta r2-production:libroo-production \
      --checksum --fast-list --log-file r2-initial-copy.log --log-level INFO
    rclone check r2-beta:libroo-beta r2-production:libroo-production \
-     --size-only --one-way --combined r2-initial-check.txt
+     --checksum --one-way --combined r2-initial-check.txt
    ```
 
+   Prefer the checksum-based `rclone check` above. If either R2 remote cannot
+   expose compatible hashes, rerun it with `--size-only` and record that result
+   as a coarse key-and-size sanity check rather than integrity verification.
    Preserve the command version, configuration scope, logs, object counts, and
    bytes transferred in the migration record. Never expose private cover
    objects to make copying easier.

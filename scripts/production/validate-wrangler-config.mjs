@@ -11,7 +11,12 @@ if (!configPath) {
 
 const expectedDatabaseId = process.env.NUXT_HUB_CLOUDFLARE_DATABASE_ID
 const expectedBucketName = process.env.NUXT_HUB_CLOUDFLARE_BUCKET_NAME
-const expectedCustomDomain = process.env.NUXT_CLOUDFLARE_CUSTOM_DOMAIN
+const rawCustomDomain = process.env.NUXT_CLOUDFLARE_CUSTOM_DOMAIN
+const expectedCustomDomain = rawCustomDomain
+  ? /^https?:\/\//.test(rawCustomDomain)
+    ? new URL(rawCustomDomain).hostname
+    : rawCustomDomain
+  : undefined
 
 if (!expectedDatabaseId) {
   errors.push('NUXT_HUB_CLOUDFLARE_DATABASE_ID must be set')

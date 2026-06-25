@@ -5,7 +5,12 @@ const runtimeProfile = process.env.NUXT_LIBROO_RUNTIME_PROFILE === 'cloudflare'
 const cloudflareD1DatabaseId = process.env.NUXT_HUB_CLOUDFLARE_DATABASE_ID
 const cloudflareR2BucketName = process.env.NUXT_HUB_CLOUDFLARE_BUCKET_NAME
 const cloudflareWorkerName = process.env.NUXT_CLOUDFLARE_WORKER_NAME || 'libroo'
-const cloudflareCustomDomain = process.env.NUXT_CLOUDFLARE_CUSTOM_DOMAIN
+const rawCloudflareCustomDomain = process.env.NUXT_CLOUDFLARE_CUSTOM_DOMAIN
+const cloudflareCustomDomain = rawCloudflareCustomDomain
+  ? /^https?:\/\//.test(rawCloudflareCustomDomain)
+    ? new URL(rawCloudflareCustomDomain).hostname
+    : rawCloudflareCustomDomain
+  : undefined
 const cloudflarePreview = process.env.NUXT_CLOUDFLARE_PREVIEW === 'true'
 
 function definedEnvVars(vars: Record<string, string | undefined>) {
