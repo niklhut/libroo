@@ -212,9 +212,9 @@ Hosted production policy:
 
 Same-repository pull requests receive isolated Cloudflare previews. Fork pull requests remain build-only because they must not receive the `preview` GitHub Environment secrets. Production D1 migrations still run only after merge to protected `main`.
 
-Post-deploy, after the `Typecheck` workflow has run at least once, add
+After the `Typecheck` workflow has completed at least once, add
 `Typecheck` to the required status checks in the `main` branch protection
-settings.
+settings before relying on it as a merge gate.
 
 If manual promotion becomes necessary, prefer a GitHub Environment approval or a workflow dispatch input over a permanently diverging production branch.
 
