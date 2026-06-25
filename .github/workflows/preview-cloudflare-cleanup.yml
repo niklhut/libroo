@@ -21,6 +21,7 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      ACCESS_APP_NAME: libroo-preview-pr-${{ github.event.pull_request.number }}
       WORKER_NAME: libroo-pr-${{ github.event.pull_request.number }}
       RESOURCE_NAME: libroo-preview-pr-${{ github.event.pull_request.number }}
 
@@ -48,6 +49,13 @@ jobs:
         run: |
           set -uo pipefail
           failures=()
+
+          if access_output="$(node scripts/preview/access-app.mjs delete "${ACCESS_APP_NAME}" 2>&1)"; then
+            echo "Access cleanup: ${access_output}"
+          else
+            echo "${access_output}"
+            failures+=("Access application ${ACCESS_APP_NAME}")
+          fi
 
           if ! NO_COLOR=1 pnpm exec wrangler r2 bucket list > "${RUNNER_TEMP}/r2.txt" 2>&1; then
             cat "${RUNNER_TEMP}/r2.txt"
@@ -137,6 +145,7 @@ jobs:
             echo "- Worker \`${WORKER_NAME}\`"
             echo "- D1 \`${RESOURCE_NAME}\`"
             echo "- R2 \`${RESOURCE_NAME}\`"
+            echo "- Access application \`${ACCESS_APP_NAME}\`"
           } >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Update preview PR comment
@@ -158,6 +167,7 @@ jobs:
               '',
               `Worker: \`${process.env.WORKER_NAME}\``,
               `D1 / R2: \`${process.env.RESOURCE_NAME}\``,
+              `Access: \`${process.env.ACCESS_APP_NAME}\``,
               '',
               `[View cleanup run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`
             ].join('\n')

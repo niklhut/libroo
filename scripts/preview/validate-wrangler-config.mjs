@@ -11,6 +11,8 @@ if (!configPath || !d1InventoryPath) {
 
 const requiredEnv = [
   'NUXT_CLOUDFLARE_WORKER_NAME',
+  'NUXT_CLOUDFLARE_ACCESS_AUDIENCE',
+  'NUXT_CLOUDFLARE_ACCESS_TEAM_DOMAIN',
   'NUXT_HUB_CLOUDFLARE_DATABASE_ID',
   'NUXT_HUB_CLOUDFLARE_BUCKET_NAME',
   'PREVIEW_D1_DATABASE_NAME'
@@ -57,6 +59,21 @@ if (config.routes?.length) {
 }
 if (config.triggers) {
   errors.push('Preview Worker must not contain scheduled triggers')
+}
+if (config.vars?.NUXT_CLOUDFLARE_PREVIEW !== 'true') {
+  errors.push('Preview runtime enforcement is not enabled')
+}
+if (
+  config.vars?.NUXT_CLOUDFLARE_ACCESS_AUDIENCE
+  !== process.env.NUXT_CLOUDFLARE_ACCESS_AUDIENCE
+) {
+  errors.push('Generated Access audience does not match the provisioned application')
+}
+if (
+  config.vars?.NUXT_CLOUDFLARE_ACCESS_TEAM_DOMAIN
+  !== process.env.NUXT_CLOUDFLARE_ACCESS_TEAM_DOMAIN
+) {
+  errors.push('Generated Access team domain does not match the preview environment')
 }
 
 const d1Bindings = config.d1_databases ?? []

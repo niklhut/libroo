@@ -224,18 +224,19 @@ Each preview is served from:
 https://libroo-pr-<number>.<account-subdomain>.workers.dev
 ```
 
-The workflows bind to the `preview` GitHub Environment. Keep its Cloudflare token, account ID, and Better Auth secret isolated from production. Environment approvals can be used when same-repository contributors should not deploy without review.
+The workflows bind to the `preview` GitHub Environment. Keep its Cloudflare token, account ID, and Better Auth secret isolated from production. Environment approvals can be used when same-repository contributors should not deploy without review. Every preview hostname is protected by a per-PR Cloudflare Access application which attaches one existing reusable Access policy.
 
 The lifecycle is:
 
 1. A same-repository pull request is opened, synchronized, or reopened.
 2. `.github/workflows/preview-cloudflare.yml` checks the concurrent-preview ceiling.
-3. The workflow idempotently creates the per-PR D1 database and R2 bucket.
-4. It builds the Worker with the captured D1 ID, applies migrations to that isolated database, and optionally loads synthetic fixtures.
-5. It syncs only the preview Better Auth secret and deploys the Worker.
-6. It registers a transient GitHub deployment and creates or updates a sticky PR comment with the `workers.dev` URL and status.
-7. When the pull request closes, `.github/workflows/preview-cloudflare-cleanup.yml` empties and deletes R2, then deletes D1 and the Worker.
-8. `.github/workflows/preview-cloudflare-sweep.yml` runs daily as a backstop and removes prefixed resources whose PR is no longer open.
+3. The workflow creates or updates `libroo-preview-pr-<number>` as a Cloudflare Access application for the exact `workers.dev` hostname and attaches the configured reusable policy.
+4. It idempotently creates the per-PR D1 database and R2 bucket.
+5. It builds the Worker with the Access audience and captured D1 ID, validates the generated bindings, applies migrations to that isolated database, and optionally loads synthetic fixtures.
+6. It syncs only the preview Better Auth secret and deploys the Worker.
+7. It registers a transient GitHub deployment and creates or updates a sticky PR comment with the Access-protected `workers.dev` URL and status.
+8. When the pull request closes, `.github/workflows/preview-cloudflare-cleanup.yml` deletes the Access application, empties and deletes R2, then deletes D1 and the Worker.
+9. `.github/workflows/preview-cloudflare-sweep.yml` runs daily as a backstop and removes prefixed Access, D1, and R2 resources whose PR is no longer open.
 
 Fork pull requests never receive preview credentials. They continue through the build-only `.github/workflows/build-cloudflare.yml` path.
 
@@ -247,6 +248,7 @@ The canonical checked-in values are in `scripts/preview/runtime.env`; the deploy
 | --- | --- |
 | Email verification | Disabled. No Plunk API key is synced, so email-dependent flows must degrade gracefully. |
 | Turnstile | Disabled. Cloudflare's always-pass public test site and secret keys are used as non-secret test values. |
+| Public access | Denied by Cloudflare Access unless the visitor matches the reusable preview policy. Libroo also validates the Access JWT and fails closed when it is missing or invalid. |
 | Legal Markdown and canonical URLs | Empty, so no production legal content endpoint is contacted. |
 | Registration | Enabled for tester convenience. |
 | Scheduled tasks | Wrangler cron triggers are omitted when `NUXT_CLOUDFLARE_PREVIEW=true`. |
@@ -255,9 +257,42 @@ The canonical checked-in values are in `scripts/preview/runtime.env`; the deploy
 
 The optional seed is disabled unless the `preview` Environment variable `PREVIEW_SEED_ENABLED` is `true`. `scripts/preview/seed.sql` contains only obviously fictional `example.invalid` users and imaginary books. It never contains production-derived data. Because seeded users can affect first-user role behavior, leave seeding disabled when testing initial admin setup.
 
+#### Cloudflare Access Setup
+
+Reuse an existing Cloudflare Zero Trust organization and identity provider. Create one reusable **Allow** policy specifically for preview testers under **Zero Trust → Access controls → Policies**. The policy can allow individual email addresses, an email domain, an identity-provider group, or another suitable identity rule. Do not use a reusable Bypass or Everyone policy, because that would make every generated preview public.
+
+The preview workflow creates the applications; do not manually create an application for every PR. Each generated application:
+
+- is named `libroo-preview-pr-<number>`;
+- targets the exact `libroo-pr-<number>.<account-subdomain>.workers.dev` hostname;
+- attaches the configured reusable policy;
+- is hidden from the App Launcher;
+- uses a 24-hour application session;
+- supplies its unique audience to the Worker for JWT verification.
+
+Configure these variables on the GitHub `preview` Environment:
+
+| Variable | Where to find it |
+| --- | --- |
+| `CLOUDFLARE_ACCESS_POLICY_ID` | The UUID of the reusable preview policy. List it with the API command below after granting the token Access read/write permission. |
+| `CLOUDFLARE_ACCESS_TEAM_DOMAIN` | In Cloudflare, open **Zero Trust → Settings → Team name and domain**. Store the complete origin, for example `https://my-team.cloudflareaccess.com`. |
+
+List reusable policy IDs:
+
+```bash
+curl --fail-with-body --silent --show-error \
+  --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+  "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/access/policies" \
+  | jq '.result[] | { id, name, decision }'
+```
+
+The selected Cloudflare token needs the existing Workers Scripts, D1, and R2 edit permissions plus the account-level **Access: Apps and Policies Write** permission. Scope the token to only the Cloudflare account used for previews. The reusable policy itself remains operator-managed; workflows only link it to and unlink it from per-PR applications.
+
+Libroo's `server/middleware/preview-access.ts` is defense in depth behind Cloudflare's edge enforcement. It is enabled only when `NUXT_CLOUDFLARE_PREVIEW=true`, validates `Cf-Access-Jwt-Assertion` against the team domain's JWKS and the generated application's audience, and returns `403` for absent or invalid tokens. It returns `503` if a preview build somehow lacks its Access configuration. Production and self-hosted deployments do not enable this middleware path.
+
 #### Cost and Quota Safeguards
 
-One open same-repository PR consumes one Worker, one D1 database, and one R2 bucket. The expected steady state is therefore the number of open same-repository PRs, bounded by `PREVIEW_CONCURRENT_LIMIT`; the default workflow value is `10`.
+One open same-repository PR consumes one Access application, one Worker, one D1 database, and one R2 bucket. The expected steady state is therefore the number of open same-repository PRs, bounded by `PREVIEW_CONCURRENT_LIMIT`; the default workflow value is `10`.
 
 Set `PREVIEW_CONCURRENT_LIMIT` as a variable on the `preview` GitHub Environment to lower or raise the ceiling. Before creating anything, the deploy workflow counts existing `libroo-preview-` D1 databases and R2 buckets. It fails with a remediation message when a new resource would exceed the ceiling. Updating an already-provisioned PR remains allowed at the ceiling.
 
@@ -266,6 +301,7 @@ Current Cloudflare allowances should be checked before changing the ceiling:
 - [D1 pricing](https://developers.cloudflare.com/d1/platform/pricing/) measures rows read, rows written, and total storage across the account. The Workers Free allowance currently includes 5 million rows read per day, 100,000 rows written per day, and 5 GB total storage. Empty databases still consume a small amount of storage, and preview migrations count as usage.
 - [R2 pricing](https://developers.cloudflare.com/r2/pricing/) currently includes 10 GB-month of Standard storage, 1 million Class A operations, and 10 million Class B operations per month. Uploads, object listings during cleanup, and test traffic share those account-wide allowances.
 - [Workers limits](https://developers.cloudflare.com/workers/platform/limits/) currently include 100,000 requests per day on the Free plan. Preview Workers share the account limit; they do not each receive a separate allowance.
+- [Cloudflare One account limits](https://developers.cloudflare.com/cloudflare-one/account-limits/) currently allow 500 Access applications by default. Cleanup and sweeping prevent disposable preview applications from accumulating toward that account-wide limit.
 
 The daily orphan sweep is the quota backstop behind close-event cleanup. In a healthy steady state, every `libroo-preview-pr-<number>` resource maps to an open pull request and the count stays at or below the configured ceiling. Orphan count should normally be zero.
 
@@ -273,7 +309,7 @@ The daily orphan sweep is the quota backstop behind close-event cleanup. In a he
 
 - Preview URLs are `workers.dev` origins only. They do not validate production DNS, custom-domain routing, certificates, or hostname-specific policy.
 - Email delivery and email verification are intentionally unavailable.
-- Turnstile enforcement is intentionally unavailable.
+- Turnstile enforcement is intentionally unavailable because Access restricts the whole preview to authenticated testers before Libroo account flows are reached.
 - Cron-driven audit cleanup and cover repair do not run.
 - Cloudflare account-wide limits and API availability can still block provisioning or cleanup.
 - The preview environment is disposable. Testers must not rely on its data surviving a force-push, manual cleanup, PR close, or sweep.
@@ -296,6 +332,16 @@ pnpm exec wrangler r2 bucket delete libroo-preview-pr-123
 
 pnpm exec wrangler d1 delete libroo-preview-pr-123 --skip-confirmation
 pnpm exec wrangler delete libroo-pr-123 --force
+
+# Find and delete a leaked Access application.
+curl --fail-with-body --silent --show-error \
+  --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+  "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/access/apps" \
+  | jq '.result[] | select(.name == "libroo-preview-pr-123") | { id, name, domain }'
+
+curl --fail-with-body --request DELETE --silent --show-error \
+  --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+  "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/access/apps/ACCESS_APP_ID"
 ```
 
 If the R2 bucket contains unknown object keys, prefer re-running the cleanup workflow because it uses `scripts/preview/empty-r2-worker.mjs` to list and delete every object through the bucket binding. The Cloudflare dashboard is the other practical way to inspect and remove unknown objects before running `wrangler r2 bucket delete`.
@@ -317,7 +363,7 @@ Repository or environment secrets:
 | `NUXT_PLUNK_API_KEY` | Hosted email delivery. |
 | `NUXT_TURNSTILE_SECRET_KEY` | Hosted Turnstile server-side verification secret. |
 
-Production deploy secrets can remain repository-scoped or move to a protected production Environment. Separately, create a `preview` GitHub Environment containing preview-scoped `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, and `NUXT_BETTER_AUTH_SECRET`. Do not put `NUXT_PLUNK_API_KEY`, the production Better Auth secret, or production resource IDs in the preview Environment.
+Production deploy secrets can remain repository-scoped or move to a protected production Environment. Separately, create a `preview` GitHub Environment containing preview-scoped `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, and `NUXT_BETTER_AUTH_SECRET`, plus the `CLOUDFLARE_ACCESS_POLICY_ID` and `CLOUDFLARE_ACCESS_TEAM_DOMAIN` variables documented above. Do not put `NUXT_PLUNK_API_KEY`, the production Better Auth secret, or production resource IDs in the preview Environment.
 
 The Cloudflare deploy workflow syncs `NUXT_BETTER_AUTH_SECRET`, `NUXT_PLUNK_API_KEY`, and, when Turnstile is enabled, `NUXT_TURNSTILE_SECRET_KEY` with `wrangler secret bulk`. Do not configure the Turnstile secret as a plain GitHub variable or Wrangler var.
 

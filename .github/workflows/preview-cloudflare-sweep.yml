@@ -51,6 +51,7 @@ jobs:
             --jq '.[].number' | sort -n > "${RUNNER_TEMP}/open-prs.txt"
           pnpm exec wrangler d1 list --json > "${RUNNER_TEMP}/d1.json"
           NO_COLOR=1 pnpm exec wrangler r2 bucket list > "${RUNNER_TEMP}/r2.txt"
+          node scripts/preview/access-app.mjs list > "${RUNNER_TEMP}/access.json"
 
           node -e '
             const databases = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))
@@ -61,7 +62,14 @@ jobs:
           sed -n 's/^name:[[:space:]]*//p' "${RUNNER_TEMP}/r2.txt" \
             | grep -E '^libroo-preview-pr-[0-9]+$' \
             > "${RUNNER_TEMP}/r2-preview.txt" || true
-          cat "${RUNNER_TEMP}/d1-preview.txt" "${RUNNER_TEMP}/r2-preview.txt" \
+          node -e '
+            const applications = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))
+            for (const application of applications) console.log(application.name)
+          ' "${RUNNER_TEMP}/access.json" > "${RUNNER_TEMP}/access-preview.txt"
+          cat \
+            "${RUNNER_TEMP}/d1-preview.txt" \
+            "${RUNNER_TEMP}/r2-preview.txt" \
+            "${RUNNER_TEMP}/access-preview.txt" \
             | sort -u > "${RUNNER_TEMP}/preview-resources.txt"
 
           empty_r2_bucket() {
@@ -107,6 +115,14 @@ jobs:
             fi
 
             echo "Deleting orphaned resources for PR #${pr_number}."
+            if grep -Fxq "${resource}" "${RUNNER_TEMP}/access-preview.txt"; then
+              if node scripts/preview/access-app.mjs delete "${resource}"; then
+                deleted+=("Access ${resource}")
+              else
+                failures+=("Access ${resource}")
+              fi
+            fi
+
             if grep -Fxq "${resource}" "${RUNNER_TEMP}/r2-preview.txt"; then
               if empty_r2_bucket "${resource}" "${port}" \
                 && pnpm exec wrangler r2 bucket delete "${resource}"; then

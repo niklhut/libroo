@@ -16,6 +16,9 @@ function definedEnvVars(vars: Record<string, string | undefined>) {
 
 const cloudflareRuntimeVars = definedEnvVars({
   NUXT_BETTER_AUTH_URL: process.env.NUXT_BETTER_AUTH_URL,
+  NUXT_CLOUDFLARE_ACCESS_AUDIENCE: process.env.NUXT_CLOUDFLARE_ACCESS_AUDIENCE,
+  NUXT_CLOUDFLARE_ACCESS_TEAM_DOMAIN: process.env.NUXT_CLOUDFLARE_ACCESS_TEAM_DOMAIN,
+  NUXT_CLOUDFLARE_PREVIEW: process.env.NUXT_CLOUDFLARE_PREVIEW,
   NUXT_EMAIL_FROM: process.env.NUXT_EMAIL_FROM,
   NUXT_EMAIL_REPLY_TO: process.env.NUXT_EMAIL_REPLY_TO,
   NUXT_EMAIL_VERIFICATION_ENABLED: process.env.NUXT_EMAIL_VERIFICATION_ENABLED,
@@ -64,6 +67,9 @@ export default defineNuxtConfig({
   runtimeConfig: {
     betterAuthSecret: '',
     betterAuthUrl: '',
+    cloudflareAccessAudience: '',
+    cloudflareAccessTeamDomain: '',
+    cloudflarePreview: '',
     authAuditRetentionDays: '5',
     adminAuditRetentionDays: '30',
     emailVerificationEnabled: 'false',
