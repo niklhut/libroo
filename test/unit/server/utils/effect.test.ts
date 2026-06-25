@@ -1,0 +1,68 @@
+import { beforeAll, describe, expect, it, vi } from 'vitest'
+import { Effect, Layer } from 'effect'
+
+const liveLayerNames = [
+  'AuthServiceLive',
+  'BookRepositoryLive',
+  'OpenLibraryRepositoryLive',
+  'LendingRepositoryLive',
+  'AdminRepositoryLive',
+  'AuditRepositoryLive',
+  'LocationRepositoryLive',
+  'LibraryTransferRepositoryLive',
+  'AuthRepositoryLive',
+  'AccountDeletionRepositoryLive',
+  'SignupInviteRepositoryLive',
+  'HealthRepositoryLive',
+  'LegalRepositoryLive',
+  'BookServiceLive',
+  'LendingServiceLive',
+  'AdminServiceLive',
+  'AuditServiceLive',
+  'LocationServiceLive',
+  'LibraryTransferServiceLive',
+  'AccountDeletionServiceLive',
+  'SignupInviteServiceLive',
+  'EmailCapabilityServiceLive',
+  'HealthServiceLive',
+  'LegalServiceLive'
+] as const
+
+vi.mock('../../../../server/runtime/active', () => ({
+  RuntimeInfrastructureLive: Layer.empty
+}))
+
+describe('handleError', () => {
+  beforeAll(() => {
+    for (const name of liveLayerNames) {
+      vi.stubGlobal(name, Layer.empty)
+    }
+    vi.stubGlobal('createError', ({ statusCode, message }: { statusCode: number, message: string }) => {
+      return Object.assign(new Error(message), { statusCode })
+    })
+    vi.stubGlobal('isError', (error: unknown) => {
+      return error instanceof Error && 'statusCode' in error
+    })
+  })
+
+  it('logs tagged error context and preserves HTTP conversion', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { runEffect } = await import('../../../../server/utils/effect')
+    const domainError = {
+      _tag: 'BookNotFoundError',
+      isbn: '9781234567890',
+      message: 'missing book',
+      operation: 'findByIsbn'
+    }
+
+    await expect(runEffect(Effect.fail(domainError))).rejects.toMatchObject({
+      statusCode: 404,
+      message: 'Book with ISBN 9781234567890 not found'
+    })
+    expect(errorSpy).toHaveBeenCalledWith(expect.objectContaining({
+      tag: 'BookNotFoundError',
+      operation: 'findByIsbn',
+      level: 'Error'
+    }))
+  })
+})

@@ -2,6 +2,7 @@ import { Cause, Effect, Exit, Layer, pipe } from 'effect'
 import type * as HttpClient from '@effect/platform/HttpClient'
 import { RuntimeInfrastructureLive } from '../runtime/active'
 import type { EmailService } from '../runtime/email.core'
+import { StructuredLoggerLive } from './logger'
 
 // Base services layer (no dependencies)
 const BaseServicesLive = Layer.mergeAll(
@@ -35,7 +36,10 @@ const ServicesLive = Layer.provideMerge(
 )
 
 // Combined live layer for all services
-export const MainLive = ServicesLive
+export const MainLive = Layer.provideMerge(
+  ServicesLive,
+  StructuredLoggerLive
+)
 
 // Type for all available services
 export type MainServices
@@ -169,13 +173,27 @@ export function handleError(error: unknown): Effect.Effect<never> {
         : underlyingMessage
       const operation = getProp<string>(error, 'operation')
 
-      yield* Effect.logError(`[${tag}${operation ? `:${operation}` : ''}] ${underlyingMessage}`)
+      yield* Effect.logError(`[${tag}${operation ? `:${operation}` : ''}] ${underlyingMessage}`).pipe(
+        Effect.annotateLogs({
+          tag,
+          operation: operation ?? 'unknown',
+          severity: 'error'
+        }),
+        Effect.provide(StructuredLoggerLive)
+      )
       return yield* Effect.die(createError({ statusCode, message }))
     }
 
     // Unknown error - log and throw as internal server error
     const message = error instanceof Error ? error.message : String(error)
-    yield* Effect.logError(`Unexpected error: ${message}`)
+    yield* Effect.logError(`Unexpected error: ${message}`).pipe(
+      Effect.annotateLogs({
+        tag: 'UnknownError',
+        operation: 'handleError',
+        severity: 'error'
+      }),
+      Effect.provide(StructuredLoggerLive)
+    )
     return yield* Effect.die(createError({ statusCode: 500, message: 'Internal Server Error' }))
   })
 }
