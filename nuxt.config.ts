@@ -6,6 +6,7 @@ const cloudflareD1DatabaseId = process.env.NUXT_HUB_CLOUDFLARE_DATABASE_ID
 const cloudflareR2BucketName = process.env.NUXT_HUB_CLOUDFLARE_BUCKET_NAME
 const cloudflareWorkerName = process.env.NUXT_CLOUDFLARE_WORKER_NAME || 'libroo'
 const cloudflareCustomDomain = process.env.NUXT_CLOUDFLARE_CUSTOM_DOMAIN
+const cloudflarePreview = process.env.NUXT_CLOUDFLARE_PREVIEW
 
 function definedEnvVars(vars: Record<string, string | undefined>) {
   return Object.fromEntries(
@@ -33,7 +34,10 @@ const cloudflareRuntimeVars = definedEnvVars({
   NUXT_PUBLIC_REGISTRATION_ENABLED: process.env.NUXT_PUBLIC_REGISTRATION_ENABLED,
   NUXT_PUBLIC_TURNSTILE_ENABLED: process.env.NUXT_PUBLIC_TURNSTILE_ENABLED,
   NUXT_PUBLIC_TURNSTILE_SITE_KEY: process.env.NUXT_PUBLIC_TURNSTILE_SITE_KEY,
-  NUXT_TURNSTILE_ALLOWED_HOSTNAMES: process.env.NUXT_TURNSTILE_ALLOWED_HOSTNAMES
+  NUXT_TURNSTILE_ALLOWED_HOSTNAMES: process.env.NUXT_TURNSTILE_ALLOWED_HOSTNAMES,
+  ...(cloudflarePreview
+    ? { NUXT_TURNSTILE_SECRET_KEY: process.env.NUXT_TURNSTILE_SECRET_KEY }
+    : {})
 })
 const hasCloudflareRuntimeVars = Object.keys(cloudflareRuntimeVars).length > 0
 
@@ -125,11 +129,15 @@ export default defineNuxtConfig({
                   ],
                   workers_dev: false
                 }
-              : {}),
+              : { workers_dev: true }),
             ...(hasCloudflareRuntimeVars ? { vars: cloudflareRuntimeVars } : {}),
-            triggers: {
-              crons: ['0 3 * * *', '30 3 * * *']
-            },
+            ...(!cloudflarePreview
+              ? {
+                  triggers: {
+                    crons: ['0 3 * * *', '30 3 * * *']
+                  }
+                }
+              : {}),
             observability: {
               enabled: true,
               logs: {

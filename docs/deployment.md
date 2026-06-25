@@ -195,21 +195,112 @@ Hosted beta policy:
 - Merging to `main` deploys the configured hosted Worker.
 - D1 migrations run only on `push` to `main`, after required checks have passed and the merge has completed.
 
-Pull requests build the Cloudflare profile but do not deploy and do not apply D1 migrations. This is intentional: a preview Worker that points at the hosted D1 database could mutate live data or apply schema migrations before the PR is merged.
+Same-repository pull requests receive isolated Cloudflare previews. Fork pull requests remain build-only because they must not receive the `preview` GitHub Environment secrets. Production D1 migrations still run only after merge to protected `main`.
 
 If manual promotion becomes necessary, prefer a GitHub Environment approval or a workflow dispatch input over a permanently diverging production branch.
 
 ### Preview Deployments
 
-Preview deployments are disabled by default. They should not reuse the hosted D1 database or hosted R2 bucket.
+Same-repository pull requests targeting `main` receive disposable, physical-first preview infrastructure:
 
-Safe preview options:
+- Worker: `libroo-pr-<number>`
+- D1 database: `libroo-preview-pr-<number>`
+- R2 bucket: `libroo-preview-pr-<number>`
 
-- Per-PR preview infrastructure: create a D1 database and R2 bucket per pull request, deploy that PR against those resources, and delete them when the PR closes.
-- Shared non-production preview infrastructure: use one preview D1 database and R2 bucket for all previews, accepting that concurrent PRs can conflict and migrations from one PR can affect another.
-- Build-only previews: keep the current default, where PRs prove that the Worker builds but do not run hosted preview traffic.
+The Worker keeps the generated NuxtHub binding names `DB` and `BLOB`. These are application-level variable names, not shared infrastructure: `DB` resolves to the D1 UUID embedded in that Worker's generated Wrangler config, and `BLOB` resolves to its configured R2 bucket name. Preview and production Workers can therefore use the same code-facing binding names while pointing at completely different physical resources.
 
-The default is build-only previews because shared preview data can make multiple open pull requests interfere with each other, and per-PR D1/R2 lifecycle automation is not implemented yet.
+The preview workflow keeps those resource identities separate and explicit:
+
+- `PREVIEW_D1_DATABASE_NAME` identifies the D1 database being provisioned.
+- `NUXT_HUB_CLOUDFLARE_DATABASE_ID` is captured from that named D1 database and becomes the generated `DB` target.
+- `NUXT_HUB_CLOUDFLARE_BUCKET_NAME` becomes the generated `BLOB` target.
+- `NUXT_CLOUDFLARE_WORKER_NAME` selects the per-PR Worker.
+
+Immediately after the build and before migrations, `scripts/preview/validate-wrangler-config.mjs` fails closed unless the generated config targets the expected `libroo-pr-<number>` Worker, the expected `libroo-preview-pr-<number>` D1 UUID, and the expected preview R2 bucket. It also rejects custom routes, custom domains, cron triggers, missing `workers_dev`, additional D1/R2 bindings, and non-preview resource names. Only after that assertion passes can `wrangler d1 migrations apply DB` run. No preview uses the hosted D1 database, hosted R2 bucket, production Worker, or a custom domain.
+
+Each preview is served from:
+
+```text
+https://libroo-pr-<number>.<account-subdomain>.workers.dev
+```
+
+The workflows bind to the `preview` GitHub Environment. Keep its Cloudflare token, account ID, and Better Auth secret isolated from production. Environment approvals can be used when same-repository contributors should not deploy without review.
+
+The lifecycle is:
+
+1. A same-repository pull request is opened, synchronized, or reopened.
+2. `.github/workflows/preview-cloudflare.yml` checks the concurrent-preview ceiling.
+3. The workflow idempotently creates the per-PR D1 database and R2 bucket.
+4. It builds the Worker with the captured D1 ID, applies migrations to that isolated database, and optionally loads synthetic fixtures.
+5. It syncs only the preview Better Auth secret and deploys the Worker.
+6. It registers a transient GitHub deployment and creates or updates a sticky PR comment with the `workers.dev` URL and status.
+7. When the pull request closes, `.github/workflows/preview-cloudflare-cleanup.yml` empties and deletes R2, then deletes D1 and the Worker.
+8. `.github/workflows/preview-cloudflare-sweep.yml` runs daily as a backstop and removes prefixed resources whose PR is no longer open.
+
+Fork pull requests never receive preview credentials. They continue through the build-only `.github/workflows/build-cloudflare.yml` path.
+
+#### Safe Non-Production Defaults
+
+The canonical checked-in values are in `scripts/preview/runtime.env`; the deployment workflow consumes that file rather than duplicating the values in workflow YAML.
+
+| Setting | Preview behavior |
+| --- | --- |
+| Email verification | Disabled. No Plunk API key is synced, so email-dependent flows must degrade gracefully. |
+| Turnstile | Disabled. Cloudflare's always-pass public test site and secret keys are used as non-secret test values. |
+| Legal Markdown and canonical URLs | Empty, so no production legal content endpoint is contacted. |
+| Registration | Enabled for tester convenience. |
+| Scheduled tasks | Wrangler cron triggers are omitted when `NUXT_CLOUDFLARE_PREVIEW=true`. |
+| Better Auth origin | `NUXT_BETTER_AUTH_URL` is the exact per-PR `https://*.workers.dev` origin. |
+| Custom domain | `NUXT_CLOUDFLARE_CUSTOM_DOMAIN` must be unset. The generated Worker keeps `workers_dev: true`. |
+
+The optional seed is disabled unless the `preview` Environment variable `PREVIEW_SEED_ENABLED` is `true`. `scripts/preview/seed.sql` contains only obviously fictional `example.invalid` users and imaginary books. It never contains production-derived data. Because seeded users can affect first-user role behavior, leave seeding disabled when testing initial admin setup.
+
+#### Cost and Quota Safeguards
+
+One open same-repository PR consumes one Worker, one D1 database, and one R2 bucket. The expected steady state is therefore the number of open same-repository PRs, bounded by `PREVIEW_CONCURRENT_LIMIT`; the default workflow value is `10`.
+
+Set `PREVIEW_CONCURRENT_LIMIT` as a variable on the `preview` GitHub Environment to lower or raise the ceiling. Before creating anything, the deploy workflow counts existing `libroo-preview-` D1 databases and R2 buckets. It fails with a remediation message when a new resource would exceed the ceiling. Updating an already-provisioned PR remains allowed at the ceiling.
+
+Current Cloudflare allowances should be checked before changing the ceiling:
+
+- [D1 pricing](https://developers.cloudflare.com/d1/platform/pricing/) measures rows read, rows written, and total storage across the account. The Workers Free allowance currently includes 5 million rows read per day, 100,000 rows written per day, and 5 GB total storage. Empty databases still consume a small amount of storage, and preview migrations count as usage.
+- [R2 pricing](https://developers.cloudflare.com/r2/pricing/) currently includes 10 GB-month of Standard storage, 1 million Class A operations, and 10 million Class B operations per month. Uploads, object listings during cleanup, and test traffic share those account-wide allowances.
+- [Workers limits](https://developers.cloudflare.com/workers/platform/limits/) currently include 100,000 requests per day on the Free plan. Preview Workers share the account limit; they do not each receive a separate allowance.
+
+The daily orphan sweep is the quota backstop behind close-event cleanup. In a healthy steady state, every `libroo-preview-pr-<number>` resource maps to an open pull request and the count stays at or below the configured ceiling. Orphan count should normally be zero.
+
+#### Preview Limitations
+
+- Preview URLs are `workers.dev` origins only. They do not validate production DNS, custom-domain routing, certificates, or hostname-specific policy.
+- Email delivery and email verification are intentionally unavailable.
+- Turnstile enforcement is intentionally unavailable.
+- Cron-driven audit cleanup and cover repair do not run.
+- Cloudflare account-wide limits and API availability can still block provisioning or cleanup.
+- The preview environment is disposable. Testers must not rely on its data surviving a force-push, manual cleanup, PR close, or sweep.
+
+#### Troubleshooting and Manual Cleanup
+
+To retry a failed close cleanup, open the failed `Cleanup Cloudflare Preview` run in GitHub Actions and choose **Re-run failed jobs**. The scheduled sweep can also be started immediately with **Run workflow** on `Sweep Cloudflare Preview Resources`.
+
+Cleanup and sweep jobs write a summary containing detected, deleted, and failed resources. A cleanup failure also updates the sticky PR comment. An R2 failure that mentions emptying usually means the temporary remote cleaner could not start or access the bucket. D1 and Worker failures normally indicate missing token permissions, an API outage, or a resource that changed outside the workflow.
+
+Manual cleanup for PR `123`:
+
+```bash
+export CLOUDFLARE_API_TOKEN=...
+export CLOUDFLARE_ACCOUNT_ID=...
+
+# If the bucket contains known objects, delete them first.
+pnpm exec wrangler r2 object delete libroo-preview-pr-123/path/to/object
+pnpm exec wrangler r2 bucket delete libroo-preview-pr-123
+
+pnpm exec wrangler d1 delete libroo-preview-pr-123 --skip-confirmation
+pnpm exec wrangler delete libroo-pr-123 --force
+```
+
+If the R2 bucket contains unknown object keys, prefer re-running the cleanup workflow because it uses `scripts/preview/empty-r2-worker.mjs` to list and delete every object through the bucket binding. The Cloudflare dashboard is the other practical way to inspect and remove unknown objects before running `wrangler r2 bucket delete`.
+
+All delete operations are intended to be idempotent: an already-absent resource is success. If a command fails for another reason, verify that the token in the `preview` Environment has D1, R2, and Workers edit permissions and that `CLOUDFLARE_ACCOUNT_ID` targets the expected account.
 
 ### Required GitHub Configuration
 
@@ -226,7 +317,7 @@ Repository or environment secrets:
 | `NUXT_PLUNK_API_KEY` | Hosted email delivery. |
 | `NUXT_TURNSTILE_SECRET_KEY` | Hosted Turnstile server-side verification secret. |
 
-Put these in repository or organization secrets. Pull request builds do not need these secrets because the deploy job only runs on `push` to protected `main`. If GitHub Environment protection is enabled later, move the same secrets into a `production` environment and add the workflow `environment` key after confirming the repository validator accepts it.
+Production deploy secrets can remain repository-scoped or move to a protected production Environment. Separately, create a `preview` GitHub Environment containing preview-scoped `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, and `NUXT_BETTER_AUTH_SECRET`. Do not put `NUXT_PLUNK_API_KEY`, the production Better Auth secret, or production resource IDs in the preview Environment.
 
 The Cloudflare deploy workflow syncs `NUXT_BETTER_AUTH_SECRET`, `NUXT_PLUNK_API_KEY`, and, when Turnstile is enabled, `NUXT_TURNSTILE_SECRET_KEY` with `wrangler secret bulk`. Do not configure the Turnstile secret as a plain GitHub variable or Wrangler var.
 

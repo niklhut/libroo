@@ -1,0 +1,194 @@
+name: Cleanup Cloudflare Preview
+
+on:
+  pull_request:
+    branches: [main]
+    types: [closed]
+
+concurrency:
+  group: cloudflare-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  cleanup-preview:
+    name: Cleanup PR preview
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    environment: preview
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      WORKER_NAME: libroo-pr-${{ github.event.pull_request.number }}
+      RESOURCE_NAME: libroo-preview-pr-${{ github.event.pull_request.number }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Install node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Delete preview resources
+        id: cleanup
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          failures=()
+
+          if ! NO_COLOR=1 pnpm exec wrangler r2 bucket list > "${RUNNER_TEMP}/r2.txt" 2>&1; then
+            cat "${RUNNER_TEMP}/r2.txt"
+            failures+=("R2 resource listing")
+          elif sed -n 's/^name:[[:space:]]*//p' "${RUNNER_TEMP}/r2.txt" | grep -Fxq "${RESOURCE_NAME}"; then
+            cleaner_config="${RUNNER_TEMP}/wrangler-r2-cleaner.json"
+            node -e '
+              const fs = require("fs")
+              fs.writeFileSync(process.argv[1], JSON.stringify({
+                name: `libroo-clean-${process.argv[2]}`,
+                main: process.argv[3],
+                compatibility_date: "2025-01-15",
+                r2_buckets: [{ binding: "BLOB", bucket_name: process.argv[2] }]
+              }))
+            ' "${cleaner_config}" "${RESOURCE_NAME}" "${GITHUB_WORKSPACE}/scripts/preview/empty-r2-worker.mjs"
+
+            pnpm exec wrangler dev --remote --config "${cleaner_config}" \
+              --ip 127.0.0.1 --port 8787 --log-level error \
+              > "${RUNNER_TEMP}/r2-cleaner.log" 2>&1 &
+            cleaner_pid=$!
+            cleaner_ready=false
+            for _ in {1..30}; do
+              if curl --fail --silent --show-error --request POST \
+                http://127.0.0.1:8787 > "${RUNNER_TEMP}/r2-clean-result.json"; then
+                cleaner_ready=true
+                break
+              fi
+              sleep 2
+            done
+            kill "${cleaner_pid}" 2>/dev/null || true
+            wait "${cleaner_pid}" 2>/dev/null || true
+
+            if [[ "${cleaner_ready}" == "true" ]]; then
+              echo "Emptied ${RESOURCE_NAME}: $(cat "${RUNNER_TEMP}/r2-clean-result.json")"
+              if ! pnpm exec wrangler r2 bucket delete "${RESOURCE_NAME}"; then
+                failures+=("R2 bucket ${RESOURCE_NAME}")
+              fi
+            else
+              cat "${RUNNER_TEMP}/r2-cleaner.log"
+              failures+=("R2 bucket ${RESOURCE_NAME} (could not empty bucket)")
+            fi
+          else
+            echo "R2 bucket ${RESOURCE_NAME} is already absent."
+          fi
+
+          d1_output="$(pnpm exec wrangler d1 delete "${RESOURCE_NAME}" --skip-confirmation 2>&1)"
+          d1_status=$?
+          if [[ "${d1_status}" -ne 0 ]]; then
+            if grep -Eqi 'not found|does not exist|could not find' <<< "${d1_output}"; then
+              echo "D1 database ${RESOURCE_NAME} is already absent."
+            else
+              echo "${d1_output}"
+              failures+=("D1 database ${RESOURCE_NAME}")
+            fi
+          else
+            echo "${d1_output}"
+          fi
+
+          worker_output="$(pnpm exec wrangler delete "${WORKER_NAME}" --force 2>&1)"
+          worker_status=$?
+          if [[ "${worker_status}" -ne 0 ]]; then
+            if grep -Eqi 'not found|does not exist|could not find' <<< "${worker_output}"; then
+              echo "Worker ${WORKER_NAME} is already absent."
+            else
+              echo "${worker_output}"
+              failures+=("Worker ${WORKER_NAME}")
+            fi
+          else
+            echo "${worker_output}"
+          fi
+
+          if (( ${#failures[@]} > 0 )); then
+            {
+              echo "## Cloudflare preview cleanup failed"
+              echo
+              echo "Manual remediation is required for:"
+              printf -- '- %s\n' "${failures[@]}"
+            } >> "${GITHUB_STEP_SUMMARY}"
+            printf 'Failed to delete: %s\n' "${failures[*]}"
+            exit 1
+          fi
+
+          {
+            echo "## Cloudflare preview cleanup complete"
+            echo
+            echo "Deleted or confirmed absent:"
+            echo "- Worker \`${WORKER_NAME}\`"
+            echo "- D1 \`${RESOURCE_NAME}\`"
+            echo "- R2 \`${RESOURCE_NAME}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Update preview PR comment
+        if: always()
+        uses: actions/github-script@v8
+        env:
+          CLEANUP_OUTCOME: ${{ steps.cleanup.outcome }}
+        with:
+          script: |
+            const marker = '<!-- libroo-cloudflare-preview -->'
+            const success = process.env.CLEANUP_OUTCOME === 'success'
+            const body = [
+              marker,
+              '## Cloudflare preview',
+              '',
+              success
+                ? '🧹 Preview resources were cleaned up.'
+                : '⚠️ Preview cleanup failed. Cloudflare resources may have leaked and need manual remediation.',
+              '',
+              `Worker: \`${process.env.WORKER_NAME}\``,
+              `D1 / R2: \`${process.env.RESOURCE_NAME}\``,
+              '',
+              `[View cleanup run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`
+            ].join('\n')
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              per_page: 100
+            })
+            const existing = comments.find(comment =>
+              comment.user?.type === 'Bot' && comment.body?.includes(marker)
+            )
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body
+              })
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body
+              })
+            }
+
+      - name: Fail when cleanup leaked resources
+        if: steps.cleanup.outcome == 'failure'
+        run: |
+          echo "Preview cleanup left one or more Cloudflare resources behind. See the job summary and sticky PR comment."
+          exit 1
