@@ -171,7 +171,7 @@ NUXT_LIBROO_RUNTIME_PROFILE=cloudflare
 pnpm build:cloudflare
 ```
 
-The generated Worker uses NuxtHub D1 and R2 bindings from `nuxt.config.ts`. The project default Worker name is `libroo` through `nitro.cloudflare.wrangler.name`; set `NUXT_CLOUDFLARE_WORKER_NAME` to target a different Worker. The PR-only `Build Cloudflare Worker` workflow validates the Cloudflare build. The push-only `Deploy to Cloudflare` workflow applies D1 migrations immediately before deploy because Cloudflare D1 migrations are not applied by `wrangler deploy` automatically.
+The generated Worker uses NuxtHub D1 and R2 bindings from `nuxt.config.ts`. The project default Worker name is `libroo` through `nitro.cloudflare.wrangler.name`; set `NUXT_CLOUDFLARE_WORKER_NAME` to target a different Worker. Same-repository PRs validate the Cloudflare build as part of their full preview deployment. The `Build Cloudflare Worker` workflow is retained only for fork PRs, which cannot receive preview Environment secrets. The push-only `Deploy to Cloudflare` workflow applies D1 migrations immediately before deploy because Cloudflare D1 migrations are not applied by `wrangler deploy` automatically.
 
 ### First Admin Setup
 
@@ -271,6 +271,9 @@ The preview workflow creates the applications; do not manually create an applica
 - is named `libroo-preview-pr-<number>`;
 - targets the exact `libroo-pr-<number>.<account-subdomain>.workers.dev` hostname;
 - attaches the configured reusable policy;
+- allows only the configured Authentik identity provider;
+- enables instant authentication so Cloudflare redirects directly to Authentik
+  instead of showing an identity-provider picker;
 - is hidden from the App Launcher;
 - uses a 24-hour application session;
 - uses `SameSite=Lax` for the application authorization cookie so redirects
@@ -281,6 +284,7 @@ Configure these variables on the GitHub `preview` Environment:
 
 | Variable | Where to find it |
 | --- | --- |
+| `CLOUDFLARE_ACCESS_IDP_ID` | The Cloudflare Access identity-provider UUID for the Authentik OIDC integration. This is Cloudflare's provider `id`, not Authentik's application/client ID. Use the API command below to list it. |
 | `CLOUDFLARE_ACCESS_POLICY_ID` | The UUID of the reusable preview policy. List it with the API command below after granting the token Access read/write permission. |
 | `CLOUDFLARE_ACCESS_TEAM_DOMAIN` | In Cloudflare, open **Zero Trust → Settings → Team name and domain**. Store the complete origin, for example `https://my-team.cloudflareaccess.com`. |
 
@@ -291,6 +295,15 @@ curl --fail-with-body --silent --show-error \
   --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
   "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/access/policies" \
   | jq '.result[] | { id, name, decision }'
+```
+
+List Cloudflare Access identity-provider IDs:
+
+```bash
+curl --fail-with-body --silent --show-error \
+  --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+  "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/access/identity_providers" \
+  | jq '.result[] | { id, name, type }'
 ```
 
 The selected Cloudflare token needs the existing Workers Scripts, D1, and R2 edit permissions plus the account-level **Access: Apps and Policies Write** permission. Scope the token to only the Cloudflare account used for previews. The reusable policy itself remains operator-managed; workflows only link it to and unlink it from per-PR applications.
@@ -370,7 +383,7 @@ Repository or environment secrets:
 | `NUXT_PLUNK_API_KEY` | Hosted email delivery. |
 | `NUXT_TURNSTILE_SECRET_KEY` | Hosted Turnstile server-side verification secret. |
 
-Production deploy secrets can remain repository-scoped or move to a protected production Environment. Separately, create a `preview` GitHub Environment containing preview-scoped `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, and `NUXT_BETTER_AUTH_SECRET`, plus the `CLOUDFLARE_ACCESS_POLICY_ID` and `CLOUDFLARE_ACCESS_TEAM_DOMAIN` variables documented above. Do not put `NUXT_PLUNK_API_KEY`, the production Better Auth secret, or production resource IDs in the preview Environment.
+Production deploy secrets can remain repository-scoped or move to a protected production Environment. Separately, create a `preview` GitHub Environment containing preview-scoped `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, and `NUXT_BETTER_AUTH_SECRET`, plus the `CLOUDFLARE_ACCESS_IDP_ID`, `CLOUDFLARE_ACCESS_POLICY_ID`, and `CLOUDFLARE_ACCESS_TEAM_DOMAIN` variables documented above. Do not put `NUXT_PLUNK_API_KEY`, the production Better Auth secret, or production resource IDs in the preview Environment.
 
 The Cloudflare deploy workflow syncs `NUXT_BETTER_AUTH_SECRET`, `NUXT_PLUNK_API_KEY`, and, when Turnstile is enabled, `NUXT_TURNSTILE_SECRET_KEY` with `wrangler secret bulk`. Do not configure the Turnstile secret as a plain GitHub variable or Wrangler var.
 

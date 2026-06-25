@@ -3,6 +3,7 @@ const applicationName = process.argv[3]
 const hostname = process.argv[4]
 const accountId = process.env.CLOUDFLARE_ACCOUNT_ID
 const apiToken = process.env.CLOUDFLARE_API_TOKEN
+const identityProviderId = process.env.CLOUDFLARE_ACCESS_IDP_ID
 const policyId = process.env.CLOUDFLARE_ACCESS_POLICY_ID
 const apiBase = `https://api.cloudflare.com/client/v4/accounts/${accountId}/access/apps`
 const previewNamePattern = /^libroo-preview-pr-\d+$/
@@ -50,6 +51,9 @@ async function upsertApplication() {
   if (!policyId) {
     throw new Error('CLOUDFLARE_ACCESS_POLICY_ID is required')
   }
+  if (!identityProviderId) {
+    throw new Error('CLOUDFLARE_ACCESS_IDP_ID is required')
+  }
   if (!previewNamePattern.test(applicationName)) {
     throw new Error(`Unsafe preview Access application name: ${applicationName}`)
   }
@@ -69,6 +73,8 @@ async function upsertApplication() {
     domain: hostname,
     destinations: [{ type: 'public', uri: hostname }],
     policies: [{ id: policyId, precedence: 1 }],
+    allowed_idps: [identityProviderId],
+    auto_redirect_to_identity: true,
     app_launcher_visible: false,
     http_only_cookie_attribute: true,
     same_site_cookie_attribute: 'lax',
