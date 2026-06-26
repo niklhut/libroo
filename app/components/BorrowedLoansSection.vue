@@ -10,7 +10,7 @@ const activeBooks = computed(() => props.books.filter(book => book.status === 'a
 const bookHistory = computed(() => props.books.filter(book => book.status !== 'active'))
 
 function coverUrl(book: BorrowedBook) {
-  return book.status === 'active' && book.coverPath ? `/api/blob/${book.coverPath}` : null
+  return book.coverPath ? `/api/blob/${book.coverPath}` : null
 }
 </script>
 

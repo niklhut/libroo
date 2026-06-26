@@ -57,7 +57,7 @@ describe('cover access repository helpers', () => {
     ))).resolves.toBe(false)
   })
 
-  it('checks loan cover access for owners and active accepted borrowers only', async () => {
+  it('checks loan cover access for owners and accepted non-canceled borrowers', async () => {
     await expect(runLendingRepository(Effect.flatMap(LendingRepository, repository =>
       repository.userHasLoanCoverAccess('owner-1', 'covers/manual/owner-1/returned.webp')
     ))).resolves.toBe(true)
@@ -72,6 +72,10 @@ describe('cover access repository helpers', () => {
 
     await expect(runLendingRepository(Effect.flatMap(LendingRepository, repository =>
       repository.userHasLoanCoverAccess('borrower-1', 'covers/manual/owner-1/returned.webp')
+    ))).resolves.toBe(true)
+
+    await expect(runLendingRepository(Effect.flatMap(LendingRepository, repository =>
+      repository.userHasLoanCoverAccess('borrower-1', 'covers/manual/owner-1/canceled.webp')
     ))).resolves.toBe(false)
 
     await expect(runLendingRepository(Effect.flatMap(LendingRepository, repository =>
@@ -93,7 +97,8 @@ async function seedCoverAccessScenario(db: ReturnType<typeof drizzle>) {
     { id: 'book-open-library', isbn: '9781234567890', title: 'Open Library', source: 'open_library', coverPath: 'covers/manual/owner-1/open-library.webp', createdAt: now },
     { id: 'book-removed', isbn: null, title: 'Removed', source: 'manual', coverPath: 'covers/manual/owner-1/removed.webp', createdAt: now },
     { id: 'book-pending', isbn: null, title: 'Pending', source: 'manual', coverPath: 'covers/manual/owner-1/pending.webp', createdAt: now },
-    { id: 'book-returned', isbn: null, title: 'Returned', source: 'manual', coverPath: 'covers/manual/owner-1/returned.webp', createdAt: now }
+    { id: 'book-returned', isbn: null, title: 'Returned', source: 'manual', coverPath: 'covers/manual/owner-1/returned.webp', createdAt: now },
+    { id: 'book-canceled', isbn: null, title: 'Canceled', source: 'manual', coverPath: 'covers/manual/owner-1/canceled.webp', createdAt: now }
   ])
 
   await db.insert(userBooks).values([
@@ -101,7 +106,8 @@ async function seedCoverAccessScenario(db: ReturnType<typeof drizzle>) {
     { id: 'user-book-open-library', userId: 'owner-1', bookId: 'book-open-library', addedAt: now, removedAt: null },
     { id: 'user-book-removed', userId: 'owner-1', bookId: 'book-removed', addedAt: now, removedAt: now },
     { id: 'user-book-pending', userId: 'owner-1', bookId: 'book-pending', addedAt: now, removedAt: null },
-    { id: 'user-book-returned', userId: 'owner-1', bookId: 'book-returned', addedAt: now, removedAt: null }
+    { id: 'user-book-returned', userId: 'owner-1', bookId: 'book-returned', addedAt: now, removedAt: null },
+    { id: 'user-book-canceled', userId: 'owner-1', bookId: 'book-canceled', addedAt: now, removedAt: null }
   ])
 
   await db.insert(loans).values([
@@ -149,6 +155,23 @@ async function seedCoverAccessScenario(db: ReturnType<typeof drizzle>) {
       snapshotBookTitle: 'Returned',
       snapshotBookAuthor: 'Author',
       snapshotCoverPath: 'covers/manual/owner-1/returned.webp',
+      snapshotOwnerName: 'Owner',
+      acceptedAt: now,
+      createdAt: now,
+      updatedAt: now
+    },
+    {
+      id: 'loan-canceled',
+      ownerUserId: 'owner-1',
+      userBookId: 'user-book-canceled',
+      borrowerUserId: 'borrower-1',
+      borrowerDisplayName: 'Borrower',
+      status: 'canceled',
+      loanedAt: now,
+      canceledAt: now,
+      snapshotBookTitle: 'Canceled',
+      snapshotBookAuthor: 'Author',
+      snapshotCoverPath: 'covers/manual/owner-1/canceled.webp',
       snapshotOwnerName: 'Owner',
       acceptedAt: now,
       createdAt: now,

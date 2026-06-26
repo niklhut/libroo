@@ -362,7 +362,7 @@ export const LendingRepositoryLive = Layer.effect(
                   eq(loans.ownerUserId, userId),
                   and(
                     eq(loans.borrowerUserId, userId),
-                    eq(loans.status, 'active'),
+                    not(eq(loans.status, 'canceled')),
                     isNotNull(loans.acceptedAt)
                   )
                 )
