@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import type { BookLocationTreeNode, BookLocationWithCount } from '~~/shared/types/book'
+import type { BookLocation, BookLocationTreeNode, BookLocationWithCount } from '~~/shared/types/book'
 import LocationTreeNode from '~~/app/components/LocationTreeNode.vue'
+import { calculateLocationCounts, computeLocationRepath, isLocationDescendant } from '~~/shared/utils/location-hierarchy'
 
 usePageTitle('Locations')
 
@@ -13,7 +14,7 @@ const deleteTarget = ref<BookLocationWithCount | null>(null)
 const deleteMode = ref<'block' | 'clear' | 'move'>('block')
 const deleteTargetLocationId = ref<string>()
 
-const { data: locations, refresh, status } = await useFetch<BookLocationWithCount[]>('/api/locations', {
+const { data: locations, status } = await useFetch<BookLocationWithCount[]>('/api/locations', {
   headers: useRequestHeaders(['cookie'])
 })
 
@@ -65,6 +66,91 @@ const canConfirmDelete = computed(() => {
   return true
 })
 
+function patchLocationLocally(
+  targetLocation: BookLocationWithCount,
+  name: string | undefined,
+  parentLocation: BookLocationWithCount | null
+) {
+  const flatLocations = locations.value ?? []
+  const currentTarget = flatLocations.find(location => location.id === targetLocation.id) ?? targetLocation
+  const descendants = flatLocations.filter(location => isLocationDescendant(location, currentTarget))
+  const repath = computeLocationRepath(currentTarget, descendants, parentLocation, name ?? currentTarget.name)
+  const descendantPatches = new Map(repath.descendants.map(patch => [patch.id, patch]))
+  const patchedLocations = flatLocations.map((location) => {
+    if (location.id === currentTarget.id) {
+      return {
+        ...location,
+        name: repath.location.name,
+        parentLocationId: repath.location.parentLocationId,
+        path: repath.location.path,
+        depth: repath.location.depth
+      }
+    }
+
+    const patch = descendantPatches.get(location.id)
+    return patch
+      ? { ...location, path: patch.path, depth: patch.depth }
+      : location
+  })
+
+  locations.value = calculateLocationCounts(patchedLocations)
+}
+
+function reconcileLocationLocally(location: BookLocation) {
+  const currentLocation = locations.value?.find(item => item.id === location.id)
+  if (!currentLocation) return
+
+  const parentLocation = location.parentLocationId
+    ? locations.value?.find(item => item.id === location.parentLocationId) ?? null
+    : null
+  patchLocationLocally(currentLocation, location.name, parentLocation)
+}
+
+function addLocationLocally(location: BookLocation) {
+  locations.value = calculateLocationCounts([
+    ...(locations.value ?? []),
+    {
+      ...location,
+      bookCount: 0,
+      directBookCount: 0,
+      descendantBookCount: 0
+    }
+  ])
+}
+
+function deleteLocationLocally(
+  targetLocation: BookLocationWithCount,
+  mode: 'block' | 'clear' | 'move',
+  targetLocationId?: string
+) {
+  const flatLocations = locations.value ?? []
+  const scopedLocationIds = new Set(
+    flatLocations
+      .filter(location => location.id === targetLocation.id || isLocationDescendant(location, targetLocation))
+      .map(location => location.id)
+  )
+  const movedBookCount = mode === 'move'
+    ? flatLocations.reduce((total, location) => {
+        return scopedLocationIds.has(location.id) ? total + location.directBookCount : total
+      }, 0)
+    : 0
+
+  const patchedLocations = flatLocations
+    .filter(location => !scopedLocationIds.has(location.id))
+    .map((location) => {
+      if (mode !== 'move' || location.id !== targetLocationId) return location
+
+      const directBookCount = location.directBookCount + movedBookCount
+      return {
+        ...location,
+        bookCount: directBookCount,
+        directBookCount
+      }
+    })
+
+  locations.value = calculateLocationCounts(patchedLocations)
+}
+
 async function createLocation(parentLocationId: string | null, name: string) {
   const trimmedName = name.trim()
   if (!trimmedName || isCreating.value || isMutating.value) return
@@ -72,12 +158,12 @@ async function createLocation(parentLocationId: string | null, name: string) {
   isCreating.value = true
   isMutating.value = true
   try {
-    await $fetch('/api/locations', {
+    const location = await $fetch<BookLocation>('/api/locations', {
       method: 'POST',
       body: { name: trimmedName, parentLocationId }
     })
     newLocationName.value = ''
-    await refresh()
+    addLocationLocally(location)
     toast.add({ title: 'Location added', color: 'success' })
   } catch (err: unknown) {
     showErrorToast('Failed to add location', err)
@@ -90,15 +176,24 @@ async function createLocation(parentLocationId: string | null, name: string) {
 async function renameLocation(locationId: string, name: string) {
   if (isMutating.value) return
 
+  const rollbackLocations = locations.value?.map(location => ({ ...location })) ?? []
+  const location = locations.value?.find(location => location.id === locationId)
+  const parentLocation = location?.parentLocationId
+    ? locations.value?.find(item => item.id === location.parentLocationId) ?? null
+    : null
+
   isMutating.value = true
   try {
-    await $fetch(`/api/locations/${locationId}/rename`, {
+    if (location) patchLocationLocally(location, name, parentLocation)
+
+    const updatedLocation = await $fetch<BookLocation>(`/api/locations/${locationId}/rename`, {
       method: 'PUT',
       body: { name }
     })
-    await refresh()
+    reconcileLocationLocally(updatedLocation)
     toast.add({ title: 'Location renamed', color: 'success' })
   } catch (err: unknown) {
+    locations.value = rollbackLocations
     showErrorToast('Failed to rename location', err)
   } finally {
     isMutating.value = false
@@ -108,15 +203,24 @@ async function renameLocation(locationId: string, name: string) {
 async function moveLocation(locationId: string, parentLocationId: string | null) {
   if (isMutating.value) return
 
+  const rollbackLocations = locations.value?.map(location => ({ ...location })) ?? []
+  const location = locations.value?.find(location => location.id === locationId)
+  const parentLocation = parentLocationId
+    ? locations.value?.find(location => location.id === parentLocationId) ?? null
+    : null
+
   isMutating.value = true
   try {
-    await $fetch(`/api/locations/${locationId}/move`, {
+    if (location) patchLocationLocally(location, undefined, parentLocation)
+
+    const updatedLocation = await $fetch<BookLocation>(`/api/locations/${locationId}/move`, {
       method: 'PUT',
       body: { parentLocationId }
     })
-    await refresh()
+    reconcileLocationLocally(updatedLocation)
     toast.add({ title: 'Location moved', color: 'success' })
   } catch (err: unknown) {
+    locations.value = rollbackLocations
     showErrorToast('Failed to move location', err)
   } finally {
     isMutating.value = false
@@ -132,8 +236,20 @@ function openDelete(location: BookLocationWithCount) {
 async function deleteLocation() {
   if (isMutating.value || !deleteTarget.value || !canConfirmDelete.value) return
 
+  const targetLocation = locations.value?.find(location => location.id === deleteTarget.value?.id)
+  const targetLocationId = deleteTargetLocationId.value
+  const rollbackLocations = locations.value?.map(location => ({ ...location })) ?? []
+
   isMutating.value = true
   try {
+    const hasAssignedBooks = targetLocation
+      ? targetLocation.directBookCount + targetLocation.descendantBookCount > 0
+      : false
+    const canOptimisticallyDelete = deleteMode.value !== 'block' || !hasAssignedBooks
+    if (targetLocation && canOptimisticallyDelete) {
+      deleteLocationLocally(targetLocation, deleteMode.value, targetLocationId)
+    }
+
     await $fetch(`/api/locations/${deleteTarget.value.id}`, {
       method: 'DELETE',
       query: deleteMode.value === 'move'
@@ -141,9 +257,9 @@ async function deleteLocation() {
         : { mode: deleteMode.value }
     })
     deleteTarget.value = null
-    await refresh()
     toast.add({ title: 'Location deleted', color: 'success' })
   } catch (err: unknown) {
+    locations.value = rollbackLocations
     showErrorToast('Failed to delete location', err)
   } finally {
     isMutating.value = false
