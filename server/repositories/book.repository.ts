@@ -1373,6 +1373,7 @@ export const BookRepositoryLive = Layer.effect(
                 .where(and(
                   eq(userBooks.userId, userId),
                   isNull(userBooks.removedAt),
+                  eq(books.source, 'manual'),
                   eq(books.coverPath, pathname)
                 ))
                 .limit(1),

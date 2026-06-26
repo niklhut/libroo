@@ -12,7 +12,7 @@ export class CoverAccessDeniedError extends Data.TaggedError('CoverAccessDeniedE
 
 const TRUSTED_COVER_EXTENSIONS = new Set(['webp', 'jpg', 'jpeg', 'png', 'gif'])
 const manualCoverPrefix = 'covers/manual/'
-const isbnCoverPattern = /^covers\/[^/]+\.(?<extension>[^/.]+)$/
+const isbnCoverPattern = /^covers\/(?<isbn>(?:97[89]\d{10}|\d{9}[\dXx]))\.(?<extension>[^/.]+)$/
 
 export const getAuthorizedCover = (
   pathname: string,

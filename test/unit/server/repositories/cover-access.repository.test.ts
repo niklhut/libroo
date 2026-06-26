@@ -51,6 +51,10 @@ describe('cover access repository helpers', () => {
     await expect(runBookRepository(Effect.flatMap(BookRepository, repository =>
       repository.userOwnsManualCover('borrower-1', 'covers/manual/owner-1/book.webp')
     ))).resolves.toBe(false)
+
+    await expect(runBookRepository(Effect.flatMap(BookRepository, repository =>
+      repository.userOwnsManualCover('owner-1', 'covers/manual/owner-1/open-library.webp')
+    ))).resolves.toBe(false)
   })
 
   it('checks loan cover access for owners and active accepted borrowers only', async () => {
@@ -86,6 +90,7 @@ async function seedCoverAccessScenario(db: ReturnType<typeof drizzle>) {
 
   await db.insert(books).values([
     { id: 'book-owned', isbn: null, title: 'Owned', source: 'manual', coverPath: 'covers/manual/owner-1/book.webp', createdAt: now },
+    { id: 'book-open-library', isbn: '9781234567890', title: 'Open Library', source: 'open_library', coverPath: 'covers/manual/owner-1/open-library.webp', createdAt: now },
     { id: 'book-removed', isbn: null, title: 'Removed', source: 'manual', coverPath: 'covers/manual/owner-1/removed.webp', createdAt: now },
     { id: 'book-pending', isbn: null, title: 'Pending', source: 'manual', coverPath: 'covers/manual/owner-1/pending.webp', createdAt: now },
     { id: 'book-returned', isbn: null, title: 'Returned', source: 'manual', coverPath: 'covers/manual/owner-1/returned.webp', createdAt: now }
@@ -93,6 +98,7 @@ async function seedCoverAccessScenario(db: ReturnType<typeof drizzle>) {
 
   await db.insert(userBooks).values([
     { id: 'user-book-owned', userId: 'owner-1', bookId: 'book-owned', addedAt: now, removedAt: null },
+    { id: 'user-book-open-library', userId: 'owner-1', bookId: 'book-open-library', addedAt: now, removedAt: null },
     { id: 'user-book-removed', userId: 'owner-1', bookId: 'book-removed', addedAt: now, removedAt: now },
     { id: 'user-book-pending', userId: 'owner-1', bookId: 'book-pending', addedAt: now, removedAt: null },
     { id: 'user-book-returned', userId: 'owner-1', bookId: 'book-returned', addedAt: now, removedAt: null }

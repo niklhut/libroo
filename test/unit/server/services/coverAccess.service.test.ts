@@ -59,6 +59,16 @@ describe('getAuthorizedCover', () => {
     expect(storageService.get).toHaveBeenCalledWith('covers/9781234567890.jpg')
   })
 
+  it('denies non-ISBN top-level cover paths without reading storage', async () => {
+    const result = await runEither('covers/not-an-isbn.webp')
+
+    expect(Either.isLeft(result)).toBe(true)
+    if (Either.isLeft(result)) {
+      expect(result.left).toBeInstanceOf(CoverAccessDeniedError)
+    }
+    expect(storageService.get).not.toHaveBeenCalled()
+  })
+
   it('denies unknown path patterns without reading storage', async () => {
     const result = await runEither('avatars/user-1.webp')
 
