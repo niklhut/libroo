@@ -6,6 +6,7 @@ import { normalizeTagInput, normalizeSuggestedTags } from '../../shared/utils/ta
 import type { LibraryQueryFilters } from '../../shared/utils/library-query'
 import { escapeLocationLikePattern } from '../../shared/utils/location-hierarchy'
 import { DbService } from '../services/db.service'
+import type { AtomicDbStatement, AtomicDbStatements } from '../services/db.service'
 import { getBlob, type StorageService } from '../services/storage.service'
 import { downloadCover, lookupByISBN } from './openLibrary.repository'
 import type { OpenLibraryApiError, OpenLibraryBookNotFoundError, OpenLibraryRepository } from './openLibrary.repository'
@@ -808,90 +809,82 @@ export const BookRepositoryLive = Layer.effect(
         Effect.gen(function* () {
           const result = yield* Effect.tryPromise({
             try: async () => {
-              return dbService.db.transaction(async (tx) => {
-                const now = new Date()
-                const bookId = generateId()
-                const newBook = {
-                  id: bookId,
-                  isbn: input.isbn,
-                  title: input.title,
-                  coverPath: input.coverPath,
-                  openLibraryKey: null,
-                  workKey: null,
-                  description: null,
-                  publishDate: input.publishDate,
-                  publishers: input.publisher,
-                  numberOfPages: input.numberOfPages,
-                  source: 'manual' as const,
-                  createdByUserId: userId,
-                  createdAt: now
+              const now = new Date()
+              const bookId = generateId()
+              const userBookId = generateId()
+              const newBook = {
+                id: bookId,
+                isbn: input.isbn,
+                title: input.title,
+                coverPath: input.coverPath,
+                openLibraryKey: null,
+                workKey: null,
+                description: null,
+                publishDate: input.publishDate,
+                publishers: input.publisher,
+                numberOfPages: input.numberOfPages,
+                source: 'manual' as const,
+                createdByUserId: userId,
+                createdAt: now
+              }
+
+              const normalizedSeen = new Set<string>()
+              const manualAuthorNames = input.authors.filter((name) => {
+                const normalized = normalizeAuthorName(name)
+                if (!normalized || normalizedSeen.has(normalized)) return false
+                normalizedSeen.add(normalized)
+                return true
+              })
+              const authorNames = manualAuthorNames.length > 0 ? manualAuthorNames : ['Unknown Author']
+              const authorInputs = authorNames.map((authorName, index) => {
+                const displayName = authorName.trim().replace(/\s+/g, ' ')
+                return {
+                  id: generateId(),
+                  displayName,
+                  normalizedName: normalizeAuthorName(displayName),
+                  sortOrder: index
                 }
+              })
 
-                await tx.insert(books).values(newBook)
-
-                const normalizedSeen = new Set<string>()
-                const manualAuthorNames = input.authors.filter((name) => {
-                  const normalized = normalizeAuthorName(name)
-                  if (!normalized || normalizedSeen.has(normalized)) return false
-                  normalizedSeen.add(normalized)
-                  return true
+              const uniqueTagNames = [...new Set(input.tags.map(tag => tag.trim()).filter(Boolean))]
+              const tagInputs = uniqueTagNames
+                .map((tagName) => {
+                  const normalized = normalizeTagInput(tagName)
+                  return normalized
+                    ? {
+                        id: generateId(),
+                        displayName: normalized.displayName,
+                        normalizedName: normalized.key,
+                        userBookTagId: generateId()
+                      }
+                    : null
                 })
-                const authorNames = manualAuthorNames.length > 0 ? manualAuthorNames : ['Unknown Author']
+                .filter((tag): tag is NonNullable<typeof tag> => Boolean(tag))
 
-                for (const [index, authorName] of authorNames.entries()) {
-                  const authorId = await (async () => {
-                    const displayName = authorName.trim().replace(/\s+/g, ' ')
-                    const normalizedName = normalizeAuthorName(displayName)
-                    const existing = await tx
-                      .select({ id: authors.id })
-                      .from(authors)
-                      .where(eq(authors.normalizedName, normalizedName))
-                      .limit(1)
+              await dbService.executeAtomic((database) => {
+                const statements: AtomicDbStatement[] = [
+                  database.insert(books).values(newBook)
+                ]
 
-                    if (existing[0]) return existing[0].id
-
-                    const newAuthorId = generateId()
-                    await tx
-                      .insert(authors)
-                      .values({
-                        id: newAuthorId,
-                        name: displayName,
-                        normalizedName,
-                        createdAt: now,
-                        updatedAt: now
-                      })
-                      .onConflictDoNothing()
-
-                    const found = await tx
-                      .select({ id: authors.id })
-                      .from(authors)
-                      .where(eq(authors.normalizedName, normalizedName))
-                      .limit(1)
-
-                    const foundAuthor = found[0]
-                    if (!foundAuthor) {
-                      throw new DatabaseError({
-                        message: `Author upsert failed for name: ${displayName}`,
-                        operation: 'createManualBook.author'
-                      })
-                    }
-
-                    return foundAuthor.id
-                  })()
-
-                  await tx
-                    .insert(bookAuthors)
-                    .values({
+                for (const author of authorInputs) {
+                  statements.push(
+                    database.insert(authors).values({
+                      id: author.id,
+                      name: author.displayName,
+                      normalizedName: author.normalizedName,
+                      createdAt: now,
+                      updatedAt: now
+                    }).onConflictDoNothing(),
+                    database.insert(bookAuthors).values({
                       bookId,
-                      authorId,
-                      sortOrder: index,
+                      authorId: sql<string>`(SELECT id FROM authors WHERE normalized_name = ${author.normalizedName})` as unknown as string,
+                      sortOrder: author.sortOrder,
                       createdAt: now
-                    })
-                    .onConflictDoNothing()
+                    }).onConflictDoNothing()
+                  )
                 }
 
-                const userBookId = generateId()
-                await tx.insert(userBooks).values({
+                statements.push(database.insert(userBooks).values({
                   id: userBookId,
                   userId,
                   bookId,
@@ -901,103 +894,69 @@ export const BookRepositoryLive = Layer.effect(
                   currentPage: input.currentPage,
                   progressPercent: input.progressPercent,
                   addedAt: now
-                })
+                }))
 
-                const uniqueTagNames = [...new Set(input.tags.map(tag => tag.trim()).filter(Boolean))]
-
-                for (const tagName of uniqueTagNames) {
-                  const normalized = normalizeTagInput(tagName)
-                  if (!normalized) continue
-
-                  const existing = await tx
-                    .select({ id: tags.id })
-                    .from(tags)
-                    .where(eq(tags.normalizedName, normalized.key))
-                    .limit(1)
-
-                  let tagId = existing[0]?.id ?? null
-
-                  if (!tagId) {
-                    const newTagId = generateId()
-                    await tx
-                      .insert(tags)
-                      .values({
-                        id: newTagId,
-                        name: normalized.displayName,
-                        normalizedName: normalized.key,
-                        createdAt: now,
-                        updatedAt: now
-                      })
-                      .onConflictDoNothing()
-
-                    const found = await tx
-                      .select({ id: tags.id })
-                      .from(tags)
-                      .where(eq(tags.normalizedName, normalized.key))
-                      .limit(1)
-
-                    tagId = found[0]?.id ?? null
-                  }
-
-                  if (!tagId) {
-                    throw new DatabaseError({
-                      message: `Tag upsert failed for key: ${normalized.key}`,
-                      operation: 'createManualBook.tag'
-                    })
-                  }
-
-                  await tx
-                    .insert(userBookTags)
-                    .values({
-                      id: generateId(),
-                      userBookId,
-                      tagId,
+                for (const tag of tagInputs) {
+                  statements.push(
+                    database.insert(tags).values({
+                      id: tag.id,
+                      name: tag.displayName,
+                      normalizedName: tag.normalizedName,
                       createdAt: now,
                       updatedAt: now
-                    })
-                    .onConflictDoNothing()
+                    }).onConflictDoNothing(),
+                    database.insert(userBookTags).values({
+                      id: tag.userBookTagId,
+                      userBookId,
+                      tagId: sql<string>`(SELECT id FROM tags WHERE normalized_name = ${tag.normalizedName})` as unknown as string,
+                      createdAt: now,
+                      updatedAt: now
+                    }).onConflictDoNothing()
+                  )
                 }
 
-                const createdRows = await tx
-                  .select()
-                  .from(books)
-                  .where(eq(books.id, bookId))
-                  .limit(1)
-
-                const createdBook = createdRows[0]
-                if (!createdBook) {
-                  throw new DatabaseError({
-                    message: 'Manual book created but not found afterwards',
-                    operation: 'createManualBook.loadBook'
-                  })
-                }
-
-                const authorRows = await tx
-                  .select({
-                    id: authors.id,
-                    name: authors.name
-                  })
-                  .from(bookAuthors)
-                  .innerJoin(authors, eq(bookAuthors.authorId, authors.id))
-                  .where(eq(bookAuthors.bookId, bookId))
-                  .orderBy(asc(bookAuthors.sortOrder), asc(authors.name))
-
-                const userTagRows = await tx
-                  .select({ name: tags.name })
-                  .from(userBookTags)
-                  .innerJoin(tags, eq(userBookTags.tagId, tags.id))
-                  .where(eq(userBookTags.userBookId, userBookId))
-
-                return {
-                  id: userBookId,
-                  bookId,
-                  book: toBookModel(createdBook, authorRows),
-                  location: null,
-                  tags: userTagRows.map(tag => tag.name),
-                  addedAt: now,
-                  activeLoan: null
-                }
+                return statements as unknown as AtomicDbStatements
               })
+
+              const createdRows = await dbService.db
+                .select()
+                .from(books)
+                .where(eq(books.id, bookId))
+                .limit(1)
+
+              const createdBook = createdRows[0]
+              if (!createdBook) {
+                throw new DatabaseError({
+                  message: 'Manual book created but not found afterwards',
+                  operation: 'createManualBook.loadBook'
+                })
+              }
+
+              const authorRows = await dbService.db
+                .select({
+                  id: authors.id,
+                  name: authors.name
+                })
+                .from(bookAuthors)
+                .innerJoin(authors, eq(bookAuthors.authorId, authors.id))
+                .where(eq(bookAuthors.bookId, bookId))
+                .orderBy(asc(bookAuthors.sortOrder), asc(authors.name))
+
+              const userTagRows = await dbService.db
+                .select({ name: tags.name })
+                .from(userBookTags)
+                .innerJoin(tags, eq(userBookTags.tagId, tags.id))
+                .where(eq(userBookTags.userBookId, userBookId))
+
+              return {
+                id: userBookId,
+                bookId,
+                book: toBookModel(createdBook, authorRows),
+                location: null,
+                tags: userTagRows.map(tag => tag.name),
+                addedAt: now,
+                activeLoan: null
+              }
             },
             catch: (error) => {
               if (error instanceof DatabaseError) {
