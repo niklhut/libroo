@@ -120,7 +120,6 @@ function runRepository<A, E>(
     Effect.provide(LocationRepositoryLive),
     Effect.provide(Layer.succeed(DbService, {
       db: typedDatabase,
-      supportsReliableBatch: false,
       executeAtomic: buildStatements => typedDatabase.batch(buildStatements(typedDatabase))
     }))
   ))

@@ -262,8 +262,8 @@ async function deleteAccount(payload: FormSubmitEvent<AccountDeletionSchema>) {
   isDeletingAccount.value = true
 
   try {
-    await $fetch('/api/account', {
-      method: 'DELETE',
+    await $fetch('/api/account/delete', {
+      method: 'POST',
       body: payload.data
     })
 

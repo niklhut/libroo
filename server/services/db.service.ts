@@ -7,7 +7,6 @@ export type AtomicDbStatements = readonly [AtomicDbStatement, ...AtomicDbStateme
 
 export interface DbServiceInterface {
   readonly db: typeof hubDb
-  readonly supportsReliableBatch?: boolean
   readonly executeAtomic: (
     buildStatements: (database: typeof hubDb) => AtomicDbStatements
   ) => Promise<readonly unknown[]>

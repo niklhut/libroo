@@ -179,14 +179,6 @@ async function executeDeleteLocationStatements(
   mode: 'clear' | 'move',
   targetLocation: LocationRecord | null
 ): Promise<readonly unknown[]> {
-  if (dbService.supportsReliableBatch === false) {
-    const results: unknown[] = []
-    for (const statement of buildDeleteLocationStatements(dbService.db, userId, scopedLocations, mode, targetLocation)) {
-      results.push(await statement)
-    }
-    return results
-  }
-
   return dbService.executeAtomic(database =>
     buildDeleteLocationStatements(database, userId, scopedLocations, mode, targetLocation)
   )
