@@ -91,6 +91,9 @@ describe('BookRepository.createManualBook on D1', () => {
       expect(result.left).toBeInstanceOf(BookCreateError)
     }
     await expect(db.select().from(books)).resolves.toHaveLength(0)
+    await expect(db.select().from(userBooks)).resolves.toHaveLength(0)
+    await expect(db.select().from(bookAuthors)).resolves.toHaveLength(0)
+    await expect(db.select().from(userBookTags)).resolves.toHaveLength(0)
   })
 })
 
