@@ -172,6 +172,26 @@ export function buildDeleteLocationStatements(
   ]
 }
 
+async function executeDeleteLocationStatements(
+  dbService: DbServiceInterface,
+  userId: string,
+  scopedLocations: readonly LocationRecord[],
+  mode: 'clear' | 'move',
+  targetLocation: LocationRecord | null
+): Promise<readonly unknown[]> {
+  if (dbService.supportsReliableBatch === false) {
+    const results: unknown[] = []
+    for (const statement of buildDeleteLocationStatements(dbService.db, userId, scopedLocations, mode, targetLocation)) {
+      results.push(await statement)
+    }
+    return results
+  }
+
+  return dbService.executeAtomic(database =>
+    buildDeleteLocationStatements(database, userId, scopedLocations, mode, targetLocation)
+  )
+}
+
 const deleteLocationAtomicTimeout = '20 seconds'
 
 export const LocationRepositoryLive = Layer.effect(
@@ -501,9 +521,7 @@ export const LocationRepositoryLive = Layer.effect(
           }
 
           const results = yield* Effect.tryPromise({
-            try: () => dbService.executeAtomic(database =>
-              buildDeleteLocationStatements(database, userId, scopedLocations, mode, targetLocation)
-            ),
+            try: () => executeDeleteLocationStatements(dbService, userId, scopedLocations, mode, targetLocation),
             catch: error => locationDeleteError('The location could not be deleted. Please try again.', error)
           }).pipe(
             Effect.timeoutFail({

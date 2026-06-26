@@ -77,6 +77,20 @@ describe('LocationRepository.deleteLocation on D1', () => {
       { id: 'root', path: 'Shelf', depth: 0 }
     ])
   })
+
+  it('deletes a single top-level location', async () => {
+    const now = new Date('2026-06-24T10:00:00.000Z')
+    await db.insert(locations).values(
+      locationValue('solo-root', 'Solo Shelf', null, 'Solo Shelf', 0, now)
+    )
+
+    const location = await getLocation(db, 'solo-root')
+    await expectCompletes(runRepository(db, Effect.flatMap(LocationRepository, repository =>
+      repository.deleteLocation('user-1', location, 'clear', null)
+    )))
+
+    await expect(locationPaths(db)).resolves.toEqual([])
+  })
 })
 
 async function expectCompletes(promise: Promise<unknown>) {
@@ -106,6 +120,7 @@ function runRepository<A, E>(
     Effect.provide(LocationRepositoryLive),
     Effect.provide(Layer.succeed(DbService, {
       db: typedDatabase,
+      supportsReliableBatch: false,
       executeAtomic: buildStatements => typedDatabase.batch(buildStatements(typedDatabase))
     }))
   ))

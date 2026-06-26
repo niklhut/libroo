@@ -48,6 +48,7 @@ export const DbServiceSelfHostLive = Layer.sync(DbService, () => {
 
   return {
     db,
+    supportsReliableBatch: true,
     executeAtomic: async (buildStatements) => {
       return db.transaction(async (tx) => {
         const results: unknown[] = []
