@@ -518,7 +518,10 @@ export const LocationRepositoryLive = Layer.effect(
           }).pipe(
             Effect.timeoutFail({
               duration: deleteLocationAtomicTimeout,
-              onTimeout: () => locationDeleteError('The location could not be deleted. Please try again.', new Error('deleteLocation timed out'))
+              onTimeout: () => locationDeleteError(
+                'The location delete request timed out before its final state could be confirmed. Please refresh before trying again.',
+                new Error('deleteLocation timed out; database batch outcome is unknown')
+              )
             })
           )
           if (affectedRows(results.at(-1)) === 0) {

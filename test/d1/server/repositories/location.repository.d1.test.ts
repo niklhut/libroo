@@ -14,6 +14,7 @@ import {
 import { DbService, type DbServiceInterface } from '../../../../server/services/db.service'
 import initialMigration from '../../../../server/db/migrations/sqlite/0000_initial_beta.sql?raw'
 import termsMigration from '../../../../server/db/migrations/sqlite/0001_add_terms_acceptance.sql?raw'
+import locationRestrictMigration from '../../../../server/db/migrations/sqlite/0002_prevent_location_delete_cascade.sql?raw'
 
 type D1Db = ReturnType<typeof drizzle>
 
@@ -91,6 +92,42 @@ describe('LocationRepository.deleteLocation on D1', () => {
 
     await expect(locationPaths(db)).resolves.toEqual([])
   })
+
+  it('rolls back moved book assignments when a new descendant appears before the D1 batch', async () => {
+    const now = new Date('2026-06-24T10:00:00.000Z')
+    await db.insert(locations).values([
+      locationValue('root', 'Shelf', null, 'Shelf', 0, now),
+      locationValue('other-root', 'Archive', null, 'Archive', 0, now)
+    ])
+
+    const root = await getLocation(db, 'root')
+    const target = await getLocation(db, 'other-root')
+    const result = await Effect.runPromiseExit(Effect.flatMap(LocationRepository, repository =>
+      repository.deleteLocation('user-1', root, 'move', target)
+    ).pipe(
+      Effect.provide(LocationRepositoryLive),
+      Effect.provide(Layer.succeed(DbService, {
+        db: db as unknown as DbServiceInterface['db'],
+        executeAtomic: async (buildStatements) => {
+          await db.insert(locations).values(
+            locationValue('raced-child', 'New Row', 'root', 'Shelf - New Row', 1, now)
+          )
+          await seedBook(db, 'raced-child')
+          const typedDatabase = db as unknown as DbServiceInterface['db']
+          return typedDatabase.batch(buildStatements(typedDatabase))
+        }
+      }))
+    ))
+
+    expect(result._tag).toBe('Failure')
+    await expect(runRepository(db, Effect.flatMap(LocationRepository, repository =>
+      repository.getLocationById('user-1', 'root')
+    ))).resolves.toMatchObject({ id: 'root' })
+    await expect(runRepository(db, Effect.flatMap(LocationRepository, repository =>
+      repository.getLocationById('user-1', 'raced-child')
+    ))).resolves.toMatchObject({ id: 'raced-child' })
+    await expect(bookLocation(db)).resolves.toBe('raced-child')
+  })
 })
 
 async function expectCompletes(promise: Promise<unknown>) {
@@ -101,7 +138,7 @@ async function expectCompletes(promise: Promise<unknown>) {
 }
 
 async function applyMigrations(database: D1Database) {
-  for (const migration of [initialMigration, termsMigration]) {
+  for (const migration of [initialMigration, termsMigration, locationRestrictMigration]) {
     for (const statement of migration.split('--> statement-breakpoint')) {
       const migrationStatement = statement.trim()
       if (migrationStatement) {

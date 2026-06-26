@@ -59,7 +59,7 @@ export const bookAuthors = sqliteTable('book_authors', {
 export const locations = sqliteTable('locations', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
-  parentLocationId: text('parent_location_id').references((): AnySQLiteColumn => locations.id, { onDelete: 'cascade' }),
+  parentLocationId: text('parent_location_id').references((): AnySQLiteColumn => locations.id, { onDelete: 'no action' }),
   name: text('name').notNull(),
   normalizedName: text('normalized_name').notNull(),
   path: text('path').notNull(),
