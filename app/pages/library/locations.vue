@@ -136,7 +136,7 @@ async function deleteLocation() {
   try {
     await $fetch(`/api/locations/${deleteTarget.value.id}`, {
       method: 'DELETE',
-      body: deleteMode.value === 'move'
+      query: deleteMode.value === 'move'
         ? { mode: 'move', targetLocationId: deleteTargetLocationId.value }
         : { mode: deleteMode.value }
     })
