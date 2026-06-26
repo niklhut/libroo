@@ -532,14 +532,14 @@ async function syncLoadedPages(targetPages: number) {
           Your library is empty
         </h2>
         <p class="text-muted mb-6">
-          Start by adding your first book using its ISBN.
+          Start by adding your first book.
         </p>
         <UButton
           icon="i-lucide-plus"
           size="lg"
           to="/library/add"
         >
-          Add Your First Book
+          Add First Book
         </UButton>
       </UCard>
 
