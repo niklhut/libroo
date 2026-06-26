@@ -136,7 +136,7 @@ async function deleteLocation() {
   try {
     await $fetch(`/api/locations/${deleteTarget.value.id}`, {
       method: 'DELETE',
-      body: deleteMode.value === 'move'
+      query: deleteMode.value === 'move'
         ? { mode: 'move', targetLocationId: deleteTargetLocationId.value }
         : { mode: deleteMode.value }
     })
@@ -152,7 +152,7 @@ async function deleteLocation() {
 
 function showErrorToast(title: string, err: unknown) {
   const message = (err as { data?: { message?: string } })?.data?.message
-    ?? (err instanceof Error ? err.message : 'Something went wrong')
+    ?? (err instanceof Error && err.name !== 'FetchError' ? err.message : 'Something went wrong')
   toast.add({ title, description: message, color: 'error' })
 }
 </script>
