@@ -1,6 +1,7 @@
 import { Context, Data, Effect, Layer } from 'effect'
-import { and, desc, eq, exists, isNotNull, isNull, not, sql } from 'drizzle-orm'
+import { and, desc, eq, exists, isNotNull, isNull, not, or, sql } from 'drizzle-orm'
 import { authors, bookAuthors, books, loans, user, userBooks } from 'hub:db:schema'
+import { DbService } from '../services/db.service'
 import { BookNotFoundError, DatabaseError } from './book.repository'
 
 export class LoanNotFoundError extends Data.TaggedError('LoanNotFoundError')<{
@@ -47,6 +48,7 @@ export interface LendingRepositoryInterface {
   cancelLoan: (loanId: string, ownerUserId: string) => Effect.Effect<OwnerLoan, LoanNotFoundError | DatabaseError, DbService>
   listOwnerLoans: (ownerUserId: string) => Effect.Effect<OwnerLoan[], DatabaseError, DbService>
   listBorrowedBooks: (borrowerUserId: string) => Effect.Effect<BorrowedBook[], DatabaseError, DbService>
+  userHasLoanCoverAccess: (userId: string, pathname: string) => Effect.Effect<boolean, DatabaseError, DbService>
   getInvitePreviewByHash: (tokenHash: string, viewerUserId?: string | null) => Effect.Effect<InvitePreview, InvalidInviteError | DatabaseError, DbService>
   acceptInviteByHash: (tokenHash: string, borrowerUserId: string) => Effect.Effect<BorrowedBook, InvalidInviteError | LoanUnavailableError | DatabaseError, DbService>
 }
@@ -348,6 +350,33 @@ export const LendingRepositoryLive = Layer.effect(
           }))
         }),
 
+      userHasLoanCoverAccess: (userId, pathname) =>
+        Effect.gen(function* () {
+          const rows = yield* Effect.tryPromise({
+            try: () => dbService.db
+              .select({ id: loans.id })
+              .from(loans)
+              .where(and(
+                eq(loans.snapshotCoverPath, pathname),
+                or(
+                  eq(loans.ownerUserId, userId),
+                  and(
+                    eq(loans.borrowerUserId, userId),
+                    not(eq(loans.status, 'canceled')),
+                    isNotNull(loans.acceptedAt)
+                  )
+                )
+              ))
+              .limit(1),
+            catch: error => new DatabaseError({
+              message: `Failed to validate loan cover access: ${error}`,
+              operation: 'userHasLoanCoverAccess'
+            })
+          })
+
+          return Boolean(rows[0])
+        }),
+
       getInvitePreviewByHash: (tokenHash, viewerUserId = null) =>
         Effect.gen(function* () {
           const rows = yield* Effect.tryPromise({
@@ -447,6 +476,9 @@ export const listOwnerLoans = (ownerUserId: string) =>
 
 export const listBorrowedBooks = (borrowerUserId: string) =>
   Effect.flatMap(LendingRepository, repo => repo.listBorrowedBooks(borrowerUserId))
+
+export const userHasLoanCoverAccess = (userId: string, pathname: string) =>
+  Effect.flatMap(LendingRepository, repo => repo.userHasLoanCoverAccess(userId, pathname))
 
 export const getInvitePreviewByHash = (tokenHash: string) =>
   Effect.flatMap(LendingRepository, repo => repo.getInvitePreviewByHash(tokenHash))

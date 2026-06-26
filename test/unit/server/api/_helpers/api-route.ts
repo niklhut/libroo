@@ -47,7 +47,9 @@ vi.mock('../../../../../server/utils/effect', async () => {
                         ? 400
                         : tag === 'LastAdminDemotionError'
                           ? 409
-                          : 500
+                          : tag === 'InvalidInviteError'
+                            ? 400
+                            : 500
           const message = typeof error === 'object' && error && 'message' in error
             ? String(error.message)
             : 'Internal Server Error'
@@ -130,6 +132,7 @@ interface ApiRouteTestGlobals {
   getInvitePreview: (...args: unknown[]) => unknown
   acceptBookInvite: (...args: unknown[]) => unknown
   getBlob: (...args: unknown[]) => unknown
+  getAuthorizedCover: (...args: unknown[]) => unknown
   exportLibraryCsv: (...args: unknown[]) => unknown
   importLibraryCsv: (...args: unknown[]) => unknown
   bookIsbnSchema: unknown
@@ -184,6 +187,7 @@ export const serviceMocks = {
   getInvitePreview: vi.fn(),
   acceptBookInvite: vi.fn(),
   getBlob: vi.fn(),
+  getAuthorizedCover: vi.fn(),
   exportLibraryCsv: vi.fn(),
   importLibraryCsv: vi.fn()
 }
@@ -233,6 +237,7 @@ const originalGlobals = {
   getInvitePreview: testGlobal.getInvitePreview,
   acceptBookInvite: testGlobal.acceptBookInvite,
   getBlob: testGlobal.getBlob,
+  getAuthorizedCover: testGlobal.getAuthorizedCover,
   exportLibraryCsv: testGlobal.exportLibraryCsv,
   importLibraryCsv: testGlobal.importLibraryCsv,
   bookIsbnSchema: testGlobal.bookIsbnSchema,
@@ -327,6 +332,7 @@ export async function setupApiRouteTest() {
   testGlobal.getInvitePreview = (...args: unknown[]) => serviceMocks.getInvitePreview(...args)
   testGlobal.acceptBookInvite = (...args: unknown[]) => serviceMocks.acceptBookInvite(...args)
   testGlobal.getBlob = (...args: unknown[]) => serviceMocks.getBlob(...args)
+  testGlobal.getAuthorizedCover = (...args: unknown[]) => serviceMocks.getAuthorizedCover(...args)
   testGlobal.exportLibraryCsv = (...args: unknown[]) => serviceMocks.exportLibraryCsv(...args)
   testGlobal.importLibraryCsv = (...args: unknown[]) => serviceMocks.importLibraryCsv(...args)
 
