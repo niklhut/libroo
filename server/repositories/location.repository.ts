@@ -4,7 +4,7 @@ import { alias } from 'drizzle-orm/sqlite-core'
 import type { AnySQLiteColumn } from 'drizzle-orm/sqlite-core'
 import { locations, userBooks } from 'hub:db:schema'
 import { normalizeBookLocationKey } from '../../shared/utils/book-location'
-import { DbService } from '../services/db.service'
+import { DbService, type AtomicDbStatements, type DbServiceInterface } from '../services/db.service'
 import {
   calculateLocationCounts,
   computeLocationRepath,
@@ -28,6 +28,7 @@ export class LocationUpdateError extends Data.TaggedError('LocationUpdateError')
 export class LocationDeleteError extends Data.TaggedError('LocationDeleteError')<{
   message: string
   operation: 'deleteLocation'
+  cause?: unknown
 }> { }
 
 export interface LocationBookCounts {
@@ -86,7 +87,7 @@ function toLocationRecord(location: typeof locations.$inferSelect): LocationReco
   }
 }
 
-const descendantWhere = (location: LocationRecord) =>
+export const descendantWhere = (location: LocationRecord) =>
   or(eq(locations.id, location.id), sql`${locations.path} like ${locationDescendantPathLike(location)} escape '\\'`)
 
 interface LocationStateColumns {
@@ -98,7 +99,7 @@ interface LocationStateColumns {
   depth: AnySQLiteColumn
 }
 
-const locationStateWhere = (
+export const locationStateWhere = (
   table: LocationStateColumns,
   userId: string,
   location: LocationRecord
@@ -113,7 +114,7 @@ const locationStateWhere = (
   eq(table.depth, location.depth)
 )
 
-function affectedRows(result: unknown): number {
+export function affectedRows(result: unknown): number {
   if (!result || typeof result !== 'object') return 0
   if ('rowsAffected' in result && typeof result.rowsAffected === 'number') {
     return result.rowsAffected
@@ -123,6 +124,48 @@ function affectedRows(result: unknown): number {
   }
   return 0
 }
+
+function locationStateMatches(row: LocationRecord | null | undefined, expected: LocationRecord): boolean {
+  return Boolean(row)
+    && row?.id === expected.id
+    && row.name === expected.name
+    && row.path === expected.path
+    && row.depth === expected.depth
+    && row.parentLocationId === expected.parentLocationId
+}
+
+function locationDeleteError(message: string, cause?: unknown): LocationDeleteError {
+  return new LocationDeleteError({
+    message,
+    operation: 'deleteLocation',
+    cause
+  })
+}
+
+export function buildDeleteLocationStatements(
+  database: DbServiceInterface['db'],
+  userId: string,
+  scopedLocationIds: readonly string[],
+  mode: 'clear' | 'move',
+  targetLocation: LocationRecord | null
+): AtomicDbStatements {
+  return [
+    database.update(userBooks)
+      .set({ locationId: mode === 'move' ? targetLocation?.id ?? null : null })
+      .where(and(
+        eq(userBooks.userId, userId),
+        inArray(userBooks.locationId, [...scopedLocationIds]),
+        isNull(userBooks.removedAt)
+      )),
+    database.delete(locations)
+      .where(and(
+        eq(locations.userId, userId),
+        inArray(locations.id, [...scopedLocationIds])
+      ))
+  ]
+}
+
+const deleteLocationAtomicTimeout = '20 seconds'
 
 export const LocationRepositoryLive = Layer.effect(
   LocationRepository,
@@ -398,58 +441,72 @@ export const LocationRepositoryLive = Layer.effect(
 
       deleteLocation: (userId, location, mode, targetLocation) =>
         Effect.gen(function* () {
-          const results = yield* Effect.tryPromise({
-            try: () => dbService.executeAtomic((database) => {
-              const mutationRoot = alias(locations, 'mutation_root')
-              const rootIsCurrent = exists(
-                database.select({ id: mutationRoot.id })
-                  .from(mutationRoot)
-                  .where(locationStateWhere(mutationRoot, userId, location))
-              )
-              const mutationTarget = alias(locations, 'mutation_target')
-              const targetIsCurrent = targetLocation
-                ? exists(
-                    database.select({ id: mutationTarget.id })
-                      .from(mutationTarget)
-                      .where(locationStateWhere(mutationTarget, userId, targetLocation))
-                  )
-                : sql`1 = 1`
-              const mutationIsCurrent = and(rootIsCurrent, targetIsCurrent)
-              const scopedLocationIds = database
-                .select({ id: locations.id })
-                .from(locations)
-                .where(and(
-                  eq(locations.userId, userId),
-                  descendantWhere(location),
-                  mutationIsCurrent
-                ))
+          const scopedLocations = yield* Effect.tryPromise({
+            try: () => dbService.db
+              .select({
+                id: locations.id,
+                name: locations.name,
+                parentLocationId: locations.parentLocationId,
+                path: locations.path,
+                depth: locations.depth
+              })
+              .from(locations)
+              .where(and(eq(locations.userId, userId), descendantWhere(location))),
+            catch: error => locationDeleteError('The location could not be deleted. Please try again.', error)
+          }).pipe(Effect.map(rows => rows.map(row => ({
+            id: row.id,
+            name: row.name,
+            parentLocationId: row.parentLocationId ?? null,
+            path: row.path,
+            depth: row.depth
+          }))))
 
-              return [
-                database.update(userBooks)
-                  .set({ locationId: mode === 'move' ? targetLocation?.id ?? null : null })
-                  .where(and(
-                    eq(userBooks.userId, userId),
-                    inArray(userBooks.locationId, scopedLocationIds),
-                    isNull(userBooks.removedAt)
-                  )),
-                database.delete(locations)
-                  .where(and(
-                    eq(locations.userId, userId),
-                    descendantWhere(location),
-                    mutationIsCurrent
-                  ))
-              ]
-            }),
-            catch: error => new LocationDeleteError({
-              message: `Failed to delete location: ${error}`,
-              operation: 'deleteLocation'
+          const rootSnapshot = scopedLocations.find(row => row.id === location.id)
+          if (!locationStateMatches(rootSnapshot, location)) {
+            return yield* Effect.fail(locationDeleteError('Failed to delete location because the hierarchy changed during the operation'))
+          }
+
+          if (mode === 'move' && targetLocation) {
+            const targetRows = yield* Effect.tryPromise({
+              try: () => dbService.db
+                .select({
+                  id: locations.id,
+                  name: locations.name,
+                  parentLocationId: locations.parentLocationId,
+                  path: locations.path,
+                  depth: locations.depth
+                })
+                .from(locations)
+                .where(and(eq(locations.userId, userId), eq(locations.id, targetLocation.id)))
+                .limit(1),
+              catch: error => locationDeleteError('The location could not be deleted. Please try again.', error)
+            }).pipe(Effect.map(rows => rows.map(row => ({
+              id: row.id,
+              name: row.name,
+              parentLocationId: row.parentLocationId ?? null,
+              path: row.path,
+              depth: row.depth
+            }))))
+
+            if (!locationStateMatches(targetRows[0], targetLocation)) {
+              return yield* Effect.fail(locationDeleteError('Failed to delete location because the hierarchy changed during the operation'))
+            }
+          }
+
+          const scopedLocationIds = scopedLocations.map(row => row.id)
+          const results = yield* Effect.tryPromise({
+            try: () => dbService.executeAtomic(database =>
+              buildDeleteLocationStatements(database, userId, scopedLocationIds, mode, targetLocation)
+            ),
+            catch: error => locationDeleteError('The location could not be deleted. Please try again.', error)
+          }).pipe(
+            Effect.timeoutFail({
+              duration: deleteLocationAtomicTimeout,
+              onTimeout: () => locationDeleteError('The location could not be deleted. Please try again.', new Error('deleteLocation timed out'))
             })
-          })
+          )
           if (affectedRows(results.at(-1)) === 0) {
-            return yield* Effect.fail(new LocationDeleteError({
-              message: 'Failed to delete location because the hierarchy changed during the operation',
-              operation: 'deleteLocation'
-            }))
+            return yield* Effect.fail(locationDeleteError('Failed to delete location because the hierarchy changed during the operation'))
           }
         })
     }

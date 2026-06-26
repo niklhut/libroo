@@ -11,3 +11,8 @@ allowBuilds:
   unrs-resolver: true
   vue-demi: true
   workerd: true
+
+minimumReleaseAgeExclude:
+  - '@cloudflare/vitest-pool-workers@0.16.20'
+  - miniflare@4.20260625.0
+  - wrangler@4.105.0

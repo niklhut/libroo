@@ -152,7 +152,7 @@ async function deleteLocation() {
 
 function showErrorToast(title: string, err: unknown) {
   const message = (err as { data?: { message?: string } })?.data?.message
-    ?? (err instanceof Error ? err.message : 'Something went wrong')
+    ?? 'Something went wrong'
   toast.add({ title, description: message, color: 'error' })
 }
 </script>

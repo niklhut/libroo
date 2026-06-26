@@ -9,6 +9,8 @@ import { asc, eq, sql } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { books, locations, user, userBooks } from '../../../../server/db/schema'
 import {
+  affectedRows,
+  buildDeleteLocationStatements,
   LocationDeleteError,
   LocationRepository,
   LocationRepositoryLive,
@@ -19,6 +21,39 @@ import { DbService, type DbServiceInterface } from '../../../../server/services/
 
 type Database = ReturnType<typeof drizzle>
 type AtomicMode = 'd1-batch' | 'selfhost-transaction'
+
+describe('LocationRepository D1 delete helpers', () => {
+  it('reads affected rows from D1 meta.changes results', () => {
+    expect(affectedRows({ meta: { changes: 3 } })).toBe(3)
+    expect(affectedRows({ meta: { changes: '3' } })).toBe(0)
+  })
+
+  it('builds deleteLocation batch statements without nested selects or exists clauses', () => {
+    const client = createClient({ url: ':memory:' })
+    const database = drizzle(client)
+    const target: LocationRecord = {
+      id: 'target',
+      name: 'Archive',
+      parentLocationId: null,
+      path: 'Archive',
+      depth: 0
+    }
+
+    const statements = buildDeleteLocationStatements(
+      database as unknown as DbServiceInterface['db'],
+      'user-1',
+      ['root', 'child'],
+      'move',
+      target
+    )
+    const sqlText = statements.map(statement => statement.toSQL().sql).join('\n').toLowerCase()
+
+    expect(sqlText).not.toMatch(/\bselect\b/)
+    expect(sqlText).not.toMatch(/\bexists\b/)
+    expect(sqlText).toContain('in (?, ?)')
+    client.close()
+  })
+})
 
 describe.each<AtomicMode>(['d1-batch', 'selfhost-transaction'])('LocationRepository atomic mutations (%s)', (mode) => {
   let db: Database
@@ -231,27 +266,26 @@ describe.each<AtomicMode>(['d1-batch', 'selfhost-transaction'])('LocationReposit
     await expect(bookLocation(db)).resolves.toBe('other-root')
   })
 
-  it('does not delete when the book destination changed before the batch starts', async () => {
+  it('does not delete when the book destination changed after the caller loaded it', async () => {
     await seedLocations(db)
     await seedBook(db, 'grandchild')
     const root = await getLocation(db, 'root')
     const target = await getLocation(db, 'other-root')
+
+    await db.update(locations)
+      .set({
+        name: 'Concurrent Archive',
+        normalizedName: 'concurrent archive',
+        path: 'Concurrent Archive'
+      })
+      .where(eq(locations.id, 'other-root'))
 
     const result = await Effect.runPromise(Effect.either(repositoryEffect(
       db,
       mode,
       Effect.flatMap(LocationRepository, repository =>
         repository.deleteLocation('user-1', root, 'move', target)
-      ),
-      async () => {
-        await db.update(locations)
-          .set({
-            name: 'Concurrent Archive',
-            normalizedName: 'concurrent archive',
-            path: 'Concurrent Archive'
-          })
-          .where(eq(locations.id, 'other-root'))
-      }
+      )
     )))
 
     expect(result._tag).toBe('Left')
@@ -268,38 +302,32 @@ describe.each<AtomicMode>(['d1-batch', 'selfhost-transaction'])('LocationReposit
     ])
   })
 
-  it('includes locations that enter the hierarchy before the delete batch starts', async () => {
+  it('includes locations that entered the hierarchy after the caller loaded the root', async () => {
     await seedLocations(db)
     await seedBook(db, 'grandchild')
     const root = await getLocation(db, 'root')
-
-    await runRepository(
-      db,
-      mode,
-      Effect.flatMap(LocationRepository, repository =>
-        repository.deleteLocation('user-1', root, 'clear', null)
-      ),
-      async () => {
-        const now = new Date('2026-06-24T10:01:00.000Z')
-        await db.insert(locations).values(
-          locationValue('late-child', 'Late', 'root', 'Shelf - Late', 1, now)
-        )
-        await db.insert(books).values({
-          id: 'late-book',
-          title: 'Late Arrival',
-          source: 'manual',
-          createdByUserId: 'user-1',
-          createdAt: now
-        })
-        await db.insert(userBooks).values({
-          id: 'late-user-book',
-          userId: 'user-1',
-          bookId: 'late-book',
-          locationId: 'late-child',
-          addedAt: now
-        })
-      }
+    const now = new Date('2026-06-24T10:01:00.000Z')
+    await db.insert(locations).values(
+      locationValue('late-child', 'Late', 'root', 'Shelf - Late', 1, now)
     )
+    await db.insert(books).values({
+      id: 'late-book',
+      title: 'Late Arrival',
+      source: 'manual',
+      createdByUserId: 'user-1',
+      createdAt: now
+    })
+    await db.insert(userBooks).values({
+      id: 'late-user-book',
+      userId: 'user-1',
+      bookId: 'late-book',
+      locationId: 'late-child',
+      addedAt: now
+    })
+
+    await runRepository(db, mode, Effect.flatMap(LocationRepository, repository =>
+      repository.deleteLocation('user-1', root, 'clear', null)
+    ))
 
     await expect(locationPaths(db)).resolves.toEqual([
       { id: 'other-root', path: 'Archive', depth: 0 }
@@ -336,7 +364,7 @@ describe.each<AtomicMode>(['d1-batch', 'selfhost-transaction'])('LocationReposit
     expect(result._tag).toBe('Left')
     if (result._tag === 'Left') {
       expect(result.left).toBeInstanceOf(LocationDeleteError)
-      expect(result.left.message).toContain('Failed to delete location')
+      expect(result.left.message).toBe('The location could not be deleted. Please try again.')
     }
     await expect(bookLocation(db)).resolves.toBe('grandchild')
     await expect(locationPaths(db)).resolves.toEqual([

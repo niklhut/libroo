@@ -172,11 +172,17 @@ export function handleError(error: unknown): Effect.Effect<never> {
         ? formatter(error)
         : underlyingMessage
       const operation = getProp<string>(error, 'operation')
+      const cause = getProp<unknown>(error, 'cause')
+      const causeMessage = cause instanceof Error ? cause.message : cause ? String(cause) : undefined
+      const diagnosticMessage = causeMessage
+        ? `${underlyingMessage}; cause: ${causeMessage}`
+        : underlyingMessage
 
-      yield* Effect.logError(`[${tag}${operation ? `:${operation}` : ''}] ${underlyingMessage}`).pipe(
+      yield* Effect.logError(`[${tag}${operation ? `:${operation}` : ''}] ${diagnosticMessage}`).pipe(
         Effect.annotateLogs({
           tag,
           operation: operation ?? 'unknown',
+          cause: causeMessage ?? 'none',
           severity: 'error'
         }),
         Effect.provide(StructuredLoggerLive)
