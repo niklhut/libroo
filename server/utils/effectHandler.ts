@@ -67,7 +67,9 @@ export function effectHandler<A, E>(
           ? yield* requireAuth(event)
           : yield* requireVerifiedAuth(event)
       return yield* handler(event, user)
-    })
+    }).pipe(
+      Effect.annotateLogs({ path: event.path })
+    )
 
     // Run the effect pipeline:
     // 1. Provide dependencies (MainLive)
