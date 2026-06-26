@@ -154,6 +154,11 @@ export interface BookRepositoryInterface {
     isbn: string
   ) => Effect.Effect<boolean, DatabaseError, DbService>
 
+  userOwnsManualCover: (
+    userId: string,
+    pathname: string
+  ) => Effect.Effect<boolean, DatabaseError, DbService>
+
   removeFromLibrary: (
     userBookId: string,
     userId: string,
@@ -1357,6 +1362,29 @@ export const BookRepositoryLive = Layer.effect(
           return Boolean(result[0])
         }),
 
+      userOwnsManualCover: (userId, pathname) =>
+        Effect.gen(function* () {
+          const result = yield* Effect.tryPromise({
+            try: () =>
+              dbService.db
+                .select({ id: userBooks.id })
+                .from(userBooks)
+                .innerJoin(books, eq(userBooks.bookId, books.id))
+                .where(and(
+                  eq(userBooks.userId, userId),
+                  isNull(userBooks.removedAt),
+                  eq(books.coverPath, pathname)
+                ))
+                .limit(1),
+            catch: error => new DatabaseError({
+              message: `Failed to validate manual cover ownership: ${error}`,
+              operation: 'userOwnsManualCover'
+            })
+          })
+
+          return Boolean(result[0])
+        }),
+
       removeFromLibrary: (userBookId, userId, options = {}) =>
         Effect.gen(function* () {
           yield* getOwnedUserBookRef(userBookId, userId)
@@ -1881,6 +1909,9 @@ export const listOpenLibraryBooksMissingCovers = (limit: number) =>
 
 export const updateOpenLibraryCoverPath = (bookId: string, coverPath: string) =>
   Effect.flatMap(BookRepository, repo => repo.updateOpenLibraryCoverPath(bookId, coverPath))
+
+export const userOwnsManualCover = (userId: string, pathname: string) =>
+  Effect.flatMap(BookRepository, repo => repo.userOwnsManualCover(userId, pathname))
 
 export const removeFromLibrary = (
   userBookId: string,
