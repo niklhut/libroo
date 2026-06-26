@@ -42,7 +42,10 @@ describe('LocationRepository D1 delete helpers', () => {
     const statements = buildDeleteLocationStatements(
       database as unknown as DbServiceInterface['db'],
       'user-1',
-      ['root', 'child'],
+      [
+        { id: 'root', name: 'Shelf', parentLocationId: null, path: 'Shelf', depth: 0 },
+        { id: 'child', name: 'Row', parentLocationId: 'root', path: 'Shelf - Row', depth: 1 }
+      ],
       'move',
       target
     )
@@ -51,6 +54,10 @@ describe('LocationRepository D1 delete helpers', () => {
     expect(sqlText).not.toMatch(/\bselect\b/)
     expect(sqlText).not.toMatch(/\bexists\b/)
     expect(sqlText).toContain('in (?, ?)')
+    expect(statements.slice(1).map(statement => statement.toSQL().params.at(-1))).toEqual([
+      'child',
+      'root'
+    ])
     client.close()
   })
 })

@@ -145,10 +145,21 @@ function locationDeleteError(message: string, cause?: unknown): LocationDeleteEr
 export function buildDeleteLocationStatements(
   database: DbServiceInterface['db'],
   userId: string,
-  scopedLocationIds: readonly string[],
+  scopedLocations: readonly LocationRecord[],
   mode: 'clear' | 'move',
   targetLocation: LocationRecord | null
 ): AtomicDbStatements {
+  const scopedLocationIds = scopedLocations.map(location => location.id)
+  const deleteStatements = [...scopedLocations]
+    .sort((a, b) => b.depth - a.depth)
+    .map(location =>
+      database.delete(locations)
+        .where(and(
+          eq(locations.userId, userId),
+          eq(locations.id, location.id)
+        ))
+    )
+
   return [
     database.update(userBooks)
       .set({ locationId: mode === 'move' ? targetLocation?.id ?? null : null })
@@ -157,11 +168,7 @@ export function buildDeleteLocationStatements(
         inArray(userBooks.locationId, [...scopedLocationIds]),
         isNull(userBooks.removedAt)
       )),
-    database.delete(locations)
-      .where(and(
-        eq(locations.userId, userId),
-        inArray(locations.id, [...scopedLocationIds])
-      ))
+    ...deleteStatements
   ]
 }
 
@@ -493,10 +500,9 @@ export const LocationRepositoryLive = Layer.effect(
             }
           }
 
-          const scopedLocationIds = scopedLocations.map(row => row.id)
           const results = yield* Effect.tryPromise({
             try: () => dbService.executeAtomic(database =>
-              buildDeleteLocationStatements(database, userId, scopedLocationIds, mode, targetLocation)
+              buildDeleteLocationStatements(database, userId, scopedLocations, mode, targetLocation)
             ),
             catch: error => locationDeleteError('The location could not be deleted. Please try again.', error)
           }).pipe(
