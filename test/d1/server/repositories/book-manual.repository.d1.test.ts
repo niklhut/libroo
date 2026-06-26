@@ -1,7 +1,7 @@
 /// <reference types="@cloudflare/vitest-pool-workers" />
 
 import { env } from 'cloudflare:workers'
-import { Effect, Layer } from 'effect'
+import { Effect, Either, Layer } from 'effect'
 import { drizzle } from 'drizzle-orm/d1'
 import { eq } from 'drizzle-orm'
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
@@ -9,7 +9,7 @@ import initialMigration from '../../../../server/db/migrations/sqlite/0000_initi
 import termsMigration from '../../../../server/db/migrations/sqlite/0001_add_terms_acceptance.sql?raw'
 import locationRestrictMigration from '../../../../server/db/migrations/sqlite/0002_prevent_location_delete_cascade.sql?raw'
 import { bookAuthors, books, user, userBooks, userBookTags } from '../../../../server/db/schema'
-import { BookRepository, BookRepositoryLive } from '../../../../server/repositories/book.repository'
+import { BookCreateError, BookRepository, BookRepositoryLive } from '../../../../server/repositories/book.repository'
 import { DbService, type DbServiceInterface } from '../../../../server/services/db.service'
 
 type D1Db = ReturnType<typeof drizzle>
@@ -65,6 +65,32 @@ describe('BookRepository.createManualBook on D1', () => {
     await expect(db.select().from(userBooks).where(eq(userBooks.id, result.id))).resolves.toHaveLength(1)
     await expect(db.select().from(bookAuthors).where(eq(bookAuthors.bookId, result.bookId))).resolves.toHaveLength(2)
     await expect(db.select().from(userBookTags).where(eq(userBookTags.userBookId, result.id))).resolves.toHaveLength(2)
+  })
+
+  it('rejects manual cover paths outside the signed-in user namespace', async () => {
+    const result = await runRepository(db, Effect.either(Effect.flatMap(BookRepository, repository =>
+      repository.createManualBook('user-1', {
+        title: 'Borrowed Path',
+        authors: ['Ada Lovelace'],
+        isbn: null,
+        coverPath: 'covers/manual/user-2/book.webp',
+        publishDate: null,
+        publisher: null,
+        numberOfPages: null,
+        rating: null,
+        note: null,
+        readingStatus: 'unread',
+        currentPage: null,
+        progressPercent: null,
+        tags: []
+      })
+    )))
+
+    expect(Either.isLeft(result)).toBe(true)
+    if (Either.isLeft(result)) {
+      expect(result.left).toBeInstanceOf(BookCreateError)
+    }
+    await expect(db.select().from(books)).resolves.toHaveLength(0)
   })
 })
 

@@ -244,6 +244,25 @@ function normalizeISBN(isbn: string): string {
 
 const TRUSTED_COVER_EXTENSIONS = new Set(['webp', 'jpg', 'jpeg', 'png', 'gif'])
 
+function validateManualCoverPath(userId: string, coverPath: string | null): string | null {
+  if (!coverPath) return null
+
+  const expectedPrefix = `covers/manual/${userId}/`
+  const extension = coverPath.split('.').pop()?.toLowerCase()
+  if (
+    !coverPath.startsWith(expectedPrefix)
+    || coverPath.length <= expectedPrefix.length
+    || coverPath.includes('..')
+    || coverPath.slice(expectedPrefix.length).includes('/')
+    || !extension
+    || !TRUSTED_COVER_EXTENSIONS.has(extension)
+  ) {
+    throw new BookCreateError({ message: 'Manual cover path is invalid' })
+  }
+
+  return coverPath
+}
+
 function findStoredOpenLibraryCover(isbn: string) {
   const normalizedISBN = normalizeISBN(isbn)
   const candidatePaths = [...TRUSTED_COVER_EXTENSIONS].map(extension => `covers/${normalizedISBN}.${extension}`)
@@ -812,11 +831,12 @@ export const BookRepositoryLive = Layer.effect(
               const now = new Date()
               const bookId = generateId()
               const userBookId = generateId()
+              const coverPath = validateManualCoverPath(userId, input.coverPath)
               const newBook = {
                 id: bookId,
                 isbn: input.isbn,
                 title: input.title,
-                coverPath: input.coverPath,
+                coverPath,
                 openLibraryKey: null,
                 workKey: null,
                 description: null,
