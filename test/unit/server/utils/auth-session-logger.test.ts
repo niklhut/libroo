@@ -19,8 +19,9 @@ describe('auth session logger', () => {
     })
   })
 
-  it('logs only safe request metadata', () => {
+  it('does not emit routine success logs', () => {
     const info = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const event = makeEvent({
       path: '/library',
       headers: new Headers({
@@ -37,12 +38,8 @@ describe('auth session logger', () => {
       outcome: AUTH_SESSION_OUTCOMES.success
     })
 
-    expect(info).toHaveBeenCalledWith('auth-session success path=/library', {
-      component: 'auth-session',
-      outcome: 'success',
-      requestId: 'req-1',
-      path: '/library'
-    })
+    expect(info).not.toHaveBeenCalled()
+    expect(warn).not.toHaveBeenCalled()
     expect(JSON.stringify(info.mock.calls)).not.toContain('secret')
     expect(JSON.stringify(info.mock.calls)).not.toContain('authorization')
   })

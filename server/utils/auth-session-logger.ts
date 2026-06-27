@@ -33,6 +33,10 @@ const EMAIL_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi
 const SECRET_VALUE_PATTERN = /\b(cookie|token|secret|password|authorization|bearer|session)[^,\s]*/gi
 
 export function logAuthSessionResolution(options: AuthSessionLogOptions) {
+  if (options.outcome !== AUTH_SESSION_OUTCOMES.failure) {
+    return
+  }
+
   const payload: Record<string, unknown> = {
     component: 'auth-session',
     outcome: options.outcome,
@@ -43,18 +47,10 @@ export function logAuthSessionResolution(options: AuthSessionLogOptions) {
     payload.reason = redactSensitiveText(options.reason)
   }
 
-  if (options.outcome === AUTH_SESSION_OUTCOMES.failure) {
-    payload.error = summarizeAuthSessionError(options.error)
-  }
+  payload.error = summarizeAuthSessionError(options.error)
 
   const message = formatAuthSessionLogMessage(payload)
-
-  if (options.outcome === AUTH_SESSION_OUTCOMES.failure) {
-    console.warn(message, payload)
-    return
-  }
-
-  console.info(message, payload)
+  console.warn(message, payload)
 }
 
 export function summarizeAuthSessionError(error: unknown): SafeAuthSessionError {
