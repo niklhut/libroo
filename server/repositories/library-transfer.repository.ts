@@ -10,12 +10,27 @@ import type {
   LibraryImportConflictStrategy,
   LibraryImportResult
 } from '../../shared/types/library-transfer'
+import { DatabaseError } from './book.repository'
+import { DbService, type AtomicDbStatement } from '../services/db.service'
 
 interface ExistingImportMatch {
   userBookId: string
   bookId: string
   bookSource: 'open_library' | 'manual'
   createdByUserId: string | null
+}
+
+interface ImportLocationNode {
+  id: string
+  name: string
+  parentLocationId: string | null
+  path: string
+  depth: number
+}
+
+interface PendingLocationCreate extends ImportLocationNode {
+  normalizedName: string
+  cacheKey: string
 }
 
 export interface LibraryTransferRepositoryInterface {
@@ -49,6 +64,14 @@ function splitLocationPath(path: string) {
     const name = normalizeBookLocationName(part)
     return name ? [name] : []
   })
+}
+
+function locationParentId(parent: ImportLocationNode | null) {
+  return parent?.id ?? null
+}
+
+function locationChildDepth(parent: ImportLocationNode | null) {
+  return parent ? parent.depth + 1 : 0
 }
 
 export const LibraryTransferRepositoryLive = Layer.effect(
@@ -161,219 +184,290 @@ export const LibraryTransferRepositoryLive = Layer.effect(
         Effect.tryPromise({
           try: async () => {
             const result: LibraryImportResult = { created: 0, updated: 0, skipped: 0, failed: [] }
+            const authorCache = new Map<string, string>()
+            const tagCache = new Map<string, string>()
+            const locationCache = new Map<string, string>()
 
-            await dbService.db.transaction(async (tx) => {
-              const resolveAuthorId = async (name: string, now: Date) => {
-                const displayName = name.trim().replace(/\s+/g, ' ') || 'Unknown Author'
-                const normalizedName = normalizeAuthorName(displayName)
-                const existing = await tx.select({ id: authors.id }).from(authors).where(eq(authors.normalizedName, normalizedName)).limit(1)
-                if (existing[0]) return existing[0].id
-
-                const id = generateId()
-                await tx.insert(authors).values({ id, name: displayName, normalizedName, createdAt: now, updatedAt: now }).onConflictDoNothing()
-                const resolved = await tx.select({ id: authors.id }).from(authors).where(eq(authors.normalizedName, normalizedName)).limit(1)
-                return resolved[0]?.id ?? id
-              }
-
-              const resolveTagId = async (name: string, now: Date) => {
-                const normalized = normalizeTagInput(name)
-                if (!normalized) return null
-
-                const existing = await tx.select({ id: tags.id }).from(tags).where(eq(tags.normalizedName, normalized.key)).limit(1)
-                if (existing[0]) return existing[0].id
-
-                const id = generateId()
-                await tx.insert(tags).values({
-                  id,
-                  name: normalized.displayName,
-                  normalizedName: normalized.key,
-                  createdAt: now,
-                  updatedAt: now
-                }).onConflictDoNothing()
-                const resolved = await tx.select({ id: tags.id }).from(tags).where(eq(tags.normalizedName, normalized.key)).limit(1)
-                return resolved[0]?.id ?? id
-              }
-
-              const setAuthors = async (bookId: string, names: string[], now: Date) => {
-                await tx.delete(bookAuthors).where(eq(bookAuthors.bookId, bookId))
-                const seen = new Set<string>()
-                const uniqueNames = names.filter((name) => {
-                  const key = normalizeAuthorName(name)
-                  if (!key || seen.has(key)) return false
-                  seen.add(key)
-                  return true
-                })
-                const authorNames = uniqueNames.length > 0 ? uniqueNames : ['Unknown Author']
-                for (const [index, name] of authorNames.entries()) {
-                  const authorId = await resolveAuthorId(name, now)
-                  await tx.insert(bookAuthors).values({ bookId, authorId, sortOrder: index, createdAt: now }).onConflictDoNothing()
-                }
-              }
-
-              const setTags = async (userBookId: string, tagNames: string[], now: Date) => {
-                await tx.delete(userBookTags).where(eq(userBookTags.userBookId, userBookId))
-                const seen = new Set<string>()
-                for (const name of tagNames) {
-                  const normalized = normalizeTagInput(name)
-                  if (!normalized || seen.has(normalized.key)) continue
-                  seen.add(normalized.key)
-                  const tagId = await resolveTagId(normalized.displayName, now)
-                  if (!tagId) continue
-                  await tx.insert(userBookTags).values({
-                    id: generateId(),
-                    userBookId,
-                    tagId,
-                    createdAt: now,
-                    updatedAt: now
-                  }).onConflictDoNothing()
-                }
-              }
-
-              const resolveLocationId = async (path: string | null, now: Date) => {
-                if (!path) return null
-
-                const parts = splitLocationPath(path)
-                if (parts.length === 0) return null
-
-                let parent: { id: string, name: string, parentLocationId: string | null, path: string, depth: number } | null = null
-                for (const part of parts) {
-                  const normalizedName = normalizeBookLocationKey(part)
-                  const existing = await tx
-                    .select({
-                      id: locations.id,
-                      name: locations.name,
-                      parentLocationId: locations.parentLocationId,
-                      path: locations.path,
-                      depth: locations.depth
-                    })
-                    .from(locations)
-                    .where(and(
-                      eq(locations.userId, userId),
-                      parent ? eq(locations.parentLocationId, parent.id) : isNull(locations.parentLocationId),
-                      eq(locations.normalizedName, normalizedName)
-                    ))
-                    .limit(1)
-
-                  if (existing[0]) {
-                    parent = existing[0]
-                    continue
-                  }
-
-                  const id = generateId()
-                  const locationPath = locationChildPath(parent, part)
-                  const depth: number = parent ? parent.depth + 1 : 0
-                  await tx.insert(locations).values({
-                    id,
-                    userId,
-                    parentLocationId: parent?.id ?? null,
-                    name: part,
-                    normalizedName,
-                    path: locationPath,
-                    depth,
-                    createdAt: now,
-                    updatedAt: now
-                  })
-                  parent = { id, name: part, parentLocationId: parent?.id ?? null, path: locationPath, depth }
-                }
-
-                return parent?.id ?? null
-              }
-
-              const findExisting = async (record: LibraryImportBookInput): Promise<ExistingImportMatch | null> => {
-                if (record.isbn) {
-                  const rows = await tx
-                    .select({
-                      userBookId: userBooks.id,
-                      bookId: books.id,
-                      bookSource: books.source,
-                      createdByUserId: books.createdByUserId
-                    })
-                    .from(userBooks)
-                    .innerJoin(books, eq(userBooks.bookId, books.id))
-                    .where(and(eq(userBooks.userId, userId), eq(books.isbn, record.isbn), isNull(userBooks.removedAt)))
-                    .limit(1)
-                  if (rows[0]) return rows[0]
-                }
-
-                const rows = await tx
+            const findExisting = async (record: LibraryImportBookInput): Promise<ExistingImportMatch | null> => {
+              if (record.isbn) {
+                const rows = await dbService.db
                   .select({
                     userBookId: userBooks.id,
                     bookId: books.id,
                     bookSource: books.source,
-                    createdByUserId: books.createdByUserId,
-                    authorName: authors.name
+                    createdByUserId: books.createdByUserId
                   })
                   .from(userBooks)
                   .innerJoin(books, eq(userBooks.bookId, books.id))
-                  .leftJoin(bookAuthors, eq(bookAuthors.bookId, books.id))
-                  .leftJoin(authors, eq(bookAuthors.authorId, authors.id))
-                  .where(and(eq(userBooks.userId, userId), isNull(userBooks.removedAt), eq(sql`lower(${books.title})`, normalizeConflictText(record.title))))
-
-                const importAuthorKeys = new Set(record.authors.map(normalizeConflictText))
-                const matched = rows.find(row => row.authorName && importAuthorKeys.has(normalizeConflictText(row.authorName)))
-                return matched
-                  ? {
-                      userBookId: matched.userBookId,
-                      bookId: matched.bookId,
-                      bookSource: matched.bookSource,
-                      createdByUserId: matched.createdByUserId
-                    }
-                  : null
+                  .where(and(eq(userBooks.userId, userId), eq(books.isbn, record.isbn), isNull(userBooks.removedAt)))
+                  .limit(1)
+                if (rows[0]) return rows[0]
               }
 
-              for (const [index, record] of records.entries()) {
-                const rowNumber = index + 2
-                try {
-                  const now = new Date()
-                  const existing = await findExisting(record)
+              const rows = await dbService.db
+                .select({
+                  userBookId: userBooks.id,
+                  bookId: books.id,
+                  bookSource: books.source,
+                  createdByUserId: books.createdByUserId,
+                  authorName: authors.name
+                })
+                .from(userBooks)
+                .innerJoin(books, eq(userBooks.bookId, books.id))
+                .leftJoin(bookAuthors, eq(bookAuthors.bookId, books.id))
+                .leftJoin(authors, eq(bookAuthors.authorId, authors.id))
+                .where(and(eq(userBooks.userId, userId), isNull(userBooks.removedAt), eq(sql`lower(${books.title})`, normalizeConflictText(record.title))))
 
-                  if (existing && conflictStrategy === 'existing') {
-                    result.skipped++
-                    continue
+              const importAuthorKeys = new Set(record.authors.map(normalizeConflictText))
+              const matched = rows.find(row => row.authorName && importAuthorKeys.has(normalizeConflictText(row.authorName)))
+              return matched
+                ? {
+                    userBookId: matched.userBookId,
+                    bookId: matched.bookId,
+                    bookSource: matched.bookSource,
+                    createdByUserId: matched.createdByUserId
+                  }
+                : null
+            }
+
+            for (const [index, record] of records.entries()) {
+              const rowNumber = index + 2
+              try {
+                const now = new Date()
+                const existing = await findExisting(record)
+
+                if (existing && conflictStrategy === 'existing') {
+                  result.skipped++
+                  continue
+                }
+
+                const authorCreates: Array<{ id: string, name: string, normalizedName: string }> = []
+                const tagCreates: Array<{ id: string, name: string, normalizedName: string }> = []
+                const locationCreates: PendingLocationCreate[] = []
+                const cacheUpdates: Array<() => void> = []
+                const recordAuthorCache = new Map<string, string>()
+                const recordTagCache = new Map<string, string>()
+                const recordLocationCache = new Map<string, string>()
+
+                const resolveAuthorId = async (name: string) => {
+                  const displayName = name.trim().replace(/\s+/g, ' ') || 'Unknown Author'
+                  const normalizedName = normalizeAuthorName(displayName)
+                  const cachedId = recordAuthorCache.get(normalizedName) ?? authorCache.get(normalizedName)
+                  if (cachedId) return cachedId
+
+                  const existingAuthor = await dbService.db
+                    .select({ id: authors.id })
+                    .from(authors)
+                    .where(eq(authors.normalizedName, normalizedName))
+                    .limit(1)
+                  if (existingAuthor[0]) {
+                    authorCache.set(normalizedName, existingAuthor[0].id)
+                    return existingAuthor[0].id
                   }
 
-                  const locationId = await resolveLocationId(record.locationPath, now)
-                  const userBookValues = {
-                    locationId,
-                    rating: record.rating,
-                    note: record.note,
-                    readingStatus: record.readingStatus,
-                    currentPage: record.currentPage,
-                    progressPercent: record.progressPercent
+                  const id = generateId()
+                  authorCreates.push({ id, name: displayName, normalizedName })
+                  recordAuthorCache.set(normalizedName, id)
+                  cacheUpdates.push(() => authorCache.set(normalizedName, id))
+                  return id
+                }
+
+                const resolveTagId = async (name: string) => {
+                  const normalized = normalizeTagInput(name)
+                  if (!normalized) return null
+
+                  const cachedId = recordTagCache.get(normalized.key) ?? tagCache.get(normalized.key)
+                  if (cachedId) return cachedId
+
+                  const existingTag = await dbService.db
+                    .select({ id: tags.id })
+                    .from(tags)
+                    .where(eq(tags.normalizedName, normalized.key))
+                    .limit(1)
+                  if (existingTag[0]) {
+                    tagCache.set(normalized.key, existingTag[0].id)
+                    return existingTag[0].id
+                  }
+
+                  const id = generateId()
+                  tagCreates.push({ id, name: normalized.displayName, normalizedName: normalized.key })
+                  recordTagCache.set(normalized.key, id)
+                  cacheUpdates.push(() => tagCache.set(normalized.key, id))
+                  return id
+                }
+
+                const resolveLocationId = async (path: string | null) => {
+                  if (!path) return null
+
+                  const parts = splitLocationPath(path)
+                  if (parts.length === 0) return null
+
+                  let parent: ImportLocationNode | null = null
+                  for (const part of parts) {
+                    const parentNode: ImportLocationNode | null = parent
+                    const normalizedName = normalizeBookLocationKey(part)
+                    const parentId = locationParentId(parentNode)
+                    const cacheKey: string = `${parentId ?? 'root'}:${normalizedName}`
+                    const cachedId: string | undefined = recordLocationCache.get(cacheKey) ?? locationCache.get(cacheKey)
+                    if (cachedId) {
+                      parent = locationCreates.find(location => location.id === cachedId)
+                        ?? {
+                          id: cachedId,
+                          name: part,
+                          parentLocationId: parentId,
+                          path: locationChildPath(parentNode, part),
+                          depth: locationChildDepth(parentNode)
+                        }
+                      continue
+                    }
+
+                    const existingLocation = await dbService.db
+                      .select({
+                        id: locations.id,
+                        name: locations.name,
+                        parentLocationId: locations.parentLocationId,
+                        path: locations.path,
+                        depth: locations.depth
+                      })
+                      .from(locations)
+                      .where(and(
+                        eq(locations.userId, userId),
+                        parent ? eq(locations.parentLocationId, parent.id) : isNull(locations.parentLocationId),
+                        eq(locations.normalizedName, normalizedName)
+                      ))
+                      .limit(1)
+
+                    if (existingLocation[0]) {
+                      parent = existingLocation[0]
+                      locationCache.set(cacheKey, parent.id)
+                      continue
+                    }
+
+                    const id = generateId()
+                    const locationPath = locationChildPath(parentNode, part)
+                    const depth = locationChildDepth(parentNode)
+                    const createdLocation: PendingLocationCreate = {
+                      id,
+                      parentLocationId: parentId,
+                      name: part,
+                      normalizedName,
+                      path: locationPath,
+                      depth,
+                      cacheKey
+                    }
+                    locationCreates.push(createdLocation)
+                    recordLocationCache.set(cacheKey, id)
+                    cacheUpdates.push(() => locationCache.set(cacheKey, id))
+                    parent = { id, name: part, parentLocationId: parent?.id ?? null, path: locationPath, depth }
+                  }
+
+                  return parent?.id ?? null
+                }
+
+                const resolveAuthorLinks = async (names: string[]) => {
+                  const seen = new Set<string>()
+                  const uniqueNames = names.filter((name) => {
+                    const key = normalizeAuthorName(name)
+                    if (!key || seen.has(key)) return false
+                    seen.add(key)
+                    return true
+                  })
+                  const authorNames = uniqueNames.length > 0 ? uniqueNames : ['Unknown Author']
+                  return Promise.all(authorNames.map(async (name, sortOrder) => ({
+                    authorId: await resolveAuthorId(name),
+                    sortOrder
+                  })))
+                }
+
+                const resolveTagLinks = async (tagNames: string[]) => {
+                  const seen = new Set<string>()
+                  const tagLinks: Array<{ id: string, tagId: string }> = []
+                  for (const name of tagNames) {
+                    const normalized = normalizeTagInput(name)
+                    if (!normalized || seen.has(normalized.key)) continue
+                    seen.add(normalized.key)
+                    const tagId = await resolveTagId(normalized.displayName)
+                    if (!tagId) continue
+                    tagLinks.push({ id: generateId(), tagId })
+                  }
+                  return tagLinks
+                }
+
+                const locationId = await resolveLocationId(record.locationPath)
+                const userBookValues = {
+                  locationId,
+                  rating: record.rating,
+                  note: record.note,
+                  readingStatus: record.readingStatus,
+                  currentPage: record.currentPage,
+                  progressPercent: record.progressPercent
+                }
+
+                let sharedOpenLibraryBookId: string | null = null
+                if (!existing && record.isbn) {
+                  const shared = await dbService.db
+                    .select({ id: books.id })
+                    .from(books)
+                    .where(and(eq(books.isbn, record.isbn), eq(books.source, 'open_library')))
+                    .limit(1)
+                  sharedOpenLibraryBookId = shared[0]?.id ?? null
+                }
+
+                const bookId = existing?.bookId ?? sharedOpenLibraryBookId ?? generateId()
+                const userBookId = existing?.userBookId ?? generateId()
+                const shouldSetAuthors = !existing || (existing.bookSource === 'manual' && existing.createdByUserId === userId)
+                const authorLinks = shouldSetAuthors ? await resolveAuthorLinks(record.authors) : []
+                const tagLinks = await resolveTagLinks(record.tags)
+
+                // D1 commits each imported record independently; earlier successful records are no longer rolled back by a later failed row.
+                await dbService.executeAtomic((database) => {
+                  const statements: AtomicDbStatement[] = []
+
+                  for (const author of authorCreates) {
+                    statements.push(database.insert(authors).values({
+                      id: author.id,
+                      name: author.name,
+                      normalizedName: author.normalizedName,
+                      createdAt: now,
+                      updatedAt: now
+                    }).onConflictDoNothing())
+                  }
+
+                  for (const tag of tagCreates) {
+                    statements.push(database.insert(tags).values({
+                      id: tag.id,
+                      name: tag.name,
+                      normalizedName: tag.normalizedName,
+                      createdAt: now,
+                      updatedAt: now
+                    }).onConflictDoNothing())
+                  }
+
+                  for (const location of locationCreates) {
+                    statements.push(database.insert(locations).values({
+                      id: location.id,
+                      userId,
+                      parentLocationId: location.parentLocationId,
+                      name: location.name,
+                      normalizedName: location.normalizedName,
+                      path: location.path,
+                      depth: location.depth,
+                      createdAt: now,
+                      updatedAt: now
+                    }))
                   }
 
                   if (existing) {
                     if (existing.bookSource === 'manual' && existing.createdByUserId === userId) {
-                      await tx.update(books)
+                      statements.push(database.update(books)
                         .set({
                           title: record.title,
                           isbn: record.isbn
                         })
-                        .where(and(eq(books.id, existing.bookId), eq(books.source, 'manual'), eq(books.createdByUserId, userId)))
-                      await setAuthors(existing.bookId, record.authors, now)
+                        .where(and(eq(books.id, existing.bookId), eq(books.source, 'manual'), eq(books.createdByUserId, userId))))
                     }
-
-                    await tx.update(userBooks)
-                      .set(userBookValues)
-                      .where(and(eq(userBooks.id, existing.userBookId), eq(userBooks.userId, userId), isNull(userBooks.removedAt)))
-                    await setTags(existing.userBookId, record.tags, now)
-                    result.updated++
-                    continue
-                  }
-
-                  let bookId: string | null = null
-                  if (record.isbn) {
-                    const shared = await tx
-                      .select({ id: books.id })
-                      .from(books)
-                      .where(and(eq(books.isbn, record.isbn), eq(books.source, 'open_library')))
-                      .limit(1)
-                    bookId = shared[0]?.id ?? null
-                  }
-
-                  if (!bookId) {
-                    bookId = generateId()
-                    await tx.insert(books).values({
+                  } else if (!sharedOpenLibraryBookId) {
+                    statements.push(database.insert(books).values({
                       id: bookId,
                       isbn: record.isbn,
                       title: record.title,
@@ -387,29 +481,64 @@ export const LibraryTransferRepositoryLive = Layer.effect(
                       source: 'manual',
                       createdByUserId: userId,
                       createdAt: now
-                    })
-                    await setAuthors(bookId, record.authors, now)
+                    }))
                   }
 
-                  const userBookId = generateId()
-                  await tx.insert(userBooks).values({
-                    id: userBookId,
-                    userId,
-                    bookId,
-                    ...userBookValues,
-                    addedAt: record.addedAt ?? now
-                  })
-                  await setTags(userBookId, record.tags, now)
+                  if (shouldSetAuthors) {
+                    statements.push(database.delete(bookAuthors).where(eq(bookAuthors.bookId, bookId)))
+                    for (const author of authorLinks) {
+                      statements.push(database.insert(bookAuthors).values({
+                        bookId,
+                        authorId: author.authorId,
+                        sortOrder: author.sortOrder,
+                        createdAt: now
+                      }).onConflictDoNothing())
+                    }
+                  }
+
+                  if (existing) {
+                    statements.push(database.update(userBooks)
+                      .set(userBookValues)
+                      .where(and(eq(userBooks.id, existing.userBookId), eq(userBooks.userId, userId), isNull(userBooks.removedAt))))
+                  } else {
+                    statements.push(database.insert(userBooks).values({
+                      id: userBookId,
+                      userId,
+                      bookId,
+                      ...userBookValues,
+                      addedAt: record.addedAt ?? now
+                    }))
+                  }
+
+                  statements.push(database.delete(userBookTags).where(eq(userBookTags.userBookId, userBookId)))
+                  for (const tag of tagLinks) {
+                    statements.push(database.insert(userBookTags).values({
+                      id: tag.id,
+                      userBookId,
+                      tagId: tag.tagId,
+                      createdAt: now,
+                      updatedAt: now
+                    }).onConflictDoNothing())
+                  }
+
+                  return statements as [AtomicDbStatement, ...AtomicDbStatement[]]
+                })
+
+                for (const updateCache of cacheUpdates) updateCache()
+
+                if (existing) {
+                  result.updated++
+                } else {
                   result.created++
-                } catch (error) {
-                  result.failed.push({
-                    row: rowNumber,
-                    title: record.title,
-                    reason: error instanceof Error ? error.message : 'Unable to import row'
-                  })
                 }
+              } catch (error) {
+                result.failed.push({
+                  row: rowNumber,
+                  title: record.title,
+                  reason: error instanceof Error ? error.message : 'Unable to import row'
+                })
               }
-            })
+            }
 
             return result
           },

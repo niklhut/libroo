@@ -8,7 +8,7 @@ import { drizzle } from 'drizzle-orm/libsql'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { account, adminAuditLog, books, locations, loans, session, signupInvites, tags, user, userBookTags, userBooks, verification } from '../../../../server/db/schema'
 import { AccountDeletionRepository, AccountDeletionRepositoryLive, LastAdminAccountDeletionError } from '../../../../server/repositories/account-deletion.repository'
-import { DbService } from '../../../../server/services/db.service'
+import { DbService, type DbServiceInterface } from '../../../../server/services/db.service'
 
 describe('AccountDeletionRepository', () => {
   let db: ReturnType<typeof drizzle>
@@ -145,17 +145,27 @@ describe('AccountDeletionRepository', () => {
     await expect(selectIds(db, account)).resolves.toEqual(['account-admin-1'])
   })
 
-  it('preserves wrapped last-admin errors from transaction adapters', async () => {
-    const fakeDb = {
-      transaction: async () => {
+  it('preserves wrapped last-admin errors from atomic adapters', async () => {
+    const now = new Date('2026-06-19T10:00:00.000Z')
+    await db.insert(user).values({
+      id: 'admin-1',
+      name: 'Ada',
+      email: 'ada@example.com',
+      emailVerified: true,
+      role: 'user',
+      createdAt: now,
+      updatedAt: now
+    })
+
+    const result = await runRepositoryWithService({
+      db: db as unknown as DbServiceInterface['db'],
+      executeAtomic: async () => {
         throw {
           _tag: 'LastAdminAccountDeletionError',
           message: 'Cannot delete the last remaining active admin account'
         }
       }
-    }
-
-    const result = await runRepository(fakeDb as never, Effect.either(Effect.flatMap(AccountDeletionRepository, repository =>
+    }, Effect.either(Effect.flatMap(AccountDeletionRepository, repository =>
       repository.deleteAccountData('admin-1')
     )))
 
@@ -352,14 +362,26 @@ async function seedDeletionScenario(db: ReturnType<typeof drizzle>) {
 }
 
 function runRepository<A, E>(db: ReturnType<typeof drizzle>, effect: Effect.Effect<A, E, AccountDeletionRepository | DbService>) {
+  const database = db as unknown as DbServiceInterface['db']
   return Effect.runPromise(effect.pipe(
     Effect.provide(AccountDeletionRepositoryLive),
     Effect.provide(Layer.succeed(DbService, {
-      db: db as never,
-      executeAtomic: async () => {
-        throw new Error('executeAtomic is not used by AccountDeletionRepository')
-      }
+      db: database,
+      executeAtomic: buildStatements => database.transaction(async (tx) => {
+        const results: unknown[] = []
+        for (const statement of buildStatements(tx as unknown as DbServiceInterface['db'])) {
+          results.push(await statement)
+        }
+        return results
+      })
     }))
+  ))
+}
+
+function runRepositoryWithService<A, E>(dbService: DbServiceInterface, effect: Effect.Effect<A, E, AccountDeletionRepository | DbService>) {
+  return Effect.runPromise(effect.pipe(
+    Effect.provide(AccountDeletionRepositoryLive),
+    Effect.provide(Layer.succeed(DbService, dbService))
   ))
 }
 

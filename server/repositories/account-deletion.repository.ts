@@ -5,6 +5,7 @@ import { roleIncludesAdmin } from '~~/shared/utils/auth-roles'
 import { isActiveBan } from '~~/shared/utils/auth-status'
 import { DatabaseError } from './book.repository'
 import { DbService } from '../services/db.service'
+import type { AtomicDbStatement } from '../services/db.service'
 
 export class LastAdminAccountDeletionError extends Data.TaggedError('LastAdminAccountDeletionError')<{
   message: string
@@ -34,137 +35,132 @@ export const AccountDeletionRepositoryLive = Layer.effect(
       deleteAccountData: userId =>
         Effect.tryPromise({
           try: async () => {
-            return dbService.db.transaction(async (tx) => {
-              const [userRow] = await tx
-                .select({
-                  email: user.email,
-                  pendingEmail: user.pendingEmail,
-                  image: user.image,
-                  role: user.role,
-                  banned: user.banned,
-                  banExpires: user.banExpires
-                })
+            const [userRow] = await dbService.db
+              .select({
+                email: user.email,
+                pendingEmail: user.pendingEmail,
+                image: user.image,
+                role: user.role,
+                banned: user.banned,
+                banExpires: user.banExpires
+              })
+              .from(user)
+              .where(eq(user.id, userId))
+              .limit(1)
+
+            if (userRow && roleIncludesAdmin(userRow.role) && !isActiveBan(userRow)) {
+              const otherAdminRows = await dbService.db
+                .select({ count: sql<number | string | bigint>`count(*)` })
                 .from(user)
-                .where(eq(user.id, userId))
-                .limit(1)
+                .where(sql`
+                  ${user.id} <> ${userId}
+                  AND ${adminRoleTokenPredicate()}
+                  AND ${inactiveBanPredicate()}
+                `)
 
-              if (userRow && roleIncludesAdmin(userRow.role) && !isActiveBan(userRow)) {
-                const otherAdminRows = await tx
-                  .select({ count: sql<number | string | bigint>`count(*)` })
-                  .from(user)
-                  .where(sql`
-                    ${user.id} <> ${userId}
-                    AND ${adminRoleTokenPredicate()}
-                    AND ${inactiveBanPredicate()}
-                  `)
+              if (Number(otherAdminRows[0]?.count ?? 0) <= 0) {
+                throw new LastAdminAccountDeletionError({
+                  message: 'Cannot delete the last remaining active admin account'
+                })
+              }
+            }
 
-                if (Number(otherAdminRows[0]?.count ?? 0) <= 0) {
-                  throw new LastAdminAccountDeletionError({
-                    message: 'Cannot delete the last remaining active admin account'
+            const userBookRows = await dbService.db
+              .select({ id: userBooks.id })
+              .from(userBooks)
+              .where(eq(userBooks.userId, userId))
+            const userBookIds = userBookRows.map(row => row.id)
+            const verificationIdentifiers = [userRow?.email, userRow?.pendingEmail]
+              .filter((value): value is string => Boolean(value))
+            const now = new Date()
+
+            const batchResults = await dbService.executeAtomic((database) => {
+              const statements: AtomicDbStatement[] = [
+                database
+                  .delete(loans)
+                  .where(eq(loans.ownerUserId, userId))
+                  .returning({ id: loans.id }),
+                database
+                  .update(loans)
+                  .set({
+                    borrowerUserId: null,
+                    acceptedAt: null,
+                    updatedAt: now
                   })
-                }
-              }
-
-              const userBookRows = await tx
-                .select({ id: userBooks.id })
-                .from(userBooks)
-                .where(eq(userBooks.userId, userId))
-              const userBookIds = userBookRows.map(row => row.id)
-
-              const deletedOwnedLoans = await tx
-                .delete(loans)
-                .where(eq(loans.ownerUserId, userId))
-                .returning({ id: loans.id })
-
-              const anonymizedBorrowedLoans = await tx
-                .update(loans)
-                .set({
-                  borrowerUserId: null,
-                  acceptedAt: null,
-                  updatedAt: new Date()
-                })
-                .where(eq(loans.borrowerUserId, userId))
-                .returning({ id: loans.id })
-
-              if (userBookIds.length > 0) {
-                await tx
+                  .where(eq(loans.borrowerUserId, userId))
+                  .returning({ id: loans.id }),
+                database
                   .delete(userBookTags)
-                  .where(inArray(userBookTags.userBookId, userBookIds))
-              }
-
-              const deletedUserBooks = await tx
-                .delete(userBooks)
-                .where(eq(userBooks.userId, userId))
-                .returning({ id: userBooks.id })
-
-              await tx
-                .delete(locations)
-                .where(eq(locations.userId, userId))
-
-              const deletedManualBooks = await tx
-                .delete(books)
-                .where(and(
-                  eq(books.source, 'manual'),
-                  eq(books.createdByUserId, userId),
-                  not(exists(
-                    tx
-                      .select({ id: userBooks.id })
-                      .from(userBooks)
-                      .where(eq(userBooks.bookId, books.id))
+                  .where(userBookIds.length > 0 ? inArray(userBookTags.userBookId, userBookIds) : sql`false`),
+                database
+                  .delete(userBooks)
+                  .where(eq(userBooks.userId, userId))
+                  .returning({ id: userBooks.id }),
+                database
+                  .delete(locations)
+                  .where(eq(locations.userId, userId)),
+                database
+                  .delete(books)
+                  .where(and(
+                    eq(books.source, 'manual'),
+                    eq(books.createdByUserId, userId),
+                    not(exists(
+                      database
+                        .select({ id: userBooks.id })
+                        .from(userBooks)
+                        .where(eq(userBooks.bookId, books.id))
+                    ))
                   ))
-                ))
-                .returning({
-                  id: books.id,
-                  coverPath: books.coverPath
-                })
-
-              await tx
-                .update(signupInvites)
-                .set({ acceptedByUserId: null, updatedAt: new Date() })
-                .where(eq(signupInvites.acceptedByUserId, userId))
-
-              await tx
-                .delete(signupInvites)
-                .where(eq(signupInvites.createdByUserId, userId))
-
-              const verificationIdentifiers = [userRow?.email, userRow?.pendingEmail]
-                .filter((value): value is string => Boolean(value))
-
-              if (verificationIdentifiers.length > 0) {
-                await tx
+                  .returning({
+                    id: books.id,
+                    coverPath: books.coverPath
+                  }),
+                database
+                  .update(signupInvites)
+                  .set({ acceptedByUserId: null, updatedAt: now })
+                  .where(eq(signupInvites.acceptedByUserId, userId)),
+                database
+                  .delete(signupInvites)
+                  .where(eq(signupInvites.createdByUserId, userId)),
+                database
                   .delete(verification)
-                  .where(or(
-                    inArray(verification.identifier, verificationIdentifiers),
-                    inArray(verification.value, verificationIdentifiers)
-                  ))
-              }
+                  .where(verificationIdentifiers.length > 0
+                    ? or(
+                        inArray(verification.identifier, verificationIdentifiers),
+                        inArray(verification.value, verificationIdentifiers)
+                      )
+                    : sql`false`),
+                database
+                  .delete(session)
+                  .where(eq(session.userId, userId)),
+                database
+                  .delete(account)
+                  .where(eq(account.userId, userId)),
+                database
+                  .delete(user)
+                  .where(eq(user.id, userId))
+              ]
 
-              await tx
-                .delete(session)
-                .where(eq(session.userId, userId))
-
-              await tx
-                .delete(account)
-                .where(eq(account.userId, userId))
-
-              await tx
-                .delete(user)
-                .where(eq(user.id, userId))
-
-              const blobPaths = [
-                userRow?.image,
-                ...deletedManualBooks.map(row => row.coverPath)
-              ].filter((path): path is string => typeof path === 'string' && !path.startsWith('http://') && !path.startsWith('https://'))
-
-              return {
-                deletedUserId: userId,
-                blobPaths: [...new Set(blobPaths)],
-                deletedManualBooks: deletedManualBooks.length,
-                deletedUserBooks: deletedUserBooks.length,
-                deletedOwnedLoans: deletedOwnedLoans.length,
-                anonymizedBorrowedLoans: anonymizedBorrowedLoans.length
-              }
+              return statements as [AtomicDbStatement, ...AtomicDbStatement[]]
             })
+
+            const deletedOwnedLoans = batchResults[0] as Array<{ id: string }>
+            const anonymizedBorrowedLoans = batchResults[1] as Array<{ id: string }>
+            const deletedUserBooks = batchResults[3] as Array<{ id: string }>
+            const deletedManualBooks = batchResults[5] as Array<{ id: string, coverPath: string | null }>
+            const blobPaths = [
+              userRow?.image,
+              ...deletedManualBooks.map(row => row.coverPath)
+            ].filter((path): path is string => typeof path === 'string' && !path.startsWith('http://') && !path.startsWith('https://'))
+
+            return {
+              deletedUserId: userId,
+              blobPaths: [...new Set(blobPaths)],
+              deletedManualBooks: deletedManualBooks.length,
+              deletedUserBooks: deletedUserBooks.length,
+              deletedOwnedLoans: deletedOwnedLoans.length,
+              anonymizedBorrowedLoans: anonymizedBorrowedLoans.length
+            }
           },
           catch: (error) => {
             const lastAdminError = toLastAdminAccountDeletionError(error)
@@ -215,6 +211,6 @@ function toLastAdminAccountDeletionError(error: unknown) {
 function inactiveBanPredicate() {
   return sql`(
     COALESCE(${user.banned}, false) = false
-    OR (${user.banExpires} IS NOT NULL AND ${user.banExpires} <= ${new Date()})
+    OR (${user.banExpires} IS NOT NULL AND ${user.banExpires} <= ${Date.now()})
   )`
 }
