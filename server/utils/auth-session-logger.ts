@@ -47,12 +47,14 @@ export function logAuthSessionResolution(options: AuthSessionLogOptions) {
     payload.error = summarizeAuthSessionError(options.error)
   }
 
+  const message = formatAuthSessionLogMessage(payload)
+
   if (options.outcome === AUTH_SESSION_OUTCOMES.failure) {
-    console.warn(payload)
+    console.warn(message, payload)
     return
   }
 
-  console.info(payload)
+  console.info(message, payload)
 }
 
 export function summarizeAuthSessionError(error: unknown): SafeAuthSessionError {
@@ -86,6 +88,26 @@ function safeRequestMetadata(event: H3Event) {
     requestId: stringValue(context.requestId ?? context.requestID ?? cloudflare.requestId),
     path: stringValue(event.path ?? event.node?.req.url)
   }
+}
+
+function formatAuthSessionLogMessage(payload: Record<string, unknown>) {
+  const path = stringValue(payload.path)
+  const reason = stringValue(payload.reason)
+  const parts = [
+    'auth-session',
+    stringValue(payload.outcome),
+    path ? `path=${redactSensitiveText(path)}` : undefined,
+    reason ? `reason=${redactSensitiveText(reason)}` : undefined
+  ]
+
+  if (isRecord(payload.error)) {
+    const errorName = stringValue(payload.error.name)
+    const errorStatus = typeof payload.error.status === 'number' ? payload.error.status : undefined
+    if (errorName) parts.push(`error=${redactSensitiveText(errorName)}`)
+    if (errorStatus) parts.push(`status=${errorStatus}`)
+  }
+
+  return parts.filter(Boolean).join(' ')
 }
 
 function extractStatus(error: unknown) {

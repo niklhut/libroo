@@ -101,11 +101,7 @@ describe('server/middleware/auth-session', () => {
       status: 'unauthenticated',
       session: null
     })
-    expect(loggerMock.logAuthSessionResolution).toHaveBeenCalledWith({
-      event,
-      outcome: 'skipped',
-      reason: 'non-document-request'
-    })
+    expect(loggerMock.logAuthSessionResolution).not.toHaveBeenCalled()
   })
 
   it('skips wildcard accept requests without a document fetch destination', async () => {
@@ -116,11 +112,7 @@ describe('server/middleware/auth-session', () => {
     await runMiddleware(event)
 
     expect(authMock.getSession).not.toHaveBeenCalled()
-    expect(loggerMock.logAuthSessionResolution).toHaveBeenCalledWith({
-      event,
-      outcome: 'skipped',
-      reason: 'non-document-request'
-    })
+    expect(loggerMock.logAuthSessionResolution).not.toHaveBeenCalled()
   })
 
   it('allows wildcard accept requests with a document fetch destination', async () => {

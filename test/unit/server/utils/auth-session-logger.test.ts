@@ -37,7 +37,7 @@ describe('auth session logger', () => {
       outcome: AUTH_SESSION_OUTCOMES.success
     })
 
-    expect(info).toHaveBeenCalledWith({
+    expect(info).toHaveBeenCalledWith('auth-session success path=/library', {
       component: 'auth-session',
       outcome: 'success',
       requestId: 'req-1',
@@ -61,7 +61,8 @@ describe('auth session logger', () => {
       error
     })
 
-    const payload = warn.mock.calls[0]?.[0] as Record<string, unknown>
+    expect(warn.mock.calls[0]?.[0]).toBe('auth-session failure path=/library error=Error status=503')
+    const payload = warn.mock.calls[0]?.[1] as Record<string, unknown>
     expect(payload.error).toEqual({
       name: 'Error',
       message: '[redacted-secret] leaked for [redacted-email]',

@@ -15,11 +15,6 @@ export default defineEventHandler(async (event) => {
       status: 'unauthenticated',
       session: null
     } satisfies AuthSessionResolution
-    logAuthSessionResolution({
-      event,
-      outcome: AUTH_SESSION_OUTCOMES.skipped,
-      reason: 'non-document-request'
-    })
     return
   }
 
