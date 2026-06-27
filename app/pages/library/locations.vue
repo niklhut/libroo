@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import type { BookLocation, BookLocationTreeNode, BookLocationWithCount } from '~~/shared/types/book'
 import LocationTreeNode from '~~/app/components/LocationTreeNode.vue'
-import { calculateLocationCounts, computeLocationRepath, isLocationDescendant } from '~~/shared/utils/location-hierarchy'
+import {
+  calculateLocationCounts,
+  computeLocationRepath,
+  insertLocationLocally,
+  isLocationDescendant
+} from '~~/shared/utils/location-hierarchy'
 
 usePageTitle('Locations')
 
@@ -107,15 +112,7 @@ function reconcileLocationLocally(location: BookLocation) {
 }
 
 function addLocationLocally(location: BookLocation) {
-  locations.value = calculateLocationCounts([
-    ...(locations.value ?? []),
-    {
-      ...location,
-      bookCount: 0,
-      directBookCount: 0,
-      descendantBookCount: 0
-    }
-  ])
+  locations.value = insertLocationLocally(locations.value, location)
 }
 
 function deleteLocationLocally(

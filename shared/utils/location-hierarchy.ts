@@ -1,3 +1,5 @@
+import type { BookLocation, BookLocationWithCount } from '../types/book'
+
 export interface LocationHierarchyRecord {
   id: string
   name: string
@@ -45,6 +47,19 @@ export const calculateLocationCounts = (locations: LocationCountRecord[]) => {
     }
   })
 }
+
+export const insertLocationLocally = (
+  currentLocations: BookLocationWithCount[] | null | undefined,
+  location: BookLocation
+) => calculateLocationCounts([
+  ...(currentLocations ?? []),
+  {
+    ...location,
+    bookCount: 0,
+    directBookCount: 0,
+    descendantBookCount: 0
+  }
+])
 
 export function computeLocationRepath(
   location: LocationHierarchyRecord,
