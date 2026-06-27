@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { insertLocationLocally } from '~~/shared/utils/location-hierarchy'
+
 interface Props {
   open: boolean
   userBookId: string
@@ -54,6 +56,9 @@ watch(
   () => props.open,
   async (open) => {
     if (!open) return
+    if (props.currentLocation && !locations.value?.some(location => location.id === props.currentLocation?.id)) {
+      locations.value = insertLocationLocally(locations.value, props.currentLocation)
+    }
     selectedLocationId.value = props.currentLocation?.id
     parentLocationId.value = props.currentLocation?.id
     newLocationName.value = ''
@@ -76,6 +81,7 @@ async function createLocation() {
     })
 
     newLocationName.value = ''
+    locations.value = insertLocationLocally(locations.value, location)
     selectedLocationId.value = location.id
     parentLocationId.value = location.id
     await refresh()
@@ -138,6 +144,8 @@ async function saveLocation() {
             v-model="selectedLocationId"
             :items="locationOptions"
             placeholder="No location"
+            :loading="isCreatingLocation"
+            :disabled="isCreatingLocation"
             class="w-full"
           />
         </UFormField>
@@ -158,6 +166,8 @@ async function saveLocation() {
             <USelect
               v-model="selectedParentLocation"
               :items="parentOptions"
+              :loading="isCreatingLocation"
+              :disabled="isCreatingLocation"
               class="w-full"
             />
           </UFormField>
