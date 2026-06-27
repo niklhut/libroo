@@ -20,6 +20,10 @@ const authMock = vi.hoisted(() => ({
   verifyPassword: vi.fn()
 }))
 
+const authSessionLoggerMock = vi.hoisted(() => ({
+  logAuthSessionResolution: vi.fn()
+}))
+
 const jwtMock = vi.hoisted(() => ({
   jwtVerify: vi.fn()
 }))
@@ -36,6 +40,14 @@ vi.mock('../../../../server/utils/auth', () => ({
   }
 }))
 
+vi.mock('../../../../server/utils/auth-session-logger', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../server/utils/auth-session-logger')>()
+  return {
+    ...actual,
+    logAuthSessionResolution: authSessionLoggerMock.logAuthSessionResolution
+  }
+})
+
 vi.mock('jose', () => ({
   jwtVerify: jwtMock.jwtVerify
 }))
@@ -46,6 +58,7 @@ describe('AuthService', () => {
     authMock.sendVerificationEmail.mockReset()
     authMock.changeEmail.mockReset()
     authMock.verifyPassword.mockReset()
+    authSessionLoggerMock.logAuthSessionResolution.mockReset()
     jwtMock.jwtVerify.mockReset()
     authMock.verifyPassword.mockResolvedValue({ status: true })
     authMock.changeEmail.mockResolvedValue({ status: true })
@@ -92,6 +105,67 @@ describe('AuthService', () => {
     expect(result.left).toBeInstanceOf(UnauthorizedError)
     expect(result.left).toMatchObject({
       message: 'Account is banned'
+    })
+  })
+
+  it('logs successful session lookups', async () => {
+    const event = makeEvent()
+    authMock.getSession.mockResolvedValueOnce({
+      user: {
+        id: 'user-1',
+        name: 'Ada',
+        email: 'ada@example.com'
+      },
+      session: { id: 'session-1' }
+    })
+
+    await expect(runAuthService(
+      Effect.flatMap(AuthService, service => service.requireAuth(event))
+    )).resolves.toMatchObject({
+      id: 'user-1'
+    })
+
+    expect(authSessionLoggerMock.logAuthSessionResolution).toHaveBeenCalledWith({
+      event,
+      outcome: 'success'
+    })
+  })
+
+  it('logs unauthenticated session lookups', async () => {
+    const event = makeEvent()
+    authMock.getSession.mockResolvedValueOnce(null)
+
+    const result = await runAuthService(Effect.either(
+      Effect.flatMap(AuthService, service => service.requireAuth(event))
+    ))
+
+    expect(result._tag).toBe('Left')
+    expect(result.left).toMatchObject({
+      message: 'No active session'
+    })
+    expect(authSessionLoggerMock.logAuthSessionResolution).toHaveBeenCalledWith({
+      event,
+      outcome: 'unauthenticated'
+    })
+  })
+
+  it('logs failed session lookups without changing auth errors', async () => {
+    const event = makeEvent()
+    const error = new Error('database offline')
+    authMock.getSession.mockRejectedValueOnce(error)
+
+    const result = await runAuthService(Effect.either(
+      Effect.flatMap(AuthService, service => service.requireAuth(event))
+    ))
+
+    expect(result._tag).toBe('Left')
+    expect(result.left).toMatchObject({
+      message: 'Failed to get session'
+    })
+    expect(authSessionLoggerMock.logAuthSessionResolution).toHaveBeenCalledWith({
+      event,
+      outcome: 'failure',
+      error
     })
   })
 

@@ -66,9 +66,9 @@ const coverUrl = computed(() => {
       </template>
 
       <div class="space-y-1">
-        <h3 class="font-semibold text-sm line-clamp-2">
+        <h2 class="font-semibold text-sm line-clamp-2">
           {{ title }}
-        </h3>
+        </h2>
         <p class="text-xs text-muted line-clamp-1">
           {{ author }}
         </p>

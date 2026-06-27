@@ -8,19 +8,20 @@ export default defineNuxtRouteMiddleware(async (to) => {
     return
   }
 
-  const { data: session } = await authClient.useSession(useFetch)
+  const authStore = useAuthStore()
+  const { $authSession } = useNuxtApp()
 
   // If no session and auth is required, redirect to login
-  if (!session.value?.user) {
+  if (!authStore.user) {
     return navigateTo({
       path: '/login',
       query: { redirect: to.fullPath }
     })
   }
 
-  if (isActiveBan(session.value.user)) {
+  if (isActiveBan(authStore.user)) {
     await authClient.signOut().catch(() => undefined)
-    session.value = null
+    $authSession.data.value = null
     return navigateTo('/login')
   }
 
@@ -29,7 +30,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
   const enforceVerificationGate = emailCapabilitiesError.value
     ? true
     : emailCapabilities.value.emailVerificationEnabled
-  if (enforceVerificationGate && session.value.user.emailVerified !== true && !canUseUnverifiedAccount) {
+  if (enforceVerificationGate && authStore.user.emailVerified !== true && !canUseUnverifiedAccount) {
     return navigateTo({
       path: '/settings',
       query: { verify: 'required', redirect: to.fullPath }
@@ -37,7 +38,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
   }
 
   if (to.path.startsWith('/admin')) {
-    if (!roleIncludesAdmin(session.value.user.role)) {
+    if (!roleIncludesAdmin(authStore.user.role)) {
       return navigateTo('/library')
     }
   }

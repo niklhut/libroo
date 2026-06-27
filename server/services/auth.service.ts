@@ -6,6 +6,7 @@ import { JWTExpired } from 'jose/errors'
 import * as z from 'zod'
 import { isActiveBan } from '~~/shared/utils/auth-status'
 import { auth, getAuthSecret } from '../utils/auth'
+import { AUTH_SESSION_OUTCOMES, logAuthSessionResolution } from '../utils/auth-session-logger'
 import { getEmailCapabilities } from '../utils/email-capabilities'
 import type { AuthRepository } from '../repositories/auth.repository'
 import { clearPendingEmail, emailIsInUse, getPendingEmail, getPendingEmailByCurrentEmail, setPendingEmail } from '../repositories/auth.repository'
@@ -76,12 +77,28 @@ const fetchSession = (event: H3Event): Effect.Effect<SessionData, UnauthorizedEr
   Effect.gen(function* () {
     const session = yield* Effect.tryPromise({
       try: () => auth.api.getSession({ headers: event.headers }),
-      catch: () => new UnauthorizedError({ message: 'Failed to get session' })
+      catch: (error) => {
+        logAuthSessionResolution({
+          event,
+          outcome: AUTH_SESSION_OUTCOMES.failure,
+          error
+        })
+        return new UnauthorizedError({ message: 'Failed to get session' })
+      }
     })
 
     if (!session) {
+      logAuthSessionResolution({
+        event,
+        outcome: AUTH_SESSION_OUTCOMES.unauthenticated
+      })
       return yield* Effect.fail(new UnauthorizedError({ message: 'No active session' }))
     }
+
+    logAuthSessionResolution({
+      event,
+      outcome: AUTH_SESSION_OUTCOMES.success
+    })
 
     if (isActiveBan(session.user)) {
       return yield* Effect.fail(new UnauthorizedError({ message: 'Account is banned' }))

@@ -389,6 +389,7 @@ async function syncLoadedPages(targetPages: number) {
             v-model="search"
             icon="i-lucide-search"
             size="lg"
+            aria-label="Search library"
             placeholder="Search title, author, ISBN, tag, or location"
             class="w-full md:flex-1"
           />
@@ -401,7 +402,7 @@ async function syncLoadedPages(targetPages: number) {
               icon="i-lucide-sliders-horizontal"
               :trailing-icon="areFiltersExpanded ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
               :aria-expanded="areFiltersExpanded"
-              aria-controls="library-advanced-filters"
+              :aria-controls="areFiltersExpanded ? 'library-advanced-filters' : undefined"
               class="w-full justify-center md:w-auto"
               @click="areFiltersExpanded = !areFiltersExpanded"
             >
@@ -448,64 +449,92 @@ async function syncLoadedPages(targetPages: number) {
           </span>
         </div>
 
-        <UCollapsible
-          v-model:open="areFiltersExpanded"
-          :unmount-on-hide="false"
+        <div
+          v-if="areFiltersExpanded"
+          id="library-advanced-filters"
+          class="space-y-3 rounded-lg border border-default bg-muted/30 p-3"
         >
-          <template #content>
-            <div
-              id="library-advanced-filters"
-              class="space-y-3 rounded-lg border border-default bg-muted/30 p-3"
+          <div class="grid gap-3 md:grid-cols-4">
+            <select
+              v-model="loanStatus"
+              aria-label="Loan status"
+              class="w-full rounded-md border-0 bg-default px-2.5 py-1.5 pe-9 text-sm text-highlighted ring ring-inset ring-accented outline-primary/25 transition-colors focus-visible:outline-3 focus-visible:ring-primary"
             >
-              <div class="grid gap-3 md:grid-cols-4">
-                <USelect
-                  v-model="loanStatus"
-                  :items="loanStatusItems"
-                  class="w-full"
-                />
-                <USelect
-                  v-model="readingStatus"
-                  :items="readingStatusItems"
-                  class="w-full"
-                />
-                <UInput
-                  v-model="tag"
-                  icon="i-lucide-tag"
-                  placeholder="Filter tag"
-                />
-                <UInput
-                  v-model="location"
-                  icon="i-lucide-map-pin"
-                  placeholder="Search location path"
-                />
-              </div>
+              <option
+                v-for="item in loanStatusItems"
+                :key="item.value"
+                :value="item.value"
+              >
+                {{ item.label }}
+              </option>
+            </select>
+            <select
+              v-model="readingStatus"
+              aria-label="Reading status"
+              class="w-full rounded-md border-0 bg-default px-2.5 py-1.5 pe-9 text-sm text-highlighted ring ring-inset ring-accented outline-primary/25 transition-colors focus-visible:outline-3 focus-visible:ring-primary"
+            >
+              <option
+                v-for="item in readingStatusItems"
+                :key="item.value"
+                :value="item.value"
+              >
+                {{ item.label }}
+              </option>
+            </select>
+            <UInput
+              v-model="tag"
+              icon="i-lucide-tag"
+              aria-label="Filter by tag"
+              placeholder="Filter tag"
+            />
+            <UInput
+              v-model="location"
+              icon="i-lucide-map-pin"
+              aria-label="Filter by location path"
+              placeholder="Search location path"
+            />
+          </div>
 
-              <div class="grid gap-3 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto_auto] md:items-center">
-                <USelect
-                  v-model="selectedLocationFilter"
-                  :items="locationOptions"
-                  icon="i-lucide-map-pin"
-                  class="w-full"
-                />
-                <USelect
-                  v-model="sortBy"
-                  :items="sortItems"
-                  icon="i-lucide-arrow-up-down"
-                  class="w-full"
-                />
-                <UCheckbox
-                  v-model="includeLocationDescendants"
-                  :disabled="!locationId"
-                  label="Include sub-locations"
-                />
-                <USwitch
-                  v-model="groupByLocation"
-                  label="Group by location"
-                />
-              </div>
-            </div>
-          </template>
-        </UCollapsible>
+          <div class="grid gap-3 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto_auto] md:items-center">
+            <select
+              v-model="selectedLocationFilter"
+              aria-label="Location filter mode"
+              class="w-full rounded-md border-0 bg-default px-2.5 py-1.5 pe-9 text-sm text-highlighted ring ring-inset ring-accented outline-primary/25 transition-colors focus-visible:outline-3 focus-visible:ring-primary"
+            >
+              <option
+                v-for="item in locationOptions"
+                :key="item.value"
+                :value="item.value"
+              >
+                {{ item.label }}
+              </option>
+            </select>
+            <select
+              v-model="sortBy"
+              aria-label="Sort library"
+              class="w-full rounded-md border-0 bg-default px-2.5 py-1.5 pe-9 text-sm text-highlighted ring ring-inset ring-accented outline-primary/25 transition-colors focus-visible:outline-3 focus-visible:ring-primary"
+            >
+              <option
+                v-for="item in sortItems"
+                :key="item.value"
+                :value="item.value"
+              >
+                {{ item.label }}
+              </option>
+            </select>
+            <UCheckbox
+              v-model="includeLocationDescendants"
+              :disabled="!locationId"
+              aria-label="Include sub-locations"
+              label="Include sub-locations"
+            />
+            <USwitch
+              v-model="groupByLocation"
+              aria-label="Group by location"
+              label="Group by location"
+            />
+          </div>
+        </div>
       </section>
 
       <!-- Loading State -->

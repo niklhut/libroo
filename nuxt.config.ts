@@ -232,6 +232,15 @@ export default defineNuxtConfig({
     }
   },
 
+  hints: {
+    features: {
+      lazyLoad: {
+        logs: false,
+        devtools: false
+      }
+    }
+  },
+
   image: {
     provider: 'none'
   },
