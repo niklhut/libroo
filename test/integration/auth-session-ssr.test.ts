@@ -8,6 +8,7 @@ import { createClient } from '@libsql/client'
 
 const databasePath = resolve('.data/test/auth-session-ssr.sqlite')
 const databaseUrl = `file:${databasePath}`
+const SESSION_COOKIE_NAME = 'better-auth.session_token'
 const integrationPort = 31743
 const authBaseUrl = `http://127.0.0.1:${integrationPort}`
 
@@ -163,7 +164,10 @@ function sessionCookie(response: Response) {
   const setCookies = getSetCookie ? getSetCookie() : [response.headers.get('set-cookie')].filter(Boolean) as string[]
   const cookie = setCookies
     .map(value => value.split(';')[0])
-    .find(value => value.includes('session'))
+    .find((value) => {
+      const [name] = value.split('=')
+      return name === SESSION_COOKIE_NAME
+    })
 
   if (!cookie) {
     throw new Error(`No session cookie in response headers: ${setCookies.join(', ')}`)

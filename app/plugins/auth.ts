@@ -94,6 +94,25 @@ function normalizeClientSessionError(error: unknown): SafeAuthSessionError {
     }
   }
 
+  if (error && typeof error === 'object') {
+    const candidate = error as {
+      name?: unknown
+      message?: unknown
+      status?: unknown
+      statusCode?: unknown
+    }
+
+    return {
+      name: typeof candidate.name === 'string' ? candidate.name : 'Error',
+      message: typeof candidate.message === 'string' ? candidate.message : String(error),
+      ...(typeof candidate.status === 'number'
+        ? { status: candidate.status }
+        : typeof candidate.statusCode === 'number'
+          ? { status: candidate.statusCode }
+          : {})
+    }
+  }
+
   return {
     name: typeof error,
     message: String(error)

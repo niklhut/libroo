@@ -107,6 +107,37 @@ describe('server/middleware/auth-session', () => {
       reason: 'non-document-request'
     })
   })
+
+  it('skips wildcard accept requests without a document fetch destination', async () => {
+    const event = makeEvent('/library', {
+      accept: '*/*'
+    })
+
+    await runMiddleware(event)
+
+    expect(authMock.getSession).not.toHaveBeenCalled()
+    expect(loggerMock.logAuthSessionResolution).toHaveBeenCalledWith({
+      event,
+      outcome: 'skipped',
+      reason: 'non-document-request'
+    })
+  })
+
+  it('allows wildcard accept requests with a document fetch destination', async () => {
+    authMock.getSession.mockResolvedValueOnce(null)
+    const event = makeEvent('/library', {
+      'accept': '*/*',
+      'sec-fetch-dest': 'document'
+    })
+
+    await runMiddleware(event)
+
+    expect(authMock.getSession).toHaveBeenCalledWith({ headers: event.headers })
+    expect(event.context.authSession).toEqual({
+      status: 'unauthenticated',
+      session: null
+    })
+  })
 })
 
 async function runMiddleware(event: ReturnType<typeof makeEvent>) {
@@ -114,13 +145,11 @@ async function runMiddleware(event: ReturnType<typeof makeEvent>) {
   await middleware.default(event as never)
 }
 
-function makeEvent(path: string) {
+function makeEvent(path: string, headers: Record<string, string> = { accept: 'text/html' }) {
   return {
     method: 'GET',
     path,
-    headers: new Headers({
-      accept: 'text/html'
-    }),
+    headers: new Headers(headers),
     context: {},
     node: {
       req: {

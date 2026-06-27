@@ -61,7 +61,11 @@ export function summarizeAuthSessionError(error: unknown): SafeAuthSessionError 
   const status = extractStatus(error)
 
   return {
-    name: error instanceof Error ? error.name : typeof error,
+    name: error instanceof Error
+      ? error.name
+      : typeof record.name === 'string'
+        ? record.name
+        : typeof error,
     message: redactSensitiveText(errorMessage(error)),
     ...(status ? { status } : {}),
     ...(cause ? { cause: summarizeCause(cause) } : {})

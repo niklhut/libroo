@@ -73,8 +73,8 @@ describe('auth session logger', () => {
   })
 
   it('summarizes non-error failures safely', () => {
-    expect(summarizeAuthSessionError({ message: 'Bearer token', status: 401 })).toEqual({
-      name: 'object',
+    expect(summarizeAuthSessionError({ name: 'AuthApiError', message: 'Bearer token', status: 401 })).toEqual({
+      name: 'AuthApiError',
       message: '[redacted-secret] [redacted-secret]',
       status: 401
     })

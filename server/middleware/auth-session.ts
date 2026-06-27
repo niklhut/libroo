@@ -60,7 +60,10 @@ export function shouldResolveAuthSession(event: { method?: string, path?: string
   if (STATIC_ASSET_PATTERN.test(path)) return false
 
   const accept = event.headers.get('accept') ?? ''
-  if (!accept.includes('text/html') && !accept.includes('*/*')) return false
+  const fetchDestination = event.headers.get('sec-fetch-dest') ?? ''
+  const acceptsDocument = accept.includes('text/html')
+    || (accept.includes('*/*') && fetchDestination === 'document')
+  if (!acceptsDocument) return false
 
   return true
 }
