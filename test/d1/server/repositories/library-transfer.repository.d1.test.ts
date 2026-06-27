@@ -42,13 +42,14 @@ describe('LibraryTransferRepository.importRecords on D1', () => {
   it('reuses new author, tag, and location dimensions across records', async () => {
     const result = await importRecords([
       importRecord({ title: 'First Shelf Book', authors: ['Ada Lovelace'], tags: ['Computing'], locationPath: 'Shelf - Row' }),
-      importRecord({ title: 'Second Shelf Book', authors: ['Ada Lovelace'], tags: ['Computing'], locationPath: 'Shelf - Row' })
+      importRecord({ title: 'Second Shelf Book', authors: ['Ada Lovelace'], tags: ['Computing'], locationPath: 'shelf - Bin' })
     ], 'csv')
 
     expect(result).toMatchObject({ created: 2, updated: 0, skipped: 0, failed: [] })
     await expect(db.select().from(authors)).resolves.toHaveLength(1)
     await expect(db.select().from(tags)).resolves.toHaveLength(1)
-    await expect(db.select().from(locations)).resolves.toHaveLength(2)
+    await expect(db.select().from(locations)).resolves.toHaveLength(3)
+    await expect(locationPaths(db)).resolves.toEqual(['Shelf', 'Shelf - Bin', 'Shelf - Row'])
 
     const authorLinks = await db.select().from(bookAuthors)
     const tagLinks = await db.select().from(userBookTags)
@@ -90,6 +91,42 @@ describe('LibraryTransferRepository.importRecords on D1', () => {
     expect(bookRows).toEqual([{ title: 'Existing Book Updated' }])
     expect(userBookRows).toEqual([{ note: 'csv note', rating: 5 }])
     expect(tagRows).toEqual([{ name: 'Updated' }])
+  })
+
+  it('does not fall back to title and author matching when an ISBN is provided', async () => {
+    await seedExistingBook(db)
+
+    const result = await importRecords([
+      importRecord({ title: 'Existing Book', authors: ['Ada Lovelace'], isbn: '9782222222222', note: 'new isbn row' })
+    ], 'csv')
+
+    expect(result).toMatchObject({ created: 1, updated: 0, skipped: 0, failed: [] })
+    await expect(db.select().from(userBooks)).resolves.toHaveLength(2)
+  })
+
+  it('preserves shared Open Library authors when reusing an ISBN match', async () => {
+    const now = new Date('2026-06-26T10:00:00.000Z')
+    await db.insert(authors).values({ id: 'author-open-library', name: 'Catalog Author', normalizedName: 'catalog author', createdAt: now, updatedAt: now })
+    await db.insert(books).values({
+      id: 'open-library-book',
+      isbn: '9783333333333',
+      title: 'Shared Catalog Book',
+      source: 'open_library',
+      createdAt: now
+    })
+    await db.insert(bookAuthors).values({ bookId: 'open-library-book', authorId: 'author-open-library', sortOrder: 0, createdAt: now })
+
+    const result = await importRecords([
+      importRecord({ title: 'Shared Catalog Book', authors: ['CSV Author'], isbn: '9783333333333' })
+    ], 'csv')
+
+    expect(result).toMatchObject({ created: 1, updated: 0, skipped: 0, failed: [] })
+    const authorRows = await db
+      .select({ name: authors.name })
+      .from(bookAuthors)
+      .innerJoin(authors, eq(bookAuthors.authorId, authors.id))
+      .where(eq(bookAuthors.bookId, 'open-library-book'))
+    expect(authorRows).toEqual([{ name: 'Catalog Author' }])
   })
 })
 
@@ -158,6 +195,14 @@ async function seedExistingBook(database: D1Db) {
     rating: 2,
     addedAt: now
   })
+}
+
+async function locationPaths(database: D1Db) {
+  const rows = await database
+    .select({ path: locations.path })
+    .from(locations)
+    .orderBy(asc(locations.path))
+  return rows.map(row => row.path)
 }
 
 function importRecord(overrides: Partial<LibraryImportBookInput>): LibraryImportBookInput {

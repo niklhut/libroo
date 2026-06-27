@@ -102,6 +102,49 @@ describe('AccountDeletionRepository on D1', () => {
     await expect(selectIds(db, account)).resolves.toEqual(['account-admin-1'])
   })
 
+  it('rejects when a concurrent delete makes the target the last active admin before the batch', async () => {
+    const now = new Date('2026-06-26T10:00:00.000Z')
+    await db.insert(user).values([
+      { id: 'admin-1', name: 'Ada', email: 'ada@example.com', emailVerified: true, role: 'admin', banned: false, createdAt: now, updatedAt: now },
+      { id: 'admin-2', name: 'Grace', email: 'grace@example.com', emailVerified: true, role: 'admin', banned: false, createdAt: now, updatedAt: now }
+    ])
+    await db.insert(account).values({
+      id: 'account-admin-1',
+      accountId: 'ada@example.com',
+      providerId: 'credential',
+      userId: 'admin-1',
+      createdAt: now,
+      updatedAt: now
+    })
+    await db.insert(session).values({
+      id: 'session-admin-1',
+      token: 'token-admin-1',
+      userId: 'admin-1',
+      expiresAt: now,
+      createdAt: now,
+      updatedAt: now
+    })
+
+    const typedDatabase = db as unknown as DbServiceInterface['db']
+    const result = await runRepositoryWithService({
+      db: typedDatabase,
+      executeAtomic: async (buildStatements) => {
+        await db.delete(user).where(eq(user.id, 'admin-2'))
+        return typedDatabase.batch(buildStatements(typedDatabase))
+      }
+    }, Effect.either(Effect.flatMap(AccountDeletionRepository, repository =>
+      repository.deleteAccountData('admin-1')
+    )))
+
+    expect(Either.isLeft(result)).toBe(true)
+    if (Either.isLeft(result)) {
+      expect(result.left).toBeInstanceOf(LastAdminAccountDeletionError)
+    }
+    await expect(selectIds(db, user)).resolves.toEqual(['admin-1'])
+    await expect(selectIds(db, account)).resolves.toEqual(['account-admin-1'])
+    await expect(selectIds(db, session)).resolves.toEqual(['session-admin-1'])
+  })
+
   it('anonymizes borrowed loans when deleting a borrower', async () => {
     await seedDeletionScenario(db)
 
@@ -141,6 +184,16 @@ function runRepository<A, E>(
       db: typedDatabase,
       executeAtomic: buildStatements => typedDatabase.batch(buildStatements(typedDatabase))
     }))
+  ))
+}
+
+function runRepositoryWithService<A, E>(
+  dbService: DbServiceInterface,
+  effect: Effect.Effect<A, E, AccountDeletionRepository | DbService>
+) {
+  return Effect.runPromise(effect.pipe(
+    Effect.provide(AccountDeletionRepositoryLive),
+    Effect.provide(Layer.succeed(DbService, dbService))
   ))
 }
 

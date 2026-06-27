@@ -1637,15 +1637,14 @@ export const BookRepositoryLive = Layer.effect(
 
             const uniqueDeleteIds = [...new Set(deleteIds)]
             const uniquePromoteIds = [...new Set(promoteIds)]
-            const uniqueCreateNames = [...new Set(createNames.map(name => name.trim()).filter(Boolean))]
             const promoteInputs: Array<{ tagId: string, userBookTagId: string }> = []
-            const createInputs: Array<{
+            const createInputMap = new Map<string, {
               tagId: string
               userBookTagId: string
               displayName: string
               normalizedName: string
               shouldInsertTag: boolean
-            }> = []
+            }>()
 
             for (const tagId of uniquePromoteIds) {
               const systemTag = await dbService.db
@@ -1661,10 +1660,13 @@ export const BookRepositoryLive = Layer.effect(
               promoteInputs.push({ tagId, userBookTagId: generateId() })
             }
 
-            for (const name of uniqueCreateNames) {
+            for (const name of createNames.map(name => name.trim()).filter(Boolean)) {
               const normalized = normalizeTagInput(name)
               if (!normalized) {
                 throw new InvalidTagError({ message: 'Tag is empty or invalid' })
+              }
+              if (createInputMap.has(normalized.key)) {
+                continue
               }
 
               const existing = await dbService.db
@@ -1674,7 +1676,7 @@ export const BookRepositoryLive = Layer.effect(
                 .limit(1)
               const existingTagId = existing[0]?.id ?? null
 
-              createInputs.push({
+              createInputMap.set(normalized.key, {
                 tagId: existingTagId ?? generateId(),
                 userBookTagId: generateId(),
                 displayName: normalized.displayName,
@@ -1682,6 +1684,7 @@ export const BookRepositoryLive = Layer.effect(
                 shouldInsertTag: !existingTagId
               })
             }
+            const createInputs = [...createInputMap.values()]
 
             await dbService.executeAtomic((database) => {
               const statements: AtomicDbStatement[] = []
@@ -1713,7 +1716,7 @@ export const BookRepositoryLive = Layer.effect(
               for (const input of createInputs) {
                 if (input.shouldInsertTag) {
                   // A concurrent creator can win the normalized-name insert between the pre-read and this batch;
-                  // in that narrow race, the dependent userBookTags insert will fail and the caller can retry.
+                  // the link below resolves the persisted tag by normalized name after the insert attempt.
                   statements.push(
                     database
                       .insert(tags)
@@ -1734,7 +1737,7 @@ export const BookRepositoryLive = Layer.effect(
                     .values({
                       id: input.userBookTagId,
                       userBookId: owned.userBookId,
-                      tagId: input.tagId,
+                      tagId: sql<string>`(SELECT id FROM tags WHERE normalized_name = ${input.normalizedName})` as unknown as string,
                       createdAt: now,
                       updatedAt: now
                     })

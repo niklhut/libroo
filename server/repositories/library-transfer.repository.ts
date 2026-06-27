@@ -186,7 +186,7 @@ export const LibraryTransferRepositoryLive = Layer.effect(
             const result: LibraryImportResult = { created: 0, updated: 0, skipped: 0, failed: [] }
             const authorCache = new Map<string, string>()
             const tagCache = new Map<string, string>()
-            const locationCache = new Map<string, string>()
+            const locationCache = new Map<string, ImportLocationNode>()
 
             const findExisting = async (record: LibraryImportBookInput): Promise<ExistingImportMatch | null> => {
               if (record.isbn) {
@@ -201,7 +201,7 @@ export const LibraryTransferRepositoryLive = Layer.effect(
                   .innerJoin(books, eq(userBooks.bookId, books.id))
                   .where(and(eq(userBooks.userId, userId), eq(books.isbn, record.isbn), isNull(userBooks.removedAt)))
                   .limit(1)
-                if (rows[0]) return rows[0]
+                return rows[0] ?? null
               }
 
               const rows = await dbService.db
@@ -247,7 +247,7 @@ export const LibraryTransferRepositoryLive = Layer.effect(
                 const cacheUpdates: Array<() => void> = []
                 const recordAuthorCache = new Map<string, string>()
                 const recordTagCache = new Map<string, string>()
-                const recordLocationCache = new Map<string, string>()
+                const recordLocationCache = new Map<string, ImportLocationNode>()
 
                 const resolveAuthorId = async (name: string) => {
                   const displayName = name.trim().replace(/\s+/g, ' ') || 'Unknown Author'
@@ -308,16 +308,9 @@ export const LibraryTransferRepositoryLive = Layer.effect(
                     const normalizedName = normalizeBookLocationKey(part)
                     const parentId = locationParentId(parentNode)
                     const cacheKey: string = `${parentId ?? 'root'}:${normalizedName}`
-                    const cachedId: string | undefined = recordLocationCache.get(cacheKey) ?? locationCache.get(cacheKey)
-                    if (cachedId) {
-                      parent = locationCreates.find(location => location.id === cachedId)
-                        ?? {
-                          id: cachedId,
-                          name: part,
-                          parentLocationId: parentId,
-                          path: locationChildPath(parentNode, part),
-                          depth: locationChildDepth(parentNode)
-                        }
+                    const cachedLocation = recordLocationCache.get(cacheKey) ?? locationCache.get(cacheKey)
+                    if (cachedLocation) {
+                      parent = cachedLocation
                       continue
                     }
 
@@ -339,7 +332,7 @@ export const LibraryTransferRepositoryLive = Layer.effect(
 
                     if (existingLocation[0]) {
                       parent = existingLocation[0]
-                      locationCache.set(cacheKey, parent.id)
+                      locationCache.set(cacheKey, parent)
                       continue
                     }
 
@@ -356,9 +349,9 @@ export const LibraryTransferRepositoryLive = Layer.effect(
                       cacheKey
                     }
                     locationCreates.push(createdLocation)
-                    recordLocationCache.set(cacheKey, id)
-                    cacheUpdates.push(() => locationCache.set(cacheKey, id))
-                    parent = { id, name: part, parentLocationId: parent?.id ?? null, path: locationPath, depth }
+                    recordLocationCache.set(cacheKey, createdLocation)
+                    cacheUpdates.push(() => locationCache.set(cacheKey, createdLocation))
+                    parent = createdLocation
                   }
 
                   return parent?.id ?? null
@@ -415,7 +408,9 @@ export const LibraryTransferRepositoryLive = Layer.effect(
 
                 const bookId = existing?.bookId ?? sharedOpenLibraryBookId ?? generateId()
                 const userBookId = existing?.userBookId ?? generateId()
-                const shouldSetAuthors = !existing || (existing.bookSource === 'manual' && existing.createdByUserId === userId)
+                const isUserOwnedManualBook = existing?.bookSource === 'manual' && existing.createdByUserId === userId
+                const isNewManualBook = !existing && !sharedOpenLibraryBookId
+                const shouldSetAuthors = isNewManualBook || isUserOwnedManualBook
                 const authorLinks = shouldSetAuthors ? await resolveAuthorLinks(record.authors) : []
                 const tagLinks = await resolveTagLinks(record.tags)
 

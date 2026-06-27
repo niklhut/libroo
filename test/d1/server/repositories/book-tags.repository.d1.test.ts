@@ -38,7 +38,7 @@ describe('BookRepository tag mutations on D1', () => {
 
   it('batch updates by deleting, promoting, and creating tags in one D1 batch', async () => {
     await runRepository(db, Effect.flatMap(BookRepository, repository =>
-      repository.batchUpdateTags('ub-1', 'user-1', ['tag-delete'], ['tag-system'], ['Fresh Tag'])
+      repository.batchUpdateTags('ub-1', 'user-1', ['tag-delete'], ['tag-system'], ['Fresh Tag', 'fresh tag'])
     ))
 
     await expect(userTagNames(db, 'ub-1')).resolves.toEqual(['Fresh Tag', 'System'])

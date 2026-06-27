@@ -75,10 +75,11 @@ export const AccountDeletionRepositoryLive = Layer.effect(
             const now = new Date()
 
             const batchResults = await dbService.executeAtomic((database) => {
+              const deletionAllowed = accountDeletionAllowedPredicate(userId)
               const statements: AtomicDbStatement[] = [
                 database
                   .delete(loans)
-                  .where(eq(loans.ownerUserId, userId))
+                  .where(and(eq(loans.ownerUserId, userId), deletionAllowed))
                   .returning({ id: loans.id }),
                 database
                   .update(loans)
@@ -87,23 +88,24 @@ export const AccountDeletionRepositoryLive = Layer.effect(
                     acceptedAt: null,
                     updatedAt: now
                   })
-                  .where(eq(loans.borrowerUserId, userId))
+                  .where(and(eq(loans.borrowerUserId, userId), deletionAllowed))
                   .returning({ id: loans.id }),
                 database
                   .delete(userBookTags)
-                  .where(userBookIds.length > 0 ? inArray(userBookTags.userBookId, userBookIds) : sql`false`),
+                  .where(userBookIds.length > 0 ? and(inArray(userBookTags.userBookId, userBookIds), deletionAllowed) : sql`false`),
                 database
                   .delete(userBooks)
-                  .where(eq(userBooks.userId, userId))
+                  .where(and(eq(userBooks.userId, userId), deletionAllowed))
                   .returning({ id: userBooks.id }),
                 database
                   .delete(locations)
-                  .where(eq(locations.userId, userId)),
+                  .where(and(eq(locations.userId, userId), deletionAllowed)),
                 database
                   .delete(books)
                   .where(and(
                     eq(books.source, 'manual'),
                     eq(books.createdByUserId, userId),
+                    deletionAllowed,
                     not(exists(
                       database
                         .select({ id: userBooks.id })
@@ -118,27 +120,31 @@ export const AccountDeletionRepositoryLive = Layer.effect(
                 database
                   .update(signupInvites)
                   .set({ acceptedByUserId: null, updatedAt: now })
-                  .where(eq(signupInvites.acceptedByUserId, userId)),
+                  .where(and(eq(signupInvites.acceptedByUserId, userId), deletionAllowed)),
                 database
                   .delete(signupInvites)
-                  .where(eq(signupInvites.createdByUserId, userId)),
+                  .where(and(eq(signupInvites.createdByUserId, userId), deletionAllowed)),
                 database
                   .delete(verification)
                   .where(verificationIdentifiers.length > 0
-                    ? or(
-                        inArray(verification.identifier, verificationIdentifiers),
-                        inArray(verification.value, verificationIdentifiers)
+                    ? and(
+                        or(
+                          inArray(verification.identifier, verificationIdentifiers),
+                          inArray(verification.value, verificationIdentifiers)
+                        ),
+                        deletionAllowed
                       )
                     : sql`false`),
                 database
                   .delete(session)
-                  .where(eq(session.userId, userId)),
+                  .where(and(eq(session.userId, userId), deletionAllowed)),
                 database
                   .delete(account)
-                  .where(eq(account.userId, userId)),
+                  .where(and(eq(account.userId, userId), deletionAllowed)),
                 database
                   .delete(user)
-                  .where(eq(user.id, userId))
+                  .where(and(eq(user.id, userId), deletionAllowed))
+                  .returning({ id: user.id })
               ]
 
               return statements as [AtomicDbStatement, ...AtomicDbStatement[]]
@@ -148,6 +154,13 @@ export const AccountDeletionRepositoryLive = Layer.effect(
             const anonymizedBorrowedLoans = batchResults[1] as Array<{ id: string }>
             const deletedUserBooks = batchResults[3] as Array<{ id: string }>
             const deletedManualBooks = batchResults[5] as Array<{ id: string, coverPath: string | null }>
+            const deletedUsers = batchResults[11] as Array<{ id: string }>
+            if (userRow && roleIncludesAdmin(userRow.role) && !isActiveBan(userRow) && deletedUsers.length === 0) {
+              throw new LastAdminAccountDeletionError({
+                message: 'Cannot delete the last remaining active admin account'
+              })
+            }
+
             const blobPaths = [
               userRow?.image,
               ...deletedManualBooks.map(row => row.coverPath)
@@ -186,6 +199,23 @@ function adminRoleTokenPredicate() {
   return sql`(',' || replace(${user.role}, ' ', '') || ',') LIKE ${'%,admin,%'}`
 }
 
+function accountDeletionAllowedPredicate(userId: string) {
+  return sql`(
+    NOT EXISTS (
+      SELECT 1 FROM ${user}
+      WHERE ${user.id} = ${userId}
+      AND ${adminRoleTokenPredicate()}
+      AND ${inactiveBanPredicate()}
+    )
+    OR EXISTS (
+      SELECT 1 FROM ${user}
+      WHERE ${user.id} <> ${userId}
+      AND ${adminRoleTokenPredicate()}
+      AND ${inactiveBanPredicate()}
+    )
+  )`
+}
+
 function toLastAdminAccountDeletionError(error: unknown) {
   if (error instanceof LastAdminAccountDeletionError) {
     return error
@@ -211,6 +241,6 @@ function toLastAdminAccountDeletionError(error: unknown) {
 function inactiveBanPredicate() {
   return sql`(
     COALESCE(${user.banned}, false) = false
-    OR (${user.banExpires} IS NOT NULL AND ${user.banExpires} <= ${Date.now()})
+    OR (${user.banExpires} IS NOT NULL AND ${user.banExpires} <= (CAST(strftime('%s', 'now') AS INTEGER) * 1000))
   )`
 }
