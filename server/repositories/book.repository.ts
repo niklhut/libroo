@@ -1621,109 +1621,133 @@ export const BookRepositoryLive = Layer.effect(
       batchUpdateTags: (userBookId, userId, deleteIds, promoteIds, createNames) =>
         Effect.tryPromise({
           try: async () => {
-            await dbService.db.transaction(async (tx) => {
-              const ownedRows = await tx
-                .select({
-                  userBookId: userBooks.id,
-                  bookId: userBooks.bookId
-                })
-                .from(userBooks)
-                .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId), isNull(userBooks.removedAt)))
+            const ownedRows = await dbService.db
+              .select({
+                userBookId: userBooks.id,
+                bookId: userBooks.bookId
+              })
+              .from(userBooks)
+              .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId), isNull(userBooks.removedAt)))
+              .limit(1)
+
+            const owned = ownedRows[0]
+            if (!owned) {
+              throw new BookNotFoundError({ bookId: userBookId })
+            }
+
+            const uniqueDeleteIds = [...new Set(deleteIds)]
+            const uniquePromoteIds = [...new Set(promoteIds)]
+            const promoteInputs: Array<{ tagId: string, userBookTagId: string }> = []
+            const createInputMap = new Map<string, {
+              tagId: string
+              userBookTagId: string
+              displayName: string
+              normalizedName: string
+              shouldInsertTag: boolean
+            }>()
+
+            for (const tagId of uniquePromoteIds) {
+              const systemTag = await dbService.db
+                .select({ tagId: bookSystemTags.tagId })
+                .from(bookSystemTags)
+                .where(and(eq(bookSystemTags.bookId, owned.bookId), eq(bookSystemTags.tagId, tagId)))
                 .limit(1)
 
-              const owned = ownedRows[0]
-              if (!owned) {
+              if (!systemTag[0]) {
                 throw new BookNotFoundError({ bookId: userBookId })
               }
 
-              const uniqueDeleteIds = [...new Set(deleteIds)]
-              const uniquePromoteIds = [...new Set(promoteIds)]
-              const uniqueCreateNames = [...new Set(createNames.map(name => name.trim()).filter(Boolean))]
+              promoteInputs.push({ tagId, userBookTagId: generateId() })
+            }
+
+            for (const name of createNames.map(name => name.trim()).filter(Boolean)) {
+              const normalized = normalizeTagInput(name)
+              if (!normalized) {
+                throw new InvalidTagError({ message: 'Tag is empty or invalid' })
+              }
+              if (createInputMap.has(normalized.key)) {
+                continue
+              }
+
+              const existing = await dbService.db
+                .select({ id: tags.id })
+                .from(tags)
+                .where(eq(tags.normalizedName, normalized.key))
+                .limit(1)
+              const existingTagId = existing[0]?.id ?? null
+
+              createInputMap.set(normalized.key, {
+                tagId: existingTagId ?? generateId(),
+                userBookTagId: generateId(),
+                displayName: normalized.displayName,
+                normalizedName: normalized.key,
+                shouldInsertTag: !existingTagId
+              })
+            }
+            const createInputs = [...createInputMap.values()]
+
+            await dbService.executeAtomic((database) => {
+              const statements: AtomicDbStatement[] = []
+              const now = new Date()
 
               for (const tagId of uniqueDeleteIds) {
-                await tx
-                  .delete(userBookTags)
-                  .where(and(eq(userBookTags.userBookId, owned.userBookId), eq(userBookTags.tagId, tagId)))
+                statements.push(
+                  database
+                    .delete(userBookTags)
+                    .where(and(eq(userBookTags.userBookId, owned.userBookId), eq(userBookTags.tagId, tagId)))
+                )
               }
 
-              for (const tagId of uniquePromoteIds) {
-                const systemTag = await tx
-                  .select({ tagId: bookSystemTags.tagId })
-                  .from(bookSystemTags)
-                  .where(and(eq(bookSystemTags.bookId, owned.bookId), eq(bookSystemTags.tagId, tagId)))
-                  .limit(1)
-
-                if (!systemTag[0]) {
-                  throw new BookNotFoundError({ bookId: userBookId })
-                }
-
-                await tx
-                  .insert(userBookTags)
-                  .values({
-                    id: generateId(),
-                    userBookId: owned.userBookId,
-                    tagId,
-                    createdAt: new Date(),
-                    updatedAt: new Date()
-                  })
-                  .onConflictDoNothing()
-              }
-
-              for (const name of uniqueCreateNames) {
-                const normalized = normalizeTagInput(name)
-                if (!normalized) {
-                  throw new InvalidTagError({ message: 'Tag is empty or invalid' })
-                }
-
-                const existing = await tx
-                  .select({ id: tags.id })
-                  .from(tags)
-                  .where(eq(tags.normalizedName, normalized.key))
-                  .limit(1)
-
-                let tagId = existing[0]?.id ?? null
-
-                if (!tagId) {
-                  const newTagId = generateId()
-
-                  await tx
-                    .insert(tags)
+              for (const promote of promoteInputs) {
+                statements.push(
+                  database
+                    .insert(userBookTags)
                     .values({
-                      id: newTagId,
-                      name: normalized.displayName,
-                      normalizedName: normalized.key,
-                      createdAt: new Date(),
-                      updatedAt: new Date()
+                      id: promote.userBookTagId,
+                      userBookId: owned.userBookId,
+                      tagId: promote.tagId,
+                      createdAt: now,
+                      updatedAt: now
                     })
                     .onConflictDoNothing()
-
-                  const found = await tx
-                    .select({ id: tags.id })
-                    .from(tags)
-                    .where(eq(tags.normalizedName, normalized.key))
-                    .limit(1)
-
-                  tagId = found[0]?.id ?? null
-                }
-
-                if (!tagId) {
-                  throw new DatabaseError({
-                    message: `Tag upsert failed for key: ${normalized.key}`,
-                    operation: 'batchUpdateTags.create'
-                  })
-                }
-
-                await tx
-                  .insert(userBookTags)
-                  .values({
-                    id: generateId(),
-                    userBookId: owned.userBookId,
-                    tagId,
-                    createdAt: new Date(),
-                    updatedAt: new Date()
-                  })
-                  .onConflictDoNothing()
+                )
               }
+
+              for (const input of createInputs) {
+                if (input.shouldInsertTag) {
+                  // A concurrent creator can win the normalized-name insert between the pre-read and this batch;
+                  // the link below resolves the persisted tag by normalized name after the insert attempt.
+                  statements.push(
+                    database
+                      .insert(tags)
+                      .values({
+                        id: input.tagId,
+                        name: input.displayName,
+                        normalizedName: input.normalizedName,
+                        createdAt: now,
+                        updatedAt: now
+                      })
+                      .onConflictDoNothing()
+                  )
+                }
+
+                statements.push(
+                  database
+                    .insert(userBookTags)
+                    .values({
+                      id: input.userBookTagId,
+                      userBookId: owned.userBookId,
+                      tagId: sql<string>`(SELECT id FROM tags WHERE normalized_name = ${input.normalizedName})` as unknown as string,
+                      createdAt: now,
+                      updatedAt: now
+                    })
+                    .onConflictDoNothing()
+                )
+              }
+
+              return statements.length > 0
+                ? statements as [AtomicDbStatement, ...AtomicDbStatement[]]
+                : [database.update(userBooks).set({ id: owned.userBookId }).where(sql`false`)]
             })
           },
           catch: (error) => {
@@ -1761,9 +1785,8 @@ export const BookRepositoryLive = Layer.effect(
           // Atomically check for any remaining references and delete the tag if none exist
           yield* Effect.tryPromise({
             try: () =>
-              dbService.db.transaction(async (tx) => {
-                // Delete tag only if no references exist in either table (atomic operation)
-                await tx
+              dbService.executeAtomic(database => [
+                database
                   .delete(tags)
                   .where(
                     and(
@@ -1772,7 +1795,7 @@ export const BookRepositoryLive = Layer.effect(
                       sql`NOT EXISTS (SELECT 1 FROM ${bookSystemTags} WHERE ${eq(bookSystemTags.tagId, tagId)})`
                     )
                   )
-              }),
+              ]),
             catch: error => new DatabaseError({
               message: `Failed to garbage collect tag: ${error}`,
               operation: 'deleteTag.gc'
