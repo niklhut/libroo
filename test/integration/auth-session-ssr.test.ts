@@ -161,7 +161,9 @@ function hashInviteToken(token: string) {
 
 function sessionCookie(response: Response) {
   const getSetCookie = response.headers.getSetCookie?.bind(response.headers)
-  const setCookies = getSetCookie ? getSetCookie() : [response.headers.get('set-cookie')].filter(Boolean) as string[]
+  const setCookies = getSetCookie
+    ? getSetCookie()
+    : splitSetCookieHeader(response.headers.get('set-cookie'))
   const cookie = setCookies
     .map(value => value.split(';')[0])
     .find((value) => {
@@ -174,4 +176,8 @@ function sessionCookie(response: Response) {
   }
 
   return cookie
+}
+
+function splitSetCookieHeader(header: string | null) {
+  return header?.split(/,(?=\s*[^;,]+=)/).map(value => value.trim()).filter(Boolean) ?? []
 }
