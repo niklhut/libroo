@@ -125,14 +125,9 @@ describe('AccountDeletionRepository on D1', () => {
       updatedAt: now
     })
 
-    const typedDatabase = db as unknown as DbServiceInterface['db']
-    const result = await runRepositoryWithService({
-      db: typedDatabase,
-      executeAtomic: async (buildStatements) => {
-        await db.delete(user).where(eq(user.id, 'admin-2'))
-        return typedDatabase.batch(buildStatements(typedDatabase))
-      }
-    }, Effect.either(Effect.flatMap(AccountDeletionRepository, repository =>
+    await db.delete(user).where(eq(user.id, 'admin-2'))
+
+    const result = await runRepository(db, Effect.either(Effect.flatMap(AccountDeletionRepository, repository =>
       repository.deleteAccountData('admin-1')
     )))
 
@@ -184,16 +179,6 @@ function runRepository<A, E>(
       db: typedDatabase,
       executeAtomic: buildStatements => typedDatabase.batch(buildStatements(typedDatabase))
     }))
-  ))
-}
-
-function runRepositoryWithService<A, E>(
-  dbService: DbServiceInterface,
-  effect: Effect.Effect<A, E, AccountDeletionRepository | DbService>
-) {
-  return Effect.runPromise(effect.pipe(
-    Effect.provide(AccountDeletionRepositoryLive),
-    Effect.provide(Layer.succeed(DbService, dbService))
   ))
 }
 
