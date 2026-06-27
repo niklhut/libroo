@@ -99,7 +99,7 @@ watch(
               :color="affectedBookCount === 0 ? 'success' : 'primary'"
               variant="soft"
             >
-              {{ affectedBookCount }} affected
+              {{ affectedBookCount }} total {{ affectedBookCount === 1 ? 'book' : 'books' }}
             </UBadge>
           </div>
         </div>
