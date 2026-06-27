@@ -455,32 +455,18 @@ async function syncLoadedPages(targetPages: number) {
           class="space-y-3 rounded-lg border border-default bg-muted/30 p-3"
         >
           <div class="grid gap-3 md:grid-cols-4">
-            <select
+            <USelect
               v-model="loanStatus"
+              :items="loanStatusItems"
               aria-label="Loan status"
-              class="w-full rounded-md border-0 bg-default px-2.5 py-1.5 pe-9 text-sm text-highlighted ring ring-inset ring-accented outline-primary/25 transition-colors focus-visible:outline-3 focus-visible:ring-primary"
-            >
-              <option
-                v-for="item in loanStatusItems"
-                :key="item.value"
-                :value="item.value"
-              >
-                {{ item.label }}
-              </option>
-            </select>
-            <select
+              class="w-full"
+            />
+            <USelect
               v-model="readingStatus"
+              :items="readingStatusItems"
               aria-label="Reading status"
-              class="w-full rounded-md border-0 bg-default px-2.5 py-1.5 pe-9 text-sm text-highlighted ring ring-inset ring-accented outline-primary/25 transition-colors focus-visible:outline-3 focus-visible:ring-primary"
-            >
-              <option
-                v-for="item in readingStatusItems"
-                :key="item.value"
-                :value="item.value"
-              >
-                {{ item.label }}
-              </option>
-            </select>
+              class="w-full"
+            />
             <UInput
               v-model="tag"
               icon="i-lucide-tag"
@@ -496,32 +482,20 @@ async function syncLoadedPages(targetPages: number) {
           </div>
 
           <div class="grid gap-3 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto_auto] md:items-center">
-            <select
+            <USelect
               v-model="selectedLocationFilter"
+              :items="locationOptions"
+              icon="i-lucide-map-pin"
               aria-label="Location filter mode"
-              class="w-full rounded-md border-0 bg-default px-2.5 py-1.5 pe-9 text-sm text-highlighted ring ring-inset ring-accented outline-primary/25 transition-colors focus-visible:outline-3 focus-visible:ring-primary"
-            >
-              <option
-                v-for="item in locationOptions"
-                :key="item.value"
-                :value="item.value"
-              >
-                {{ item.label }}
-              </option>
-            </select>
-            <select
+              class="w-full"
+            />
+            <USelect
               v-model="sortBy"
+              :items="sortItems"
+              icon="i-lucide-arrow-up-down"
               aria-label="Sort library"
-              class="w-full rounded-md border-0 bg-default px-2.5 py-1.5 pe-9 text-sm text-highlighted ring ring-inset ring-accented outline-primary/25 transition-colors focus-visible:outline-3 focus-visible:ring-primary"
-            >
-              <option
-                v-for="item in sortItems"
-                :key="item.value"
-                :value="item.value"
-              >
-                {{ item.label }}
-              </option>
-            </select>
+              class="w-full"
+            />
             <UCheckbox
               v-model="includeLocationDescendants"
               :disabled="!locationId"
