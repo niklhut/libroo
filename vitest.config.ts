@@ -47,6 +47,7 @@ export default defineConfig({
         test: {
           name: 'integration',
           include: ['test/integration/**/*.test.ts'],
+          // Runtime-specific setup can be layered in here once integration tests need it.
           testTimeout: 120_000,
           hookTimeout: 180_000
         }
