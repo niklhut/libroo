@@ -56,13 +56,33 @@ describe('useAuthStore', () => {
     })
 
     const store = useAuthStore()
-    const { user, session: userSession, isAuthenticated, isPending, error } = storeToRefs(store)
+    const { user, session: userSession, status, isAuthenticated, isPending, error } = storeToRefs(store)
 
     expect(user.value).toEqual({ id: 'u1', email: 'ada@example.com' })
     expect(userSession.value).toEqual({ id: 's1' })
+    expect(status.value).toBe('authenticated')
     expect(isAuthenticated.value).toBe(true)
     expect(isPending.value).toBe(false)
     expect(error.value).toBeNull()
+  })
+
+  it('surfaces session lookup errors distinctly from signed-out state', () => {
+    const session = {
+      data: ref(null),
+      error: ref({ name: 'Error', message: 'database offline' }),
+      isPending: ref(false)
+    }
+
+    ;(globalThis as unknown as { useNuxtApp: () => { $authSession: typeof session } }).useNuxtApp = () => ({
+      $authSession: session
+    })
+
+    const store = useAuthStore()
+    const { status, isAuthenticated, error } = storeToRefs(store)
+
+    expect(status.value).toBe('error')
+    expect(isAuthenticated.value).toBe(false)
+    expect(error.value).toEqual({ name: 'Error', message: 'database offline' })
   })
 
   it('proxies auth actions to the shared auth client', async () => {

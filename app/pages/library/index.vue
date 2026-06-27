@@ -389,6 +389,7 @@ async function syncLoadedPages(targetPages: number) {
             v-model="search"
             icon="i-lucide-search"
             size="lg"
+            aria-label="Search library"
             placeholder="Search title, author, ISBN, tag, or location"
             class="w-full md:flex-1"
           />
@@ -401,7 +402,7 @@ async function syncLoadedPages(targetPages: number) {
               icon="i-lucide-sliders-horizontal"
               :trailing-icon="areFiltersExpanded ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
               :aria-expanded="areFiltersExpanded"
-              aria-controls="library-advanced-filters"
+              :aria-controls="areFiltersExpanded ? 'library-advanced-filters' : undefined"
               class="w-full justify-center md:w-auto"
               @click="areFiltersExpanded = !areFiltersExpanded"
             >
@@ -461,21 +462,25 @@ async function syncLoadedPages(targetPages: number) {
                 <USelect
                   v-model="loanStatus"
                   :items="loanStatusItems"
+                  aria-label="Loan status"
                   class="w-full"
                 />
                 <USelect
                   v-model="readingStatus"
                   :items="readingStatusItems"
+                  aria-label="Reading status"
                   class="w-full"
                 />
                 <UInput
                   v-model="tag"
                   icon="i-lucide-tag"
+                  aria-label="Filter by tag"
                   placeholder="Filter tag"
                 />
                 <UInput
                   v-model="location"
                   icon="i-lucide-map-pin"
+                  aria-label="Filter by location path"
                   placeholder="Search location path"
                 />
               </div>
@@ -485,21 +490,25 @@ async function syncLoadedPages(targetPages: number) {
                   v-model="selectedLocationFilter"
                   :items="locationOptions"
                   icon="i-lucide-map-pin"
+                  aria-label="Location filter mode"
                   class="w-full"
                 />
                 <USelect
                   v-model="sortBy"
                   :items="sortItems"
                   icon="i-lucide-arrow-up-down"
+                  aria-label="Sort library"
                   class="w-full"
                 />
                 <UCheckbox
                   v-model="includeLocationDescendants"
                   :disabled="!locationId"
+                  aria-label="Include sub-locations"
                   label="Include sub-locations"
                 />
                 <USwitch
                   v-model="groupByLocation"
+                  aria-label="Group by location"
                   label="Group by location"
                 />
               </div>
