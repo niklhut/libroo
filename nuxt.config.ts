@@ -116,6 +116,7 @@ export default defineNuxtConfig({
   alias: {
     '../runtime/active': `./server/runtime/${runtimeProfile}.ts`,
     '../runtime/auth-db.active': `./server/runtime/auth-db.${runtimeProfile}.ts`,
+    '../runtime/background-tasks.active': `./server/runtime/background-tasks.${runtimeProfile}.ts`,
     '../runtime/email.active': `./server/runtime/email.${runtimeProfile}.ts`
   },
 

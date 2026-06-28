@@ -36,6 +36,7 @@ type HookContext = {
   body?: unknown
   context: {
     returned?: unknown
+    runInBackgroundOrAwait?: (promise?: Promise<unknown>) => unknown
     internalAdapter: {
       findUserById: (userId: string) => Promise<UserWithAuditFields | null>
       findUserByEmail?: (email: string) => Promise<UserWithAuditFields | { user?: UserWithAuditFields | null } | null>
@@ -80,7 +81,7 @@ export const librooAdminAuditPlugin = (): BetterAuthPlugin => ({
           if (isAuditedAuthPath(ctx.path)) {
             const entry = await buildAuthAuditEntry(ctx as HookContext)
             if (entry) {
-              await persistAuditEntry(entry, 'auth')
+              await runInBackgroundOrAwait(ctx as HookContext, persistAuditEntry(entry, 'auth', ctx.path, entry.action))
             }
             return
           }
@@ -92,7 +93,7 @@ export const librooAdminAuditPlugin = (): BetterAuthPlugin => ({
 
           const responseUser = getResponseUser(response)
           for (const snapshot of snapshots) {
-            await persistAuditEntry({
+            const entry = {
               category: 'admin',
               actorUserId: snapshot.actorUserId,
               targetUserId: snapshot.targetUserId,
@@ -101,13 +102,23 @@ export const librooAdminAuditPlugin = (): BetterAuthPlugin => ({
                 ...snapshot.metadata,
                 ...metadataFromResponse(snapshot, responseUser)
               }
-            }, 'admin')
+            } satisfies CreateAdminAuditEntryInput
+
+            await runInBackgroundOrAwait(ctx as HookContext, persistAuditEntry(entry, 'admin', ctx.path, snapshot.action))
           }
         })
       }
     ]
   }
 })
+
+function runInBackgroundOrAwait(ctx: HookContext, promise: Promise<unknown>) {
+  if (ctx.context.runInBackgroundOrAwait) {
+    return ctx.context.runInBackgroundOrAwait(promise)
+  }
+
+  return promise
+}
 
 export async function buildAdminAuditSnapshots(ctx: HookContext): Promise<AuditSnapshot[]> {
   const session = await getSessionFromCtx(ctx as Parameters<typeof getSessionFromCtx>[0])
@@ -413,11 +424,18 @@ async function getEndpointResponse(returned: unknown) {
   return returned
 }
 
-async function persistAuditEntry(input: CreateAdminAuditEntryInput, category: 'admin' | 'auth') {
+async function persistAuditEntry(input: CreateAdminAuditEntryInput, category: 'admin' | 'auth', path?: string, action?: AdminAuditAction) {
   try {
     await createAdminAuditEntryInDatabase(input)
   } catch (error) {
-    console.error(`Failed to persist ${category} audit entry`, error)
+    console.error(`Failed to persist ${category} audit entry`, {
+      severity: 'error',
+      operation: 'admin-audit.persist',
+      category,
+      action: action ?? input.action,
+      path,
+      error
+    })
   }
 }
 

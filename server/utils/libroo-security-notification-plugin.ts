@@ -13,6 +13,7 @@ type HookContext = {
   path?: string
   context: {
     returned?: unknown
+    runInBackgroundOrAwait?: (promise?: Promise<unknown>) => unknown
     internalAdapter?: {
       findUserById?: (userId: string) => Promise<SecurityNotificationUser | null>
     }
@@ -43,19 +44,27 @@ export const librooSecurityNotificationPlugin = (): BetterAuthPlugin => ({
       {
         matcher: context => isPasswordChangePath(context.path),
         handler: createAuthMiddleware(async (ctx) => {
-          await notifyPasswordChanged(ctx as HookContext)
+          await runInBackgroundOrAwait(ctx as HookContext, notifyPasswordChanged(ctx as HookContext))
         })
       }
     ]
   }
 })
 
+function runInBackgroundOrAwait(ctx: HookContext, promise: Promise<unknown>) {
+  if (ctx.context.runInBackgroundOrAwait) {
+    return ctx.context.runInBackgroundOrAwait(promise)
+  }
+
+  return promise
+}
+
 export async function notifyPasswordChanged(ctx: HookContext) {
   if (!isPasswordChangePath(ctx.path)) return false
   if (!emailDeliveryConfigured()) return false
   if (!await endpointSucceeded(ctx.context.returned)) return false
 
-  return sendPasswordChangedNotification(getPasswordChangeUser(ctx.context))
+  return sendPasswordChangedNotification(getPasswordChangeUser(ctx.context), ctx.path)
 }
 
 async function getCurrentSessionUser(ctx: Parameters<Parameters<typeof createAuthMiddleware>[0]>[0]) {
@@ -76,14 +85,19 @@ async function getAdminPasswordTargetUser(ctx: HookContext) {
   return ctx.context.internalAdapter?.findUserById?.(userId) ?? null
 }
 
-export async function sendPasswordChangedNotification(user: SecurityNotificationUser | null) {
+export async function sendPasswordChangedNotification(user: SecurityNotificationUser | null, path?: string) {
   if (!user?.email) return false
 
   try {
     await sendPasswordChangedEmail(user)
     return true
   } catch (error) {
-    console.error('Failed to send password change security notification', error)
+    console.error('Failed to send password change security notification', {
+      severity: 'error',
+      operation: 'security-notification.password-changed',
+      path,
+      error
+    })
     return false
   }
 }
