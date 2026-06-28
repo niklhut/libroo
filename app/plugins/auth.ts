@@ -10,6 +10,8 @@ interface AuthSessionState {
   error: SafeAuthSessionError | null
 }
 
+type AuthSessionRefetch = () => Promise<void>
+
 export default defineNuxtPlugin(async () => {
   const event = import.meta.server ? useRequestEvent() : undefined
   const resolvedSession = event?.context.authSession as AuthSessionResolution | undefined
@@ -31,19 +33,27 @@ export default defineNuxtPlugin(async () => {
     }
   })
   const error = computed(() => authState.value.error)
+  let refetch: AuthSessionRefetch = async () => undefined
+  const refetchSession: AuthSessionRefetch = async () => refetch()
 
   if (import.meta.client) {
     isPending.value = true
 
     try {
       const { authClient } = await import('~/utils/auth-client')
-      const liveSession = await authClient.useSession()
+      const liveSession = authClient.useSession()
+      refetch = async () => {
+        const { refetch } = unref(liveSession)
+        await refetch()
+      }
 
       watchEffect(() => {
-        const liveSnapshot = unref(liveSession)
-        const pending = liveSnapshot.isPending ?? false
+        const {
+          data: liveData = null,
+          error: liveError,
+          isPending: pending = false
+        } = unref(liveSession)
         isPending.value = pending
-        const liveError = liveSnapshot.error
 
         if (liveError) {
           authState.value = {
@@ -58,7 +68,6 @@ export default defineNuxtPlugin(async () => {
           return
         }
 
-        const liveData = liveSnapshot.data ?? null
         authState.value = {
           status: liveData ? 'authenticated' : 'unauthenticated',
           data: liveData,
@@ -80,7 +89,8 @@ export default defineNuxtPlugin(async () => {
       authSession: {
         data,
         error,
-        isPending
+        isPending,
+        refetch: refetchSession
       }
     }
   }

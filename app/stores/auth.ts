@@ -7,6 +7,7 @@ interface InjectedAuthSession {
   data: Ref<{ user?: AuthUser, session?: Record<string, unknown> } | null>
   error: Ref<unknown>
   isPending: Ref<boolean>
+  refetch: () => Promise<void>
 }
 
 interface AuthUser extends Record<string, unknown> {
@@ -65,6 +66,10 @@ export const useAuthStore = defineStore('auth', () => {
     await authClient.signOut()
   }
 
+  async function refresh() {
+    await session.refetch()
+  }
+
   return {
     user,
     session: userSession,
@@ -74,6 +79,7 @@ export const useAuthStore = defineStore('auth', () => {
     error,
     signIn,
     signUp,
-    signOut
+    signOut,
+    refresh
   }
 })

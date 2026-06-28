@@ -8,6 +8,8 @@ definePageMeta({
 usePageTitle('Email Verification')
 
 const route = useRoute()
+const authStore = useAuthStore()
+const { isAuthenticated } = storeToRefs(authStore)
 const status = ref<'pending' | 'success' | 'expired' | 'invalid' | 'failure'>('pending')
 const message = computed(() => {
   switch (status.value) {
@@ -37,15 +39,24 @@ const icon = computed(() => {
 
 const actionLabel = computed(() => {
   if (status.value === 'pending') return ''
-  return status.value === 'success' ? 'Continue to library' : 'Open settings'
+  if (status.value === 'success') {
+    return isAuthenticated.value ? 'Go to your library' : 'Go to sign in'
+  }
+  return 'Open settings'
 })
 const actionTo = computed(() => {
   if (status.value === 'pending') return undefined
-  return status.value === 'success' ? '/library' : '/settings'
+  if (status.value === 'success') {
+    return isAuthenticated.value ? '/library' : '/login'
+  }
+  return '/settings'
 })
 const actionIcon = computed(() => {
   if (status.value === 'pending') return undefined
-  return status.value === 'success' ? 'i-lucide-library' : 'i-lucide-settings'
+  if (status.value === 'success') {
+    return isAuthenticated.value ? 'i-lucide-library' : 'i-lucide-log-in'
+  }
+  return 'i-lucide-settings'
 })
 
 onMounted(async () => {
@@ -77,6 +88,11 @@ onMounted(async () => {
       return
     }
 
+    try {
+      await authStore.refresh()
+    } catch {
+      // Verification already succeeded; fall back to the current auth state.
+    }
     status.value = 'success'
   } catch (err: unknown) {
     status.value = getEmailVerificationFailureStatus(err)
