@@ -1,5 +1,14 @@
-import { describe, expect, it } from 'vitest'
-import { buildAdminAuditSnapshotsForActor, buildAuthAuditEntry, metadataFromResponse } from '../../server/utils/libroo-admin-audit-plugin'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { buildAdminAuditSnapshotsForActor, buildAuthAuditEntry, librooAdminAuditPlugin, metadataFromResponse } from '../../server/utils/libroo-admin-audit-plugin'
+import { createAdminAuditEntryInDatabase } from '../../server/repositories/audit.repository'
+
+vi.mock('../../server/repositories/audit.repository', () => ({
+  createAdminAuditEntryInDatabase: vi.fn()
+}))
+
+afterEach(() => {
+  vi.clearAllMocks()
+})
 
 describe('librooAdminAuditPlugin', () => {
   it('builds role-change audit snapshots from Better Auth admin set-role requests', async () => {
@@ -267,4 +276,100 @@ describe('librooAdminAuditPlugin', () => {
       metadata: null
     })
   })
+
+  it('defers post-success audit persistence when Better Auth provides a background helper', async () => {
+    let resolvePersist!: () => void
+    const persistPromise = new Promise<void>((resolve) => {
+      resolvePersist = resolve
+    })
+    vi.mocked(createAdminAuditEntryInDatabase).mockReturnValue(persistPromise)
+
+    const runInBackgroundOrAwait = vi.fn()
+    const ctx = successfulSignupHookContext({ runInBackgroundOrAwait })
+    const afterHandler = librooAdminAuditPlugin().hooks?.after?.[0]?.handler as (ctx: unknown) => Promise<unknown>
+
+    await afterHandler(ctx)
+
+    expect(createAdminAuditEntryInDatabase).toHaveBeenCalledWith(expect.objectContaining({
+      category: 'auth',
+      action: 'auth.sign_up'
+    }))
+    expect(runInBackgroundOrAwait).toHaveBeenCalledWith(expect.any(Promise))
+
+    resolvePersist()
+    await expect(runInBackgroundOrAwait.mock.calls[0]![0]).resolves.toBeUndefined()
+  })
+
+  it('awaits post-success audit persistence inline when no background helper is present', async () => {
+    let resolvePersist!: () => void
+    const persistPromise = new Promise<void>((resolve) => {
+      resolvePersist = resolve
+    })
+    vi.mocked(createAdminAuditEntryInDatabase).mockReturnValue(persistPromise)
+
+    const ctx = successfulSignupHookContext()
+    const afterHandler = librooAdminAuditPlugin().hooks?.after?.[0]?.handler as (ctx: unknown) => Promise<unknown>
+    let settled = false
+
+    const afterPromise = afterHandler(ctx).then(() => {
+      settled = true
+    })
+    await Promise.resolve()
+
+    expect(settled).toBe(false)
+    resolvePersist()
+    await afterPromise
+    expect(settled).toBe(true)
+  })
+
+  it('logs rejected audit persistence with action and path metadata', async () => {
+    const error = new Error('database unavailable')
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.mocked(createAdminAuditEntryInDatabase).mockRejectedValue(error)
+
+    const runInBackgroundOrAwait = vi.fn()
+    const ctx = successfulSignupHookContext({ runInBackgroundOrAwait })
+    const afterHandler = librooAdminAuditPlugin().hooks?.after?.[0]?.handler as (ctx: unknown) => Promise<unknown>
+
+    await afterHandler(ctx)
+    await expect(runInBackgroundOrAwait.mock.calls[0]![0]).resolves.toBeUndefined()
+
+    expect(consoleError).toHaveBeenCalledWith(
+      'Failed to persist auth audit entry',
+      expect.objectContaining({
+        severity: 'error',
+        operation: 'admin-audit.persist',
+        category: 'auth',
+        action: 'auth.sign_up',
+        path: '/sign-up/email',
+        error
+      })
+    )
+    consoleError.mockRestore()
+  })
 })
+
+function successfulSignupHookContext(options: {
+  runInBackgroundOrAwait?: (promise?: Promise<unknown>) => unknown
+} = {}) {
+  return {
+    path: '/sign-up/email',
+    body: {
+      email: 'new@example.com',
+      name: 'New User'
+    },
+    context: {
+      returned: {
+        user: {
+          id: 'user-1',
+          email: 'new@example.com',
+          name: 'New User'
+        }
+      },
+      runInBackgroundOrAwait: options.runInBackgroundOrAwait,
+      internalAdapter: {
+        findUserById: async () => null
+      }
+    }
+  }
+}

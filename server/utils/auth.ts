@@ -12,6 +12,7 @@ import { librooTermsConsentPlugin } from './libroo-terms-consent-plugin'
 import { getEmailVerificationConfig, validateEmailVerificationConfig } from './email-verification-config'
 import { createTurnstileCaptchaPlugins } from './turnstile'
 import { sendEmailMessage } from '../services/email.service'
+import { createBackgroundTaskHandler } from '../runtime/background-tasks.active'
 
 interface EnvSecretOptions {
   envKey: string
@@ -83,6 +84,7 @@ export const getAuthUrl = () => getEnvSecret({
 const emailVerificationConfig = getEmailVerificationConfig()
 validateEmailVerificationConfig(emailVerificationConfig)
 const authRateLimitEnabled = process.env.NUXT_BETTER_AUTH_RATE_LIMIT_ENABLED !== 'false'
+const backgroundTaskHandler = createBackgroundTaskHandler()
 
 const adminRole = defaultAc.newRole({
   user: [
@@ -216,6 +218,11 @@ export const auth = betterAuth({
     enabled: authRateLimitEnabled
   },
   advanced: {
+    backgroundTasks: backgroundTaskHandler
+      ? {
+          handler: backgroundTaskHandler
+        }
+      : undefined,
     crossSubDomainCookies: {
       enabled: false
     }
