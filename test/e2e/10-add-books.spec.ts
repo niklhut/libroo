@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { addFixtureIsbnBook, addManualBook, fixtureIsbnTitle } from './support/books'
+import { addFixtureIsbnBook, addManualBook, fixtureIsbnTitle, libraryBookLink } from './support/books'
 import { storageState } from './support/auth'
 
 test('adds a book by ISBN through the OpenLibrary fixture server', async ({ browser }) => {
@@ -7,7 +7,7 @@ test('adds a book by ISBN through the OpenLibrary fixture server', async ({ brow
   const page = await context.newPage()
 
   await addFixtureIsbnBook(page)
-  await expect(page.getByText(fixtureIsbnTitle)).toBeVisible()
+  await expect(libraryBookLink(page, fixtureIsbnTitle)).toBeVisible()
   await context.close()
 })
 
