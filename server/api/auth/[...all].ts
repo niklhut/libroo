@@ -12,7 +12,6 @@ export default defineEventHandler(async (event) => {
 
   return runWithExecutionContext(executionContext, async () => {
     const request = toWebRequest(event)
-    const authRequest = withResolvedClientIp(request, getRequestIP(event))
     const url = new URL(request.url ?? 'http://localhost/api/auth')
     const verificationEnabled = getEmailVerificationConfig().enabled
     const capabilities = getEmailCapabilities()
@@ -56,6 +55,7 @@ export default defineEventHandler(async (event) => {
     let response: Response
 
     try {
+      const authRequest = withResolvedClientIp(request, getRequestIP(event))
       response = await auth.handler(authRequest)
     } catch (error) {
       if (inviteReservationToken) {

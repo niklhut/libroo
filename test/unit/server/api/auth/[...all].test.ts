@@ -14,6 +14,7 @@ vi.mock('h3', () => ({
     return error
   },
   defineEventHandler: (handler: unknown) => handler,
+  getRequestIP: () => undefined,
   toWebRequest: (event: unknown) => ({ webRequestFor: event })
 }))
 
