@@ -25,14 +25,35 @@ Run these from the repository root before release.
 pnpm lint:fix
 pnpm typecheck
 pnpm test:unit
+pnpm test:e2e
 pnpm build
 ```
 
 - [ ] `pnpm lint:fix` passes.
 - [ ] `pnpm typecheck` passes.
 - [ ] `pnpm test:unit` passes.
+- [ ] `pnpm test:e2e` passes against the isolated Playwright self-host runtime.
 - [ ] `pnpm build` passes.
 - [ ] Any code formatting changes from `lint:fix` are reviewed and committed.
+
+## Automated E2E Coverage
+
+The Playwright suite in `test/e2e/` now covers these journeys with an isolated
+SQLite database, temp blob directory, and local OpenLibrary fixture server:
+
+- [ ] Auth bootstrap, login, logout, session persistence, and protected-route redirects.
+- [ ] Add by ISBN using fixture OpenLibrary metadata and covers.
+- [ ] Manual book creation with uploaded private cover.
+- [ ] Library search, opening detail pages, and representative detail mutation persistence.
+- [ ] Multi-user lending invite acceptance and return lifecycle.
+- [ ] Admin authorization, banned-user rejection, and cover access rules.
+
+Keep the following checks manual because they depend on hardware, hosted
+providers, or exploratory release judgment:
+
+- [ ] Camera and barcode scanning on real devices.
+- [ ] Hosted email-provider behavior for verification, password reset, and invite delivery.
+- [ ] Hosted deployment smoke checks, cross-browser exploratory layout review, import/export spot checks, and release-specific regression exploration.
 
 ## Local Environment Setup
 

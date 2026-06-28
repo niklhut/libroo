@@ -175,7 +175,7 @@ async function copyInvite(options: { showToast?: boolean } = {}) {
           variant="subtle"
           icon="i-lucide-link"
           title="Share link copied"
-          :description="copiedAutomatically ? 'Send the copied link so they can add this book to borrowed books.' : 'They can use this link to add the book to borrowed books.'"
+          :description="`Invite URL: ${inviteUrl}`"
         >
           <template #actions>
             <UButton

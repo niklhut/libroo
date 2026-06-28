@@ -1,0 +1,59 @@
+name: E2E Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NUXT_LIBROO_RUNTIME_PROFILE: selfhost
+      NUXT_BETTER_AUTH_SECRET: libroo-e2e-fixed-better-auth-secret-at-least-32-bytes
+      NUXT_BETTER_AUTH_RATE_LIMIT_ENABLED: false
+      NUXT_EMAIL_VERIFICATION_ENABLED: false
+      NUXT_PUBLIC_TURNSTILE_ENABLED: false
+      NUXT_PUBLIC_REGISTRATION_ENABLED: true
+      LIBROO_E2E_RUN_ID: github-${{ github.run_id }}-${{ github.run_attempt }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Install node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps
+
+      - name: Build Nuxt self-host app
+        run: pnpm build:selfhost
+
+      - name: Run E2E tests
+        timeout-minutes: 20
+        run: pnpm test:e2e
+
+      - name: Upload Playwright artifacts
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: playwright-artifacts
+          if-no-files-found: ignore
+          path: |
+            playwright-report/
+            test-results/
+            /tmp/libroo-e2e/github-${{ github.run_id }}-${{ github.run_attempt }}/logs/
