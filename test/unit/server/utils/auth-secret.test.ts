@@ -3,7 +3,7 @@ import { parseUserInput } from 'better-auth/db'
 
 const betterAuthMock = vi.hoisted(() => vi.fn(options => ({ options })))
 
-vi.mock('better-auth', () => ({
+vi.mock('better-auth/minimal', () => ({
   betterAuth: betterAuthMock
 }))
 
