@@ -90,9 +90,6 @@ if (config) {
   ) {
     errors.push('Production runtime preview enforcement must be absent or "false"')
   }
-  if (config.vars?.NUXT_LIBROO_RUNTIME_PROFILE !== 'cloudflare') {
-    errors.push('Production Worker runtime profile must be cloudflare')
-  }
 
   const previewWorkerPattern = /^libroo-pr-\d+$/
   const previewResourcePattern = /^libroo-preview-pr-\d+$/

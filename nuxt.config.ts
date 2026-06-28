@@ -24,7 +24,6 @@ const cloudflareRuntimeVars = definedEnvVars({
   NUXT_CLOUDFLARE_ACCESS_AUDIENCE: process.env.NUXT_CLOUDFLARE_ACCESS_AUDIENCE,
   NUXT_CLOUDFLARE_ACCESS_TEAM_DOMAIN: process.env.NUXT_CLOUDFLARE_ACCESS_TEAM_DOMAIN,
   NUXT_CLOUDFLARE_PREVIEW: cloudflarePreview ? 'true' : undefined,
-  NUXT_LIBROO_RUNTIME_PROFILE: runtimeProfile,
   NUXT_EMAIL_FROM: process.env.NUXT_EMAIL_FROM,
   NUXT_EMAIL_REPLY_TO: process.env.NUXT_EMAIL_REPLY_TO,
   NUXT_EMAIL_VERIFICATION_ENABLED: process.env.NUXT_EMAIL_VERIFICATION_ENABLED,
@@ -119,7 +118,8 @@ export default defineNuxtConfig({
     '../runtime/active': `./server/runtime/${runtimeProfile}.ts`,
     '../runtime/auth-db.active': `./server/runtime/auth-db.${runtimeProfile}.ts`,
     '../runtime/background-tasks.active': `./server/runtime/background-tasks.${runtimeProfile}.ts`,
-    '../runtime/email.active': `./server/runtime/email.${runtimeProfile}.ts`
+    '../runtime/email.active': `./server/runtime/email.${runtimeProfile}.ts`,
+    '../runtime/profile.active': `./server/runtime/profile.${runtimeProfile}.ts`
   },
 
   routeRules: {

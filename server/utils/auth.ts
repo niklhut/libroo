@@ -13,6 +13,7 @@ import { getEmailVerificationConfig, validateEmailVerificationConfig } from './e
 import { createTurnstileCaptchaPlugins } from './turnstile'
 import { sendEmailMessage } from '../services/email.service'
 import { createBackgroundTaskHandler } from '../runtime/background-tasks.active'
+import { runtimeProfile } from '../runtime/profile.active'
 
 interface EnvSecretOptions {
   envKey: string
@@ -171,9 +172,6 @@ function getConfiguredTrustedIpHeaders() {
 
 function getTrustedIpHeaders() {
   const configuredHeaders = getConfiguredTrustedIpHeaders()
-  const runtimeProfile = process.env.NUXT_LIBROO_RUNTIME_PROFILE === 'cloudflare'
-    ? 'cloudflare'
-    : 'selfhost'
   const platformHeaders = runtimeProfile === 'cloudflare'
     ? ['cf-connecting-ip']
     : []
