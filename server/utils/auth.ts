@@ -82,6 +82,7 @@ export const getAuthUrl = () => getEnvSecret({
 
 const emailVerificationConfig = getEmailVerificationConfig()
 validateEmailVerificationConfig(emailVerificationConfig)
+const authRateLimitEnabled = process.env.NUXT_BETTER_AUTH_RATE_LIMIT_ENABLED !== 'false'
 
 const adminRole = defaultAc.newRole({
   user: [
@@ -211,6 +212,9 @@ export const auth = betterAuth({
       }
     : undefined,
   trustedOrigins: [getAuthUrl()],
+  rateLimit: {
+    enabled: authRateLimitEnabled
+  },
   advanced: {
     crossSubDomainCookies: {
       enabled: false

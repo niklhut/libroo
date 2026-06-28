@@ -84,6 +84,21 @@ function normalizeISBN(isbn: string): string {
 
 const DEFAULT_OPEN_LIBRARY_TIMEOUT_SECONDS = 12
 const DEFAULT_OPEN_LIBRARY_COVER_TIMEOUT_SECONDS = 20
+const DEFAULT_OPEN_LIBRARY_API_BASE = 'https://openlibrary.org'
+const DEFAULT_OPEN_LIBRARY_COVERS_BASE = 'https://covers.openlibrary.org'
+
+function normalizeBaseUrl(value: string | undefined, fallback: string) {
+  const trimmed = value?.trim()
+  return trimmed ? trimmed.replace(/\/+$/, '') : fallback
+}
+
+function getOpenLibraryApiBase() {
+  return normalizeBaseUrl(process.env.LIBROO_OPENLIBRARY_API_BASE, DEFAULT_OPEN_LIBRARY_API_BASE)
+}
+
+function getOpenLibraryCoversBase() {
+  return normalizeBaseUrl(process.env.LIBROO_OPENLIBRARY_COVERS_BASE, DEFAULT_OPEN_LIBRARY_COVERS_BASE)
+}
 
 function getOpenLibraryTimeout() {
   const config = useRuntimeConfig()
@@ -128,8 +143,10 @@ export const OpenLibraryRepositoryLive = Layer.succeed(OpenLibraryRepository, {
       const bibkey = `ISBN:${normalizedISBN}`
 
       // Fetch book data from OpenLibrary API
+      const apiBase = getOpenLibraryApiBase()
+      const coversBase = getOpenLibraryCoversBase()
       const data = yield* fetchJson<OpenLibraryBooksApiResponse>(
-        `https://openlibrary.org/api/books?bibkeys=${bibkey}&jscmd=data&format=json`
+        `${apiBase}/api/books?bibkeys=${bibkey}&jscmd=data&format=json`
       )
 
       const bookData = data[bibkey]
@@ -146,7 +163,7 @@ export const OpenLibraryRepositoryLive = Layer.succeed(OpenLibraryRepository, {
 
       // Use the same cover URL format that downloadCover uses, so preview matches the downloaded image
       // The ISBN-based URL is the most reliable and follows redirects consistently
-      const coverUrlToCheck = `https://covers.openlibrary.org/b/isbn/${normalizedISBN}-L.jpg?default=false`
+      const coverUrlToCheck = `${coversBase}/b/isbn/${normalizedISBN}-L.jpg?default=false`
       const coverUrl = bookData.cover ? coverUrlToCheck : null
 
       // Extract publishers
@@ -169,7 +186,7 @@ export const OpenLibraryRepositoryLive = Layer.succeed(OpenLibraryRepository, {
       if (editionKey) {
         yield* Effect.gen(function* () {
           const editionData = yield* fetchJson<{ works?: Array<{ key: string }> }>(
-            `https://openlibrary.org${editionKey}.json`
+            `${apiBase}${editionKey}.json`
           )
 
           if (editionData.works && editionData.works.length > 0) {
@@ -178,7 +195,7 @@ export const OpenLibraryRepositoryLive = Layer.succeed(OpenLibraryRepository, {
               workKey = firstWork.key
 
               const worksData = yield* fetchJson<OpenLibraryWorksApiResponse>(
-                `https://openlibrary.org${workKey}.json`
+                `${apiBase}${workKey}.json`
               )
 
               // Extract description
@@ -224,7 +241,7 @@ export const OpenLibraryRepositoryLive = Layer.succeed(OpenLibraryRepository, {
   downloadCover: (isbn, size = 'L') =>
     Effect.gen(function* () {
       const normalizedISBN = normalizeISBN(isbn)
-      const coverUrl = `https://covers.openlibrary.org/b/isbn/${normalizedISBN}-${size}.jpg?default=false`
+      const coverUrl = `${getOpenLibraryCoversBase()}/b/isbn/${normalizedISBN}-${size}.jpg?default=false`
 
       // Fetch cover and read body in a single scoped operation
       const imageBuffer = yield* HttpClient.get(coverUrl).pipe(
