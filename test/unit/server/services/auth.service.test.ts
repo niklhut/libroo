@@ -483,7 +483,7 @@ describe('AuthService', () => {
   it('accepts email-change verification tokens that match the current pending email', async () => {
     jwtMock.jwtVerify.mockResolvedValueOnce({
       payload: {
-        email: 'ada@example.com',
+        email: 'ADA@Example.com',
         updateTo: 'ada.new@example.com'
       }
     })
@@ -493,6 +493,23 @@ describe('AuthService', () => {
       Effect.flatMap(AuthService, service => service.validateEmailVerificationToken('token'))
     )).resolves.toEqual({ status: true })
 
+    expect(authRepoMock.getPendingEmailByCurrentEmail).toHaveBeenCalledWith('ada@example.com')
+  })
+
+  it('validates pending email-change tokens through AuthRepository instead of session-returned user fields', async () => {
+    jwtMock.jwtVerify.mockResolvedValueOnce({
+      payload: {
+        email: 'ada@example.com',
+        updateTo: 'ada.new@example.com'
+      }
+    })
+    authRepoMock.getPendingEmailByCurrentEmail.mockReturnValueOnce(Effect.succeed('ADA.NEW@example.com'))
+
+    await expect(runAuthService(
+      Effect.flatMap(AuthService, service => service.validateEmailVerificationToken('token'))
+    )).resolves.toEqual({ status: true })
+
+    expect(authMock.getSession).not.toHaveBeenCalled()
     expect(authRepoMock.getPendingEmailByCurrentEmail).toHaveBeenCalledWith('ada@example.com')
   })
 

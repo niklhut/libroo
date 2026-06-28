@@ -5,6 +5,7 @@ import { dirname, resolve } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { setup, url } from '@nuxt/test-utils/e2e'
 import { createClient } from '@libsql/client'
+import { ACCOUNT_DELETION_CONFIRMATION_TEXT } from '../../shared/utils/account-settings'
 
 const databasePath = resolve('.data/test/auth-session-ssr.sqlite')
 const databaseUrl = `file:${databasePath}`
@@ -19,6 +20,7 @@ process.env.NUXT_BETTER_AUTH_URL = authBaseUrl
 process.env.NUXT_BETTER_AUTH_SECRET = 'integration-auth-session-secret'
 process.env.NUXT_EMAIL_VERIFICATION_ENABLED = 'false'
 process.env.NUXT_PUBLIC_TURNSTILE_ENABLED = 'false'
+process.env.NUXT_PUBLIC_LEGAL_TERMS_URL = 'https://example.test/terms'
 
 rmSync(databasePath, { force: true })
 mkdirSync(dirname(databasePath), { recursive: true })
@@ -43,7 +45,8 @@ setup({
     NUXT_BETTER_AUTH_URL: authBaseUrl,
     NUXT_BETTER_AUTH_SECRET: 'integration-auth-session-secret',
     NUXT_EMAIL_VERIFICATION_ENABLED: 'false',
-    NUXT_PUBLIC_TURNSTILE_ENABLED: 'false'
+    NUXT_PUBLIC_TURNSTILE_ENABLED: 'false',
+    NUXT_PUBLIC_LEGAL_TERMS_URL: 'https://example.test/terms'
   }
 })
 
@@ -54,24 +57,55 @@ afterAll(() => {
 })
 
 describe('cookie-backed SSR auth restoration', () => {
-  it('renders a protected SSR route with a real Better Auth session cookie', async () => {
+  it('runs auth lifecycle flows with Libroo server-owned fields declared', async () => {
     const email = `ada-${Date.now()}@example.test`
     const password = 'correct horse battery staple'
     const inviteToken = `invite-${randomUUID()}`
     await seedSignupInvite(email, inviteToken)
 
-    await betterAuthRequest('/api/auth/sign-up/email', {
+    await expectAuthColumns()
+
+    const signupResponse = await betterAuthRequest('/api/auth/sign-up/email', {
       email,
       password,
       name: 'Ada Lovelace',
       inviteToken,
       acceptTerms: true
     })
+    const signupBody = await signupResponse.clone().json() as { user: Record<string, unknown> }
+    expect(signupBody.user.pendingEmail).toBeUndefined()
+    expect(signupBody.user.termsAcceptedAt).toBeUndefined()
+    await expectUserFields(email, {
+      pendingEmail: null,
+      termsAccepted: true
+    })
+
     const signInResponse = await betterAuthRequest('/api/auth/sign-in/email', {
       email,
       password
     })
     const cookie = sessionCookie(signInResponse)
+
+    const blockedUpdate = await betterAuthRequest('/api/auth/update-user', {
+      name: 'Ada Byron',
+      pendingEmail: 'attacker@example.test'
+    }, { cookie, allowError: true })
+    expect(blockedUpdate.status).toBe(400)
+    expect(await blockedUpdate.text()).toContain('pendingEmail is not allowed to be set')
+    await expectUserFields(email, {
+      name: 'Ada Lovelace',
+      pendingEmail: null,
+      termsAccepted: true
+    })
+
+    const changedEmail = `ada-new-${Date.now()}@example.test`
+    await betterAuthRequest('/api/auth/change-email', {
+      newEmail: changedEmail
+    }, { cookie })
+    await expectUserFields(changedEmail, {
+      pendingEmail: null,
+      termsAccepted: true
+    })
 
     const libraryResponse = await fetch(url('/library'), {
       redirect: 'manual',
@@ -86,6 +120,13 @@ describe('cookie-backed SSR auth restoration', () => {
     expect(libraryResponse.headers.get('location') ?? '').not.toContain('/login')
     expect(html).toContain('My Library')
     expect(html).not.toContain('Welcome back!')
+
+    const deletionResponse = await betterAuthRequest('/api/account/delete', {
+      currentPassword: password,
+      confirmation: ACCOUNT_DELETION_CONFIRMATION_TEXT
+    }, { cookie })
+    expect(deletionResponse.status).toBe(200)
+    await expectUserDeleted(changedEmail)
   })
 
   it('redirects protected SSR routes to login without a session cookie', async () => {
@@ -102,21 +143,92 @@ describe('cookie-backed SSR auth restoration', () => {
   })
 })
 
-async function betterAuthRequest(path: string, body: Record<string, unknown>) {
+async function betterAuthRequest(
+  path: string,
+  body: Record<string, unknown>,
+  options: { cookie?: string, allowError?: boolean } = {}
+) {
   const response = await fetch(url(path), {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'accept': 'application/json'
+      'accept': 'application/json',
+      ...(options.cookie ? { cookie: options.cookie } : {})
     },
     body: JSON.stringify(body)
   })
 
-  if (!response.ok) {
+  if (!options.allowError && !response.ok) {
     throw new Error(`${path} failed with ${response.status}: ${await response.text()}`)
   }
 
   return response
+}
+
+async function expectAuthColumns() {
+  const client = createClient({ url: databaseUrl })
+
+  try {
+    const result = await client.execute('PRAGMA table_info(user)')
+    const columns = result.rows.map(row => ({
+      name: String(row.name),
+      type: String(row.type)
+    }))
+
+    expect(columns).toEqual(expect.arrayContaining([
+      { name: 'pending_email', type: 'TEXT' },
+      { name: 'terms_accepted_at', type: 'INTEGER' }
+    ]))
+  } finally {
+    client.close()
+  }
+}
+
+async function expectUserFields(
+  email: string,
+  expected: {
+    name?: string
+    pendingEmail: string | null
+    termsAccepted: boolean
+  }
+) {
+  const client = createClient({ url: databaseUrl })
+
+  try {
+    const result = await client.execute({
+      sql: 'SELECT name, pending_email, terms_accepted_at FROM user WHERE email = ?',
+      args: [email]
+    })
+    const row = result.rows[0]
+
+    expect(row).toBeTruthy()
+    if (expected.name) {
+      expect(row.name).toBe(expected.name)
+    }
+    expect(row.pending_email ?? null).toBe(expected.pendingEmail)
+    if (expected.termsAccepted) {
+      expect(Number(row.terms_accepted_at)).toBeGreaterThan(0)
+    } else {
+      expect(row.terms_accepted_at ?? null).toBeNull()
+    }
+  } finally {
+    client.close()
+  }
+}
+
+async function expectUserDeleted(email: string) {
+  const client = createClient({ url: databaseUrl })
+
+  try {
+    const result = await client.execute({
+      sql: 'SELECT id FROM user WHERE email = ?',
+      args: [email]
+    })
+
+    expect(result.rows).toHaveLength(0)
+  } finally {
+    client.close()
+  }
 }
 
 async function seedSignupInvite(email: string, token: string) {

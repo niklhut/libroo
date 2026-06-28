@@ -220,6 +220,20 @@ export const auth = betterAuth({
     changeEmail: {
       enabled: true,
       updateEmailWithoutVerification: !emailVerificationConfig.enabled
+    },
+    additionalFields: {
+      pendingEmail: {
+        type: 'string',
+        required: false,
+        input: false,
+        returned: false
+      },
+      termsAcceptedAt: {
+        type: 'date',
+        required: false,
+        input: false,
+        returned: false
+      }
     }
   },
   socialProviders: {
