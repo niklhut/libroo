@@ -483,7 +483,7 @@ describe('AuthService', () => {
   it('accepts email-change verification tokens that match the current pending email', async () => {
     jwtMock.jwtVerify.mockResolvedValueOnce({
       payload: {
-        email: 'ada@example.com',
+        email: 'ADA@Example.com',
         updateTo: 'ada.new@example.com'
       }
     })
