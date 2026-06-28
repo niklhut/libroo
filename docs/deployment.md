@@ -74,6 +74,7 @@ Self-host defaults baked into the image:
 | `NUXT_LIBROO_RUNTIME_PROFILE` | `selfhost` | Uses local SQLite, local blob storage, SMTP-capable email, and Sharp image conversion. |
 | `NUXT_DATABASE_URL` | `file:/data/db/sqlite.db` | libSQL/SQLite database path inside the persistent volume. |
 | `NUXT_LOCAL_STORAGE_DIR` | `/data/blob` | Uploaded assets and generated cover WebP files. |
+| `NUXT_TRUSTED_IP_HEADERS` | empty | Optional comma-separated trusted client-IP header names for self-hosted reverse proxy deployments. Leave empty for direct access. The Cloudflare profile does not require this setting. |
 
 Optional email and registration settings:
 
@@ -130,6 +131,54 @@ When enabled, signup and password-reset email requests must include a valid Turn
 Public/hosted deployments should enable Turnstile before leaving public signup or password-reset email enabled. If those flows are public without Turnstile, operators should treat the deployment as more exposed to automated account creation and reset-email spam.
 
 Private self-hosted deployments may intentionally opt out by leaving `NUXT_PUBLIC_TURNSTILE_ENABLED=false`, especially when Libroo is only reachable on a LAN, behind VPN/Tailscale, behind Cloudflare Access, or behind another access-control layer. The app does not refuse to run when Turnstile is disabled.
+
+### Client IP Handling And Rate Limiting
+
+Libroo uses the request client IP for Better Auth rate limiting. The default is safe: no self-hosted forwarding header is trusted unless the operator explicitly configures `NUXT_TRUSTED_IP_HEADERS`.
+
+Use the setting that matches the runtime topology:
+
+| Topology | Configuration |
+| --- | --- |
+| Cloudflare | No `NUXT_TRUSTED_IP_HEADERS` setting is needed. Cloudflare Workers expose the real client address through `cf-connecting-ip`, and Libroo reads it automatically in the Cloudflare profile. |
+| Self-hosted, direct access | Leave `NUXT_TRUSTED_IP_HEADERS` empty. Libroo falls back to the connection IP supplied by the runtime. |
+| Self-hosted behind a trusted reverse proxy | Set `NUXT_TRUSTED_IP_HEADERS` to the exact header your proxy controls, then configure that proxy to overwrite and forward the same header. Prefer a single-hop header such as `X-Real-IP` when possible. |
+| Private access layers such as Cloudflare Access or Tailscale | Rate-limiting identity may collapse to an access proxy, subnet router, or shared egress address. That can make unrelated users share the same Better Auth rate-limit bucket. This is acceptable for many private installs, but operators should understand that the bucket may represent the access layer instead of the human user. |
+
+Example Nginx forwarding:
+
+```nginx
+location / {
+  proxy_set_header Host $host;
+  proxy_set_header X-Real-IP $remote_addr;
+  proxy_set_header X-Forwarded-Proto $scheme;
+  proxy_pass http://libroo:3000;
+}
+```
+
+```bash
+NUXT_TRUSTED_IP_HEADERS=X-Real-IP
+```
+
+Example Caddy forwarding:
+
+```caddyfile
+libroo.example.com {
+  reverse_proxy libroo:3000 {
+    header_up X-Real-IP {remote_host}
+  }
+}
+```
+
+```bash
+NUXT_TRUSTED_IP_HEADERS=X-Real-IP
+```
+
+Never forward client-controlled `X-Forwarded-For` from untrusted sources. If you choose to trust `X-Forwarded-For`, the edge proxy must strip any incoming value and replace it with a value it computed itself; otherwise clients can spoof IP addresses and evade or poison rate limits.
+
+If logs show a warning that Libroo cannot determine the client IP, resolve it according to the topology: on Cloudflare, use the `cloudflare` runtime profile; on direct self-hosted access, verify the runtime exposes a connection address; behind a reverse proxy, set `NUXT_TRUSTED_IP_HEADERS` and configure the proxy to overwrite that header. Do not silence the warning by trusting arbitrary forwarded headers from the public internet.
+
+Better Auth rate limiting and Turnstile CAPTCHA are independent, complementary controls. Better Auth throttles requests by IP bucket; Turnstile challenges likely bots before selected auth flows proceed. Configuring `NUXT_TRUSTED_IP_HEADERS` does not change Turnstile behavior.
 
 ### Persistent Data
 

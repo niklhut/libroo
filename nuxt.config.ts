@@ -95,6 +95,7 @@ export default defineNuxtConfig({
     legalPrivacyPolicyMarkdownUrl: '',
     legalImprintMarkdownUrl: '',
     legalTermsMarkdownUrl: '',
+    trustedIpHeaders: '',
     turnstile: {
       secretKey: '',
       allowedHostnames: '',

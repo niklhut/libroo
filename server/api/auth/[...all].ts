@@ -1,6 +1,6 @@
 import { Effect } from 'effect'
-import { createError, defineEventHandler, toWebRequest } from 'h3'
-import { auth } from '../../utils/auth'
+import { createError, defineEventHandler, getRequestIP, toWebRequest } from 'h3'
+import { auth, LIBROO_CLIENT_IP_HEADER } from '../../utils/auth'
 import { getEmailCapabilities } from '../../utils/email-capabilities'
 import { getEmailVerificationConfig } from '../../utils/email-verification-config'
 import { validateEmailVerificationToken } from '../../services/auth.service'
@@ -12,6 +12,7 @@ export default defineEventHandler(async (event) => {
 
   return runWithExecutionContext(executionContext, async () => {
     const request = toWebRequest(event)
+    const authRequest = withResolvedClientIp(request, getRequestIP(event))
     const url = new URL(request.url ?? 'http://localhost/api/auth')
     const verificationEnabled = getEmailVerificationConfig().enabled
     const capabilities = getEmailCapabilities()
@@ -55,7 +56,7 @@ export default defineEventHandler(async (event) => {
     let response: Response
 
     try {
-      response = await auth.handler(request)
+      response = await auth.handler(authRequest)
     } catch (error) {
       if (inviteReservationToken) {
         await releaseInviteReservation(inviteReservationToken)
@@ -83,6 +84,15 @@ export default defineEventHandler(async (event) => {
     return response
   })
 })
+
+function withResolvedClientIp(request: Request, clientIp: string | undefined) {
+  if (!clientIp) return request
+
+  const headers = new Headers(request.headers)
+  headers.set(LIBROO_CLIENT_IP_HEADER, clientIp)
+
+  return new Request(request, { headers })
+}
 
 async function readSignupBody(request: Request) {
   const contentType = request.headers.get('content-type') ?? ''
