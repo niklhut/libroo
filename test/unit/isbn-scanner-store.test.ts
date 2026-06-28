@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
+import { computed, nextTick, ref, watchEffect } from 'vue'
 import { useIsbnScannerStore } from '../../app/stores/isbnScanner'
 import { useLibraryDashboardStore } from '../../app/stores/libraryDashboard'
+import { defaultContinuousMode } from '../../app/utils/cameraScanDefaults'
 
 const _origUseToast = (globalThis as { useToast?: unknown }).useToast
 const _orig$fetch = (globalThis as { $fetch?: unknown }).$fetch
@@ -10,6 +12,17 @@ interface ToastPayload {
   title: string
   description?: string
   color?: string
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve
+    reject = promiseReject
+  })
+
+  return { promise, resolve, reject }
 }
 
 describe('useIsbnScannerStore', () => {
@@ -101,6 +114,125 @@ describe('useIsbnScannerStore', () => {
     expect(store.scannedBooks[0]?.status).toBe('found')
     expect(store.scannedBooks[0]?.result?.title).toBe('Book A')
     expect(store.scannedBooks[0]?.errorMessage).toBeUndefined()
+  })
+
+  it('notifies computed dependents when lookup moves from loading to found', async () => {
+    const lookup = deferred<{
+      found: true
+      isbn: string
+      title: string
+      author: string
+    }>()
+    const fetchMock = vi.fn(() => lookup.promise)
+
+    ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
+
+    const store = useIsbnScannerStore()
+    const status = computed(() => store.scannedBooks[0]?.status ?? 'empty')
+    const observedStatuses: string[] = []
+    const stop = watchEffect(() => {
+      observedStatuses.push(status.value)
+    })
+
+    const addPromise = store.addIsbn('9781234567890')
+    await nextTick()
+
+    expect(observedStatuses).toContain('loading')
+    expect(status.value).toBe('loading')
+
+    lookup.resolve({
+      found: true,
+      isbn: '9781234567890',
+      title: 'Book A',
+      author: 'Author A'
+    })
+    await addPromise
+    await nextTick()
+
+    expect(observedStatuses).toEqual(['empty', 'loading', 'found'])
+    expect(status.value).toBe('found')
+
+    stop()
+  })
+
+  it('transitions from loading to not found with visible unselected state', async () => {
+    const lookup = deferred<{
+      found: false
+      isbn: string
+      message: string
+    }>()
+    const fetchMock = vi.fn(() => lookup.promise)
+
+    ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
+
+    const store = useIsbnScannerStore()
+    const status = computed(() => store.scannedBooks[0]?.status ?? 'empty')
+
+    const addPromise = store.addIsbn('9781234567890')
+    await nextTick()
+
+    expect(status.value).toBe('loading')
+
+    lookup.resolve({
+      found: false,
+      isbn: '9781234567890',
+      message: 'No OpenLibrary match'
+    })
+    await addPromise
+    await nextTick()
+
+    expect(status.value).toBe('not_found')
+    expect(store.scannedBooks[0]).toMatchObject({
+      status: 'not_found',
+      selected: false,
+      result: {
+        found: false,
+        message: 'No OpenLibrary match'
+      }
+    })
+    expect(store.scannedBooks[0]?.errorMessage).toBeUndefined()
+  })
+
+  it('transitions from loading to error with a friendly error message', async () => {
+    const lookup = deferred<never>()
+    const fetchMock = vi.fn(() => lookup.promise)
+
+    ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
+
+    const store = useIsbnScannerStore()
+    const status = computed(() => store.scannedBooks[0]?.status ?? 'empty')
+
+    const addPromise = store.addIsbn('9781234567890')
+    await nextTick()
+
+    expect(status.value).toBe('loading')
+
+    lookup.reject({ data: { message: 'API error: 502 Bad Gateway' } })
+    await addPromise
+    await nextTick()
+
+    expect(status.value).toBe('error')
+    expect(store.scannedBooks[0]).toMatchObject({
+      status: 'error',
+      selected: false,
+      errorMessage: 'We could not look up this ISBN right now. Try again in a moment.'
+    })
+    expect(store.scannedBooks[0]?.result).toBeUndefined()
+  })
+
+  it('documents continuous camera scanning as the default mode', () => {
+    const continuousMode = ref(defaultContinuousMode)
+    const scannedBooks = ref([{ isbn: '9781234567890', status: 'loading' }])
+    const singleScanBook = computed(() =>
+      !continuousMode.value && scannedBooks.value.length === 1
+        ? scannedBooks.value[0]
+        : null
+    )
+    const showsBulkScanReview = computed(() => continuousMode.value && scannedBooks.value.length > 0)
+
+    expect(defaultContinuousMode).toBe(true)
+    expect(singleScanBook.value).toBeNull()
+    expect(showsBulkScanReview.value).toBe(true)
   })
 
   it('bulk-add success removes scanned books and marks dashboard sync', async () => {
