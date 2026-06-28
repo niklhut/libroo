@@ -57,6 +57,16 @@ describe('app/middleware/auth.global', () => {
     })
   })
 
+  it('lets Nuxt render unmatched routes as 404 errors without auth redirects', async () => {
+    globalThis.useAuthStore = vi.fn()
+    const middleware = await loadMiddleware()
+
+    await expect(middleware(makeRoute('/asdf', { matched: [] }))).resolves.toBeUndefined()
+    expect(globalThis.useAuthStore).not.toHaveBeenCalled()
+    expect(globalThis.useEmailCapabilities).not.toHaveBeenCalled()
+    expect(globalThis.navigateTo).not.toHaveBeenCalled()
+  })
+
   it('surfaces session restore errors instead of redirecting to login', async () => {
     globalThis.useAuthStore = vi.fn(() => ({
       user: null,
@@ -108,10 +118,12 @@ async function loadMiddleware() {
   return module.default as (to: ReturnType<typeof makeRoute>) => Promise<unknown>
 }
 
-function makeRoute(path: string) {
+function makeRoute(path: string, overrides: Partial<{ matched: unknown[] }> = {}) {
   return {
     path,
     fullPath: path,
-    meta: {}
+    meta: {},
+    matched: [{}],
+    ...overrides
   }
 }

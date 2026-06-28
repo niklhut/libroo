@@ -13,7 +13,7 @@ export async function addFixtureIsbnBook(page: Page) {
   await expect(page.getByRole('heading', { name: fixtureIsbnTitle })).toBeVisible()
   await page.getByRole('button', { name: 'Add to Library' }).click()
   await expect(page).toHaveURL(/\/library/)
-  await expect(page.getByText(fixtureIsbnTitle)).toBeVisible()
+  await expect(libraryBookLink(page, fixtureIsbnTitle)).toBeVisible()
 }
 
 export async function addManualBook(page: Page, title: string) {
@@ -37,4 +37,10 @@ export async function currentDetailCoverPath(page: Page, title: string) {
 
   const url = new URL(src, 'http://127.0.0.1')
   return `${url.pathname}${url.search}`
+}
+
+export function libraryBookLink(page: Page, title: string) {
+  return page.getByRole('link').filter({
+    has: page.getByRole('heading', { name: title, exact: true })
+  })
 }

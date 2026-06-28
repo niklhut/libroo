@@ -2,6 +2,10 @@ import { roleIncludesAdmin } from '~~/shared/utils/auth-roles'
 import { isActiveBan } from '~~/shared/utils/auth-status'
 
 export default defineNuxtRouteMiddleware(async (to) => {
+  if (to.matched.length === 0) {
+    return
+  }
+
   // Skip auth check for pages explicitly marked as public
   const isAuthRequired = to.meta.auth !== false
   if (!isAuthRequired) {

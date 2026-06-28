@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { addFixtureIsbnBook, addManualBook, currentDetailCoverPath, fixtureIsbnTitle } from './support/books'
+import { addFixtureIsbnBook, addManualBook, currentDetailCoverPath, fixtureIsbnTitle, libraryBookLink } from './support/books'
 import { registerUser, storageState, uniqueEmail } from './support/auth'
 import { adminTables } from './support/selectors'
 
@@ -54,7 +54,7 @@ test('enforces private manual cover access and keeps ISBN covers available to si
   expect(deniedResponse.status()).toBe(404)
 
   await addFixtureIsbnBook(ownerPage)
-  await ownerPage.getByText(fixtureIsbnTitle).click()
+  await libraryBookLink(ownerPage, fixtureIsbnTitle).click()
   const isbnCoverPath = await currentDetailCoverPath(ownerPage, fixtureIsbnTitle)
   const isbnResponse = await otherPage.request.get(isbnCoverPath)
   expect(isbnResponse.ok()).toBe(true)
