@@ -63,6 +63,9 @@ if (config.triggers) {
 if (config.vars?.NUXT_CLOUDFLARE_PREVIEW !== 'true') {
   errors.push('Preview runtime enforcement is not enabled')
 }
+if (config.vars?.NUXT_LIBROO_RUNTIME_PROFILE !== 'cloudflare') {
+  errors.push('Preview Worker runtime profile must be cloudflare')
+}
 if (
   config.vars?.NUXT_CLOUDFLARE_ACCESS_AUDIENCE
   !== process.env.NUXT_CLOUDFLARE_ACCESS_AUDIENCE
