@@ -496,6 +496,23 @@ describe('AuthService', () => {
     expect(authRepoMock.getPendingEmailByCurrentEmail).toHaveBeenCalledWith('ada@example.com')
   })
 
+  it('validates pending email-change tokens through AuthRepository instead of session-returned user fields', async () => {
+    jwtMock.jwtVerify.mockResolvedValueOnce({
+      payload: {
+        email: 'ada@example.com',
+        updateTo: 'ada.new@example.com'
+      }
+    })
+    authRepoMock.getPendingEmailByCurrentEmail.mockReturnValueOnce(Effect.succeed('ADA.NEW@example.com'))
+
+    await expect(runAuthService(
+      Effect.flatMap(AuthService, service => service.validateEmailVerificationToken('token'))
+    )).resolves.toEqual({ status: true })
+
+    expect(authMock.getSession).not.toHaveBeenCalled()
+    expect(authRepoMock.getPendingEmailByCurrentEmail).toHaveBeenCalledWith('ada@example.com')
+  })
+
   it('rejects stale email-change verification tokens', async () => {
     jwtMock.jwtVerify.mockResolvedValueOnce({
       payload: {

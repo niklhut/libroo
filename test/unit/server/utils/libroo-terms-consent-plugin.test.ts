@@ -121,6 +121,20 @@ describe('librooTermsConsentPlugin', () => {
       }
     })
   })
+
+  it('does not add a Terms timestamp for OAuth-created users', () => {
+    stubTermsConfig()
+
+    expect(addTermsAcceptedAtToUserCreateData(
+      { id: 'user-1', email: 'ada@example.com' },
+      { path: '/callback/google' }
+    )).toEqual({
+      data: {
+        id: 'user-1',
+        email: 'ada@example.com'
+      }
+    })
+  })
 })
 
 function stubTermsConfig(options: { termsUrl?: string, markdownUrl?: string } = {}) {

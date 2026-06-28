@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { parseUserInput } from 'better-auth/db'
 
 const betterAuthMock = vi.hoisted(() => vi.fn(options => ({ options })))
 
@@ -111,4 +112,62 @@ describe('auth secret runtime config', () => {
 
     await expect(loadAuthModule()).rejects.toThrow(/NUXT_BETTER_AUTH_SECRET/)
   })
+
+  it('declares Libroo server-owned user fields without admin-owned fields', async () => {
+    await loadAuthModule()
+
+    const options = getBetterAuthOptions()
+
+    expect(options.user).toMatchObject({
+      additionalFields: {
+        pendingEmail: {
+          type: 'string',
+          required: false,
+          input: false,
+          returned: false
+        },
+        termsAcceptedAt: {
+          type: 'date',
+          required: false,
+          input: false,
+          returned: false
+        }
+      }
+    })
+    expect(options.user.additionalFields.pendingEmail).not.toHaveProperty('fieldName')
+    expect(options.user.additionalFields.termsAcceptedAt).not.toHaveProperty('fieldName')
+    expect(options.user.additionalFields).not.toHaveProperty('role')
+    expect(options.user.additionalFields).not.toHaveProperty('banned')
+    expect(options.user.additionalFields).not.toHaveProperty('banReason')
+    expect(options.user.additionalFields).not.toHaveProperty('banExpires')
+  })
+
+  it('rejects attempts to set Libroo server-owned fields through signup and profile-update input', async () => {
+    await loadAuthModule()
+
+    const options = getBetterAuthOptions()
+
+    expect(() => parseUserInput(options, {
+      pendingEmail: 'attacker@example.com'
+    }, 'create')).toThrow(/pendingEmail is not allowed to be set/)
+    expect(() => parseUserInput(options, {
+      termsAcceptedAt: new Date('2026-06-23T11:30:00.000Z')
+    }, 'create')).toThrow(/termsAcceptedAt is not allowed to be set/)
+    expect(() => parseUserInput(options, {
+      pendingEmail: 'attacker@example.com'
+    }, 'update')).toThrow(/pendingEmail is not allowed to be set/)
+    expect(() => parseUserInput(options, {
+      termsAcceptedAt: new Date('2026-06-23T11:30:00.000Z')
+    }, 'update')).toThrow(/termsAcceptedAt is not allowed to be set/)
+  })
 })
+
+function getBetterAuthOptions() {
+  const options = betterAuthMock.mock.calls.at(-1)?.[0]
+
+  if (!options) {
+    throw new Error('Better Auth was not configured')
+  }
+
+  return options
+}
