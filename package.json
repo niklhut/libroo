@@ -18,6 +18,7 @@
     "test:d1": "vitest run --project d1",
     "test:integration": "vitest run --project integration",
     "test:e2e": "pnpm build:selfhost && playwright test",
+    "test:e2e:run": "playwright test",
     "test:e2e:ui": "pnpm build:selfhost && playwright test --ui"
   },
   "dependencies": {

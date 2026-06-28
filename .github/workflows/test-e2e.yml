@@ -45,7 +45,7 @@ jobs:
 
       - name: Run E2E tests
         timeout-minutes: 20
-        run: pnpm test:e2e
+        run: pnpm test:e2e:run
 
       - name: Upload Playwright artifacts
         if: failure()

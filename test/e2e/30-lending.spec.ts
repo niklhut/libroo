@@ -29,16 +29,25 @@ test('supports the owner and borrower lending lifecycle', async ({ browser }, te
   })
   await borrowerPage.getByRole('button', { name: 'Add to borrowed books' }).click()
   await expect(borrowerPage).toHaveURL(/\/library\/loans\?view=borrowed/)
-  await expect(borrowerPage.getByText(title)).toBeVisible()
-  await expect(borrowerPage.getByText('With you')).toBeVisible()
+  const borrowedLoan = borrowerPage.getByRole('article').filter({ hasText: title }).or(
+    borrowerPage.locator('[data-slot="root"]').filter({ hasText: title })
+  ).first()
+  await expect(borrowedLoan.getByText(title)).toBeVisible()
+  await expect(borrowedLoan.getByText('With you')).toBeVisible()
 
   await ownerPage.goto('/library/loans')
-  await expect(ownerPage.getByText(title)).toBeVisible()
-  await ownerPage.getByRole('button', { name: 'Mark returned' }).click()
-  await expect(ownerPage.getByText(/^Returned$/).last()).toBeVisible()
+  const ownerLoan = ownerPage.getByRole('link', { name: new RegExp(`Open ${escapeRegExp(title)}`) })
+  await expect(ownerLoan).toBeVisible()
+  await ownerLoan.getByRole('button', { name: 'Mark returned' }).click()
+  await expect(ownerPage.getByRole('link', { name: new RegExp(`Open ${escapeRegExp(title)}`) }).getByText(/^Returned$/)).toBeVisible()
 
   await borrowerPage.reload()
-  await expect(borrowerPage.getByText(/^Returned$/).last()).toBeVisible()
+  const returnedBorrowedLoan = borrowerPage.locator('[data-slot="root"]').filter({ hasText: title }).first()
+  await expect(returnedBorrowedLoan.getByText(/^Returned$/)).toBeVisible()
   await borrowerContext.close()
   await ownerContext.close()
 })
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}

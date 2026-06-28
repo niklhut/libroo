@@ -64,7 +64,12 @@ const server = createServer((request, response) => {
     return
   }
 
-  if (/^\/b\/isbn\/[0-9A-Z-]+\.jpg$/.test(url.pathname)) {
+  const allowedCoverPaths = new Set([
+    `/b/isbn/${fixtureIsbn}-S.jpg`,
+    `/b/isbn/${fixtureIsbn}-M.jpg`,
+    `/b/isbn/${fixtureIsbn}-L.jpg`
+  ])
+  if (allowedCoverPaths.has(url.pathname)) {
     response.writeHead(200, {
       'content-type': 'image/svg+xml',
       'content-length': String(cover.length),

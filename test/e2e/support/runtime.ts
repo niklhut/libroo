@@ -16,7 +16,13 @@ export const e2eRuntimePaths = {
 }
 
 export const e2eRuntimeEnv = {
-  ...process.env,
+  PATH: process.env.PATH,
+  HOME: process.env.HOME,
+  CI: process.env.CI,
+  TMPDIR: process.env.TMPDIR,
+  TEMP: process.env.TEMP,
+  TMP: process.env.TMP,
+  PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH,
   NODE_ENV: 'production',
   HOST: '127.0.0.1',
   PORT: appPort,

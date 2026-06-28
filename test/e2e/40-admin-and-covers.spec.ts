@@ -4,6 +4,8 @@ import { registerUser, storageState, uniqueEmail } from './support/auth'
 import { adminTables } from './support/selectors'
 
 test('redirects regular users from admin pages and rejects banned users', async ({ browser }, testInfo) => {
+  const adminState = await storageState(browser, 'admin')
+
   const userContext = await browser.newContext()
   const userPage = await userContext.newPage()
   const regular = await registerUser(userPage, {
@@ -14,7 +16,7 @@ test('redirects regular users from admin pages and rejects banned users', async 
   await userPage.goto('/admin/users')
   await expect(userPage).toHaveURL(/\/library/)
 
-  const adminContext = await browser.newContext({ storageState: await storageState(browser, 'admin') })
+  const adminContext = await browser.newContext({ storageState: adminState })
   const adminPage = await adminContext.newPage()
   await adminPage.goto('/admin/users')
   const row = adminTables(adminPage).userRow(regular.email)

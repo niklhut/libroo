@@ -1,10 +1,14 @@
-import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, rm, stat, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { spawn } from 'node:child_process'
 import { e2eRuntimeEnv, e2eRuntimePaths } from './runtime'
 
 export default async function globalSetup() {
-  if (existsSync(e2eRuntimePaths.markerPath)) {
+  if (
+    existsSync(e2eRuntimePaths.markerPath)
+    && existsSync(e2eRuntimePaths.databasePath)
+    && await directoryExists(e2eRuntimePaths.storageDir)
+  ) {
     return
   }
 
@@ -14,6 +18,12 @@ export default async function globalSetup() {
   await mkdir(e2eRuntimePaths.storageDir, { recursive: true })
   await run('node', ['scripts/migrate-selfhost.mjs'], e2eRuntimeEnv)
   await writeFile(e2eRuntimePaths.markerPath, new Date().toISOString())
+}
+
+async function directoryExists(pathname: string) {
+  return stat(pathname)
+    .then(stats => stats.isDirectory())
+    .catch(() => false)
 }
 
 function run(command: string, args: string[], env: NodeJS.ProcessEnv) {

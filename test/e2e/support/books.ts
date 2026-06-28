@@ -31,6 +31,10 @@ export async function addManualBook(page: Page, title: string) {
 
 export async function currentDetailCoverPath(page: Page, title: string) {
   const src = await page.getByAltText(title).first().getAttribute('src')
-  const url = new URL(src || '', 'http://127.0.0.1')
+  if (!src) {
+    throw new Error(`Cover image for "${title}" did not render with a src`)
+  }
+
+  const url = new URL(src, 'http://127.0.0.1')
   return `${url.pathname}${url.search}`
 }
