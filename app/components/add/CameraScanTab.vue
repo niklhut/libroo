@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
+import { defaultContinuousMode } from '~/utils/cameraScanDefaults'
 
 const toast = useToast()
 
-const continuousMode = ref(false)
+// Default to continuous: user testing showed the toggle was missed, and bulk intake is primary; single scan remains available.
+const continuousMode = ref(defaultContinuousMode)
 const showScanner = ref(false)
 
 // Use composable for both single and continuous modes

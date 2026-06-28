@@ -72,7 +72,10 @@ export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
     }
     scannedBooks.value.unshift(newBook)
 
-    await lookupScannedBook(newBook)
+    const reactiveBook = scannedBooks.value.find(book => book.isbn === normalizedIsbn)
+    if (reactiveBook) {
+      await lookupScannedBook(reactiveBook)
+    }
   }
 
   async function retryIsbn(isbn: string) {

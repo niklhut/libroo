@@ -34,3 +34,7 @@ Future bulk actions should be redesigned as a polished workflow that can support
 - Other collection operations that fit the physical library workflow
 
 The existing backend batch delete path can be reused or replaced when that design is implemented, but it should not be exposed again without a complete multi-action selection experience.
+
+## Camera scan default
+
+Camera barcode scanning now defaults to continuous mode because user testing showed the toggle was easy to miss and bulk intake is the primary physical-library workflow. Single-scan mode remains available through the Continuous toggle for one-off ISBN lookups.
