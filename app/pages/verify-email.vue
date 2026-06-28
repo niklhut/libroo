@@ -88,8 +88,12 @@ onMounted(async () => {
       return
     }
 
+    try {
+      await authStore.refresh()
+    } catch {
+      // Verification already succeeded; fall back to the current auth state.
+    }
     status.value = 'success'
-    await authStore.refresh()
   } catch (err: unknown) {
     status.value = getEmailVerificationFailureStatus(err)
   }
