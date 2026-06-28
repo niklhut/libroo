@@ -471,9 +471,7 @@ async function saveReadingProgress(progress: {
             <h2 class="text-lg font-semibold mb-2">
               Description
             </h2>
-            <p class="text-muted leading-relaxed whitespace-pre-wrap">
-              {{ book.description }}
-            </p>
+            <BookDescription :description="book.description" />
           </div>
 
           <!-- Rating -->
