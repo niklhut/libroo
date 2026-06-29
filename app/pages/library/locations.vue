@@ -7,6 +7,7 @@ import {
   insertLocationLocally,
   isLocationDescendant
 } from '~~/shared/utils/location-hierarchy'
+import { getApiErrorMessage } from '~~/shared/utils/api-error'
 
 usePageTitle('Locations')
 
@@ -264,8 +265,7 @@ async function deleteLocation() {
 }
 
 function showErrorToast(title: string, err: unknown) {
-  const message = (err as { data?: { message?: string } })?.data?.message
-    ?? (err instanceof Error && err.name !== 'FetchError' ? err.message : 'Something went wrong')
+  const message = getApiErrorMessage(err, 'Something went wrong')
   toast.add({ title, description: message, color: 'error' })
 }
 </script>

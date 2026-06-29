@@ -1,4 +1,5 @@
 import type { BookLookupResult } from '~~/shared/types/book'
+import { getApiErrorMessage } from '~~/shared/utils/api-error'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { useLibraryDashboardStore } from './libraryDashboard'
@@ -36,15 +37,7 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
   const isAdding = computed(() => pendingAdds.value > 0)
 
   function getErrorMessage(err: unknown, fallback: string): string {
-    const responseMessage = (err as { data?: { message?: string, statusMessage?: string } })?.data?.message
-      || (err as { data?: { message?: string, statusMessage?: string } })?.data?.statusMessage
-    if (responseMessage) return responseMessage
-
-    if (err instanceof Error && err.name !== 'FetchError') {
-      return err.message
-    }
-
-    return fallback
+    return getApiErrorMessage(err, fallback)
   }
 
   async function lookupIsbn(

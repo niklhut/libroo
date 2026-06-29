@@ -591,6 +591,35 @@ export const BookRepositoryLive = Layer.effect(
         }
       })
 
+    const hasAuthorsForBook = (bookId: string) =>
+      Effect.gen(function* () {
+        const rows = yield* Effect.tryPromise({
+          try: () => dbService.db
+            .select({ value: count() })
+            .from(bookAuthors)
+            .where(eq(bookAuthors.bookId, bookId)),
+          catch: error => new DatabaseError({
+            message: `Failed to count book authors: ${error}`,
+            operation: 'hasAuthorsForBook'
+          })
+        })
+
+        return (rows[0]?.value ?? 0) > 0
+      })
+
+    const hydrateMissingAuthorsForBook = (bookId: string, isbn: string) =>
+      Effect.gen(function* () {
+        const hasAuthors = yield* hasAuthorsForBook(bookId)
+        if (hasAuthors) return
+
+        const data = yield* lookupByISBN(isbn)
+        yield* setBookAuthors(bookId, data.authors)
+      }).pipe(
+        Effect.catchAll(error =>
+          Effect.logWarning(`Skipped Open Library author hydration for existing ISBN ${isbn}: ${String(error)}`)
+        )
+      )
+
     const hasSystemTagsForBook = (bookId: string) =>
       Effect.gen(function* () {
         const rows = yield* Effect.tryPromise({
@@ -751,7 +780,7 @@ export const BookRepositoryLive = Layer.effect(
           const now = new Date()
           const newBook = {
             id: newBookId,
-            isbn: openLibraryData.isbn,
+            isbn: normalizedISBN,
             title: openLibraryData.title,
             coverPath,
             openLibraryKey: openLibraryData.openLibraryKey,
@@ -865,6 +894,12 @@ export const BookRepositoryLive = Layer.effect(
           'ensureOpenLibraryBook.systemTagHydration',
           normalizedISBN,
           hydrateMissingSystemTagsForBook(book.id, normalizedISBN)
+        )
+
+        yield* withDebugTiming(
+          'ensureOpenLibraryBook.authorHydration',
+          normalizedISBN,
+          hydrateMissingAuthorsForBook(book.id, normalizedISBN)
         )
 
         const authorMap = yield* hydrateAuthorsForBookIds([book.id])
