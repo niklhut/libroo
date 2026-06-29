@@ -6,9 +6,42 @@ This is product and operations guidance, not legal advice. Confirm hosted-servic
 
 The last active admin account cannot self-delete. Promote another trusted active admin first, then retry deletion from the original admin account.
 
+For the broader data inventory, admin capability list, and audit coverage matrix, see [Privacy And Data Reference](./privacy-and-data.md).
+
+## Library CSV Export Semantics
+
+The library CSV export is implemented by `server/services/library-transfer.service.ts` and is intended for current-library transfer, not a complete personal-data archive.
+
+Export columns:
+
+- `title`
+- `authors`
+- `isbn`
+- `tags`
+- `location`
+- `reading_status`
+- `current_page`
+- `progress_percent`
+- `rating`
+- `note`
+- `added_date`
+- `active_loan_status`
+- `active_loan_borrower`
+- `active_loan_loaned_at`
+- `active_loan_due_at`
+
+Known gaps:
+
+- Borrower email is not exported.
+- Historical loans are not exported.
+- Only one active loan snapshot can be exported per library entry.
+- `active_loan_borrower` may contain a third-party borrower display name supplied by the owner.
+
 ## User-Facing Deletion Semantics
 
-Account deletion removes:
+Self-service deletion is `POST /api/account/delete`. The signed-in user must provide their current password and the exact confirmation text `DELETE MY ACCOUNT`. The route verifies the session, validates the body, verifies the current password, runs the account deletion service, and then deletes associated local blob paths returned by the repository.
+
+Account deletion hard-deletes:
 
 - Better Auth user, account, and session records.
 - Pending verification records tied to the user's current or pending email address.
@@ -19,13 +52,16 @@ Account deletion removes:
 - Manual book metadata rows created by the deleting user when no retained user library record still references the row.
 - User-specific uploaded assets, including manual cover images deleted with removed manual book rows and local account image paths.
 
-Account deletion may retain:
+Account deletion anonymizes or retains:
 
 - Shared Open Library-derived book metadata and generated shared cover assets, because those rows are not user-specific personal data.
 - Manual book rows created by the deleting user if another retained user's library record legitimately still references that row. The direct creator reference is cleared when the user is deleted.
 - Global tag and author dictionary rows that no longer identify a user.
+- Borrowed-loan rows owned by another user. Libroo clears the deleted borrower's account association and accepted state, but the owner may retain their own loan row and owner-supplied borrower display text.
 - Admin audit rows with user references cleared by database `ON DELETE SET NULL`.
 - Backups until the operator's documented backup retention window expires.
+
+The last active admin deletion guard is enforced in the repository using an atomic predicate, so the final active admin cannot self-delete even under concurrent requests.
 
 ## Lending Records
 

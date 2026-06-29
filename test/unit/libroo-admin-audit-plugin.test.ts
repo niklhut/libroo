@@ -277,6 +277,82 @@ describe('librooAdminAuditPlugin', () => {
     })
   })
 
+  it('records one email-change confirmation when verification confirms a pending email', async () => {
+    const token = makeJwtPayload({
+      email: 'old@example.com',
+      updateTo: 'new@example.com'
+    })
+    const ctx = {
+      path: '/verify-email',
+      body: { token },
+      context: {
+        returned: {
+          status: true
+        },
+        internalAdapter: {
+          findUserById: async () => null,
+          findUserByEmail: async () => ({
+            id: 'user-1',
+            name: 'Changed User',
+            email: 'old@example.com',
+            pendingEmail: 'new@example.com'
+          })
+        },
+        runInBackgroundOrAwait: vi.fn((promise?: Promise<unknown>) => promise)
+      }
+    }
+    const plugin = librooAdminAuditPlugin()
+    const beforeHandler = plugin.hooks?.before?.[1]?.handler as (ctx: unknown) => Promise<unknown>
+    const afterHandler = plugin.hooks?.after?.[0]?.handler as (ctx: unknown) => Promise<unknown>
+
+    await beforeHandler(ctx)
+    await afterHandler(ctx)
+
+    expect(createAdminAuditEntryInDatabase).toHaveBeenCalledTimes(1)
+    expect(createAdminAuditEntryInDatabase).toHaveBeenCalledWith({
+      category: 'auth',
+      actorUserId: 'user-1',
+      targetUserId: 'user-1',
+      action: 'auth.email_change_confirmed',
+      metadata: {
+        newEmail: 'new@example.com'
+      }
+    })
+  })
+
+  it('does not record email-change confirmation for initial signup verification', async () => {
+    const token = makeJwtPayload({
+      email: 'new@example.com'
+    })
+    const ctx = {
+      path: '/verify-email',
+      body: { token },
+      context: {
+        returned: {
+          status: true
+        },
+        internalAdapter: {
+          findUserById: async () => null,
+          findUserByEmail: async () => ({
+            id: 'user-1',
+            name: 'New User',
+            email: 'new@example.com',
+            pendingEmail: null
+          })
+        },
+        runInBackgroundOrAwait: vi.fn((promise?: Promise<unknown>) => promise)
+      }
+    }
+    const plugin = librooAdminAuditPlugin()
+    const beforeHandler = plugin.hooks?.before?.[1]?.handler as (ctx: unknown) => Promise<unknown>
+    const afterHandler = plugin.hooks?.after?.[0]?.handler as (ctx: unknown) => Promise<unknown>
+
+    await beforeHandler(ctx)
+    await afterHandler(ctx)
+
+    expect(createAdminAuditEntryInDatabase).not.toHaveBeenCalled()
+  })
+
   it('defers post-success audit persistence when Better Auth provides a background helper', async () => {
     let resolvePersist!: () => void
     const persistPromise = new Promise<void>((resolve) => {
@@ -372,4 +448,11 @@ function successfulSignupHookContext(options: {
       }
     }
   }
+}
+
+function makeJwtPayload(payload: Record<string, unknown>) {
+  const encode = (value: unknown) => Buffer.from(JSON.stringify(value))
+    .toString('base64url')
+
+  return `${encode({ alg: 'HS256', typ: 'JWT' })}.${encode(payload)}.signature`
 }
