@@ -7,6 +7,7 @@ const authMock = vi.hoisted(() => ({
 }))
 
 vi.mock('../../../../../server/utils/auth', () => ({
+  LIBROO_CLIENT_IP_HEADER: 'x-libroo-client-ip',
   auth: {
     api: {
       getSession: authMock.getSession

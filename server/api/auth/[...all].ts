@@ -86,10 +86,14 @@ export default defineEventHandler(async (event) => {
 })
 
 function withResolvedClientIp(request: Request, clientIp: string | undefined) {
-  if (!clientIp) return request
+  if (!clientIp && !request.headers.has(LIBROO_CLIENT_IP_HEADER)) return request
 
   const headers = new Headers(request.headers)
-  headers.set(LIBROO_CLIENT_IP_HEADER, clientIp)
+  if (clientIp) {
+    headers.set(LIBROO_CLIENT_IP_HEADER, clientIp)
+  } else {
+    headers.delete(LIBROO_CLIENT_IP_HEADER)
+  }
 
   return new Request(request, { headers })
 }
