@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanupApiRouteTest, getAuthHandlerMock, importRoute, makeEvent, routePath, setupApiRouteTest } from '../_helpers/api-route'
 
+const h3Mock = vi.hoisted(() => ({
+  getRequestIP: vi.fn(() => undefined as string | undefined),
+  toWebRequest: vi.fn(() => new Request('http://localhost/api/auth/get-session'))
+}))
+
 vi.mock('h3', () => ({
   createError: (input: { statusCode: number, message?: string, statusMessage?: string, data?: unknown }) => {
     const error = new Error(input.message ?? input.statusMessage ?? 'Error') as Error & {
@@ -14,7 +19,8 @@ vi.mock('h3', () => ({
     return error
   },
   defineEventHandler: (handler: unknown) => handler,
-  toWebRequest: (event: unknown) => ({ webRequestFor: event })
+  getRequestIP: h3Mock.getRequestIP,
+  toWebRequest: h3Mock.toWebRequest
 }))
 
 const route = routePath('auth/[...all]')
@@ -31,6 +37,24 @@ describe('server/api/auth/[...all]', () => {
     const event = makeEvent()
 
     await expect(handler(event)).resolves.toBe(result)
-    expect(authHandler).toHaveBeenCalledWith({ webRequestFor: event })
+    expect(authHandler.mock.calls[0]?.[0]).toBeInstanceOf(Request)
+  })
+
+  it('strips caller-supplied internal client IP headers when no runtime IP is resolved', async () => {
+    const result = new Response(null, { status: 204 })
+    const request = new Request('http://localhost/api/auth/get-session', {
+      headers: {
+        'x-libroo-client-ip': '203.0.113.10'
+      }
+    })
+    const authHandler = getAuthHandlerMock()
+    authHandler.mockResolvedValueOnce(result)
+    h3Mock.toWebRequest.mockReturnValueOnce(request)
+    h3Mock.getRequestIP.mockReturnValueOnce(undefined)
+    const handler = await importRoute(route)
+
+    await expect(handler(makeEvent())).resolves.toBe(result)
+    const delegatedRequest = authHandler.mock.calls[0]?.[0] as Request
+    expect(delegatedRequest.headers.get('x-libroo-client-ip')).toBeNull()
   })
 })

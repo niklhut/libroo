@@ -13,6 +13,7 @@ import { getEmailVerificationConfig, validateEmailVerificationConfig } from './e
 import { createTurnstileCaptchaPlugins } from './turnstile'
 import { sendEmailMessage } from '../services/email.service'
 import { createBackgroundTaskHandler } from '../runtime/background-tasks.active'
+import { runtimeProfile } from '../runtime/profile.active'
 
 interface EnvSecretOptions {
   envKey: string
@@ -21,6 +22,8 @@ interface EnvSecretOptions {
   productionError?: string // If set, throws error in production when missing
   productionWarning?: string // If set, logs warning in production when missing
 }
+
+export const LIBROO_CLIENT_IP_HEADER = 'x-libroo-client-ip'
 
 /**
  * Unified helper to load secrets/config from env vars or Nuxt runtime config.
@@ -85,6 +88,7 @@ const emailVerificationConfig = getEmailVerificationConfig()
 validateEmailVerificationConfig(emailVerificationConfig)
 const authRateLimitEnabled = process.env.NUXT_BETTER_AUTH_RATE_LIMIT_ENABLED !== 'false'
 const backgroundTaskHandler = createBackgroundTaskHandler()
+const trustedIpHeaders = getTrustedIpHeaders()
 
 const adminRole = defaultAc.newRole({
   user: [
@@ -138,6 +142,45 @@ function getPublicPasswordResetUrl(token: string) {
   const resetUrl = new URL('/reset-password', getAuthUrl())
   resetUrl.searchParams.set('token', token)
   return resetUrl.toString()
+}
+
+function parseCommaSeparated(value: unknown) {
+  if (typeof value !== 'string') return []
+
+  return value
+    .split(',')
+    .map(header => header.trim().toLowerCase())
+    .filter(Boolean)
+}
+
+function getConfiguredTrustedIpHeaders() {
+  let value: unknown = process.env.NUXT_TRUSTED_IP_HEADERS
+
+  try {
+    if (typeof useRuntimeConfig === 'function') {
+      const config = useRuntimeConfig() as { trustedIpHeaders?: unknown }
+      if (config.trustedIpHeaders) {
+        value = config.trustedIpHeaders
+      }
+    }
+  } catch {
+    // Ignore error if useRuntimeConfig is not available or fails
+  }
+
+  return parseCommaSeparated(value)
+}
+
+function getTrustedIpHeaders() {
+  const configuredHeaders = getConfiguredTrustedIpHeaders()
+  const platformHeaders = runtimeProfile === 'cloudflare'
+    ? ['cf-connecting-ip']
+    : []
+
+  return Array.from(new Set([
+    ...platformHeaders,
+    ...configuredHeaders,
+    LIBROO_CLIENT_IP_HEADER
+  ]))
 }
 
 export const auth = betterAuth({
@@ -218,6 +261,9 @@ export const auth = betterAuth({
     enabled: authRateLimitEnabled
   },
   advanced: {
+    ipAddress: {
+      ipAddressHeaders: trustedIpHeaders
+    },
     backgroundTasks: backgroundTaskHandler
       ? {
           handler: backgroundTaskHandler

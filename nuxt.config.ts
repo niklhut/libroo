@@ -95,6 +95,7 @@ export default defineNuxtConfig({
     legalPrivacyPolicyMarkdownUrl: '',
     legalImprintMarkdownUrl: '',
     legalTermsMarkdownUrl: '',
+    trustedIpHeaders: '',
     turnstile: {
       secretKey: '',
       allowedHostnames: '',
@@ -117,7 +118,8 @@ export default defineNuxtConfig({
     '../runtime/active': `./server/runtime/${runtimeProfile}.ts`,
     '../runtime/auth-db.active': `./server/runtime/auth-db.${runtimeProfile}.ts`,
     '../runtime/background-tasks.active': `./server/runtime/background-tasks.${runtimeProfile}.ts`,
-    '../runtime/email.active': `./server/runtime/email.${runtimeProfile}.ts`
+    '../runtime/email.active': `./server/runtime/email.${runtimeProfile}.ts`,
+    '../runtime/profile.active': `./server/runtime/profile.${runtimeProfile}.ts`
   },
 
   routeRules: {

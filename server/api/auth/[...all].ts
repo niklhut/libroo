@@ -1,6 +1,6 @@
 import { Effect } from 'effect'
-import { createError, defineEventHandler, toWebRequest } from 'h3'
-import { auth } from '../../utils/auth'
+import { createError, defineEventHandler, getRequestIP, toWebRequest } from 'h3'
+import { auth, LIBROO_CLIENT_IP_HEADER } from '../../utils/auth'
 import { getEmailCapabilities } from '../../utils/email-capabilities'
 import { getEmailVerificationConfig } from '../../utils/email-verification-config'
 import { validateEmailVerificationToken } from '../../services/auth.service'
@@ -55,7 +55,8 @@ export default defineEventHandler(async (event) => {
     let response: Response
 
     try {
-      response = await auth.handler(request)
+      const authRequest = withResolvedClientIp(request, getRequestIP(event))
+      response = await auth.handler(authRequest)
     } catch (error) {
       if (inviteReservationToken) {
         await releaseInviteReservation(inviteReservationToken)
@@ -83,6 +84,19 @@ export default defineEventHandler(async (event) => {
     return response
   })
 })
+
+function withResolvedClientIp(request: Request, clientIp: string | undefined) {
+  if (!clientIp && !request.headers.has(LIBROO_CLIENT_IP_HEADER)) return request
+
+  const headers = new Headers(request.headers)
+  if (clientIp) {
+    headers.set(LIBROO_CLIENT_IP_HEADER, clientIp)
+  } else {
+    headers.delete(LIBROO_CLIENT_IP_HEADER)
+  }
+
+  return new Request(request, { headers })
+}
 
 async function readSignupBody(request: Request) {
   const contentType = request.headers.get('content-type') ?? ''
