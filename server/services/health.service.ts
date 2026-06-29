@@ -1,7 +1,9 @@
 import { Context, Effect, Layer } from 'effect'
+import packageJson from '../../package.json'
 
 export interface HealthStatus {
   status: 'ok'
+  version?: string
   checks: {
     database: 'ok'
   }
@@ -25,6 +27,7 @@ export const HealthServiceLive = Layer.effect(
 
           return {
             status: 'ok',
+            version: packageJson.version,
             checks: {
               database: 'ok'
             }

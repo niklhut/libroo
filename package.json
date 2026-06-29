@@ -1,11 +1,15 @@
 {
   "name": "librooapp",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "nuxt build",
     "build:cloudflare": "NUXT_LIBROO_RUNTIME_PROFILE=cloudflare NITRO_PRESET=cloudflare_module nuxt build",
     "build:selfhost": "NUXT_LIBROO_RUNTIME_PROFILE=selfhost NITRO_PRESET=node_server nuxt build",
+    "backup:selfhost": "node scripts/backup-selfhost.mjs",
+    "restore:selfhost": "node scripts/restore-selfhost.mjs",
+    "backup:hosted:manifest": "node scripts/hosted-backup-manifest.mjs",
     "check:cloudflare-size": "pnpm build:cloudflare && pnpm exec wrangler --cwd .output deploy --dry-run --outdir /tmp/libroo-wrangler-dry-run",
     "dev": "nuxt dev",
     "preview": "nuxt preview",

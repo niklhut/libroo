@@ -83,13 +83,13 @@ For manual support requests:
 6. Record the support action without storing unnecessary personal details.
 7. Confirm whether backups may retain deleted data until the backup retention window expires.
 
-For self-hosted installs, a full `/data` backup taken before deletion can still contain the deleted account. Operators should avoid restoring old full-volume backups into production unless they re-run deletion for affected users after restoration.
+For self-hosted installs, a full `/data` backup taken before deletion can still contain the deleted account. Operators should avoid restoring old full-volume backups into production unless they re-run deletion for affected users after restoration. Use the restore workflow in [Backup And Restore](./backup-restore.md), then replay every account-deletion request that occurred after the restored backup point before returning the instance to service.
 
 ## Backup Retention
 
-Hosted operators should publish a concrete backup retention period before public launch. Self-hosted operators define their own backup schedule and retention period.
+The hosted service backup retention target is 30 days before public launch, unless a stricter legal or operational policy replaces it. Self-hosted operators define their own backup schedule and retention period.
 
-Deleted data can persist in encrypted, access-controlled backups until those backups expire or are overwritten. Restoring a backup can reintroduce deleted data; after any restore, operators should re-run deletion requests that occurred after the restored backup point.
+Deleted data can persist in encrypted, access-controlled backups until those backups expire or are overwritten. Restoring a backup can reintroduce deleted data; after any restore, operators must re-run deletion requests that occurred after the restored backup point.
 
 ## Known Exceptions
 

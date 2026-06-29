@@ -149,6 +149,15 @@ The Compose file exposes `http://localhost:3000`, mounts a persistent `libroo-da
 
 Back up the whole `/data` volume before upgrades. SQLite migrations are treated as forward-only unless a release explicitly ships a rollback plan.
 
+Scripted self-hosted backup and restore tooling is available:
+
+```bash
+pnpm backup:selfhost -- --output-dir /backups/libroo
+pnpm restore:selfhost -- /backups/libroo/libroo-selfhost-backup-YYYY-MM-DDTHH-MM-SSZ.tar.gz
+```
+
+See [docs/backup-restore.md](docs/backup-restore.md) for self-hosted archives, hosted D1/R2 exports, manifests, verification, and retention guidance. The hosted-service backup retention target is 30 days before public launch.
+
 ## Hosted Cloudflare/NuxtHub
 
 The hosted profile uses NuxtHub with Cloudflare D1 and R2-compatible blob storage:
@@ -223,6 +232,7 @@ Available in the beta release:
 - Better Auth-backed registration, login, password reset, email verification, first-admin promotion, invites, role management, bans, and audit log.
 - SQLite self-hosting and Cloudflare/NuxtHub hosted deployment.
 - CSV import/export and account deletion.
+- Backup/restore tooling for self-hosted operators and documented hosted D1/R2 backup procedures.
 
 Future work toward v1:
 
@@ -230,10 +240,10 @@ Future work toward v1:
 - Reminders and notification scheduling for loans.
 - Barcode scanner polish and bulk inventory flows.
 - More import sources and metadata reconciliation tools.
-- Backup/restore tooling for operators.
 - Hardened preview environments for Cloudflare deployments.
 
 ## More Documentation
 
 - [Deployment](docs/deployment.md)
+- [Backup And Restore](docs/backup-restore.md)
 - [Account Deletion And Retention](docs/account-deletion.md)
