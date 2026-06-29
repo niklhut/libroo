@@ -2,6 +2,14 @@
 import { writeFile } from 'node:fs/promises'
 import { buildBackupManifest } from './lib/backup-metadata.mjs'
 
+function requireValue(argv, index, flag) {
+  const value = argv[index + 1]
+  if (!value || value.startsWith('--')) {
+    throw new Error(`Missing value for ${flag}`)
+  }
+  return value
+}
+
 function parseArgs(argv) {
   const options = {
     output: 'manifest.json',
@@ -14,13 +22,17 @@ function parseArgs(argv) {
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]
     if (arg === '--output') {
-      options.output = argv[++index]
+      options.output = requireValue(argv, index, '--output')
+      index += 1
     } else if (arg === '--worker') {
-      options.worker = argv[++index]
+      options.worker = requireValue(argv, index, '--worker')
+      index += 1
     } else if (arg === '--d1-database') {
-      options.d1Database = argv[++index]
+      options.d1Database = requireValue(argv, index, '--d1-database')
+      index += 1
     } else if (arg === '--r2-bucket') {
-      options.r2Bucket = argv[++index]
+      options.r2Bucket = requireValue(argv, index, '--r2-bucket')
+      index += 1
     } else if (arg === '--help' || arg === '-h') {
       options.help = true
     } else {
@@ -45,13 +57,8 @@ if (options.help) {
   process.exit(0)
 }
 
-const noopClient = {
-  execute: async () => ({ rows: [] })
-}
-
 const now = new Date()
 const manifest = await buildBackupManifest({
-  client: noopClient,
   runtimeProfile: options.runtimeProfile,
   createdAt: now,
   databaseSnapshotAt: now,
@@ -62,6 +69,11 @@ const manifest = await buildBackupManifest({
     r2Bucket: options.r2Bucket,
     database: 'cloudflare-d1',
     blobStorage: 'cloudflare-r2'
+  },
+  appliedMigrationState: {
+    status: 'unavailable',
+    source: 'cloudflare-d1',
+    reason: 'Hosted manifest helper cannot inspect the remote D1 __drizzle_migrations table; keep Wrangler export and migration logs with this manifest.'
   }
 })
 

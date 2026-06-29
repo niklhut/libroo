@@ -29,6 +29,9 @@ Current manifest fields:
   migration from `server/db/migrations/sqlite/meta/_journal.json`.
 - `migrations.applied`: applied self-hosted Drizzle migration rows from
   `__drizzle_migrations` when the source database is directly inspectable.
+- `migrations.appliedState`: whether `migrations.applied` was inspected from
+  the database or marked unavailable for hosted metadata emitted without direct
+  D1 access.
 
 Backups are forward-only. Do not restore a backup whose manifest migration
 state or app version is ahead of the code being deployed.

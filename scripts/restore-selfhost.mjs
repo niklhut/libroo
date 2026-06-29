@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { cp, mkdir, mkdtemp, readdir, rm, stat } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises'
 import { createReadStream } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -9,8 +9,8 @@ import { createGunzip } from 'node:zlib'
 import { createClient } from '@libsql/client/node'
 import { drizzle } from 'drizzle-orm/libsql/node'
 import { migrate } from 'drizzle-orm/libsql/migrator'
-import { MANIFEST_FILENAME } from './lib/backup-metadata.mjs'
-import { formatVerificationReport, verifyBackupTarget } from './lib/backup-verify.mjs'
+import { assertManifestShape, MANIFEST_FILENAME, readLatestMigration, readPackageVersion } from './lib/backup-metadata.mjs'
+import { checkManifestCompatibility, formatVerificationReport, verifyBackupTarget } from './lib/backup-verify.mjs'
 
 function getDatabaseUrl() {
   const configuredUrl = process.env.NUXT_DATABASE_URL || process.env.LIBROO_DATABASE_URL
@@ -119,6 +119,32 @@ async function runMigrations(databaseUrl) {
   }
 }
 
+async function assertRestoreManifestCompatible(manifestPath) {
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
+  assertManifestShape(manifest)
+
+  const currentLatestMigration = await readLatestMigration()
+  const currentVersion = await readPackageVersion()
+  const compatibility = checkManifestCompatibility(manifest, {
+    currentLatestMigration,
+    currentVersion,
+    currentRuntimeProfile: process.env.NUXT_LIBROO_RUNTIME_PROFILE || 'selfhost'
+  })
+
+  if (compatibility.errors.length > 0) {
+    throw new Error([
+      'Refusing to restore an incompatible backup manifest before modifying the target.',
+      ...compatibility.errors.map(error => `- ${error}`)
+    ].join('\n'))
+  }
+
+  for (const warning of compatibility.warnings) {
+    console.warn(`Warning: ${warning}`)
+  }
+
+  return manifest
+}
+
 function parseArgs(argv) {
   const options = {
     force: false
@@ -187,7 +213,12 @@ try {
   const manifestPath = join(extractDir, MANIFEST_FILENAME)
 
   await stat(sourceDatabasePath)
+  const sourceBlobStats = await stat(sourceBlobDir)
+  if (!sourceBlobStats.isDirectory()) {
+    throw new Error(`Backup archive blob path is not a directory: ${sourceBlobDir}`)
+  }
   await stat(manifestPath)
+  await assertRestoreManifestCompatible(manifestPath)
 
   console.log('Restoring database file...')
   await mkdir(dirname(resolvedDatabasePath), { recursive: true })

@@ -30,7 +30,8 @@ export async function verifyBackupTarget({
   manifestPath,
   manifest,
   packageJsonPath,
-  migrationJournalPath
+  migrationJournalPath,
+  currentRuntimeProfile = process.env.NUXT_LIBROO_RUNTIME_PROFILE || 'selfhost'
 }) {
   const resolvedBlobDir = resolve(blobDir)
   const loadedManifest = manifest ?? await readManifest(manifestPath)
@@ -81,6 +82,13 @@ export async function verifyBackupTarget({
     result.coverReferences.orphanedBlobs = blobFiles
       .filter(pathname => !referenceSet.has(pathname))
       .sort()
+
+    if (result.coverReferences.broken.length > 0) {
+      result.errors.push(`Missing ${result.coverReferences.broken.length} referenced cover blob(s).`)
+    }
+    if (result.coverReferences.orphanedBlobs.length > 0) {
+      result.warnings.push(`Found ${result.coverReferences.orphanedBlobs.length} orphaned blob(s).`)
+    }
   } catch (error) {
     result.errors.push(`Cover-reference verification failed: ${formatError(error)}`)
   }
@@ -90,7 +98,8 @@ export async function verifyBackupTarget({
     const currentVersion = await readPackageVersion(packageJsonPath)
     const compatibility = checkManifestCompatibility(loadedManifest, {
       currentLatestMigration,
-      currentVersion
+      currentVersion,
+      currentRuntimeProfile
     })
     result.errors.push(...compatibility.errors)
     result.warnings.push(...compatibility.warnings)
@@ -104,11 +113,16 @@ export async function verifyBackupTarget({
   return result
 }
 
-export function checkManifestCompatibility(manifest, { currentLatestMigration, currentVersion }) {
+export function checkManifestCompatibility(manifest, { currentLatestMigration, currentVersion, currentRuntimeProfile }) {
   const errors = []
   const warnings = []
   const backupMigration = manifest.migrations.latest
   const backupVersion = manifest.app.version
+  const backupRuntimeProfile = manifest.runtime.profile
+
+  if (currentRuntimeProfile && backupRuntimeProfile !== currentRuntimeProfile) {
+    errors.push(`Backup runtime profile ${backupRuntimeProfile} does not match current runtime profile ${currentRuntimeProfile}.`)
+  }
 
   if (backupMigration.idx != null && currentLatestMigration.idx != null) {
     if (backupMigration.idx > currentLatestMigration.idx) {

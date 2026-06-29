@@ -27,7 +27,12 @@ export function createEmptyManifestShape() {
         tag: null,
         idx: null
       },
-      applied: []
+      applied: [],
+      appliedState: {
+        status: 'inspected',
+        source: '__drizzle_migrations',
+        reason: null
+      }
     }
   }
 }
@@ -77,9 +82,10 @@ export async function buildBackupManifest({
   completedAt = new Date(),
   packageJsonPath,
   migrationJournalPath,
-  extraRuntime = {}
+  extraRuntime = {},
+  appliedMigrationState
 }) {
-  if (!client) {
+  if (!client && appliedMigrationState?.status !== 'unavailable') {
     throw new Error('buildBackupManifest requires a libSQL client')
   }
 
@@ -97,7 +103,12 @@ export async function buildBackupManifest({
   }
   manifest.migrations = {
     latest: await readLatestMigration(migrationJournalPath),
-    applied: await readAppliedMigrations(client)
+    applied: client ? await readAppliedMigrations(client) : [],
+    appliedState: appliedMigrationState ?? {
+      status: 'inspected',
+      source: '__drizzle_migrations',
+      reason: null
+    }
   }
 
   return manifest
@@ -113,8 +124,9 @@ export function assertManifestShape(manifest) {
     ['timestamps.databaseSnapshotAt', manifest?.timestamps?.databaseSnapshotAt],
     ['timestamps.completedAt', manifest?.timestamps?.completedAt],
     ['migrations.latest', manifest?.migrations?.latest],
-    ['migrations.applied', manifest?.migrations?.applied]
-  ].filter(([, value]) => value == null)
+    ['migrations.applied', manifest?.migrations?.applied],
+    ['migrations.appliedState.status', manifest?.migrations?.appliedState?.status]
+  ].filter(([, value]) => value == null || (typeof value === 'string' && value.trim() === ''))
 
   if (missing.length > 0) {
     throw new Error(`Backup manifest is missing required field(s): ${missing.map(([name]) => name).join(', ')}`)
@@ -126,6 +138,20 @@ export function assertManifestShape(manifest) {
 
   if (!Array.isArray(manifest.migrations.applied)) {
     throw new Error('Backup manifest migrations.applied must be an array')
+  }
+
+  if (!['inspected', 'unavailable'].includes(manifest.migrations.appliedState.status)) {
+    throw new Error('Backup manifest migrations.appliedState.status must be inspected or unavailable')
+  }
+
+  for (const value of [
+    manifest.timestamps.createdAt,
+    manifest.timestamps.databaseSnapshotAt,
+    manifest.timestamps.completedAt
+  ]) {
+    if (Number.isNaN(Date.parse(value))) {
+      throw new Error('Backup manifest timestamps must be valid ISO-8601 strings')
+    }
   }
 }
 

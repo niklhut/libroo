@@ -198,6 +198,7 @@ const client = createClient({ url: databaseUrl })
 try {
   console.log(`Preparing backup output directory: ${outputDir}`)
   await assertWritableDirectory(outputDir, 'backup output directory')
+  await assertSufficientFreeSpace(tempRoot, [databasePath, blobDir])
   await assertSufficientFreeSpace(outputDir, [databasePath, blobDir])
 
   console.log('Taking online database snapshot with VACUUM INTO...')
