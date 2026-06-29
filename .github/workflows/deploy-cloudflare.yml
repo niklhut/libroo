@@ -154,7 +154,7 @@ jobs:
 
       - name: Register GitHub deployment
         id: deployment
-        uses: actions/github-script@v8
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         env:
           PRODUCTION_ORIGIN: ${{ vars.NUXT_CLOUDFLARE_CUSTOM_DOMAIN }}
         with:
@@ -221,7 +221,7 @@ jobs:
 
       - name: Publish production status
         if: always()
-        uses: actions/github-script@v8
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         env:
           DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
           JOB_STATUS: ${{ job.status }}

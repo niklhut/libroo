@@ -163,7 +163,7 @@ jobs:
 
       - name: Register GitHub deployment
         id: deployment
-        uses: actions/github-script@v8
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         env:
           PREVIEW_URL: ${{ steps.preview.outputs.url }}
         with:
@@ -302,7 +302,7 @@ jobs:
 
       - name: Publish preview status
         if: always()
-        uses: actions/github-script@v8
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         env:
           DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
           PREVIEW_URL: ${{ steps.preview.outputs.url }}
