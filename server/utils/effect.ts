@@ -30,9 +30,14 @@ const RepositoriesLive = Layer.provideMerge(
 )
 
 // Service layer (depends on repositories)
-const ServicesLive = Layer.provideMerge(
+const CoreServicesLive = Layer.provideMerge(
   Layer.mergeAll(BookServiceLive, LendingServiceLive, AdminServiceLive, AuditServiceLive, LocationServiceLive, LibraryTransferServiceLive, AccountDeletionServiceLive, SignupInviteServiceLive, EmailCapabilityServiceLive, HealthServiceLive, LegalServiceLive),
   RepositoriesLive
+)
+
+const ServicesLive = Layer.provideMerge(
+  AuthRequestServiceLive,
+  CoreServicesLive
 )
 
 // Combined live layer for all services
@@ -66,6 +71,7 @@ export type MainServices
     | LibraryTransferService
     | AccountDeletionService
     | SignupInviteService
+    | AuthRequestService
     | EmailService
     | EmailCapabilityService
     | HealthService
@@ -90,6 +96,8 @@ const errorStatusCodes: Record<string, number> = {
   PendingEmailConflictError: 409,
   InvalidEmailVerificationTokenError: 401,
   ExpiredEmailVerificationTokenError: 401,
+  PasswordResetUnavailableError: 404,
+  EmailChangeNotAllowedError: 403,
   BookNotFoundError: 404,
   OpenLibraryBookNotFoundError: 404,
   BookAlreadyOwnedError: 409,

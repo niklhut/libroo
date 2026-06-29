@@ -23,6 +23,7 @@ const liveLayerNames = [
   'LibraryTransferServiceLive',
   'AccountDeletionServiceLive',
   'SignupInviteServiceLive',
+  'AuthRequestServiceLive',
   'EmailCapabilityServiceLive',
   'HealthServiceLive',
   'LegalServiceLive'
