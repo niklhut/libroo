@@ -135,6 +135,7 @@ const errorMessageFormatters: Record<string, (error: unknown) => string> = {
     const isbn = getProp<string>(error, 'isbn')
     return `You already have this book (ISBN: ${isbn || 'unknown'}) in your library`
   },
+  BookCreateError: () => 'We could not save this book right now. Please try again.',
   ActiveLoanRemovalError: (error) => {
     const borrower = getProp<string>(error, 'borrowerDisplayName')
     return borrower

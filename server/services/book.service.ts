@@ -154,7 +154,7 @@ export interface BookServiceInterface {
     isbn: string
   ) => Effect.Effect<
     BookLookupResult,
-    DatabaseError | OpenLibraryApiError,
+    BookCreateError | DatabaseError | OpenLibraryApiError,
     DbService | StorageService | OpenLibraryRepository | HttpClient.HttpClient
   >
 
@@ -196,6 +196,24 @@ export const BookServiceLive = Layer.effect(
     const locationRepo = yield* LocationRepository
 
     const normalizeISBN = (isbn: string) => isbn.replace(/[-\s]/g, '')
+    const withDebugTiming = <A, E, R>(
+      operation: string,
+      isbn: string,
+      effect: Effect.Effect<A, E, R>
+    ): Effect.Effect<A, E, R> =>
+      Effect.gen(function* () {
+        const start = yield* Effect.sync(() => Date.now())
+        const result = yield* effect
+        const durationMs = yield* Effect.sync(() => Date.now() - start)
+        yield* Effect.logDebug(`${operation} completed`).pipe(
+          Effect.annotateLogs({
+            operation,
+            isbn,
+            durationMs
+          })
+        )
+        return result
+      })
 
     const normalizeProgress = (
       details: BookDetails,
@@ -446,27 +464,33 @@ export const BookServiceLive = Layer.effect(
             } satisfies BookLookupResult
           }
 
-          // Not found locally, try OpenLibrary
-          const lookupEffect = lookupByISBN(normalizedISBN).pipe(
-            Effect.flatMap((bookData: OpenLibraryBookData) =>
+          // Not found locally, persist OpenLibrary metadata for later add flows.
+          const lookupEffect = withDebugTiming(
+            'lookupBook.ensureOpenLibraryBook',
+            normalizedISBN,
+            bookRepo.ensureOpenLibraryBook(normalizedISBN)
+          ).pipe(
+            Effect.flatMap(book =>
               Effect.gen(function* () {
-                const coverPath = bookData.coverUrl
-                  ? yield* downloadCover(bookData.isbn, 'L')
-                  : null
+                const bookTags = yield* withDebugTiming(
+                  'lookupBook.systemTagLoad',
+                  normalizedISBN,
+                  bookRepo.getSystemTagsByBookId(book.id)
+                )
 
                 return {
                   found: true,
-                  isbn: bookData.isbn,
-                  title: bookData.title,
-                  author: bookData.authors.join(', '),
-                  authors: bookData.authors,
-                  coverUrl: coverPath ? `/api/blob/${coverPath}` : null,
-                  description: bookData.description,
-                  subjects: bookData.subjects ?? null,
-                  publishDate: bookData.publishDate,
-                  publishers: bookData.publishers ?? null,
-                  numberOfPages: bookData.numberOfPages,
-                  existsLocally: false
+                  isbn: book.isbn || normalizedISBN,
+                  title: book.title,
+                  author: book.author,
+                  authors: book.authors.map(author => author.name),
+                  coverUrl: book.coverPath ? `/api/blob/${book.coverPath}` : null,
+                  description: book.description ?? undefined,
+                  subjects: bookTags.map(tag => tag.name),
+                  publishDate: book.publishDate ?? undefined,
+                  publishers: book.publishers ? book.publishers.split(', ') : null,
+                  numberOfPages: book.numberOfPages ?? undefined,
+                  existsLocally: existsInUserLibrary
                 } satisfies BookLookupResult
               })
             ),

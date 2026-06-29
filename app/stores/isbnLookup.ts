@@ -36,11 +36,15 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
   const isAdding = computed(() => pendingAdds.value > 0)
 
   function getErrorMessage(err: unknown, fallback: string): string {
-    if (err instanceof Error) {
+    const responseMessage = (err as { data?: { message?: string, statusMessage?: string } })?.data?.message
+      || (err as { data?: { message?: string, statusMessage?: string } })?.data?.statusMessage
+    if (responseMessage) return responseMessage
+
+    if (err instanceof Error && err.name !== 'FetchError') {
       return err.message
     }
 
-    return (err as { data?: { message?: string } })?.data?.message || fallback
+    return fallback
   }
 
   async function lookupIsbn(

@@ -114,6 +114,14 @@ export interface BookLibraryFilters extends LibraryQueryFilters {
 
 // Service interface
 export interface BookRepositoryInterface {
+  ensureOpenLibraryBook: (
+    isbn: string
+  ) => Effect.Effect<
+    Book,
+    BookCreateError | OpenLibraryBookNotFoundError | OpenLibraryApiError | DatabaseError,
+    DbService | StorageService | OpenLibraryRepository | HttpClient.HttpClient
+  >
+
   addBookByISBN: (
     userId: string,
     isbn: string
@@ -287,6 +295,25 @@ function findStoredOpenLibraryCover(isbn: string) {
   })
 }
 
+const withDebugTiming = <A, E, R>(
+  operation: string,
+  isbn: string,
+  effect: Effect.Effect<A, E, R>
+): Effect.Effect<A, E, R> =>
+  Effect.gen(function* () {
+    const start = yield* Effect.sync(() => Date.now())
+    const result = yield* effect
+    const durationMs = yield* Effect.sync(() => Date.now() - start)
+    yield* Effect.logDebug(`${operation} completed`).pipe(
+      Effect.annotateLogs({
+        operation,
+        isbn,
+        durationMs
+      })
+    )
+    return result
+  })
+
 // Live implementation
 export const BookRepositoryLive = Layer.effect(
   BookRepository,
@@ -356,6 +383,24 @@ export const BookRepositoryLive = Layer.effect(
         }
 
         return authorMap
+      })
+
+    const loadOpenLibraryBookByIsbn = (isbn: string, operation: string) =>
+      Effect.gen(function* () {
+        const result = yield* Effect.tryPromise({
+          try: () =>
+            dbService.db
+              .select()
+              .from(books)
+              .where(and(eq(books.isbn, isbn), eq(books.source, 'open_library')))
+              .limit(1),
+          catch: error => new DatabaseError({
+            message: `Failed to find existing book: ${error}`,
+            operation
+          })
+        })
+
+        return result[0] || null
       })
 
     const resolveOrCreateAuthorId = (name: string, client = dbService.db) =>
@@ -681,7 +726,154 @@ export const BookRepositoryLive = Layer.effect(
         }]))
       })
 
+    const ensureOpenLibraryBook = (isbn: string) =>
+      Effect.gen(function* () {
+        const normalizedISBN = normalizeISBN(isbn)
+        const existingBook = yield* loadOpenLibraryBookByIsbn(normalizedISBN, 'ensureOpenLibraryBook.findExisting')
+
+        if (!existingBook) {
+          const openLibraryData = yield* withDebugTiming(
+            'ensureOpenLibraryBook.openLibraryMetadataFetch',
+            normalizedISBN,
+            lookupByISBN(normalizedISBN)
+          )
+
+          const coverPath = yield* withDebugTiming(
+            'ensureOpenLibraryBook.coverResolution',
+            normalizedISBN,
+            Effect.gen(function* () {
+              return (yield* findStoredOpenLibraryCover(normalizedISBN))
+                ?? (yield* downloadCover(normalizedISBN, 'L'))
+            })
+          )
+
+          const newBookId = generateId()
+          const now = new Date()
+          const newBook = {
+            id: newBookId,
+            isbn: openLibraryData.isbn,
+            title: openLibraryData.title,
+            coverPath,
+            openLibraryKey: openLibraryData.openLibraryKey,
+            workKey: openLibraryData.workKey || null,
+            description: openLibraryData.description || null,
+            publishDate: openLibraryData.publishDate || null,
+            publishers: openLibraryData.publishers?.join(', ') || null,
+            numberOfPages: openLibraryData.numberOfPages || null,
+            source: 'open_library' as const,
+            createdByUserId: null,
+            createdAt: now
+          }
+
+          yield* withDebugTiming(
+            'ensureOpenLibraryBook.bookInsert',
+            normalizedISBN,
+            Effect.tryPromise({
+              try: () => dbService.db.run(sql`
+                INSERT INTO ${books} (
+                  "id",
+                  "isbn",
+                  "title",
+                  "cover_path",
+                  "open_library_key",
+                  "work_key",
+                  "description",
+                  "publish_date",
+                  "publishers",
+                  "number_of_pages",
+                  "source",
+                  "created_by_user_id",
+                  "created_at"
+                )
+                VALUES (
+                  ${sql.param(newBook.id, books.id)},
+                  ${sql.param(newBook.isbn, books.isbn)},
+                  ${sql.param(newBook.title, books.title)},
+                  ${sql.param(newBook.coverPath, books.coverPath)},
+                  ${sql.param(newBook.openLibraryKey, books.openLibraryKey)},
+                  ${sql.param(newBook.workKey, books.workKey)},
+                  ${sql.param(newBook.description, books.description)},
+                  ${sql.param(newBook.publishDate, books.publishDate)},
+                  ${sql.param(newBook.publishers, books.publishers)},
+                  ${sql.param(newBook.numberOfPages, books.numberOfPages)},
+                  ${sql.param(newBook.source, books.source)},
+                  ${sql.param(newBook.createdByUserId, books.createdByUserId)},
+                  ${sql.param(newBook.createdAt, books.createdAt)}
+                )
+                ON CONFLICT ("isbn")
+                WHERE "source" = 'open_library' AND "isbn" IS NOT NULL
+                DO NOTHING
+              `),
+              catch: error => new BookCreateError({ message: `Failed to insert book: ${error}` })
+            })
+          )
+
+          const book = yield* loadOpenLibraryBookByIsbn(normalizedISBN, 'ensureOpenLibraryBook.reselect')
+          if (!book) {
+            return yield* Effect.fail(new BookCreateError({ message: `Failed to resolve persisted book for ISBN ${normalizedISBN}` }))
+          }
+
+          yield* withDebugTiming(
+            'ensureOpenLibraryBook.authorHydration',
+            normalizedISBN,
+            setBookAuthors(book.id, openLibraryData.authors)
+          )
+
+          yield* withDebugTiming(
+            'ensureOpenLibraryBook.systemTagHydration',
+            normalizedISBN,
+            hydrateSystemTagsForBook(book.id, openLibraryData.subjects || [])
+          )
+
+          const authorMap = yield* hydrateAuthorsForBookIds([book.id])
+          return toBookModel(book, authorMap.get(book.id) || [])
+        }
+
+        let book = existingBook
+        if (!book.coverPath) {
+          const coverPath = yield* withDebugTiming(
+            'ensureOpenLibraryBook.coverResolution',
+            normalizedISBN,
+            Effect.gen(function* () {
+              return (yield* findStoredOpenLibraryCover(normalizedISBN))
+                ?? (yield* downloadCover(normalizedISBN, 'L'))
+            })
+          )
+
+          if (coverPath) {
+            const updated = yield* Effect.tryPromise({
+              try: async () => {
+                const rows = await dbService.db
+                  .update(books)
+                  .set({ coverPath })
+                  .where(and(eq(books.id, book.id), isNull(books.coverPath)))
+                  .returning()
+                return rows[0] ?? null
+              },
+              catch: error => new DatabaseError({
+                message: `Failed to update existing book cover: ${error}`,
+                operation: 'ensureOpenLibraryBook.updateExistingCover'
+              })
+            })
+            if (updated) {
+              book = updated
+            }
+          }
+        }
+
+        yield* withDebugTiming(
+          'ensureOpenLibraryBook.systemTagHydration',
+          normalizedISBN,
+          hydrateMissingSystemTagsForBook(book.id, normalizedISBN)
+        )
+
+        const authorMap = yield* hydrateAuthorsForBookIds([book.id])
+        return toBookModel(book, authorMap.get(book.id) || [])
+      })
+
     return {
+      ensureOpenLibraryBook,
+
       addBookByISBN: (userId, isbn) =>
         Effect.gen(function* () {
           const normalizedISBN = normalizeISBN(isbn)
@@ -710,90 +902,11 @@ export const BookRepositoryLive = Layer.effect(
             return yield* Effect.fail(new BookAlreadyOwnedError({ isbn: normalizedISBN }))
           }
 
-          // Check if book already exists in database (shared)
-          const bookResult = yield* Effect.tryPromise({
-            try: () =>
-              dbService.db
-                .select()
-                .from(books)
-                .where(and(eq(books.isbn, normalizedISBN), eq(books.source, 'open_library')))
-                .limit(1),
-            catch: error => new DatabaseError({
-              message: `Failed to find existing book: ${error}`,
-              operation: 'addBookByISBN.findExisting'
-            })
-          })
-
-          let book = bookResult[0] || null
-          let openLibraryData
-
-          // If book doesn't exist, fetch from OpenLibrary and create it
-          if (!book) {
-            openLibraryData = yield* lookupByISBN(normalizedISBN)
-
-            // Download cover to local storage
-            const coverPath = (yield* findStoredOpenLibraryCover(normalizedISBN))
-              ?? (yield* downloadCover(normalizedISBN, 'L'))
-
-            const newBookId = generateId()
-            const now = new Date()
-
-            const newBook = {
-              id: newBookId,
-              isbn: openLibraryData.isbn,
-              title: openLibraryData.title,
-              coverPath,
-              openLibraryKey: openLibraryData.openLibraryKey,
-              workKey: openLibraryData.workKey || null,
-              description: openLibraryData.description || null,
-              publishDate: openLibraryData.publishDate || null,
-              publishers: openLibraryData.publishers?.join(', ') || null,
-              numberOfPages: openLibraryData.numberOfPages || null,
-              source: 'open_library' as const,
-              createdByUserId: null,
-              createdAt: now
-            }
-
-            yield* Effect.tryPromise({
-              try: () => dbService.db.insert(books).values(newBook),
-              catch: error => new BookCreateError({ message: `Failed to insert book: ${error}` })
-            })
-
-            yield* setBookAuthors(newBookId, openLibraryData.authors)
-
-            // Hydrate system tags for newly-inserted book
-            yield* hydrateSystemTagsForBook(newBookId, openLibraryData.subjects || [])
-
-            book = newBook
-          } else if (!book.coverPath) {
-            const existingBook = book
-            const coverPath = (yield* findStoredOpenLibraryCover(normalizedISBN))
-              ?? (yield* downloadCover(normalizedISBN, 'L'))
-            if (coverPath) {
-              const updated = yield* Effect.tryPromise({
-                try: async () => {
-                  const rows = await dbService.db
-                    .update(books)
-                    .set({ coverPath })
-                    .where(and(eq(books.id, existingBook.id), isNull(books.coverPath)))
-                    .returning()
-                  return rows[0] ?? null
-                },
-                catch: error => new DatabaseError({
-                  message: `Failed to update existing book cover: ${error}`,
-                  operation: 'addBookByISBN.updateExistingCover'
-                })
-              })
-              if (updated) {
-                book = updated
-              }
-            }
-          }
+          const book = yield* ensureOpenLibraryBook(normalizedISBN)
 
           // Create userBooks entry
           const userBookId = generateId()
           const addedAt = new Date()
-          const isExistingOpenLibraryBook = !openLibraryData
 
           yield* Effect.tryPromise({
             try: () =>
@@ -806,17 +919,10 @@ export const BookRepositoryLive = Layer.effect(
             catch: error => new BookCreateError({ message: `Failed to add book to library: ${error}` })
           })
 
-          if (isExistingOpenLibraryBook) {
-            yield* hydrateMissingSystemTagsForBook(book.id, normalizedISBN)
-          }
-
-          const authorMap = yield* hydrateAuthorsForBookIds([book.id])
-          const hydratedBook = toBookModel(book, authorMap.get(book.id) || [])
-
           return {
             id: userBookId,
             bookId: book.id,
-            book: hydratedBook,
+            book,
             location: null,
             tags: [],
             addedAt,
@@ -1892,6 +1998,9 @@ export const BookRepositoryLive = Layer.effect(
 )
 
 // Helper effects
+export const ensureOpenLibraryBook = (isbn: string) =>
+  Effect.flatMap(BookRepository, repo => repo.ensureOpenLibraryBook(isbn))
+
 export const addBookByISBN = (userId: string, isbn: string) =>
   Effect.flatMap(BookRepository, repo => repo.addBookByISBN(userId, isbn))
 
