@@ -113,6 +113,34 @@ Libroo does not ship legally sufficient privacy-policy, imprint, or terms templa
 If both values for a legal page are empty, the footer link is hidden and the
 direct route shows an empty state.
 
+### Email Delivery And Verification
+
+Libroo supports two outbound email providers:
+
+- `smtp`: self-host default, delivered through Nodemailer with `NUXT_SMTP_HOST`, `NUXT_SMTP_PORT`, `NUXT_SMTP_SECURE`, and optional `NUXT_SMTP_USER` / `NUXT_SMTP_PASSWORD`.
+- `plunk`: hosted Cloudflare provider and also available to self-hosted installs with `NUXT_PLUNK_API_KEY` and optional `NUXT_PLUNK_BASE_URL`.
+
+Set `NUXT_EMAIL_PROVIDER=smtp` or `NUXT_EMAIL_PROVIDER=plunk`. All providers require `NUXT_EMAIL_FROM` when email sending is used. `NUXT_EMAIL_REPLY_TO` is optional; SMTP sends it as the message `Reply-To`, and Plunk sends it as `reply`.
+
+`NUXT_EMAIL_VERIFICATION_ENABLED=false` disables Better Auth email-verification gating. Signups can sign in immediately, and email changes use the direct Better Auth `change-email` endpoint when available.
+
+`NUXT_EMAIL_VERIFICATION_ENABLED=true` enables:
+
+- Verification email on signup and sign-in for unverified accounts.
+- `requireEmailVerification` and disabled automatic sign-in after signup until verification completes.
+- Verification links that expire after 24 hours.
+- Password-reset links that expire after 1 hour.
+- The custom pending-email-change flow in Settings.
+
+When verification is enabled, Libroo blocks the direct `/api/auth/change-email` endpoint. Settings instead collects the desired email and current password, stores it in `user.pending_email`, and sends a verification link to the pending address. When the link succeeds, Better Auth updates the email and Libroo clears `pending_email`.
+
+User-facing effects:
+
+- Settings shows the current verification status and any pending email change.
+- Resend sends a current-email verification when the account is unverified.
+- Resend sends the pending-email-change verification when `pending_email` is set.
+- A fully verified account with no pending email change treats resend as a no-op success.
+
 ### Turnstile Bot Protection
 
 Libroo can protect the public account creation flow and password-reset email request flow with Cloudflare Turnstile. This is operator-controlled rather than globally enforced by the application.

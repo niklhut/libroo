@@ -10,6 +10,7 @@ export type UserWithAuditFields = {
   id: string
   name?: string | null
   email?: string | null
+  pendingEmail?: string | null
   twoFactorEnabled?: boolean | null
   role?: string | null
   banned?: boolean | null
@@ -29,6 +30,9 @@ type AuthActorSnapshot = {
   id: string
   name?: string | null
   email?: string | null
+  pendingEmail?: string | null
+  verificationEmail?: string | null
+  verificationUpdateTo?: string | null
 }
 
 type HookContext = {
@@ -63,6 +67,11 @@ export const librooAdminAuditPlugin = (): BetterAuthPlugin => ({
       {
         matcher: context => isAuditedAuthPath(context.path),
         handler: createAuthMiddleware(async (ctx) => {
+          if (ctx.path === '/verify-email') {
+            await captureEmailVerificationActor(ctx as HookContext)
+            return
+          }
+
           const session = await getSessionFromCtx(ctx as Parameters<typeof getSessionFromCtx>[0]).catch(() => null)
           if (session?.user?.id) {
             setAuthActor(ctx.context, {
@@ -287,6 +296,23 @@ export async function buildAuthAuditEntry(ctx: HookContext): Promise<CreateAdmin
     })
   }
 
+  if (path === '/verify-email') {
+    const tokenPayload = getEmailVerificationTokenPayload(ctx)
+    const pendingEmail = authActor?.pendingEmail ?? null
+    const confirmedNewEmail = tokenPayload.updateTo ?? authActor?.verificationUpdateTo ?? pendingEmail
+    const wasEmailChange = Boolean(pendingEmail || tokenPayload.updateTo || authActor?.verificationUpdateTo)
+    if (!wasEmailChange) return null
+
+    return authAuditEntry({
+      actorUserId,
+      targetUserId,
+      action: 'auth.email_change_confirmed',
+      metadata: compactMetadata({
+        newEmail: confirmedNewEmail
+      })
+    })
+  }
+
   if (path === '/delete-user') {
     const deletionWasRequested = responseMessage(response) === 'Verification email sent'
 
@@ -379,6 +405,7 @@ function isAuditedAuthPath(path: string | undefined) {
     || path === '/request-password-reset'
     || path === '/reset-password'
     || path === '/change-email'
+    || path === '/verify-email'
     || path === '/delete-user'
     || path === '/revoke-session'
     || path === '/revoke-sessions'
@@ -412,6 +439,24 @@ function setAuthActor(context: object, actor: AuthActorSnapshot) {
 
 function getAuthActor(context: object): AuthActorSnapshot | null {
   return (context as { [AUTH_ACTOR_KEY]?: AuthActorSnapshot })[AUTH_ACTOR_KEY] ?? null
+}
+
+async function captureEmailVerificationActor(ctx: HookContext) {
+  const tokenPayload = getEmailVerificationTokenPayload(ctx)
+  const lookupEmail = tokenPayload.email
+  if (!lookupEmail) return
+
+  const user = await findUserByEmail(ctx, lookupEmail)
+  if (!user?.id) return
+
+  setAuthActor(ctx.context, {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    pendingEmail: user.pendingEmail,
+    verificationEmail: tokenPayload.email,
+    verificationUpdateTo: tokenPayload.updateTo
+  })
 }
 
 async function getEndpointResponse(returned: unknown) {
@@ -506,6 +551,44 @@ function readBooleanField(source: unknown, key: string) {
   if (!source || typeof source !== 'object') return null
   const value = (source as Record<string, unknown>)[key]
   return typeof value === 'boolean' ? value : null
+}
+
+function getEmailVerificationTokenPayload(ctx: HookContext) {
+  const token = readToken(ctx)
+  if (!token) return {}
+
+  return decodeJwtPayload(token)
+}
+
+function readToken(ctx: HookContext) {
+  return readStringField(ctx.body, 'token')
+    ?? readStringField(ctx, 'token')
+    ?? readStringField(ctx, 'queryToken')
+    ?? readStringField((ctx as { query?: unknown }).query, 'token')
+    ?? readStringField((ctx as { params?: unknown }).params, 'token')
+}
+
+function decodeJwtPayload(token: string): { email?: string, updateTo?: string } {
+  const payload = token.split('.')[1]
+  if (!payload) return {}
+
+  try {
+    const normalized = payload
+      .replaceAll('-', '+')
+      .replaceAll('_', '/')
+      .padEnd(Math.ceil(payload.length / 4) * 4, '=')
+    const decoded = typeof Buffer !== 'undefined'
+      ? Buffer.from(normalized, 'base64').toString('utf8')
+      : atob(normalized)
+    const parsed = JSON.parse(decoded) as Record<string, unknown>
+
+    return {
+      email: typeof parsed.email === 'string' ? parsed.email : undefined,
+      updateTo: typeof parsed.updateTo === 'string' ? parsed.updateTo : undefined
+    }
+  } catch {
+    return {}
+  }
 }
 
 async function findUserByEmail(ctx: HookContext, email: string) {
