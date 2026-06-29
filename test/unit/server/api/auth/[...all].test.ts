@@ -1,5 +1,6 @@
+import { Effect } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanupApiRouteTest, getAuthHandlerMock, importRoute, makeEvent, routePath, setupApiRouteTest } from '../_helpers/api-route'
+import { cleanupApiRouteTest, importRoute, makeEvent, routePath, serviceMocks, setupApiRouteTest } from '../_helpers/api-route'
 
 const h3Mock = vi.hoisted(() => ({
   getRequestIP: vi.fn(() => undefined as string | undefined),
@@ -29,28 +30,29 @@ describe('server/api/auth/[...all]', () => {
   beforeEach(setupApiRouteTest)
   afterEach(cleanupApiRouteTest)
 
-  it('delegates to Better Auth', async () => {
+  it('converts the event to a Web Request and delegates to AuthRequestService', async () => {
     const result = new Response(null, { status: 204 })
-    const authHandler = getAuthHandlerMock()
-    authHandler.mockResolvedValueOnce(result)
+    const request = new Request('http://localhost/api/auth/get-session')
+    h3Mock.toWebRequest.mockReturnValueOnce(request)
+    serviceMocks.handleAuthRequest.mockReturnValueOnce(Effect.succeed(result))
     const handler = await importRoute(route)
     const event = makeEvent()
 
     await expect(handler(event)).resolves.toBe(result)
-    expect(authHandler.mock.calls[0]?.[0]).toBeInstanceOf(Request)
+    expect(h3Mock.toWebRequest).toHaveBeenCalledWith(event)
+    expect(serviceMocks.handleAuthRequest).toHaveBeenCalledWith(request)
   })
 
-  it('scopes Nitro Cloudflare waitUntil while Better Auth handles the request', async () => {
+  it('scopes Nitro Cloudflare waitUntil while AuthRequestService handles the request', async () => {
     const result = new Response(null, { status: 204 })
     const waitUntil = vi.fn()
     const backgroundTask = Promise.resolve()
-    const authHandler = getAuthHandlerMock()
     const handler = await importRoute(route)
     const { getWaitUntil } = await import('../../../../../server/utils/execution-context')
-    authHandler.mockImplementationOnce(async () => {
+    serviceMocks.handleAuthRequest.mockReturnValueOnce(Effect.sync(() => {
       getWaitUntil()?.(backgroundTask)
       return result
-    })
+    }))
     const event = makeEvent({
       context: {
         waitUntil
@@ -69,14 +71,14 @@ describe('server/api/auth/[...all]', () => {
         'x-libroo-client-ip': '203.0.113.10'
       }
     })
-    const authHandler = getAuthHandlerMock()
-    authHandler.mockResolvedValueOnce(result)
+    serviceMocks.handleAuthRequest.mockReturnValueOnce(Effect.succeed(result))
     h3Mock.toWebRequest.mockReturnValueOnce(request)
     h3Mock.getRequestIP.mockReturnValueOnce(undefined)
     const handler = await importRoute(route)
 
     await expect(handler(makeEvent())).resolves.toBe(result)
-    const delegatedRequest = authHandler.mock.calls[0]?.[0] as Request
+
+    const delegatedRequest = serviceMocks.handleAuthRequest.mock.calls[0]?.[0] as Request
     expect(delegatedRequest.headers.get('x-libroo-client-ip')).toBeNull()
   })
 })

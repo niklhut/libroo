@@ -2,6 +2,7 @@ import { Effect } from 'effect'
 import type { EventHandler, H3Event } from 'h3'
 import { type MainServices, runEffect } from './effect'
 import { requireAuth, requireVerifiedAuth } from '../services/auth.service'
+import { getEventExecutionContext, runWithExecutionContext } from './execution-context'
 
 type EffectHandlerUser = { id: string, name: string, email: string, role?: string | null }
 type EffectHandlerOptions = {
@@ -60,6 +61,7 @@ export function effectHandler<A, E>(
   options: EffectHandlerOptions = {}
 ): EventHandler {
   return defineEventHandler(async (event) => {
+    const executionContext = getEventExecutionContext(event)
     const effect = Effect.gen(function* () {
       const user = options.auth === false
         ? null
@@ -75,6 +77,6 @@ export function effectHandler<A, E>(
     // 1. Provide dependencies (MainLive)
     // 2. Catch all errors and convert them to H3 errors (as success values)
     // 3. Run the promise
-    return runEffect(effect)
+    return runWithExecutionContext(executionContext, () => runEffect(effect))
   })
 }

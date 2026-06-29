@@ -73,6 +73,10 @@ vi.mock('../../../../../server/utils/effect', async () => {
   }
 })
 
+vi.mock('../../../../../server/services/auth-request.service', () => ({
+  handleAuthRequest: (...args: unknown[]) => serviceMocks.handleAuthRequest(...args)
+}))
+
 export interface TestEvent {
   headers: Headers
   params?: Record<string, string | undefined>
@@ -131,6 +135,7 @@ interface ApiRouteTestGlobals {
   listLoansForOwner: (...args: unknown[]) => unknown
   listBooksLentToUser: (...args: unknown[]) => unknown
   getOptionalCurrentUserId: (...args: unknown[]) => unknown
+  handleAuthRequest: (...args: unknown[]) => unknown
   getInvitePreview: (...args: unknown[]) => unknown
   acceptBookInvite: (...args: unknown[]) => unknown
   getBlob: (...args: unknown[]) => unknown
@@ -186,6 +191,7 @@ export const serviceMocks = {
   listLoansForOwner: vi.fn(),
   listBooksLentToUser: vi.fn(),
   getOptionalCurrentUserId: vi.fn(),
+  handleAuthRequest: vi.fn(),
   getInvitePreview: vi.fn(),
   acceptBookInvite: vi.fn(),
   getBlob: vi.fn(),
@@ -236,6 +242,7 @@ const originalGlobals = {
   listLoansForOwner: testGlobal.listLoansForOwner,
   listBooksLentToUser: testGlobal.listBooksLentToUser,
   getOptionalCurrentUserId: testGlobal.getOptionalCurrentUserId,
+  handleAuthRequest: testGlobal.handleAuthRequest,
   getInvitePreview: testGlobal.getInvitePreview,
   acceptBookInvite: testGlobal.acceptBookInvite,
   getBlob: testGlobal.getBlob,
@@ -331,6 +338,7 @@ export async function setupApiRouteTest() {
   testGlobal.listLoansForOwner = (...args: unknown[]) => serviceMocks.listLoansForOwner(...args)
   testGlobal.listBooksLentToUser = (...args: unknown[]) => serviceMocks.listBooksLentToUser(...args)
   testGlobal.getOptionalCurrentUserId = (...args: unknown[]) => serviceMocks.getOptionalCurrentUserId(...args)
+  testGlobal.handleAuthRequest = (...args: unknown[]) => serviceMocks.handleAuthRequest(...args)
   testGlobal.getInvitePreview = (...args: unknown[]) => serviceMocks.getInvitePreview(...args)
   testGlobal.acceptBookInvite = (...args: unknown[]) => serviceMocks.acceptBookInvite(...args)
   testGlobal.getBlob = (...args: unknown[]) => serviceMocks.getBlob(...args)
