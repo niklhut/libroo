@@ -104,35 +104,43 @@ watch(user, (newUser) => {
 }, { immediate: true })
 
 // Form fields
-const fields = computed<AuthFormField[]>(() => [
+const fields = computed<AuthInputField[]>(() => [
   {
+    id: 'register-name',
     name: 'name',
     type: 'text',
     label: 'Name',
+    ariaLabel: 'Name',
     placeholder: 'Enter your name',
     required: true
   },
   {
+    id: 'register-email',
     name: 'email',
     type: 'email',
     label: 'Email',
+    ariaLabel: 'Email',
     placeholder: 'Enter your email',
     defaultValue: inviteEmail.value,
     disabled: Boolean(inviteEmail.value),
     required: true
   },
   {
+    id: 'register-password',
     name: 'password',
     type: 'password',
     label: 'Password',
+    ariaLabel: 'Password',
     placeholder: 'Enter your password',
     hint: 'At least 8 characters',
     required: true
   },
   {
+    id: 'register-confirm-password',
     name: 'confirmPassword',
     type: 'password',
     label: 'Confirm Password',
+    ariaLabel: 'Confirm Password',
     placeholder: 'Confirm your password',
     required: true
   },
@@ -164,20 +172,23 @@ const schema = z.object({
 type Schema = z.output<typeof schema>
 
 type AuthInputField = AuthFormField & {
+  id?: string
   placeholder?: string
   autocomplete?: string
   disabled?: boolean
+  ariaLabel?: string
 }
 
 function inputFieldProps(field: AuthFormField) {
   const inputField = field as AuthInputField
-  return {
+  return Object.assign({
+    id: inputField.id,
     name: inputField.name,
     placeholder: inputField.placeholder,
     autocomplete: inputField.autocomplete,
     required: inputField.required,
     disabled: inputField.disabled
-  }
+  }, { 'aria-label': inputField.ariaLabel })
 }
 
 async function onSubmit(payload: FormSubmitEvent<Schema>) {

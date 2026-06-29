@@ -45,19 +45,32 @@ watch(user, (newUser) => {
   }
 }, { immediate: true })
 
+type AuthInputField = AuthFormField & {
+  id?: string
+  placeholder?: string
+  autocomplete?: string
+  disabled?: boolean
+  required?: boolean
+  ariaLabel?: string
+}
+
 // Form fields
-const fields: AuthFormField[] = [
+const fields: AuthInputField[] = [
   {
+    id: 'login-email',
     name: 'email',
     type: 'email',
     label: 'Email',
+    ariaLabel: 'Email',
     placeholder: 'Enter your email',
     required: true
   },
   {
+    id: 'login-password',
     name: 'password',
     type: 'password',
     label: 'Password',
+    ariaLabel: 'Password',
     placeholder: 'Enter your password',
     required: true
   }
@@ -71,22 +84,16 @@ const schema = z.object({
 
 type Schema = z.output<typeof schema>
 
-type AuthInputField = AuthFormField & {
-  placeholder?: string
-  autocomplete?: string
-  disabled?: boolean
-  required?: boolean
-}
-
 function inputFieldProps(field: AuthFormField) {
   const inputField = field as AuthInputField
-  return {
+  return Object.assign({
+    id: inputField.id,
     name: inputField.name,
     placeholder: inputField.placeholder,
     autocomplete: inputField.autocomplete,
     required: inputField.required,
     disabled: inputField.disabled
-  }
+  }, { 'aria-label': inputField.ariaLabel })
 }
 
 async function onSubmit(payload: FormSubmitEvent<Schema>) {
