@@ -607,19 +607,6 @@ export const BookRepositoryLive = Layer.effect(
         return (rows[0]?.value ?? 0) > 0
       })
 
-    const hydrateMissingAuthorsForBook = (bookId: string, isbn: string) =>
-      Effect.gen(function* () {
-        const hasAuthors = yield* hasAuthorsForBook(bookId)
-        if (hasAuthors) return
-
-        const data = yield* lookupByISBN(isbn)
-        yield* setBookAuthors(bookId, data.authors)
-      }).pipe(
-        Effect.catchAll(error =>
-          Effect.logWarning(`Skipped Open Library author hydration for existing ISBN ${isbn}: ${String(error)}`)
-        )
-      )
-
     const hasSystemTagsForBook = (bookId: string) =>
       Effect.gen(function* () {
         const rows = yield* Effect.tryPromise({
@@ -636,16 +623,20 @@ export const BookRepositoryLive = Layer.effect(
         return (rows[0]?.value ?? 0) > 0
       })
 
-    const hydrateMissingSystemTagsForBook = (bookId: string, isbn: string) =>
+    const hydrateMissingOpenLibraryMetadataForBook = (bookId: string, isbn: string) =>
       Effect.gen(function* () {
         const hasSystemTags = yield* hasSystemTagsForBook(bookId)
         if (hasSystemTags) return
 
+        const hasAuthors = yield* hasAuthorsForBook(bookId)
         const data = yield* lookupByISBN(isbn)
         yield* hydrateSystemTagsForBook(bookId, data.subjects || [])
+        if (!hasAuthors) {
+          yield* setBookAuthors(bookId, data.authors)
+        }
       }).pipe(
         Effect.catchAll(error =>
-          Effect.logWarning(`Skipped Open Library tag hydration for existing ISBN ${isbn}: ${String(error)}`)
+          Effect.logWarning(`Skipped Open Library metadata hydration for existing ISBN ${isbn}: ${String(error)}`)
         )
       )
 
@@ -893,13 +884,7 @@ export const BookRepositoryLive = Layer.effect(
         yield* withDebugTiming(
           'ensureOpenLibraryBook.systemTagHydration',
           normalizedISBN,
-          hydrateMissingSystemTagsForBook(book.id, normalizedISBN)
-        )
-
-        yield* withDebugTiming(
-          'ensureOpenLibraryBook.authorHydration',
-          normalizedISBN,
-          hydrateMissingAuthorsForBook(book.id, normalizedISBN)
+          hydrateMissingOpenLibraryMetadataForBook(book.id, normalizedISBN)
         )
 
         const authorMap = yield* hydrateAuthorsForBookIds([book.id])
