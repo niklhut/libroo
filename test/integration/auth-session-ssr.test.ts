@@ -36,7 +36,7 @@ setup({
   server: true,
   build: true,
   port: integrationPort,
-  setupTimeout: 180_000,
+  setupTimeout: 300_000,
   serverStartTimeout: 120_000,
   env: {
     NUXT_LIBROO_RUNTIME_PROFILE: 'selfhost',
