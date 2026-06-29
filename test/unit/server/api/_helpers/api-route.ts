@@ -77,6 +77,7 @@ export interface TestEvent {
   headers: Headers
   params?: Record<string, string | undefined>
   query?: Record<string, string | undefined>
+  context?: Record<string, unknown>
   body?: unknown
   responseHeaders: Record<string, string>
 }
