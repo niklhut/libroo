@@ -40,6 +40,28 @@ describe('server/api/auth/[...all]', () => {
     expect(authHandler.mock.calls[0]?.[0]).toBeInstanceOf(Request)
   })
 
+  it('scopes Nitro Cloudflare waitUntil while Better Auth handles the request', async () => {
+    const result = new Response(null, { status: 204 })
+    const waitUntil = vi.fn()
+    const backgroundTask = Promise.resolve()
+    const authHandler = getAuthHandlerMock()
+    const handler = await importRoute(route)
+    const { getWaitUntil } = await import('../../../../../server/utils/execution-context')
+    authHandler.mockImplementationOnce(async () => {
+      getWaitUntil()?.(backgroundTask)
+      return result
+    })
+    const event = makeEvent({
+      context: {
+        waitUntil
+      }
+    })
+
+    await expect(handler(event)).resolves.toBe(result)
+
+    expect(waitUntil).toHaveBeenCalledWith(backgroundTask)
+  })
+
   it('strips caller-supplied internal client IP headers when no runtime IP is resolved', async () => {
     const result = new Response(null, { status: 204 })
     const request = new Request('http://localhost/api/auth/get-session', {

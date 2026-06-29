@@ -5,10 +5,10 @@ import { getEmailCapabilities } from '../../utils/email-capabilities'
 import { getEmailVerificationConfig } from '../../utils/email-verification-config'
 import { validateEmailVerificationToken } from '../../services/auth.service'
 import { runEffect } from '../../utils/effect'
-import { runWithExecutionContext } from '../../utils/execution-context'
+import { getEventExecutionContext, runWithExecutionContext } from '../../utils/execution-context'
 
 export default defineEventHandler(async (event) => {
-  const executionContext = event.context?.cloudflare?.ctx
+  const executionContext = getEventExecutionContext(event)
 
   return runWithExecutionContext(executionContext, async () => {
     const request = toWebRequest(event)
