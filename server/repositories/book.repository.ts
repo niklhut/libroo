@@ -855,8 +855,11 @@ export const BookRepositoryLive = Layer.effect(
             'ensureOpenLibraryBook.coverResolution',
             normalizedISBN,
             Effect.gen(function* () {
-              return (yield* findStoredOpenLibraryCover(normalizedISBN))
-                ?? (yield* downloadCover(normalizedISBN, 'L'))
+              const storedCoverPath = yield* findStoredOpenLibraryCover(normalizedISBN)
+              if (storedCoverPath) return storedCoverPath
+
+              const hasSystemTags = yield* hasSystemTagsForBook(book.id)
+              return hasSystemTags ? null : yield* downloadCover(normalizedISBN, 'L')
             })
           )
 

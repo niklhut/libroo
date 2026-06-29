@@ -282,6 +282,7 @@ describe('BookRepository cover repair helpers', () => {
   it('does not call Open Library when an existing book already has system tags', async () => {
     const now = new Date('2026-06-22T10:00:00.000Z')
     const lookupByISBN = vi.fn(() => Effect.die('Open Library should not be called when tags exist'))
+    const downloadCover = vi.fn(() => Effect.die('Open Library cover download should not be called when tags exist'))
 
     await db.insert(user).values({
       id: 'user-1',
@@ -316,10 +317,11 @@ describe('BookRepository cover repair helpers', () => {
 
     const result = await runRepository(db, Effect.flatMap(BookRepository, repository =>
       repository.addBookByISBN('user-1', '9781234567890')
-    ), { lookupByISBN }, { get: () => Effect.succeed(null) })
+    ), { lookupByISBN, downloadCover }, { get: () => Effect.succeed(null) })
 
     expect(result.bookId).toBe('book-1')
     expect(lookupByISBN).not.toHaveBeenCalled()
+    expect(downloadCover).not.toHaveBeenCalled()
   })
 })
 
