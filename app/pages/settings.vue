@@ -705,10 +705,10 @@ async function importLibraryCsvFile() {
         <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div class="min-w-0 flex-1 space-y-2">
             <p class="text-sm text-muted">
-              Permanently delete your account, active sessions, personal library records, loans you own, borrowed-book associations, locations, notes, ratings, reading state, invites, and manual uploaded cover assets.
+              Permanently delete your account. You will be signed out everywhere, and your personal library data, notes, ratings, locations, loans, invites, settings, and uploaded covers will be removed.
             </p>
             <p class="text-sm text-muted">
-              Shared Open Library metadata can remain when it is not personal to you. Backups may retain deleted data for a limited operator retention window.
+              Shared book information that is not personal to you may remain for other readers.
             </p>
             <p
               v-if="currentUserIsAdmin"
@@ -789,7 +789,7 @@ async function importLibraryCsvFile() {
               variant="soft"
               icon="i-lucide-triangle-alert"
               title="What will be deleted"
-              description="Your Better Auth user, accounts and sessions, Libroo library records, user-created tags on books, notes, ratings, locations, reading state, owned loans, borrowed associations, invites, settings, manual book rows that are not retained by another user, and user-specific uploaded assets."
+              description="Your account, active sessions, personal library records, tags, notes, ratings, locations, reading state, loans, invites, settings, and uploaded cover images will be removed."
             />
 
             <UAlert
@@ -797,7 +797,7 @@ async function importLibraryCsvFile() {
               variant="soft"
               icon="i-lucide-database"
               title="What may remain"
-              description="Shared Open Library-derived metadata, minimal non-personal lending snapshots where another user's record still needs them, audit entries with user references removed, and encrypted or offline backups until the operator's backup retention window expires."
+              description="Information that belongs to other people, or shared book information that no longer identifies you, may remain. Deleted information may also stay temporarily in protected backups."
             />
 
             <UFormField
