@@ -217,6 +217,14 @@ Mount `/data` as the durable volume. It contains:
 
 The image creates both directories and runs `scripts/migrate-selfhost.mjs` before starting Nuxt. A fresh empty volume is migrated automatically. Before upgrading an existing install, back up the whole `/data` volume while the container is stopped.
 
+Prefer the scripted online backup workflow in [Backup And Restore](./backup-restore.md):
+
+```bash
+pnpm backup:selfhost -- --output-dir /backups/libroo
+```
+
+The backup script snapshots SQLite first, copies blobs second, writes a versioned manifest, and packages the artifact for restore with `pnpm restore:selfhost`.
+
 Secrets should be injected through the orchestrator, an env file outside source control, or a secret manager. Do not bake secrets into the image.
 
 ### Scheduled Tasks
@@ -237,7 +245,7 @@ For bind mounts, make sure the container can write to the mounted database direc
 
 ### Self-Hosted Rollback
 
-Rollback is image-based: stop the new container and start the previous known-good image against the same `/data` volume. If a release introduced database migrations, prefer restoring the matching `/data` backup. SQLite migrations are not assumed to be reversible.
+Rollback is image-based: stop the new container and start the previous known-good image against the same `/data` volume. If a release introduced database migrations, prefer restoring the matching backup with `scripts/restore-selfhost.mjs`. SQLite migrations are not assumed to be reversible, and a backup whose migration tag/idx or app version is ahead of the target code must not be restored.
 
 ## Hosted Cloudflare
 
@@ -585,9 +593,9 @@ that PR is merged to protected `main`.
 
 ### Hosted Rollback
 
-Rollback application code through the Cloudflare or NuxtHub deployment history by promoting the previous known-good deployment. Database migrations are forward-only unless a release explicitly ships a rollback plan. If a bad deploy includes a destructive migration, restore D1 from backup or apply a corrective forward migration, then redeploy the known-good application version.
+Rollback application code through the Cloudflare or NuxtHub deployment history by promoting the previous known-good deployment. Database migrations are forward-only unless a release explicitly ships a rollback plan. If a bad deploy includes a destructive migration, restore D1 and R2 from the documented backup workflow or apply a corrective forward migration, then redeploy the known-good application version. Do not restore hosted data from a backup whose manifest migration state or app version is ahead of the deployed code.
 
-Before promoting a release that changes schema or storage behavior, confirm that export/import or backup coverage is current for the hosted instance.
+Before promoting a release that changes schema or storage behavior, confirm that export/import or backup coverage is current for the hosted instance. Hosted D1/R2 backup and restore commands live in [Backup And Restore](./backup-restore.md).
 
 ## Production Resource Migration Runbook
 
@@ -595,7 +603,9 @@ This is the operator-executed cutover from the historical `libroo-beta`
 Worker, D1 database, and R2 bucket to the new production resources. Record every
 resource ID, export location, object-copy report, verification result, cutover
 time, and approval in the migration ticket. Do not alter the old resources
-during the rollback window.
+during the rollback window. Use the D1-first, R2-second backup order and
+manifest guidance from [Backup And Restore](./backup-restore.md) for every
+captured backup/export set.
 
 ### Create Production Resources (pre-maintenance)
 
