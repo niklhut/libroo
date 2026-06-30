@@ -3,8 +3,12 @@ import { z } from 'zod'
 
 const inviteBodySchema = z.object({
   email: z.preprocess(
-    value => typeof value === 'string' && value.trim() === '' ? undefined : value,
-    z.string().trim().toLowerCase().email().optional()
+    (value) => {
+      if (typeof value !== 'string') return value
+      const email = value.trim().toLowerCase()
+      return email === '' ? undefined : email
+    },
+    z.email().optional()
   ),
   expiresInDays: z.coerce.number().int().min(1).max(90).optional()
 }).strict()
