@@ -1,0 +1,32 @@
+{
+  "name": "libroo-production",
+  "workers_dev": false,
+  "routes": [
+    {
+      "pattern": "preview.example.test",
+      "custom_domain": true
+    }
+  ],
+  "triggers": {
+    "crons": [
+      "0 3 * * *"
+    ]
+  },
+  "vars": {
+    "NUXT_CLOUDFLARE_ACCESS_AUDIENCE": "wrong-audience",
+    "NUXT_CLOUDFLARE_ACCESS_TEAM_DOMAIN": "https://wrong.cloudflareaccess.com"
+  },
+  "d1_databases": [
+    {
+      "binding": "WRONG",
+      "database_name": "libroo-prod",
+      "database_id": "wrong-db-id"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "WRONG",
+      "bucket_name": "libroo-prod"
+    }
+  ]
+}

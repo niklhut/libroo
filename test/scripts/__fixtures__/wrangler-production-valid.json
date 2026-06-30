@@ -1,0 +1,32 @@
+{
+  "name": "libroo-production",
+  "workers_dev": false,
+  "routes": [
+    {
+      "pattern": "library.example.test",
+      "custom_domain": true
+    }
+  ],
+  "triggers": {
+    "crons": [
+      "0 3 * * *",
+      "30 3 * * *"
+    ]
+  },
+  "vars": {
+    "NUXT_CLOUDFLARE_PREVIEW": "false"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "libroo-production",
+      "database_id": "prod-db-uuid-456"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "BLOB",
+      "bucket_name": "libroo-production-bucket"
+    }
+  ]
+}

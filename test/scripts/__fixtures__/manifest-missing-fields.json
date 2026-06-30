@@ -1,0 +1,20 @@
+{
+  "manifestFormatVersion": 1,
+  "app": {},
+  "runtime": {
+    "profile": "selfhost"
+  },
+  "timestamps": {
+    "createdAt": "2026-06-30T10:00:00.000Z"
+  },
+  "migrations": {
+    "latest": {
+      "tag": "0004_fixture_latest",
+      "idx": 4
+    },
+    "applied": [],
+    "appliedState": {
+      "status": "inspected"
+    }
+  }
+}

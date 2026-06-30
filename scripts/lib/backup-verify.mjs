@@ -34,10 +34,6 @@ export async function verifyBackupTarget({
   currentRuntimeProfile = process.env.NUXT_LIBROO_RUNTIME_PROFILE || 'selfhost'
 }) {
   const resolvedBlobDir = resolve(blobDir)
-  const loadedManifest = manifest ?? await readManifest(manifestPath)
-  assertManifestShape(loadedManifest)
-
-  const client = createClient({ url: databaseUrl })
   const result = {
     ok: false,
     errors: [],
@@ -48,8 +44,20 @@ export async function verifyBackupTarget({
       broken: [],
       orphanedBlobs: []
     },
-    manifest: loadedManifest
+    manifest: null
   }
+
+  let loadedManifest
+  try {
+    loadedManifest = manifest ?? await readManifest(manifestPath)
+    assertManifestShape(loadedManifest)
+    result.manifest = loadedManifest
+  } catch (error) {
+    result.errors.push(`Manifest verification failed: ${formatError(error)}`)
+    return result
+  }
+
+  const client = createClient({ url: databaseUrl })
 
   try {
     await client.execute('select 1')

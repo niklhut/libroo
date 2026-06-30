@@ -1,0 +1,24 @@
+{
+  "manifestFormatVersion": 1,
+  "app": {
+    "version": "9.0.0"
+  },
+  "runtime": {
+    "profile": "selfhost"
+  },
+  "timestamps": {
+    "createdAt": "2026-06-30T10:00:00.000Z",
+    "databaseSnapshotAt": "2026-06-30T10:01:00.000Z",
+    "completedAt": "2026-06-30T10:02:00.000Z"
+  },
+  "migrations": {
+    "latest": {
+      "tag": "0004_fixture_latest",
+      "idx": 4
+    },
+    "applied": [],
+    "appliedState": {
+      "status": "inspected"
+    }
+  }
+}

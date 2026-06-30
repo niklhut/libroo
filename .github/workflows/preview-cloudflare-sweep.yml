@@ -49,8 +49,8 @@ jobs:
           gh api --paginate \
             "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" \
             --jq '.[].number' | sort -n > "${RUNNER_TEMP}/open-prs.txt"
-          pnpm exec wrangler d1 list --json > "${RUNNER_TEMP}/d1.json"
-          NO_COLOR=1 pnpm exec wrangler r2 bucket list > "${RUNNER_TEMP}/r2.txt"
+          pnpm --silent exec wrangler d1 list --json > "${RUNNER_TEMP}/d1.json"
+          NO_COLOR=1 pnpm --silent exec wrangler r2 bucket list > "${RUNNER_TEMP}/r2.txt"
           node scripts/preview/access-app.mjs list > "${RUNNER_TEMP}/access.json"
           node scripts/preview/worker-list.mjs > "${RUNNER_TEMP}/workers.json"
 

@@ -1,0 +1,22 @@
+{
+  "name": "libroo-pr-42",
+  "workers_dev": true,
+  "vars": {
+    "NUXT_CLOUDFLARE_PREVIEW": "true",
+    "NUXT_CLOUDFLARE_ACCESS_AUDIENCE": "preview-audience",
+    "NUXT_CLOUDFLARE_ACCESS_TEAM_DOMAIN": "https://team.cloudflareaccess.com"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "libroo-preview-pr-42",
+      "database_id": "preview-db-uuid-123"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "BLOB",
+      "bucket_name": "libroo-preview-pr-42"
+    }
+  ]
+}
