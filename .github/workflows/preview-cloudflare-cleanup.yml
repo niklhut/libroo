@@ -70,7 +70,7 @@ jobs:
             echo "Keeping Access application ${ACCESS_APP_NAME} because Worker deletion failed."
           fi
 
-          if ! NO_COLOR=1 pnpm exec wrangler r2 bucket list > "${RUNNER_TEMP}/r2.txt" 2>&1; then
+          if ! NO_COLOR=1 pnpm --silent exec wrangler r2 bucket list > "${RUNNER_TEMP}/r2.txt" 2>&1; then
             cat "${RUNNER_TEMP}/r2.txt"
             failures+=("R2 resource listing")
           elif sed -n 's/^name:[[:space:]]*//p' "${RUNNER_TEMP}/r2.txt" | grep -Fxq "${RESOURCE_NAME}"; then

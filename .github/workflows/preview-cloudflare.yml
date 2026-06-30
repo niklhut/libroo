@@ -101,11 +101,11 @@ jobs:
             exit 1
           fi
 
-          if ! pnpm exec wrangler d1 list --json > "${RUNNER_TEMP}/d1.json"; then
+          if ! pnpm --silent exec wrangler d1 list --json > "${RUNNER_TEMP}/d1.json"; then
             echo "Unable to list D1 databases for the preview quota check."
             exit 1
           fi
-          if ! NO_COLOR=1 pnpm exec wrangler r2 bucket list > "${RUNNER_TEMP}/r2.txt"; then
+          if ! NO_COLOR=1 pnpm --silent exec wrangler r2 bucket list > "${RUNNER_TEMP}/r2.txt"; then
             echo "Unable to list R2 buckets for the preview quota check."
             exit 1
           fi
@@ -195,7 +195,7 @@ jobs:
         run: |
           set -euo pipefail
           d1_name="${PREVIEW_D1_DATABASE_NAME}"
-          pnpm exec wrangler d1 list --json > "${RUNNER_TEMP}/d1-before.json"
+          pnpm --silent exec wrangler d1 list --json > "${RUNNER_TEMP}/d1-before.json"
           database_id="$(node -e '
             const databases = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))
             const database = databases.find(item => item.name === process.argv[2])
@@ -203,14 +203,14 @@ jobs:
           ' "${RUNNER_TEMP}/d1-before.json" "${d1_name}")"
 
           if [[ -z "${database_id}" ]]; then
-            create_output="$(pnpm exec wrangler d1 create "${d1_name}" 2>&1)" || {
+            create_output="$(pnpm --silent exec wrangler d1 create "${d1_name}" 2>&1)" || {
               if [[ "${create_output}" != *"already exists"* ]]; then
                 echo "${create_output}"
                 exit 1
               fi
             }
             echo "${create_output}"
-            pnpm exec wrangler d1 list --json > "${RUNNER_TEMP}/d1-after.json"
+            pnpm --silent exec wrangler d1 list --json > "${RUNNER_TEMP}/d1-after.json"
             database_id="$(node -e '
               const databases = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))
               const database = databases.find(item => item.name === process.argv[2])
@@ -227,11 +227,11 @@ jobs:
       - name: Provision preview R2 bucket
         run: |
           set -euo pipefail
-          NO_COLOR=1 pnpm exec wrangler r2 bucket list > "${RUNNER_TEMP}/r2-before.txt"
+          NO_COLOR=1 pnpm --silent exec wrangler r2 bucket list > "${RUNNER_TEMP}/r2-before.txt"
           if sed -n 's/^name:[[:space:]]*//p' "${RUNNER_TEMP}/r2-before.txt" | grep -Fxq "${NUXT_HUB_CLOUDFLARE_BUCKET_NAME}"; then
             echo "R2 bucket ${NUXT_HUB_CLOUDFLARE_BUCKET_NAME} already exists."
           else
-            create_output="$(pnpm exec wrangler r2 bucket create "${NUXT_HUB_CLOUDFLARE_BUCKET_NAME}" 2>&1)" || {
+            create_output="$(pnpm --silent exec wrangler r2 bucket create "${NUXT_HUB_CLOUDFLARE_BUCKET_NAME}" 2>&1)" || {
               if [[ "${create_output}" != *"already exists"* ]]; then
                 echo "${create_output}"
                 exit 1
@@ -271,7 +271,7 @@ jobs:
       - name: Verify isolated preview bindings
         run: |
           set -euo pipefail
-          pnpm exec wrangler d1 list --json > "${RUNNER_TEMP}/d1-verify.json"
+          pnpm --silent exec wrangler d1 list --json > "${RUNNER_TEMP}/d1-verify.json"
           node scripts/preview/validate-wrangler-config.mjs \
             .output/server/wrangler.json \
             "${RUNNER_TEMP}/d1-verify.json"
