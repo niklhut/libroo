@@ -36,6 +36,48 @@ export function libraryFilters(page: Page) {
   }
 }
 
+export function bookDetailControls(page: Page) {
+  return {
+    ratingStar(stars: number) {
+      return page.getByRole('button', { name: `Rate ${stars} stars` })
+    },
+    ratingDisplay(stars: number) {
+      return page.getByText(`${stars} / 5`)
+    },
+    noteTrigger: page.getByRole('button', { name: /Add Note|Edit/ }),
+    noteTextarea: page.getByPlaceholder('Write your note here...'),
+    noteSave: page.getByRole('button', { name: 'Save' }),
+    readingProgressUpdate: page.getByRole('button', { name: 'Update' }),
+    locationManage: page.getByRole('button', { name: 'Manage' })
+  }
+}
+
+export function locationsPage(page: Page) {
+  const deleteDialog = page.getByRole('dialog', { name: 'Delete location' })
+
+  return {
+    newTopLevelInput: page.getByPlaceholder('New top-level location'),
+    addLocation: page.getByRole('button', { name: 'Add Location' }),
+    node(name: string) {
+      const row = page.locator('li > div').filter({ has: page.getByText(name, { exact: true }) })
+
+      return {
+        row,
+        add: row.getByRole('button', { name: 'Add' }).first(),
+        rename: row.getByRole('button', { name: 'Rename' }),
+        delete: row.getByRole('button', { name: 'Delete' }),
+        move: row.getByRole('button', { name: 'Move' }),
+        subLocationInput: row.getByPlaceholder('Sub-location name'),
+        renameInput: row.getByPlaceholder('Location name'),
+        parentSelect: row.getByRole('combobox')
+      }
+    },
+    deleteDialog,
+    deleteMode: deleteDialog.getByRole('radiogroup'),
+    confirmDelete: deleteDialog.getByRole('button', { name: 'Delete' })
+  }
+}
+
 export function lendingModal(page: Page) {
   const dialog = page.getByRole('dialog', { name: 'Record a book loan' })
   return {
