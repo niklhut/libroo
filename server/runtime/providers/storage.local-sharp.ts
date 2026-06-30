@@ -18,11 +18,13 @@ function getLocalStorageRoot() {
 function assertSafePathname(pathname: string) {
   const normalized = normalize(pathname)
   const windowsNormalized = win32.normalize(pathname)
+  const pathSegments = pathname.split(/[\\/]+/)
 
   if (
     normalized.includes('\0')
     || isAbsolute(normalized)
     || win32.isAbsolute(pathname)
+    || pathSegments.includes('..')
     || normalized === '..'
     || normalized.startsWith('../')
     || normalized.startsWith('..\\')
