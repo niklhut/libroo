@@ -51,6 +51,15 @@ export default defineConfig({
           testTimeout: 120_000,
           hookTimeout: 300_000
         }
+      },
+      {
+        extends: true,
+        test: {
+          name: 'scripts',
+          include: ['test/scripts/**/*.test.ts'],
+          testTimeout: 90_000,
+          hookTimeout: 120_000
+        }
       }
     ]
   }

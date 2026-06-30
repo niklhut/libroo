@@ -1,0 +1,21 @@
+{
+  "name": "libroo-pr-42",
+  "workers_dev": true,
+  "routes": [],
+  "vars": {
+    "NUXT_CLOUDFLARE_PREVIEW": "true"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "libroo-preview-pr-42",
+      "database_id": "wrong-db-id"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "BLOB",
+      "bucket_name": "libroo-preview-pr-42"
+    }
+  ]
+}
