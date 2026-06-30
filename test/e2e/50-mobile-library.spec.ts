@@ -104,7 +104,8 @@ test('mobile locations workflow @mobile', async ({ browser }, testInfo) => {
     await page.getByRole('option', { name: 'Top level' }).click()
     await renamedChildNode.move.click()
     await expect(locations.node(renamedChildName).row.getByText(renamedChildName, { exact: true }).first()).toBeVisible()
-    await expect(locations.node(renamedChildName).row).toHaveCSS('margin-left', '0px')
+    await expect(locations.node(renamedChildName).row.getByText(`${topName} - ${renamedChildName}`, { exact: true })).not.toBeVisible()
+    await expect(locations.node(renamedChildName).parentSelect).toContainText('Top level')
 
     await locations.node(renamedChildName).delete.click()
     await expect(locations.deleteDialog).toBeVisible()

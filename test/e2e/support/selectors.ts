@@ -59,7 +59,7 @@ export function locationsPage(page: Page) {
     newTopLevelInput: page.getByPlaceholder('New top-level location'),
     addLocation: page.getByRole('button', { name: 'Add Location' }),
     node(name: string) {
-      const row = page.locator('li').filter({ has: page.getByText(name, { exact: true }) })
+      const row = page.locator('li > div').filter({ has: page.getByText(name, { exact: true }) })
 
       return {
         row,
