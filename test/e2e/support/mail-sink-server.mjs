@@ -7,52 +7,87 @@ const messages = []
 
 const smtpServer = createTcpServer((socket) => {
   let dataMode = false
+  let commandBuffer = ''
   let rawMessage = ''
   let current = createEnvelope()
 
   socket.setEncoding('utf8')
   socket.write('220 libroo-e2e-mail-sink ESMTP\r\n')
 
-  socket.on('data', (chunk) => {
-    if (dataMode) {
-      rawMessage += chunk
-      if (rawMessage.includes('\r\n.\r\n') || rawMessage.endsWith('\n.\r\n') || rawMessage.endsWith('\n.\n')) {
-        rawMessage = rawMessage.replace(/\r?\n\.\r?\n$/, '')
-        messages.push(parseMessage({ ...current, raw: rawMessage }))
+  socket.on('data', chunk => consumeChunk(chunk))
+
+  function consumeChunk(chunk) {
+    let pending = chunk
+
+    while (pending.length > 0) {
+      if (dataMode) {
+        const combinedMessage = rawMessage + pending
+        const terminator = findDataTerminator(combinedMessage)
+
+        if (!terminator) {
+          rawMessage = combinedMessage
+          return
+        }
+
+        messages.push(parseMessage({
+          ...current,
+          raw: combinedMessage.slice(0, terminator.start)
+        }))
         dataMode = false
         rawMessage = ''
         current = createEnvelope()
         socket.write('250 Message accepted\r\n')
+        pending = combinedMessage.slice(terminator.end)
+        continue
       }
-      return
-    }
 
-    for (const line of chunk.split(/\r?\n/).filter(Boolean)) {
-      const upper = line.toUpperCase()
-      if (upper.startsWith('EHLO') || upper.startsWith('HELO')) {
-        socket.write('250-libroo-e2e-mail-sink\r\n250 PIPELINING\r\n')
-      } else if (upper.startsWith('MAIL FROM:')) {
-        current.from = extractAddress(line)
-        socket.write('250 OK\r\n')
-      } else if (upper.startsWith('RCPT TO:')) {
-        current.to.push(extractAddress(line))
-        socket.write('250 OK\r\n')
-      } else if (upper === 'DATA') {
-        dataMode = true
-        socket.write('354 End data with <CR><LF>.<CR><LF>\r\n')
-      } else if (upper === 'RSET') {
-        current = createEnvelope()
-        socket.write('250 OK\r\n')
-      } else if (upper === 'QUIT') {
-        socket.write('221 Bye\r\n')
-        socket.end()
-      } else if (upper === 'NOOP') {
-        socket.write('250 OK\r\n')
-      } else {
-        socket.write('250 OK\r\n')
+      commandBuffer += pending
+      pending = ''
+
+      let lineEnd = commandBuffer.indexOf('\n')
+      while (lineEnd !== -1) {
+        const line = commandBuffer.slice(0, lineEnd).replace(/\r$/, '')
+        commandBuffer = commandBuffer.slice(lineEnd + 1)
+
+        if (line) {
+          handleCommand(line)
+          if (dataMode) {
+            pending = commandBuffer
+            commandBuffer = ''
+            break
+          }
+        }
+
+        lineEnd = commandBuffer.indexOf('\n')
       }
     }
-  })
+  }
+
+  function handleCommand(line) {
+    const upper = line.toUpperCase()
+    if (upper.startsWith('EHLO') || upper.startsWith('HELO')) {
+      socket.write('250-libroo-e2e-mail-sink\r\n250 PIPELINING\r\n')
+    } else if (upper.startsWith('MAIL FROM:')) {
+      current.from = extractAddress(line)
+      socket.write('250 OK\r\n')
+    } else if (upper.startsWith('RCPT TO:')) {
+      current.to.push(extractAddress(line))
+      socket.write('250 OK\r\n')
+    } else if (upper === 'DATA') {
+      dataMode = true
+      socket.write('354 End data with <CR><LF>.<CR><LF>\r\n')
+    } else if (upper === 'RSET') {
+      current = createEnvelope()
+      socket.write('250 OK\r\n')
+    } else if (upper === 'QUIT') {
+      socket.write('221 Bye\r\n')
+      socket.end()
+    } else if (upper === 'NOOP') {
+      socket.write('250 OK\r\n')
+    } else {
+      socket.write('250 OK\r\n')
+    }
+  }
 })
 
 const httpServer = createServer((request, response) => {
@@ -92,6 +127,16 @@ function createEnvelope() {
 
 function extractAddress(line) {
   return line.replace(/^[^:]+:/, '').trim().replace(/^<|>$/g, '')
+}
+
+function findDataTerminator(message) {
+  const match = /(^|\r?\n)\.\r?\n/.exec(message)
+  if (!match) return null
+
+  return {
+    start: match.index,
+    end: match.index + match[0].length
+  }
 }
 
 function parseMessage(message) {

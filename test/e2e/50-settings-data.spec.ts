@@ -19,6 +19,12 @@ test('changes password and requires the new password on the next login', async (
   const securityForm = page.locator('form').filter({
     has: page.getByRole('button', { name: 'Change password' })
   })
+  await securityForm.locator('input[name="currentPassword"]').fill(`${e2ePassword}-wrong`)
+  await securityForm.locator('input[name="newPassword"]').fill(newPassword)
+  await securityForm.locator('input[name="confirmPassword"]').fill(newPassword)
+  await securityForm.getByRole('button', { name: 'Change password' }).click()
+  await expect(page.getByText('Password change failed', { exact: true }).last()).toBeVisible()
+
   await securityForm.locator('input[name="currentPassword"]').fill(e2ePassword)
   await securityForm.locator('input[name="newPassword"]').fill(newPassword)
   await securityForm.locator('input[name="confirmPassword"]').fill(newPassword)

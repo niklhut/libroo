@@ -2,10 +2,8 @@ import { expect, test, type Page } from '@playwright/test'
 import { createClient } from '@libsql/client'
 import { addManualBook, currentDetailCoverPath } from './support/books'
 import { e2ePassword } from './support/settings'
-import { e2eEmailRuntimePaths } from './support/runtime'
+import { e2eEmailRuntimePaths, e2eMailSinkHttpBase } from './support/runtime'
 import { login, registerUser, uniqueEmail } from './support/auth'
-
-const mailSinkHttpBase = `http://127.0.0.1:${process.env.LIBROO_MAIL_SINK_HTTP_PORT || 3014}`
 
 interface CapturedMail {
   raw: string
@@ -134,11 +132,11 @@ async function registerVerifiedEmailUser(page: Page, testTitle: string) {
 }
 
 async function resetMailSink(page: Page) {
-  await page.request.post(`${mailSinkHttpBase}/reset`)
+  await page.request.post(`${e2eMailSinkHttpBase}/reset`)
 }
 
 async function readMailSink(page: Page): Promise<{ messages: CapturedMail[] }> {
-  const response = await page.request.get(`${mailSinkHttpBase}/messages`)
+  const response = await page.request.get(`${e2eMailSinkHttpBase}/messages`)
   expect(response.ok()).toBe(true)
   return response.json()
 }

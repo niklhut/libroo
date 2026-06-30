@@ -9,6 +9,8 @@ const emailAppPort = process.env.LIBROO_E2E_EMAIL_APP_PORT || '3012'
 const mailSinkSmtpPort = process.env.LIBROO_MAIL_SINK_SMTP_PORT || '3013'
 const mailSinkHttpPort = process.env.LIBROO_MAIL_SINK_HTTP_PORT || '3014'
 
+export const e2eMailSinkHttpBase = `http://127.0.0.1:${mailSinkHttpPort}`
+
 export const e2eRuntimePaths = {
   root,
   databasePath: join(root, 'sqlite.db'),
