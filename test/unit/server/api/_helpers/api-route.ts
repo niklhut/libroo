@@ -38,27 +38,33 @@ vi.mock('../../../../../server/utils/effect', async () => {
               ? 403
               : tag === 'InvalidAdminRequestError'
                 ? 400
-                : tag === 'AdminUserNotFoundError'
-                  ? 404
-                  : tag === 'BookAlreadyOwnedError'
-                    ? 409
-                    : tag === 'BookNotFoundError'
-                      ? 404
-                      : tag === 'LoanNotFoundError'
+                : tag === 'SignupInviteForbiddenError'
+                  ? 403
+                  : tag === 'InvalidSignupInviteError'
+                    ? 400
+                    : tag === 'SignupInviteDeliveryError'
+                      ? 503
+                      : tag === 'AdminUserNotFoundError'
                         ? 404
-                        : tag === 'ActiveLoanExistsError'
+                        : tag === 'BookAlreadyOwnedError'
                           ? 409
-                          : tag === 'LoanUnavailableError'
-                            ? 409
-                            : tag === 'ActiveLoanRemovalError'
-                              ? 409
-                              : tag === 'SelfAdminDemotionError' || tag === 'InvalidAdminRoleError'
-                                ? 400
-                                : tag === 'LastAdminDemotionError'
+                          : tag === 'BookNotFoundError'
+                            ? 404
+                            : tag === 'LoanNotFoundError'
+                              ? 404
+                              : tag === 'ActiveLoanExistsError'
+                                ? 409
+                                : tag === 'LoanUnavailableError'
                                   ? 409
-                                  : tag === 'InvalidInviteError'
-                                    ? 400
-                                    : 500
+                                  : tag === 'ActiveLoanRemovalError'
+                                    ? 409
+                                    : tag === 'SelfAdminDemotionError' || tag === 'InvalidAdminRoleError'
+                                      ? 400
+                                      : tag === 'LastAdminDemotionError'
+                                        ? 409
+                                        : tag === 'InvalidInviteError'
+                                          ? 400
+                                          : 500
           const message = typeof error === 'object' && error && 'message' in error
             ? String(error.message)
             : 'Internal Server Error'
@@ -112,9 +118,11 @@ interface ApiRouteTestGlobals {
   toWebRequest: (event: TestEvent) => { webRequestFor: TestEvent }
   getRouterParam: (event: TestEvent, key: string) => string | undefined
   getQuery: (event: TestEvent) => Record<string, string | undefined>
+  readBody: (event: TestEvent) => Promise<unknown>
   readValidatedBody: (event: TestEvent, parse: (body: unknown) => unknown) => Promise<unknown>
   setHeader: (event: TestEvent, key: string, value: string) => void
   effectHandler: unknown
+  InvalidSignupInviteError: new (input: { message: string }) => Error & { _tag: 'InvalidSignupInviteError' }
   addBookToLibrary: (...args: unknown[]) => unknown
   bulkAddBooks: (...args: unknown[]) => unknown
   createManualBook: (...args: unknown[]) => unknown
@@ -150,6 +158,11 @@ interface ApiRouteTestGlobals {
   getAuthorizedCover: (...args: unknown[]) => unknown
   exportLibraryCsv: (...args: unknown[]) => unknown
   importLibraryCsv: (...args: unknown[]) => unknown
+  listAdminAuditEntries: (...args: unknown[]) => unknown
+  listSignupInvites: (...args: unknown[]) => unknown
+  createSignupInvite: (...args: unknown[]) => unknown
+  revokeSignupInvite: (...args: unknown[]) => unknown
+  listAdminUsers: (...args: unknown[]) => unknown
   bookIsbnSchema: unknown
   bookBatchDeleteSchema: unknown
   bookTagAddSchema: unknown
@@ -168,6 +181,11 @@ export const testUser = {
   id: 'user-1',
   name: 'Ada',
   email: 'ada@example.com'
+}
+
+export const testAdminUser = {
+  ...testUser,
+  role: 'admin'
 }
 
 export const serviceMocks = {
@@ -205,7 +223,12 @@ export const serviceMocks = {
   getBlob: vi.fn(),
   getAuthorizedCover: vi.fn(),
   exportLibraryCsv: vi.fn(),
-  importLibraryCsv: vi.fn()
+  importLibraryCsv: vi.fn(),
+  listAdminAuditEntries: vi.fn(),
+  listSignupInvites: vi.fn(),
+  createSignupInvite: vi.fn(),
+  revokeSignupInvite: vi.fn(),
+  listAdminUsers: vi.fn()
 }
 
 export function getAuthHandlerMock() {
@@ -219,9 +242,11 @@ const originalGlobals = {
   toWebRequest: testGlobal.toWebRequest,
   getRouterParam: testGlobal.getRouterParam,
   getQuery: testGlobal.getQuery,
+  readBody: testGlobal.readBody,
   readValidatedBody: testGlobal.readValidatedBody,
   setHeader: testGlobal.setHeader,
   effectHandler: testGlobal.effectHandler,
+  InvalidSignupInviteError: testGlobal.InvalidSignupInviteError,
   addBookToLibrary: testGlobal.addBookToLibrary,
   bulkAddBooks: testGlobal.bulkAddBooks,
   createManualBook: testGlobal.createManualBook,
@@ -257,6 +282,11 @@ const originalGlobals = {
   getAuthorizedCover: testGlobal.getAuthorizedCover,
   exportLibraryCsv: testGlobal.exportLibraryCsv,
   importLibraryCsv: testGlobal.importLibraryCsv,
+  listAdminAuditEntries: testGlobal.listAdminAuditEntries,
+  listSignupInvites: testGlobal.listSignupInvites,
+  createSignupInvite: testGlobal.createSignupInvite,
+  revokeSignupInvite: testGlobal.revokeSignupInvite,
+  listAdminUsers: testGlobal.listAdminUsers,
   bookIsbnSchema: testGlobal.bookIsbnSchema,
   bookBatchDeleteSchema: testGlobal.bookBatchDeleteSchema,
   bookTagAddSchema: testGlobal.bookTagAddSchema,
@@ -300,6 +330,10 @@ export function mockLoggedInUser(user = testUser) {
   authMock.getSession.mockResolvedValue({ user, session: { id: 'session-1' } })
 }
 
+export function mockLoggedInAdmin() {
+  mockLoggedInUser(testAdminUser)
+}
+
 export async function setupApiRouteTest() {
   vi.resetModules()
   vi.clearAllMocks()
@@ -310,9 +344,18 @@ export async function setupApiRouteTest() {
   testGlobal.toWebRequest = (event: TestEvent) => ({ webRequestFor: event })
   testGlobal.getRouterParam = (event: TestEvent, key: string) => event.params?.[key]
   testGlobal.getQuery = (event: TestEvent) => event.query ?? {}
+  testGlobal.readBody = async (event: TestEvent) => event.body
   testGlobal.readValidatedBody = async (event: TestEvent, parse: (body: unknown) => unknown) => parse(event.body)
   testGlobal.setHeader = (event: TestEvent, key: string, value: string) => {
     event.responseHeaders[key] = value
+  }
+  testGlobal.InvalidSignupInviteError = class InvalidSignupInviteError extends Error {
+    readonly _tag = 'InvalidSignupInviteError' as const
+
+    constructor(input: { message: string }) {
+      super(input.message)
+      this.name = 'InvalidSignupInviteError'
+    }
   }
 
   const { effectHandler } = await import('../../../../../server/utils/effectHandler')
@@ -353,6 +396,11 @@ export async function setupApiRouteTest() {
   testGlobal.getAuthorizedCover = (...args: unknown[]) => serviceMocks.getAuthorizedCover(...args)
   testGlobal.exportLibraryCsv = (...args: unknown[]) => serviceMocks.exportLibraryCsv(...args)
   testGlobal.importLibraryCsv = (...args: unknown[]) => serviceMocks.importLibraryCsv(...args)
+  testGlobal.listAdminAuditEntries = (...args: unknown[]) => serviceMocks.listAdminAuditEntries(...args)
+  testGlobal.listSignupInvites = (...args: unknown[]) => serviceMocks.listSignupInvites(...args)
+  testGlobal.createSignupInvite = (...args: unknown[]) => serviceMocks.createSignupInvite(...args)
+  testGlobal.revokeSignupInvite = (...args: unknown[]) => serviceMocks.revokeSignupInvite(...args)
+  testGlobal.listAdminUsers = (...args: unknown[]) => serviceMocks.listAdminUsers(...args)
 
   const schemas = await import('../../../../../shared/utils/schemas')
   testGlobal.bookIsbnSchema = schemas.bookIsbnSchema
