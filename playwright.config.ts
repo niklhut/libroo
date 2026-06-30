@@ -1,9 +1,12 @@
 import { defineConfig, devices } from '@playwright/test'
-import { e2eRuntimeEnv } from './test/e2e/support/runtime'
+import { e2eEmailRuntimeEnv, e2eRuntimeEnv } from './test/e2e/support/runtime'
 
 const appPort = Number(e2eRuntimeEnv.NUXT_PORT)
 const fixturePort = Number(e2eRuntimeEnv.LIBROO_OPENLIBRARY_FIXTURE_PORT)
+const emailAppPort = Number(e2eEmailRuntimeEnv.NUXT_PORT)
+const mailSinkHttpPort = Number(e2eEmailRuntimeEnv.LIBROO_MAIL_SINK_HTTP_PORT)
 const baseURL = `http://127.0.0.1:${appPort}`
+const emailBaseURL = `http://127.0.0.1:${emailAppPort}`
 
 export default defineConfig({
   testDir: './test/e2e',
@@ -29,7 +32,7 @@ export default defineConfig({
   projects: [
     {
       name: 'desktop-chromium',
-      grepInvert: /@mobile/,
+      grepInvert: /@mobile|@email/,
       use: {
         ...devices['Desktop Chrome'],
         channel: 'chromium'
@@ -40,6 +43,15 @@ export default defineConfig({
       grep: /@mobile/,
       use: {
         ...devices['Pixel 5']
+      }
+    },
+    {
+      name: 'email-desktop-chromium',
+      grep: /@email/,
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: emailBaseURL,
+        channel: 'chromium'
       }
     }
   ],
@@ -52,11 +64,25 @@ export default defineConfig({
       env: e2eRuntimeEnv
     },
     {
+      command: 'node test/e2e/support/mail-sink-server.mjs',
+      url: `http://127.0.0.1:${mailSinkHttpPort}/health`,
+      reuseExistingServer: false,
+      timeout: 30_000,
+      env: e2eEmailRuntimeEnv
+    },
+    {
       command: 'node test/e2e/support/bootstrap-runtime.mjs && node .output/server/index.mjs',
       url: `${baseURL}/api/health`,
       reuseExistingServer: false,
       timeout: 120_000,
       env: e2eRuntimeEnv
+    },
+    {
+      command: 'node test/e2e/support/bootstrap-runtime.mjs && node .output/server/index.mjs',
+      url: `${emailBaseURL}/api/health`,
+      reuseExistingServer: false,
+      timeout: 120_000,
+      env: e2eEmailRuntimeEnv
     }
   ]
 })

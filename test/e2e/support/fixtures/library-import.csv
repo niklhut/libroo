@@ -1,0 +1,2 @@
+title,authors,isbn,tags,location,reading_status,current_page,progress_percent,rating,note,added_date,active_loan_status,active_loan_borrower,active_loan_loaned_at,active_loan_due_at
+Deterministic Settings Import,"[""Casey Fixture""]",9780000000501,"[""imported"", ""settings""]",Main Room - Shelf 7,reading,42,35,4,Imported from deterministic e2e CSV,2026-01-15T10:00:00.000Z,,,,
