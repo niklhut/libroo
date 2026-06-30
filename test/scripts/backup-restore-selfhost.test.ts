@@ -5,11 +5,16 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
+  readLatestMigration,
+  readPackageVersion
+} from '../../scripts/lib/backup-metadata.mjs'
+import {
   buildTemporaryBackupTarget,
   copyFixture,
   fileExists,
   fixturesDir,
   readJsonFile,
+  repoRoot,
   runScript,
   scriptPath,
   writeJsonFile
@@ -173,11 +178,12 @@ async function makeArchiveFromTarget(
 
   if (manifestFixture === 'manifest-valid.json') {
     const manifest = await readJsonFile<ManifestFixture>(join(fixturesDir, manifestFixture))
-    manifest.app.version = '0.1.0'
-    manifest.migrations.latest = {
-      tag: '0002_prevent_location_delete_cascade',
-      idx: 2
+    const latestMigration = await readLatestMigration(join(repoRoot, 'server/db/migrations/sqlite/meta/_journal.json'))
+    if (latestMigration.tag == null || latestMigration.idx == null) {
+      throw new Error('Current migration journal must define a latest migration for restore tests')
     }
+    manifest.app.version = await readPackageVersion(join(repoRoot, 'package.json'))
+    manifest.migrations.latest = latestMigration
     await writeJsonFile(join(artifactDir, 'manifest.json'), manifest)
   } else {
     await copyFixture(manifestFixture, join(artifactDir, 'manifest.json'))

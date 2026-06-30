@@ -71,7 +71,12 @@ describe('backup metadata helpers', () => {
         hash: expect.any(String),
         createdAt: expect.any(Number)
       })
-      expect(migrations.at(-1)?.id === null || typeof migrations.at(-1)?.id === 'number').toBe(true)
+      const latestMigrationId = migrations.at(-1)?.id
+      if (latestMigrationId === null) {
+        expect(latestMigrationId).toBeNull()
+      } else {
+        expect(latestMigrationId).toEqual(expect.any(Number))
+      }
     } finally {
       await target.cleanup()
     }

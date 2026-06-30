@@ -150,7 +150,10 @@ describe('backup verification helpers', () => {
         migrationJournalPath: join(fixturesDir, '_journal.json')
       })
       expect(missing.ok).toBe(false)
+      expect(missing.errors).toHaveLength(1)
       expect(missing.errors[0]).toContain('Manifest verification failed:')
+      expect(missing.rowCounts).toEqual({})
+      expect(missing.coverReferences.checked).toEqual([])
 
       const malformed = await verifyBackupTarget({
         databaseUrl: target.databaseUrl,
@@ -160,7 +163,11 @@ describe('backup verification helpers', () => {
         migrationJournalPath: join(fixturesDir, '_journal.json')
       })
       expect(malformed.ok).toBe(false)
+      expect(malformed.errors).toHaveLength(1)
+      expect(malformed.errors[0]).toContain('Manifest verification failed:')
       expect(malformed.errors[0]).toContain('Backup manifest is missing required field')
+      expect(malformed.rowCounts).toEqual({})
+      expect(malformed.coverReferences.checked).toEqual([])
     } finally {
       await target.cleanup()
     }

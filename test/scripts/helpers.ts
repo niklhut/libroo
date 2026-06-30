@@ -3,11 +3,12 @@ import { existsSync } from 'node:fs'
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { createClient, type Client } from '@libsql/client/node'
 import { drizzle } from 'drizzle-orm/libsql/node'
 import { migrate } from 'drizzle-orm/libsql/migrator'
 
-export const repoRoot = resolve(new URL('../..', import.meta.url).pathname)
+export const repoRoot = resolve(fileURLToPath(new URL('../..', import.meta.url)))
 export const fixturesDir = resolve(repoRoot, 'test/scripts/__fixtures__')
 
 export type TemporaryBackupTarget = {
