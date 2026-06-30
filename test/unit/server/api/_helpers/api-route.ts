@@ -44,13 +44,21 @@ vi.mock('../../../../../server/utils/effect', async () => {
                     ? 409
                     : tag === 'BookNotFoundError'
                       ? 404
-                      : tag === 'SelfAdminDemotionError' || tag === 'InvalidAdminRoleError'
-                        ? 400
-                        : tag === 'LastAdminDemotionError'
+                      : tag === 'LoanNotFoundError'
+                        ? 404
+                        : tag === 'ActiveLoanExistsError'
                           ? 409
-                          : tag === 'InvalidInviteError'
-                            ? 400
-                            : 500
+                          : tag === 'LoanUnavailableError'
+                            ? 409
+                            : tag === 'ActiveLoanRemovalError'
+                              ? 409
+                              : tag === 'SelfAdminDemotionError' || tag === 'InvalidAdminRoleError'
+                                ? 400
+                                : tag === 'LastAdminDemotionError'
+                                  ? 409
+                                  : tag === 'InvalidInviteError'
+                                    ? 400
+                                    : 500
           const message = typeof error === 'object' && error && 'message' in error
             ? String(error.message)
             : 'Internal Server Error'
