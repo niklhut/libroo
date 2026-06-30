@@ -7,6 +7,7 @@ import {
   itRequiresAuth,
   makeEvent,
   mockLoggedInAdmin,
+  mockLoggedInUser,
   routePath,
   serviceMocks,
   setupApiRouteTest
@@ -20,6 +21,14 @@ describe('server/api/admin/invites/[id]/revoke.post', () => {
 
   itRequiresAuth(route)
   itRejectsBannedUsers(route)
+
+  it('rejects logged-in non-admin users', async () => {
+    mockLoggedInUser()
+    serviceMocks.revokeSignupInvite.mockReturnValueOnce(Effect.fail({ _tag: 'SignupInviteForbiddenError' }))
+    const handler = await importRoute(route)
+
+    await expect(handler(makeEvent({ params: { id: 'invite-1' } }))).rejects.toMatchObject({ statusCode: 403 })
+  })
 
   it('revokes a signup invite for the admin actor', async () => {
     mockLoggedInAdmin()

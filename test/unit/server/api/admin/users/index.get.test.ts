@@ -7,6 +7,7 @@ import {
   itRequiresAuth,
   makeEvent,
   mockLoggedInAdmin,
+  mockLoggedInUser,
   routePath,
   serviceMocks,
   setupApiRouteTest
@@ -20,6 +21,14 @@ describe('server/api/admin/users/index.get', () => {
 
   itRequiresAuth(route)
   itRejectsBannedUsers(route)
+
+  it('rejects logged-in non-admin users', async () => {
+    mockLoggedInUser()
+    serviceMocks.listAdminUsers.mockReturnValueOnce(Effect.fail({ _tag: 'AdminForbiddenError' }))
+    const handler = await importRoute(route)
+
+    await expect(handler(makeEvent())).rejects.toMatchObject({ statusCode: 403 })
+  })
 
   it('lists admin users with forwarded request headers and query pagination', async () => {
     mockLoggedInAdmin()
@@ -37,8 +46,8 @@ describe('server/api/admin/users/index.get', () => {
     }))).resolves.toBe(page)
     expect(serviceMocks.listAdminUsers).toHaveBeenCalledWith({
       headers,
-      page: '4',
-      pageSize: '50'
+      page: 4,
+      pageSize: 50
     })
   })
 
@@ -78,7 +87,7 @@ describe('server/api/admin/users/index.get', () => {
 
     expect(response).toBe(page)
     expect(new Set(Object.keys(response as typeof page))).toEqual(new Set(['users', 'total', 'page', 'pageSize']))
-    expect(Object.keys((response as typeof page).users[0])).toEqual(expect.arrayContaining([
+    expect(new Set(Object.keys((response as typeof page).users[0]))).toEqual(new Set([
       'id',
       'name',
       'email',
@@ -91,5 +100,9 @@ describe('server/api/admin/users/index.get', () => {
       'banReason',
       'banExpires'
     ]))
+    expect((response as typeof page).users[0]).not.toHaveProperty('password')
+    expect((response as typeof page).users[0]).not.toHaveProperty('passwordHash')
+    expect((response as typeof page).users[0]).not.toHaveProperty('hash')
+    expect((response as typeof page).users[0]).not.toHaveProperty('token')
   })
 })

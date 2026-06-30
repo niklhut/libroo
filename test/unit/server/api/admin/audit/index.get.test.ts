@@ -7,6 +7,7 @@ import {
   itRequiresAuth,
   makeEvent,
   mockLoggedInAdmin,
+  mockLoggedInUser,
   routePath,
   serviceMocks,
   setupApiRouteTest,
@@ -22,6 +23,14 @@ describe('server/api/admin/audit/index.get', () => {
   itRequiresAuth(route)
   itRejectsBannedUsers(route)
 
+  it('rejects logged-in non-admin users', async () => {
+    mockLoggedInUser()
+    serviceMocks.listAdminAuditEntries.mockReturnValueOnce(Effect.fail({ _tag: 'AdminForbiddenError' }))
+    const handler = await importRoute(route)
+
+    await expect(handler(makeEvent())).rejects.toMatchObject({ statusCode: 403 })
+  })
+
   it('lists admin audit entries with forwarded query pagination and category', async () => {
     mockLoggedInAdmin()
     const page = { entries: [], total: 0, page: 2, pageSize: 10 }
@@ -32,13 +41,13 @@ describe('server/api/admin/audit/index.get', () => {
       query: {
         page: '2',
         pageSize: '10',
-        category: 'admin'
+        category: ' admin '
       }
     }))).resolves.toBe(page)
     expect(serviceMocks.listAdminAuditEntries).toHaveBeenCalledWith({
       actor: testAdminUser,
-      page: '2',
-      pageSize: '10',
+      page: 2,
+      pageSize: 10,
       category: 'admin'
     })
   })

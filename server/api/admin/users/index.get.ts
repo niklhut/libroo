@@ -1,4 +1,5 @@
 import { Effect } from 'effect'
+import { normalizeAdminPagination } from '../../../utils/admin-route-input'
 
 export default effectHandler(event =>
   Effect.gen(function* () {
@@ -6,8 +7,7 @@ export default effectHandler(event =>
 
     return yield* listAdminUsers({
       headers: event.headers,
-      page: query.page,
-      pageSize: query.pageSize
+      ...normalizeAdminPagination(query)
     })
   })
 )

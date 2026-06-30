@@ -7,6 +7,7 @@ import {
   itRequiresAuth,
   makeEvent,
   mockLoggedInAdmin,
+  mockLoggedInUser,
   routePath,
   serviceMocks,
   setupApiRouteTest,
@@ -22,9 +23,17 @@ describe('server/api/admin/invites/index.post', () => {
   itRequiresAuth(route)
   itRejectsBannedUsers(route)
 
-  it('creates a signup invite with the exact request body', async () => {
+  it('rejects logged-in non-admin users', async () => {
+    mockLoggedInUser()
+    serviceMocks.createSignupInvite.mockReturnValueOnce(Effect.fail({ _tag: 'SignupInviteForbiddenError' }))
+    const handler = await importRoute(route)
+
+    await expect(handler(makeEvent({ body: {} }))).rejects.toMatchObject({ statusCode: 403 })
+  })
+
+  it('creates a signup invite with sanitized request body fields', async () => {
     mockLoggedInAdmin()
-    const body = { email: 'grace@example.com', expiresInDays: 14 }
+    const body = { email: ' Grace@Example.com ', expiresInDays: '14' }
     const createResult = {
       invite: {
         id: 'invite-1',
@@ -46,7 +55,22 @@ describe('server/api/admin/invites/index.post', () => {
     const handler = await importRoute(route)
 
     await expect(handler(makeEvent({ body }))).resolves.toBe(createResult)
-    expect(serviceMocks.createSignupInvite).toHaveBeenCalledWith(testAdminUser, body)
+    expect(serviceMocks.createSignupInvite).toHaveBeenCalledWith(testAdminUser, {
+      email: 'grace@example.com',
+      expiresInDays: 14
+    })
+  })
+
+  it.each([
+    ['invalid email', { email: 'not-an-email', expiresInDays: 14 }],
+    ['invalid expiration', { email: 'grace@example.com', expiresInDays: 0 }],
+    ['unsupported role field', { email: 'grace@example.com', role: 'admin' }]
+  ])('rejects malformed invite bodies before calling the service: %s', async (_label, body) => {
+    mockLoggedInAdmin()
+    const handler = await importRoute(route)
+
+    await expect(handler(makeEvent({ body }))).rejects.toMatchObject({ statusCode: 400 })
+    expect(serviceMocks.createSignupInvite).not.toHaveBeenCalled()
   })
 
   it('maps invalid signup invite requests to bad request responses', async () => {
@@ -68,9 +92,9 @@ describe('server/api/admin/invites/index.post', () => {
   it('rejects unreadable request bodies before calling the service', async () => {
     mockLoggedInAdmin()
     const testGlobal = globalThis as typeof globalThis & {
-      readBody: () => Promise<unknown>
+      readValidatedBody: () => Promise<unknown>
     }
-    testGlobal.readBody = () => Promise.reject(new Error('Unreadable body'))
+    testGlobal.readValidatedBody = () => Promise.reject(new Error('Unreadable body'))
     const handler = await importRoute(route)
 
     await expect(handler(makeEvent())).rejects.toMatchObject({ statusCode: 400 })
