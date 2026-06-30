@@ -71,7 +71,11 @@ describe('AdminService', () => {
           createdAt: new Date('2026-01-01T00:00:00.000Z'),
           updatedAt: new Date('2026-01-02T00:00:00.000Z'),
           role: 'admin',
-          banned: false
+          banned: false,
+          password: 'secret',
+          passwordHash: 'hash',
+          hash: 'legacy-hash',
+          token: 'session-token'
         },
         {
           id: 'user-2',
@@ -88,12 +92,14 @@ describe('AdminService', () => {
       total: 2
     })
 
-    await expect(runAdminService(
+    const result = await runAdminService(
       Effect.flatMap(AdminService, service =>
         service.listUsers({ headers: new Headers(), page: 2, pageSize: 250 })
       ),
       listLastActiveByUserIds
-    )).resolves.toMatchObject({
+    )
+
+    expect(result).toMatchObject({
       total: 2,
       page: 2,
       pageSize: 100,
@@ -115,6 +121,23 @@ describe('AdminService', () => {
         }
       ]
     })
+    expect(new Set(Object.keys(result.users[0]))).toEqual(new Set([
+      'id',
+      'name',
+      'email',
+      'createdAt',
+      'updatedAt',
+      'lastActiveAt',
+      'role',
+      'isAdmin',
+      'status',
+      'banReason',
+      'banExpires'
+    ]))
+    expect(result.users[0]).not.toHaveProperty('password')
+    expect(result.users[0]).not.toHaveProperty('passwordHash')
+    expect(result.users[0]).not.toHaveProperty('hash')
+    expect(result.users[0]).not.toHaveProperty('token')
     expect(authMock.listUsers).toHaveBeenCalledWith({
       headers: expect.any(Headers),
       query: {

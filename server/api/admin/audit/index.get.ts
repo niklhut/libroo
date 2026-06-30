@@ -1,14 +1,15 @@
 import { Effect } from 'effect'
+import { normalizeAdminPagination, normalizeOptionalString } from '../../../utils/admin-route-input'
 
 export default effectHandler((event, user) =>
   Effect.gen(function* () {
     const query = getQuery(event)
+    const pagination = normalizeAdminPagination(query)
 
     return yield* listAdminAuditEntries({
       actor: user,
-      page: query.page,
-      pageSize: query.pageSize,
-      category: query.category
+      ...pagination,
+      category: normalizeOptionalString(query.category)
     })
   })
 )
