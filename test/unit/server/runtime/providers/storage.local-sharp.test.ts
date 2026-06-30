@@ -84,6 +84,9 @@ describe('StorageServiceLocalSharpLive', () => {
   describe('path safety guard', () => {
     const unsafePathnames = [
       '/absolute/blob.txt',
+      'C:\\absolute\\blob.txt',
+      'C:/absolute/blob.txt',
+      '\\\\server\\share\\blob.txt',
       '../outside.txt',
       'covers/../../outside.txt',
       '..\\outside.txt',
@@ -159,12 +162,14 @@ describe('StorageServiceLocalSharpLive', () => {
         expect.objectContaining({
           pathname: 'docs/blob.txt',
           contentType: 'text/plain',
-          size: data.length
+          size: data.length,
+          uploadedAt: expect.any(Date)
         }),
         expect.objectContaining({
           pathname: 'covers/manual/book.jpg',
           contentType: 'image/jpeg',
-          size: secondMetadata.size
+          size: secondMetadata.size,
+          uploadedAt: expect.any(Date)
         })
       ]))
       expect(all.map(entry => entry.pathname)).not.toContain('docs/blob.txt.meta.json')
@@ -173,7 +178,8 @@ describe('StorageServiceLocalSharpLive', () => {
       expect(prefixed).toHaveLength(1)
       expect(prefixed[0]).toMatchObject({
         pathname: 'covers/manual/book.jpg',
-        contentType: 'image/jpeg'
+        contentType: 'image/jpeg',
+        uploadedAt: expect.any(Date)
       })
 
       await run(Effect.flatMap(StorageService, service => service.delete('docs/blob.txt')))
