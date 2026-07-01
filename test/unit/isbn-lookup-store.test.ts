@@ -76,7 +76,7 @@ describe('useIsbnLookupStore', () => {
     })
     expect(fetchMock).toHaveBeenCalledWith('/api/books/bulk-add', {
       method: 'POST',
-      body: { isbns: ['9781234567890'] }
+      body: { books: [{ isbn: '9781234567890', libraryState: 'owned' }] }
     })
     expect(dashboardStore.shouldSync).toBe(true)
     expect(dashboardStore.syncTargetPages).toBe(2)

@@ -1,5 +1,7 @@
 import initialMigration from '../../../../server/db/migrations/sqlite/0000_initial_beta.sql?raw'
 import termsAcceptanceMigration from '../../../../server/db/migrations/sqlite/0001_add_terms_acceptance.sql?raw'
+import locationRestrictMigration from '../../../../server/db/migrations/sqlite/0002_prevent_location_delete_cascade.sql?raw'
+import libraryStateMigration from '../../../../server/db/migrations/sqlite/0003_add_library_state.sql?raw'
 import { Effect, Layer } from 'effect'
 import { createClient } from '@libsql/client'
 import { drizzle } from 'drizzle-orm/libsql'
@@ -22,7 +24,7 @@ describe('cover access repository helpers', () => {
     testDb = db
     await client.execute('PRAGMA foreign_keys = ON')
 
-    for (const migration of [initialMigration, termsAcceptanceMigration]) {
+    for (const migration of [initialMigration, termsAcceptanceMigration, locationRestrictMigration, libraryStateMigration]) {
       for (const statement of migration.split('--> statement-breakpoint')) {
         const sql = statement.trim()
         if (sql) {

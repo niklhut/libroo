@@ -12,6 +12,7 @@ export const libraryCsvColumns = [
   'isbn',
   'tags',
   'location',
+  'library_state',
   'reading_status',
   'current_page',
   'progress_percent',
