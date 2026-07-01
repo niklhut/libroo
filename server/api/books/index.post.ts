@@ -3,10 +3,10 @@ import { Effect } from 'effect'
 export default effectHandler((event, user) =>
   Effect.gen(function* () {
     const body = yield* Effect.tryPromise({
-      try: () => readValidatedBody(event, bookIsbnSchema.parse),
+      try: () => readValidatedBody(event, bookIsbnAddSchema.parse),
       catch: e => createError({ statusCode: 400, message: 'Validation Error', data: e })
     })
 
-    return yield* addBookToLibrary(user.id, body.isbn)
+    return yield* addBookToLibrary(user.id, body.isbn, body.libraryState)
   })
 )

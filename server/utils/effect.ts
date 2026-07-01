@@ -99,6 +99,7 @@ const errorStatusCodes: Record<string, number> = {
   PasswordResetUnavailableError: 404,
   EmailChangeNotAllowedError: 403,
   BookNotFoundError: 404,
+  BookNotOwnedError: 409,
   OpenLibraryBookNotFoundError: 404,
   BookAlreadyOwnedError: 409,
   ActiveLoanRemovalError: 409,
@@ -143,6 +144,7 @@ const errorMessageFormatters: Record<string, (error: unknown) => string> = {
     const isbn = getProp<string>(error, 'isbn')
     return `You already have this book (ISBN: ${isbn || 'unknown'}) in your library`
   },
+  BookNotOwnedError: () => 'This action is only available for books in your library.',
   BookCreateError: () => 'We could not save this book right now. Please try again.',
   ActiveLoanRemovalError: (error) => {
     const borrower = getProp<string>(error, 'borrowerDisplayName')

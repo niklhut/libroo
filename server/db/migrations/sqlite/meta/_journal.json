@@ -22,6 +22,13 @@
       "when": 1782480124409,
       "tag": "0002_prevent_location_delete_cascade",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1782892800000,
+      "tag": "0003_add_library_state",
+      "breakpoints": true
     }
   ]
 }

@@ -31,6 +31,7 @@ const {
   pagination: paginationState,
   search,
   loanStatus,
+  libraryState,
   readingStatus,
   tag,
   location,
@@ -53,6 +54,7 @@ const routeState = normalizeLibraryQuery(route.query)
 const hasRouteStateMismatch = pageSize.value !== routeState.pageSize
   || search.value !== (routeState.search ?? '')
   || loanStatus.value !== (routeState.loanStatus ?? 'all')
+  || libraryState.value !== (routeState.libraryState ?? 'all')
   || readingStatus.value !== (routeState.readingStatus ?? 'all')
   || tag.value !== (routeState.tag ?? '')
   || location.value !== (routeState.location ?? '')
@@ -71,6 +73,7 @@ if (hasRouteStateMismatch || !hasCachedResults) {
 pageSize.value = routeState.pageSize
 search.value = routeState.search ?? ''
 loanStatus.value = routeState.loanStatus ?? 'all'
+libraryState.value = routeState.libraryState ?? 'all'
 readingStatus.value = routeState.readingStatus ?? 'all'
 tag.value = routeState.tag ?? ''
 location.value = routeState.location ?? ''
@@ -99,6 +102,7 @@ const { data, refresh, status } = await useFetch<PaginatedResponse>('/api/books'
     page: page.value,
     pageSize: pageSize.value,
     search: search.value || undefined,
+    libraryState: libraryState.value === 'all' ? undefined : libraryState.value,
     loanStatus: loanStatus.value === 'all' ? undefined : loanStatus.value,
     readingStatus: readingStatus.value === 'all' ? undefined : readingStatus.value,
     tag: tag.value || undefined,
@@ -204,6 +208,11 @@ const loanStatusItems = [
   { label: 'Available', value: 'available' },
   { label: 'Loaned out', value: 'loaned' }
 ]
+const libraryStateItems = [
+  { label: 'All books', value: 'all' },
+  { label: 'Library', value: 'owned' },
+  { label: 'Wishlist', value: 'wishlisted' }
+]
 const readingStatusItems = [
   { label: 'All reading', value: 'all' },
   { label: 'Unread', value: 'unread' },
@@ -263,7 +272,7 @@ const groupedBooks = computed(() => {
   })
 })
 
-watch([search, loanStatus, readingStatus, tag, location, locationId, includeLocationDescendants, sortBy], () => {
+watch([search, loanStatus, libraryState, readingStatus, tag, location, locationId, includeLocationDescendants, sortBy], () => {
   if (filterRefreshTimer.value) clearTimeout(filterRefreshTimer.value)
 
   filterRefreshTimer.value = setTimeout(() => {
@@ -278,12 +287,11 @@ watch(locationId, (nextLocationId) => {
 })
 
 async function applyFilters() {
-  resetResultsAction()
-
   updateBrowserQuery({
     page: 1,
     pageSize: pageSize.value,
     search: search.value.trim() || undefined,
+    libraryState: libraryState.value,
     loanStatus: loanStatus.value,
     readingStatus: readingStatus.value,
     tag: tag.value.trim() || undefined,
@@ -310,6 +318,7 @@ function updateBrowserQuery(state: Parameters<typeof buildLibraryRouteQuery>[0])
 function clearFilters() {
   search.value = ''
   loanStatus.value = 'all'
+  libraryState.value = 'all'
   readingStatus.value = 'all'
   tag.value = ''
   location.value = ''
@@ -383,16 +392,26 @@ async function syncLoadedPages(targetPages: number) {
 
     <!-- Page Body -->
     <UPageBody>
-      <section class="mb-6 space-y-3">
+      <section class="mb-6">
         <div class="flex flex-col gap-3 md:flex-row md:items-center">
-          <UInput
-            v-model="search"
-            icon="i-lucide-search"
-            size="lg"
-            aria-label="Search library"
-            placeholder="Search title, author, ISBN, tag, or location"
-            class="w-full md:flex-1"
-          />
+          <div class="grid w-full gap-2 md:flex md:flex-1 md:items-center">
+            <UInput
+              v-model="search"
+              icon="i-lucide-search"
+              size="lg"
+              aria-label="Search library"
+              placeholder="Search title, author, ISBN, tag, or location"
+              class="w-full md:flex-1"
+            />
+            <USelect
+              v-model="libraryState"
+              :items="libraryStateItems"
+              icon="i-lucide-bookmark"
+              size="lg"
+              aria-label="Library state"
+              class="w-full md:w-42"
+            />
+          </div>
 
           <div class="flex w-full flex-wrap items-center gap-2 md:w-auto">
             <UButton
@@ -433,7 +452,7 @@ async function syncLoadedPages(targetPages: number) {
 
         <div
           v-if="hasActiveAdvancedFilters && !areFiltersExpanded"
-          class="flex flex-wrap items-center gap-2 text-sm text-muted"
+          class="mt-3 flex flex-wrap items-center gap-2 text-sm text-muted"
         >
           <span>Active:</span>
           <UBadge
@@ -456,7 +475,7 @@ async function syncLoadedPages(targetPages: number) {
           <template #content>
             <div
               id="library-advanced-filters"
-              class="space-y-3 rounded-lg border border-default bg-muted/30 p-3"
+              class="mt-3 space-y-3 rounded-lg border border-default bg-muted/30 p-3"
             >
               <div class="grid gap-3 md:grid-cols-4">
                 <USelect
@@ -608,6 +627,7 @@ async function syncLoadedPages(targetPages: number) {
                 :location="book.location"
                 :added-at="book.addedAt"
                 :active-loan="book.activeLoan"
+                :library-state="book.libraryState"
               />
             </div>
           </section>
@@ -629,6 +649,7 @@ async function syncLoadedPages(targetPages: number) {
             :location="book.location"
             :added-at="book.addedAt"
             :active-loan="book.activeLoan"
+            :library-state="book.libraryState"
           />
         </div>
 

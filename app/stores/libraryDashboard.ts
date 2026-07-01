@@ -1,5 +1,5 @@
 import type { LibraryBook } from '~~/shared/types/book'
-import type { LibraryLoanFilter, LibraryReadingFilter, LibrarySort } from '~~/shared/utils/library-query'
+import type { LibraryLoanFilter, LibraryReadingFilter, LibrarySort, LibraryStateFilter } from '~~/shared/utils/library-query'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
@@ -18,6 +18,7 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
   const pagination = ref<DashboardPagination | null>(null)
   const search = ref('')
   const loanStatus = ref<LibraryLoanFilter>('all')
+  const libraryState = ref<LibraryStateFilter>('all')
   const readingStatus = ref<LibraryReadingFilter>('all')
   const tag = ref('')
   const location = ref('')
@@ -35,6 +36,8 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
   }
 
   function addBook(book: LibraryBook) {
+    if (libraryState.value !== 'all' && book.libraryState !== libraryState.value) return
+
     const existingIndex = allBooks.value.findIndex(item => item.id === book.id)
     const existed = existingIndex !== -1
 
@@ -105,6 +108,7 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
     pagination,
     search,
     loanStatus,
+    libraryState,
     readingStatus,
     tag,
     location,

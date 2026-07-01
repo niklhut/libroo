@@ -1,7 +1,7 @@
 import { Context, Effect, Layer } from 'effect'
 import type { ActiveLoanExistsError, InvalidInviteError, LoanNotFoundError, LoanUnavailableError } from '../repositories/lending.repository'
 import { LendingRepository } from '../repositories/lending.repository'
-import type { BookNotFoundError } from '../repositories/book.repository'
+import type { BookNotFoundError, BookNotOwnedError } from '../repositories/book.repository'
 import { DatabaseError } from '../repositories/book.repository'
 
 interface CreateLoanInput {
@@ -20,7 +20,7 @@ export interface LendingServiceInterface {
     userBookId: string,
     ownerUserId: string,
     input: CreateLoanInput
-  ) => Effect.Effect<CreateLoanResult, BookNotFoundError | ActiveLoanExistsError | DatabaseError, DbService>
+  ) => Effect.Effect<CreateLoanResult, BookNotFoundError | BookNotOwnedError | ActiveLoanExistsError | DatabaseError, DbService>
   returnLoan: (loanId: string, ownerUserId: string) => Effect.Effect<OwnerLoan, LoanNotFoundError | DatabaseError, DbService>
   cancelLoan: (loanId: string, ownerUserId: string) => Effect.Effect<OwnerLoan, LoanNotFoundError | DatabaseError, DbService>
   listOwnerLoans: (ownerUserId: string) => Effect.Effect<OwnerLoan[], DatabaseError, DbService>

@@ -1,4 +1,4 @@
-import type { BookLookupResult } from '~~/shared/types/book'
+import type { BookLookupResult, LibraryState } from '~~/shared/types/book'
 import { getApiErrorMessage } from '~~/shared/utils/api-error'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
@@ -63,7 +63,7 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
     }
   }
 
-  async function addIsbnsToLibrary(isbns: string[]): Promise<AddIsbnsResult> {
+  async function addIsbnsToLibrary(isbns: string[], libraryState: LibraryState = 'owned'): Promise<AddIsbnsResult> {
     if (isbns.length === 0) {
       return { success: [], failed: [], failedIsbns: [] }
     }
@@ -76,7 +76,7 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
     try {
       const result = await $fetch<AddIsbnsApiResult>('/api/books/bulk-add', {
         method: 'POST',
-        body: { isbns }
+        body: { books: isbns.map(isbn => ({ isbn, libraryState })) }
       })
 
       const success = result.added.map(book => book.isbn)

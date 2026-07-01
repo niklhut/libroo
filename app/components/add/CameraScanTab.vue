@@ -12,9 +12,15 @@ const showScanner = ref(false)
 const scannerStore = useIsbnScannerStore()
 const {
   scannedBooks,
+  targetLibraryState,
   isAddingBooks,
   counts
 } = storeToRefs(scannerStore)
+
+const libraryStateItems = [
+  { label: 'Library', value: 'owned' },
+  { label: 'Wishlist', value: 'wishlisted' }
+]
 
 const {
   addIsbn,
@@ -64,6 +70,7 @@ async function onIsbnDetected(isbn: string) {
 
 // Add book to library (single scan mode) - uses composable's addSelectedToLibrary
 async function addBookToLibrary() {
+  targetLibraryState.value = 'owned'
   if (singleScanBook.value?.result?.found && singleScanBook.value.status !== 'already_owned') {
     singleScanBook.value.status = 'found'
     singleScanBook.value.selected = true
@@ -72,6 +79,19 @@ async function addBookToLibrary() {
   const result = await addSelectedToLibrary()
   if (result.success.length > 0 && result.failed.length === 0) {
     navigateTo('/library')
+  }
+}
+
+async function addBookToWishlist() {
+  targetLibraryState.value = 'wishlisted'
+  if (singleScanBook.value?.result?.found && singleScanBook.value.status !== 'already_owned') {
+    singleScanBook.value.status = 'found'
+    singleScanBook.value.selected = true
+  }
+
+  const result = await addSelectedToLibrary()
+  if (result.success.length > 0 && result.failed.length === 0) {
+    navigateTo('/library?libraryState=wishlisted')
   }
 }
 
@@ -113,6 +133,13 @@ defineExpose({ reset })
           v-if="!singleScanBook?.result?.found || continuousMode"
           class="flex items-center gap-2"
         >
+          <USelect
+            v-model="targetLibraryState"
+            :items="libraryStateItems"
+            size="sm"
+            aria-label="Add scanned books as"
+            class="w-32"
+          />
           <span class="text-sm text-muted">Continuous</span>
           <USwitch v-model="continuousMode" />
         </div>
@@ -135,6 +162,7 @@ defineExpose({ reset })
         back-label="Scan Again"
         back-icon="i-lucide-scan-barcode"
         @add="addBookToLibrary"
+        @wishlist="addBookToWishlist"
         @back="resetLookup"
       />
     </template>
@@ -203,6 +231,7 @@ defineExpose({ reset })
         :scanned-books="scannedBooks"
         :is-adding-books="isAddingBooks"
         :counts="counts"
+        :target-library-state="targetLibraryState"
         @remove="removeIsbn"
         @retry="retryIsbn"
         @toggle="toggleSelection"

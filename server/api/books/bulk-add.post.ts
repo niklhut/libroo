@@ -1,7 +1,7 @@
 import { Effect } from 'effect'
 import { z } from 'zod'
 
-const bulkAddBookSchema = bookIsbnSchema
+const bulkAddBookSchema = bookIsbnAddSchema
 
 const bulkAddSchema = z.object({
   isbns: z.array(bookIsbnSchema.shape.isbn).max(20).optional(),
@@ -34,7 +34,7 @@ export default effectHandler((event, user) =>
 
     const books = body.books?.length
       ? body.books
-      : body.isbns!.map((isbn: string) => ({ isbn }))
+      : body.isbns!.map((isbn: string) => ({ isbn, libraryState: 'owned' as const }))
     return yield* bulkAddBooks(user.id, books)
   })
 )

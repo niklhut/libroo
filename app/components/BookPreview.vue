@@ -8,11 +8,14 @@ defineProps<{
   backLabel?: string
   backIcon?: string
   addDisabled?: boolean
+  moveDisabled?: boolean
   unavailableLabel?: string
 }>()
 
 defineEmits<{
   add: []
+  wishlist: []
+  move: []
   back: []
 }>()
 </script>
@@ -58,7 +61,7 @@ defineEmits<{
               name="i-lucide-book-check"
               class="mr-1"
             />
-            Already in library
+            {{ book.existingState === 'wishlisted' ? 'On wishlist' : 'Already in library' }}
           </UBadge>
           <UBadge
             color="neutral"
@@ -135,6 +138,27 @@ defineEmits<{
         @click="$emit('add')"
       >
         Add to Library
+      </UButton>
+      <UButton
+        v-if="!addDisabled"
+        icon="i-lucide-bookmark-plus"
+        size="lg"
+        color="neutral"
+        variant="soft"
+        class="flex-1"
+        @click="$emit('wishlist')"
+      >
+        Add to Wishlist
+      </UButton>
+      <UButton
+        v-else-if="book.existingState === 'wishlisted'"
+        icon="i-lucide-arrow-up-right"
+        size="lg"
+        class="flex-1"
+        :disabled="moveDisabled"
+        @click="$emit('move')"
+      >
+        Move to Library
       </UButton>
       <UButton
         v-else

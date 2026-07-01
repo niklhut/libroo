@@ -13,6 +13,7 @@ defineProps<{
     alreadyOwned: number
     errors: number
   }
+  targetLibraryState?: 'owned' | 'wishlisted'
 }>()
 
 defineEmits<{
@@ -381,7 +382,7 @@ function getStatusText(status: ScannedBook['status']) {
         :loading="isAddingBooks"
         @click="$emit('addSelected')"
       >
-        Add {{ counts.selected }} Book{{ counts.selected > 1 ? 's' : '' }} to Library
+        Add {{ counts.selected }} Book{{ counts.selected > 1 ? 's' : '' }} to {{ targetLibraryState === 'wishlisted' ? 'Wishlist' : 'Library' }}
       </UButton>
     </div>
   </div>

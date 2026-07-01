@@ -87,6 +87,7 @@ export const userBooks = sqliteTable('user_books', {
   locationId: text('location_id').references(() => locations.id, { onDelete: 'set null' }),
   rating: integer('rating'), // 1–5 star rating, null = unrated
   note: text('note'), // Private user note
+  libraryState: text('library_state', { enum: ['owned', 'wishlisted'] }).notNull().default('owned'),
   readingStatus: text('reading_status', { enum: ['unread', 'reading', 'read'] }).notNull().default('unread'),
   currentPage: integer('current_page'),
   progressPercent: integer('progress_percent'),
@@ -96,6 +97,7 @@ export const userBooks = sqliteTable('user_books', {
   removedAt: integer('removed_at', { mode: 'timestamp' })
 }, table => [
   check('user_books_rating_check', sql`${table.rating} IS NULL OR ${table.rating} BETWEEN 1 AND 5`),
+  check('user_books_library_state_check', sql`${table.libraryState} IN ('owned', 'wishlisted')`),
   check('user_books_reading_status_check', sql`${table.readingStatus} IN ('unread', 'reading', 'read')`),
   check('user_books_current_page_check', sql`${table.currentPage} IS NULL OR ${table.currentPage} >= 0`),
   check('user_books_progress_percent_check', sql`${table.progressPercent} IS NULL OR ${table.progressPercent} BETWEEN 0 AND 100`)

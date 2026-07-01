@@ -136,6 +136,7 @@ interface ApiRouteTestGlobals {
   updateLocation: (...args: unknown[]) => unknown
   updateRating: (...args: unknown[]) => unknown
   updateReadingProgress: (...args: unknown[]) => unknown
+  updateLibraryState: (...args: unknown[]) => unknown
   listLocations: (...args: unknown[]) => unknown
   createLocation: (...args: unknown[]) => unknown
   renameLocation: (...args: unknown[]) => unknown
@@ -164,6 +165,8 @@ interface ApiRouteTestGlobals {
   revokeSignupInvite: (...args: unknown[]) => unknown
   listAdminUsers: (...args: unknown[]) => unknown
   bookIsbnSchema: unknown
+  bookIsbnAddSchema: unknown
+  bookLibraryStateSchema: unknown
   bookBatchDeleteSchema: unknown
   bookTagAddSchema: unknown
   createLoanSchema: unknown
@@ -202,6 +205,7 @@ export const serviceMocks = {
   updateLocation: vi.fn(),
   updateRating: vi.fn(),
   updateReadingProgress: vi.fn(),
+  updateLibraryState: vi.fn(),
   listLocations: vi.fn(),
   createLocation: vi.fn(),
   renameLocation: vi.fn(),
@@ -260,6 +264,7 @@ const originalGlobals = {
   updateLocation: testGlobal.updateLocation,
   updateRating: testGlobal.updateRating,
   updateReadingProgress: testGlobal.updateReadingProgress,
+  updateLibraryState: testGlobal.updateLibraryState,
   listLocations: testGlobal.listLocations,
   createLocation: testGlobal.createLocation,
   renameLocation: testGlobal.renameLocation,
@@ -288,6 +293,8 @@ const originalGlobals = {
   revokeSignupInvite: testGlobal.revokeSignupInvite,
   listAdminUsers: testGlobal.listAdminUsers,
   bookIsbnSchema: testGlobal.bookIsbnSchema,
+  bookIsbnAddSchema: testGlobal.bookIsbnAddSchema,
+  bookLibraryStateSchema: testGlobal.bookLibraryStateSchema,
   bookBatchDeleteSchema: testGlobal.bookBatchDeleteSchema,
   bookTagAddSchema: testGlobal.bookTagAddSchema,
   createLoanSchema: testGlobal.createLoanSchema,
@@ -374,6 +381,7 @@ export async function setupApiRouteTest() {
   testGlobal.updateLocation = (...args: unknown[]) => serviceMocks.updateLocation(...args)
   testGlobal.updateRating = (...args: unknown[]) => serviceMocks.updateRating(...args)
   testGlobal.updateReadingProgress = (...args: unknown[]) => serviceMocks.updateReadingProgress(...args)
+  testGlobal.updateLibraryState = (...args: unknown[]) => serviceMocks.updateLibraryState(...args)
   testGlobal.listLocations = (...args: unknown[]) => serviceMocks.listLocations(...args)
   testGlobal.createLocation = (...args: unknown[]) => serviceMocks.createLocation(...args)
   testGlobal.renameLocation = (...args: unknown[]) => serviceMocks.renameLocation(...args)
@@ -404,6 +412,8 @@ export async function setupApiRouteTest() {
 
   const schemas = await import('../../../../../shared/utils/schemas')
   testGlobal.bookIsbnSchema = schemas.bookIsbnSchema
+  testGlobal.bookIsbnAddSchema = schemas.bookIsbnAddSchema
+  testGlobal.bookLibraryStateSchema = schemas.bookLibraryStateSchema
   testGlobal.bookBatchDeleteSchema = schemas.bookBatchDeleteSchema
   testGlobal.bookTagAddSchema = schemas.bookTagAddSchema
   testGlobal.createLoanSchema = schemas.createLoanSchema

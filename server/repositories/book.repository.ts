@@ -10,6 +10,7 @@ import type { AtomicDbStatement, AtomicDbStatements } from '../services/db.servi
 import { getBlob, type StorageService } from '../services/storage.service'
 import { downloadCover, lookupByISBN } from './openLibrary.repository'
 import type { OpenLibraryApiError, OpenLibraryBookNotFoundError, OpenLibraryRepository } from './openLibrary.repository'
+import type { LibraryState } from '../../shared/types/book'
 
 // Error types
 export class BookNotFoundError extends Data.TaggedError('BookNotFoundError')<{
@@ -23,6 +24,13 @@ export class BookCreateError extends Data.TaggedError('BookCreateError')<{
 
 export class BookAlreadyOwnedError extends Data.TaggedError('BookAlreadyOwnedError')<{
   isbn: string
+  userBookId?: string
+  libraryState?: LibraryState
+}> { }
+
+export class BookNotOwnedError extends Data.TaggedError('BookNotOwnedError')<{
+  userBookId: string
+  libraryState: LibraryState
 }> { }
 
 export class DatabaseError extends Data.TaggedError('DatabaseError')<{
@@ -61,6 +69,7 @@ export interface Book {
 export interface UserBook {
   id: string
   bookId: string
+  libraryState: LibraryState
   book: Book
   location: BookLocation | null
   tags: string[]
@@ -103,6 +112,7 @@ export interface ManualBookRepositoryInput {
   rating: number | null
   note: string | null
   readingStatus: ReadingStatus
+  libraryState: LibraryState
   currentPage: number | null
   progressPercent: number | null
   tags: string[]
@@ -124,7 +134,8 @@ export interface BookRepositoryInterface {
 
   addBookByISBN: (
     userId: string,
-    isbn: string
+    isbn: string,
+    libraryState?: LibraryState
   ) => Effect.Effect<
     UserBook,
     BookCreateError | BookAlreadyOwnedError | OpenLibraryBookNotFoundError | OpenLibraryApiError | DatabaseError,
@@ -161,7 +172,7 @@ export interface BookRepositoryInterface {
   hasBookInUserLibrary: (
     userId: string,
     isbn: string
-  ) => Effect.Effect<boolean, DatabaseError, DbService>
+  ) => Effect.Effect<{ userBookId: string, libraryState: LibraryState } | null, DatabaseError, DbService>
 
   userOwnsManualCover: (
     userId: string,
@@ -217,7 +228,7 @@ export interface BookRepositoryInterface {
     userBookId: string,
     userId: string,
     rating: number | null
-  ) => Effect.Effect<void, BookNotFoundError | DatabaseError, DbService>
+  ) => Effect.Effect<void, BookNotFoundError | BookNotOwnedError | DatabaseError, DbService>
 
   updateNote: (
     userBookId: string,
@@ -229,13 +240,19 @@ export interface BookRepositoryInterface {
     userBookId: string,
     userId: string,
     locationId: string | null
-  ) => Effect.Effect<void, BookNotFoundError | DatabaseError, DbService>
+  ) => Effect.Effect<void, BookNotFoundError | BookNotOwnedError | DatabaseError, DbService>
 
   updateReadingProgress: (
     userBookId: string,
     userId: string,
     progress: ReadingProgress
-  ) => Effect.Effect<void, BookNotFoundError | DatabaseError, DbService>
+  ) => Effect.Effect<void, BookNotFoundError | BookNotOwnedError | DatabaseError, DbService>
+
+  updateLibraryState: (
+    userBookId: string,
+    userId: string,
+    state: LibraryState
+  ) => Effect.Effect<UserBook, BookNotFoundError | ActiveLoanRemovalError | DatabaseError, DbService>
 }
 
 // Service tag
@@ -712,6 +729,31 @@ export const BookRepositoryLive = Layer.effect(
         return owned as OwnedUserBookRef
       })
 
+    const getOwnedPhysicalUserBookRef = (userBookId: string, userId: string, client = dbService.db) =>
+      Effect.gen(function* () {
+        const ref = yield* getOwnedUserBookRef(userBookId, userId, client)
+        const row = yield* Effect.tryPromise({
+          try: () => client
+            .select({
+              libraryState: userBooks.libraryState
+            })
+            .from(userBooks)
+            .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId), isNull(userBooks.removedAt)))
+            .limit(1),
+          catch: error => new DatabaseError({
+            message: `Failed to validate library state: ${error}`,
+            operation: 'getOwnedPhysicalUserBookRef'
+          })
+        })
+
+        const libraryState = row[0]?.libraryState as LibraryState | undefined
+        if (libraryState && libraryState !== 'owned') {
+          return yield* Effect.fail(new BookNotOwnedError({ userBookId, libraryState }))
+        }
+
+        return ref
+      })
+
     const hydrateActiveLoansByUserBookIds = (userBookIds: string[]) =>
       Effect.gen(function* () {
         if (userBookIds.length === 0) return new Map<string, ActiveLoanSummary>()
@@ -897,7 +939,7 @@ export const BookRepositoryLive = Layer.effect(
     return {
       ensureOpenLibraryBook,
 
-      addBookByISBN: (userId, isbn) =>
+      addBookByISBN: (userId, isbn, libraryState = 'owned') =>
         Effect.gen(function* () {
           const normalizedISBN = normalizeISBN(isbn)
 
@@ -905,7 +947,10 @@ export const BookRepositoryLive = Layer.effect(
           const existingResult = yield* Effect.tryPromise({
             try: () =>
               dbService.db
-                .select()
+                .select({
+                  userBookId: userBooks.id,
+                  libraryState: userBooks.libraryState
+                })
                 .from(userBooks)
                 .innerJoin(books, eq(userBooks.bookId, books.id))
                 .where(and(
@@ -921,8 +966,13 @@ export const BookRepositoryLive = Layer.effect(
             })
           })
 
-          if (existingResult[0]) {
-            return yield* Effect.fail(new BookAlreadyOwnedError({ isbn: normalizedISBN }))
+          const existing = existingResult[0]
+          if (existing) {
+            return yield* Effect.fail(new BookAlreadyOwnedError({
+              isbn: normalizedISBN,
+              userBookId: existing.userBookId,
+              libraryState: existing.libraryState as LibraryState
+            }))
           }
 
           const book = yield* ensureOpenLibraryBook(normalizedISBN)
@@ -937,6 +987,7 @@ export const BookRepositoryLive = Layer.effect(
                 id: userBookId,
                 userId,
                 bookId: book.id,
+                libraryState,
                 addedAt
               }),
             catch: error => new BookCreateError({ message: `Failed to add book to library: ${error}` })
@@ -945,6 +996,7 @@ export const BookRepositoryLive = Layer.effect(
           return {
             id: userBookId,
             bookId: book.id,
+            libraryState,
             book,
             location: null,
             tags: [],
@@ -1039,6 +1091,7 @@ export const BookRepositoryLive = Layer.effect(
                   bookId,
                   rating: input.rating,
                   note: input.note,
+                  libraryState: input.libraryState,
                   readingStatus: input.readingStatus,
                   currentPage: input.currentPage,
                   progressPercent: input.progressPercent,
@@ -1100,6 +1153,7 @@ export const BookRepositoryLive = Layer.effect(
               return {
                 id: userBookId,
                 bookId,
+                libraryState: input.libraryState,
                 book: toBookModel(createdBook, authorRows),
                 location: null,
                 tags: userTagRows.map(tag => tag.name),
@@ -1189,6 +1243,9 @@ export const BookRepositoryLive = Layer.effect(
             eq(userBooks.userId, userId),
             isNull(userBooks.removedAt),
             searchCondition,
+            pagination.libraryState && pagination.libraryState !== 'all'
+              ? eq(userBooks.libraryState, pagination.libraryState)
+              : undefined,
             pagination.loanStatus === 'loaned' ? activeLoanCondition : undefined,
             pagination.loanStatus === 'available' ? not(activeLoanCondition) : undefined,
             pagination.readingStatus && pagination.readingStatus !== 'all'
@@ -1270,6 +1327,7 @@ export const BookRepositoryLive = Layer.effect(
           const items = result.map(row => ({
             id: row.user_books.id,
             bookId: row.books.id,
+            libraryState: row.user_books.libraryState as LibraryState,
             book: toBookModel(row.books, authorsByBook.get(row.books.id) || []),
             location: toLocationModel(row.locations),
             tags: userTagsByUserBook.get(row.user_books.id) || [],
@@ -1356,6 +1414,7 @@ export const BookRepositoryLive = Layer.effect(
           const items = result.map(row => ({
             id: row.user_books.id,
             bookId: row.books.id,
+            libraryState: row.user_books.libraryState as LibraryState,
             book: toBookModel(row.books, authorsByBook.get(row.books.id) || []),
             location: toLocationModel(row.locations),
             tags: userTagsByUserBook.get(row.user_books.id) || [],
@@ -1451,7 +1510,10 @@ export const BookRepositoryLive = Layer.effect(
           const result = yield* Effect.tryPromise({
             try: () =>
               dbService.db
-                .select({ id: userBooks.id })
+                .select({
+                  userBookId: userBooks.id,
+                  libraryState: userBooks.libraryState
+                })
                 .from(userBooks)
                 .innerJoin(books, eq(userBooks.bookId, books.id))
                 .where(and(
@@ -1467,7 +1529,10 @@ export const BookRepositoryLive = Layer.effect(
             })
           })
 
-          return Boolean(result[0])
+          const row = result[0]
+          return row
+            ? { userBookId: row.userBookId, libraryState: row.libraryState as LibraryState }
+            : null
         }),
 
       userOwnsManualCover: (userId, pathname) =>
@@ -1659,6 +1724,7 @@ export const BookRepositoryLive = Layer.effect(
           return {
             id: row.user_books.id,
             bookId: bookData.id,
+            libraryState: row.user_books.libraryState as LibraryState,
             title: bookData.title,
             author: formatAuthorList(bookAuthorList),
             authors: bookAuthorList,
@@ -1934,6 +2000,8 @@ export const BookRepositoryLive = Layer.effect(
 
       updateRating: (userBookId, userId, rating) =>
         Effect.gen(function* () {
+          yield* getOwnedPhysicalUserBookRef(userBookId, userId)
+
           const result = yield* Effect.tryPromise({
             try: () => dbService.db
               .update(userBooks)
@@ -1972,7 +2040,7 @@ export const BookRepositoryLive = Layer.effect(
 
       updateLocation: (userBookId, userId, locationId) =>
         Effect.gen(function* () {
-          yield* getOwnedUserBookRef(userBookId, userId)
+          yield* getOwnedPhysicalUserBookRef(userBookId, userId)
 
           const result = yield* Effect.tryPromise({
             try: () =>
@@ -1994,6 +2062,8 @@ export const BookRepositoryLive = Layer.effect(
 
       updateReadingProgress: (userBookId, userId, progress) =>
         Effect.gen(function* () {
+          yield* getOwnedPhysicalUserBookRef(userBookId, userId)
+
           const result = yield* Effect.tryPromise({
             try: () => dbService.db
               .update(userBooks)
@@ -2015,6 +2085,82 @@ export const BookRepositoryLive = Layer.effect(
           if (result.length === 0) {
             return yield* Effect.fail(new BookNotFoundError({ bookId: userBookId }))
           }
+        }),
+
+      updateLibraryState: (userBookId, userId, state) =>
+        Effect.gen(function* () {
+          yield* getOwnedUserBookRef(userBookId, userId)
+
+          if (state === 'wishlisted') {
+            const activeLoan = yield* Effect.tryPromise({
+              try: () => dbService.db
+                .select({ borrowerDisplayName: loans.borrowerDisplayName })
+                .from(loans)
+                .where(and(eq(loans.userBookId, userBookId), eq(loans.ownerUserId, userId), eq(loans.status, 'active')))
+                .limit(1),
+              catch: error => new DatabaseError({
+                message: `Failed to check active loan before library state update: ${error}`,
+                operation: 'updateLibraryState.checkActiveLoan'
+              })
+            })
+
+            if (activeLoan[0]) {
+              return yield* Effect.fail(new ActiveLoanRemovalError({
+                userBookId,
+                borrowerDisplayName: activeLoan[0].borrowerDisplayName
+              }))
+            }
+          }
+
+          const updated = yield* Effect.tryPromise({
+            try: () => dbService.db
+              .update(userBooks)
+              .set({ libraryState: state })
+              .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId), isNull(userBooks.removedAt)))
+              .returning({ id: userBooks.id }),
+            catch: error => new DatabaseError({
+              message: `Failed to update library state: ${error}`,
+              operation: 'updateLibraryState'
+            })
+          })
+
+          if (updated.length === 0) {
+            return yield* Effect.fail(new BookNotFoundError({ bookId: userBookId }))
+          }
+
+          const rows = yield* Effect.tryPromise({
+            try: () => dbService.db
+              .select()
+              .from(userBooks)
+              .innerJoin(books, eq(userBooks.bookId, books.id))
+              .leftJoin(locations, eq(userBooks.locationId, locations.id))
+              .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId), isNull(userBooks.removedAt)))
+              .limit(1),
+            catch: error => new DatabaseError({
+              message: `Failed to load updated library state: ${error}`,
+              operation: 'updateLibraryState.load'
+            })
+          })
+
+          const row = rows[0]
+          if (!row) {
+            return yield* Effect.fail(new BookNotFoundError({ bookId: userBookId }))
+          }
+
+          const authorMap = yield* hydrateAuthorsForBookIds([row.books.id])
+          const tagMap = yield* hydrateUserTagsByUserBookIds([userBookId])
+          const activeLoansByUserBook = yield* hydrateActiveLoansByUserBookIds([userBookId])
+
+          return {
+            id: row.user_books.id,
+            bookId: row.books.id,
+            libraryState: row.user_books.libraryState as LibraryState,
+            book: toBookModel(row.books, authorMap.get(row.books.id) || []),
+            location: toLocationModel(row.locations),
+            tags: tagMap.get(userBookId) || [],
+            addedAt: row.user_books.addedAt,
+            activeLoan: activeLoansByUserBook.get(userBookId) ?? null
+          }
         })
     }
   })
@@ -2024,8 +2170,8 @@ export const BookRepositoryLive = Layer.effect(
 export const ensureOpenLibraryBook = (isbn: string) =>
   Effect.flatMap(BookRepository, repo => repo.ensureOpenLibraryBook(isbn))
 
-export const addBookByISBN = (userId: string, isbn: string) =>
-  Effect.flatMap(BookRepository, repo => repo.addBookByISBN(userId, isbn))
+export const addBookByISBN = (userId: string, isbn: string, libraryState?: LibraryState) =>
+  Effect.flatMap(BookRepository, repo => repo.addBookByISBN(userId, isbn, libraryState))
 
 export const createManualBookRecord = (userId: string, input: ManualBookRepositoryInput) =>
   Effect.flatMap(BookRepository, repo => repo.createManualBook(userId, input))

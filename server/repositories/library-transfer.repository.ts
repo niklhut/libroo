@@ -91,6 +91,7 @@ export const LibraryTransferRepositoryLive = Layer.effect(
                 isbn: books.isbn,
                 source: books.source,
                 locationPath: locations.path,
+                libraryState: userBooks.libraryState,
                 readingStatus: userBooks.readingStatus,
                 currentPage: userBooks.currentPage,
                 progressPercent: userBooks.progressPercent,
@@ -157,6 +158,7 @@ export const LibraryTransferRepositoryLive = Layer.effect(
               isbn: row.isbn ?? null,
               tags: tagsByUserBook.get(row.userBookId) ?? [],
               location: row.locationPath ?? null,
+              libraryState: row.libraryState,
               readingStatus: row.readingStatus,
               currentPage: row.currentPage ?? null,
               progressPercent: row.progressPercent ?? null,
@@ -389,6 +391,7 @@ export const LibraryTransferRepositoryLive = Layer.effect(
                 const locationId = await resolveLocationId(record.locationPath)
                 const userBookValues = {
                   locationId,
+                  libraryState: record.libraryState,
                   rating: record.rating,
                   note: record.note,
                   readingStatus: record.readingStatus,

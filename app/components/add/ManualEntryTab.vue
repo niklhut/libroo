@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { FormSubmitEvent } from '@nuxt/ui'
-import type { LibraryBook, ReadingStatus } from '~~/shared/types/book'
+import type { LibraryBook, LibraryState, ReadingStatus } from '~~/shared/types/book'
 import { MANUAL_COVER_MAX_BYTES, manualBookCreateSchema, type ManualBookCreateSchema } from '~~/shared/utils/schemas'
 
 const toast = useToast()
@@ -16,6 +16,7 @@ const formState = reactive({
   title: '',
   authors: [''],
   isbn: '',
+  libraryState: 'owned' as LibraryState,
   coverImage: null as { data: string, contentType: string, size: number } | null,
   publishDate: '',
   publisher: '',
@@ -32,6 +33,11 @@ const readingStatusItems = [
   { label: 'Unread', value: 'unread' },
   { label: 'Reading', value: 'reading' },
   { label: 'Read', value: 'read' }
+]
+
+const libraryStateItems = [
+  { label: 'Library', value: 'owned' },
+  { label: 'Wishlist', value: 'wishlisted' }
 ]
 
 const ratingItems = [
@@ -185,6 +191,7 @@ function reset() {
   formState.title = ''
   formState.authors = ['']
   formState.isbn = ''
+  formState.libraryState = 'owned'
   formState.coverImage = null
   formState.publishDate = ''
   formState.publisher = ''
@@ -283,6 +290,19 @@ defineExpose({ reset })
           />
         </UFormField>
 
+        <UFormField
+          label="Book state"
+          name="libraryState"
+        >
+          <USelect
+            v-model="formState.libraryState"
+            :items="libraryStateItems"
+            class="w-full"
+          />
+        </UFormField>
+      </div>
+
+      <div class="grid gap-4 sm:grid-cols-2">
         <UFormField
           label="Publish date"
           name="publishDate"

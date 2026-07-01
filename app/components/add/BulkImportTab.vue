@@ -8,6 +8,7 @@ const bulkIsbnText = ref('')
 const scannerStore = useIsbnScannerStore()
 const {
   scannedBooks,
+  targetLibraryState,
   isLookingUp,
   isAddingBooks,
   counts
@@ -23,6 +24,11 @@ const {
   addSelectedToLibrary,
   clearAll
 } = scannerStore
+
+const libraryStateItems = [
+  { label: 'Library', value: 'owned' },
+  { label: 'Wishlist', value: 'wishlisted' }
+]
 
 async function handleBulkImport() {
   if (!bulkIsbnText.value.trim()) {
@@ -86,6 +92,14 @@ defineExpose({ reset })
         />
       </UFormField>
 
+      <UFormField label="Add as">
+        <USelect
+          v-model="targetLibraryState"
+          :items="libraryStateItems"
+          class="w-full"
+        />
+      </UFormField>
+
       <p class="text-sm text-muted">
         Enter multiple ISBNs to look them all up at once. You can paste a list from a spreadsheet or text file.
       </p>
@@ -103,18 +117,31 @@ defineExpose({ reset })
     </div>
 
     <!-- Results -->
-    <BulkScanReview
+    <div
       v-else
-      :scanned-books="scannedBooks"
-      :is-adding-books="isAddingBooks"
-      :counts="counts"
-      @remove="removeIsbn"
-      @retry="retryIsbn"
-      @toggle="toggleSelection"
-      @select-all="selectAll"
-      @deselect-all="deselectAll"
-      @add-selected="handleAddSelected"
-      @clear-all="clearAll"
-    />
+      class="space-y-4"
+    >
+      <UFormField label="Add selected as">
+        <USelect
+          v-model="targetLibraryState"
+          :items="libraryStateItems"
+          class="w-full"
+        />
+      </UFormField>
+
+      <BulkScanReview
+        :scanned-books="scannedBooks"
+        :is-adding-books="isAddingBooks"
+        :counts="counts"
+        :target-library-state="targetLibraryState"
+        @remove="removeIsbn"
+        @retry="retryIsbn"
+        @toggle="toggleSelection"
+        @select-all="selectAll"
+        @deselect-all="deselectAll"
+        @add-selected="handleAddSelected"
+        @clear-all="clearAll"
+      />
+    </div>
   </UCard>
 </template>
