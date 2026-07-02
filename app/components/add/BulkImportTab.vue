@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
+import { DEFAULT_LIBRARY_PAGE_SIZE, buildLibraryRouteQuery } from '~~/shared/utils/library-query'
 
 const toast = useToast()
 
@@ -42,7 +43,13 @@ async function handleBulkImport() {
 async function handleAddSelected() {
   const result = await addSelectedToLibrary()
   if (result.success.length > 0 && result.failed.length === 0) {
-    navigateTo(targetLibraryState.value === 'owned' ? '/library' : `/library?libraryState=${targetLibraryState.value}`)
+    const query = new URLSearchParams(buildLibraryRouteQuery({
+      page: 1,
+      pageSize: DEFAULT_LIBRARY_PAGE_SIZE,
+      libraryState: targetLibraryState.value
+    }))
+    const queryString = query.toString()
+    navigateTo(queryString ? `/library?${queryString}` : '/library')
   }
 }
 
