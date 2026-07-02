@@ -42,7 +42,7 @@ async function handleBulkImport() {
 async function handleAddSelected() {
   const result = await addSelectedToLibrary()
   if (result.success.length > 0 && result.failed.length === 0) {
-    navigateTo(targetLibraryState.value === 'wishlisted' ? '/library?libraryState=wishlisted' : '/library')
+    navigateTo(targetLibraryState.value === 'owned' ? '/library' : `/library?libraryState=${targetLibraryState.value}`)
   }
 }
 

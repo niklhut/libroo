@@ -389,6 +389,16 @@ export const LibraryTransferRepositoryLive = Layer.effect(
                 }
 
                 const isWishlisted = record.libraryState === 'wishlisted'
+                if (existing && isWishlisted) {
+                  const activeLoan = await dbService.db
+                    .select({ id: loans.id })
+                    .from(loans)
+                    .where(and(eq(loans.userBookId, existing.userBookId), eq(loans.ownerUserId, userId), eq(loans.status, 'active')))
+                    .limit(1)
+                  if (activeLoan[0]) {
+                    throw new Error('Cannot move a book with an active loan to the wishlist')
+                  }
+                }
                 const locationId = isWishlisted ? null : await resolveLocationId(record.locationPath)
                 const userBookValues = {
                   locationId,

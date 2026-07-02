@@ -184,6 +184,7 @@ const pagination = computed(() => paginationState.value)
 const hasBooks = computed(() => books.value.length > 0)
 const hasActiveFilters = computed(() =>
   Boolean(search.value.trim())
+  || libraryState.value !== 'owned'
   || loanStatus.value !== 'all'
   || readingStatus.value !== 'all'
   || Boolean(tag.value.trim())
@@ -193,6 +194,7 @@ const hasActiveFilters = computed(() =>
   || sortBy.value !== 'dateAdded'
 )
 const activeAdvancedFilterCount = computed(() => getActiveLibraryFilterCount({
+  libraryState: libraryState.value,
   loanStatus: loanStatus.value,
   readingStatus: readingStatus.value,
   tag: tag.value,
@@ -208,10 +210,9 @@ const loanStatusItems = [
   { label: 'Available', value: 'available' },
   { label: 'Loaned out', value: 'loaned' }
 ]
-const libraryStateItems = [
+const libraryStateFilterItems = [
   { label: 'All books', value: 'all' },
-  { label: 'Library', value: 'owned' },
-  { label: 'Wishlist', value: 'wishlisted' }
+  ...libraryStateItems
 ]
 const readingStatusItems = [
   { label: 'All reading', value: 'all' },
@@ -242,6 +243,7 @@ const selectedLocationLabel = computed(() =>
   locationOptions.value.find(option => option.value === selectedLocationFilter.value)?.label
 )
 const activeFilterSummary = computed(() => describeActiveLibraryFilters({
+  libraryState: libraryState.value,
   loanStatus: loanStatus.value,
   readingStatus: readingStatus.value,
   tag: tag.value,
@@ -405,7 +407,7 @@ async function syncLoadedPages(targetPages: number) {
             />
             <USelect
               v-model="libraryState"
-              :items="libraryStateItems"
+              :items="libraryStateFilterItems"
               icon="i-lucide-bookmark"
               size="lg"
               aria-label="Library state"

@@ -107,7 +107,7 @@ describe('library query helpers', () => {
       includeLocationDescendants: true,
       sortBy: 'author',
       groupByLocation: true
-    })).toBe(8)
+    })).toBe(9)
   })
 
   it('can include search in active filter counts for full criteria checks', () => {
@@ -135,6 +135,7 @@ describe('library query helpers', () => {
     }, {
       locationLabel: 'Living Room - Shelf A'
     })).toEqual([
+      'Wishlist',
       'Available',
       'Reading: reading',
       'Tag: sci-fi',

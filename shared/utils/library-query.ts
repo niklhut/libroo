@@ -117,6 +117,7 @@ export const getActiveLibraryFilterCount = (
   options: { includeSearch?: boolean } = {}
 ): number => {
   const advancedFilters = [
+    state.libraryState && state.libraryState !== 'owned',
     state.loanStatus && state.loanStatus !== 'all',
     state.readingStatus && state.readingStatus !== 'all',
     state.tag?.trim(),
@@ -137,6 +138,9 @@ export const describeActiveLibraryFilters = (
   const labels: string[] = []
 
   if (options.includeSearch && state.search?.trim()) labels.push(`Search: ${state.search.trim()}`)
+  if (state.libraryState && state.libraryState !== 'owned') {
+    labels.push(state.libraryState === 'all' ? 'All books' : 'Wishlist')
+  }
   if (state.loanStatus && state.loanStatus !== 'all') {
     labels.push(state.loanStatus === 'loaned' ? 'Loaned out' : 'Available')
   }
