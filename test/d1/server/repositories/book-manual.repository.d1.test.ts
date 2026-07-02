@@ -100,7 +100,7 @@ describe('BookRepository.createManualBook on D1', () => {
     await expect(db.select().from(userBookTags)).resolves.toHaveLength(0)
   })
 
-  it('inserts wishlist state, converts state without touching metadata, and filters by state', async () => {
+  it('inserts sanitized wishlist state, converts state without touching metadata, and filters by state', async () => {
     const created = await runRepository(db, Effect.flatMap(BookRepository, repository =>
       repository.createManualBook('user-1', {
         title: 'Wishlist Book',
@@ -113,14 +113,34 @@ describe('BookRepository.createManualBook on D1', () => {
         rating: 4,
         note: 'keep this',
         libraryState: 'wishlisted',
-        readingStatus: 'unread',
-        currentPage: null,
-        progressPercent: null,
+        readingStatus: 'reading',
+        currentPage: 12,
+        progressPercent: 25,
         tags: ['Maybe']
       })
     ))
 
     expect(created.libraryState).toBe('wishlisted')
+    const [storedWishlist] = await db
+      .select({
+        libraryState: userBooks.libraryState,
+        rating: userBooks.rating,
+        note: userBooks.note,
+        readingStatus: userBooks.readingStatus,
+        currentPage: userBooks.currentPage,
+        progressPercent: userBooks.progressPercent
+      })
+      .from(userBooks)
+      .where(eq(userBooks.id, created.id))
+
+    expect(storedWishlist).toEqual({
+      libraryState: 'wishlisted',
+      rating: null,
+      note: 'keep this',
+      readingStatus: 'unread',
+      currentPage: null,
+      progressPercent: null
+    })
 
     const wishlistPage = await runRepository(db, Effect.flatMap(BookRepository, repository =>
       repository.getLibrary('user-1', { page: 1, pageSize: 10, libraryState: 'wishlisted' })
@@ -147,8 +167,54 @@ describe('BookRepository.createManualBook on D1', () => {
 
     expect(stored).toEqual({
       libraryState: 'owned',
-      rating: 4,
+      rating: null,
       note: 'keep this'
+    })
+  })
+
+  it('clears physical-only metadata when moving an owned book to the wishlist', async () => {
+    const created = await runRepository(db, Effect.flatMap(BookRepository, repository =>
+      repository.createManualBook('user-1', {
+        title: 'Owned Metadata Book',
+        authors: ['Ada Lovelace'],
+        isbn: null,
+        coverPath: null,
+        publishDate: null,
+        publisher: null,
+        numberOfPages: null,
+        rating: 5,
+        note: 'keep note',
+        libraryState: 'owned',
+        readingStatus: 'reading',
+        currentPage: 44,
+        progressPercent: 50,
+        tags: []
+      })
+    ))
+
+    await runRepository(db, Effect.flatMap(BookRepository, repository =>
+      repository.updateLibraryState(created.id, 'user-1', 'wishlisted')
+    ))
+
+    const [stored] = await db
+      .select({
+        libraryState: userBooks.libraryState,
+        rating: userBooks.rating,
+        note: userBooks.note,
+        readingStatus: userBooks.readingStatus,
+        currentPage: userBooks.currentPage,
+        progressPercent: userBooks.progressPercent
+      })
+      .from(userBooks)
+      .where(eq(userBooks.id, created.id))
+
+    expect(stored).toEqual({
+      libraryState: 'wishlisted',
+      rating: null,
+      note: 'keep note',
+      readingStatus: 'unread',
+      currentPage: null,
+      progressPercent: null
     })
   })
 

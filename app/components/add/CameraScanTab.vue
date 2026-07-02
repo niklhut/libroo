@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { LibraryState } from '~~/shared/types/book'
 import { storeToRefs } from 'pinia'
 import { defaultContinuousMode } from '~/utils/cameraScanDefaults'
 
@@ -16,11 +17,6 @@ const {
   isAddingBooks,
   counts
 } = storeToRefs(scannerStore)
-
-const libraryStateItems = [
-  { label: 'Library', value: 'owned' },
-  { label: 'Wishlist', value: 'wishlisted' }
-]
 
 const {
   addIsbn,
@@ -68,9 +64,8 @@ async function onIsbnDetected(isbn: string) {
   }
 }
 
-// Add book to library (single scan mode) - uses composable's addSelectedToLibrary
-async function addBookToLibrary() {
-  targetLibraryState.value = 'owned'
+async function addSingleScanBook(targetState: LibraryState, redirectPath: string) {
+  targetLibraryState.value = targetState
   if (singleScanBook.value?.result?.found && singleScanBook.value.status !== 'already_owned') {
     singleScanBook.value.status = 'found'
     singleScanBook.value.selected = true
@@ -78,28 +73,24 @@ async function addBookToLibrary() {
 
   const result = await addSelectedToLibrary()
   if (result.success.length > 0 && result.failed.length === 0) {
-    navigateTo('/library')
+    navigateTo(redirectPath)
   }
 }
 
-async function addBookToWishlist() {
-  targetLibraryState.value = 'wishlisted'
-  if (singleScanBook.value?.result?.found && singleScanBook.value.status !== 'already_owned') {
-    singleScanBook.value.status = 'found'
-    singleScanBook.value.selected = true
-  }
+// Add book to library (single scan mode) - uses composable's addSelectedToLibrary
+async function addBookToLibrary() {
+  await addSingleScanBook('owned', '/library')
+}
 
-  const result = await addSelectedToLibrary()
-  if (result.success.length > 0 && result.failed.length === 0) {
-    navigateTo('/library?libraryState=wishlisted')
-  }
+async function addBookToWishlist() {
+  await addSingleScanBook('wishlisted', '/library?libraryState=wishlisted')
 }
 
 // Handle adding selected books in continuous mode
 async function handleAddSelected() {
   const result = await addSelectedToLibrary()
   if (result.success.length > 0 && result.failed.length === 0) {
-    navigateTo('/library')
+    navigateTo(targetLibraryState.value === 'wishlisted' ? '/library?libraryState=wishlisted' : '/library')
   }
 }
 

@@ -25,11 +25,6 @@ const {
   clearAll
 } = scannerStore
 
-const libraryStateItems = [
-  { label: 'Library', value: 'owned' },
-  { label: 'Wishlist', value: 'wishlisted' }
-]
-
 async function handleBulkImport() {
   if (!bulkIsbnText.value.trim()) {
     toast.add({
@@ -47,7 +42,7 @@ async function handleBulkImport() {
 async function handleAddSelected() {
   const result = await addSelectedToLibrary()
   if (result.success.length > 0 && result.failed.length === 0) {
-    navigateTo('/library')
+    navigateTo(targetLibraryState.value === 'wishlisted' ? '/library?libraryState=wishlisted' : '/library')
   }
 }
 

@@ -78,7 +78,7 @@ export const normalizeLibraryQuery = (
     search: cleanText(query.search),
     libraryState: libraryStateFilters.has(libraryState as LibraryStateFilter)
       ? libraryState as LibraryStateFilter
-      : 'all',
+      : 'owned',
     loanStatus: loanFilters.has(loanStatus as LibraryLoanFilter)
       ? loanStatus as LibraryLoanFilter
       : 'all',
@@ -100,7 +100,7 @@ export const buildLibraryRouteQuery = (state: LibraryQueryState): Record<string,
 
   if (state.pageSize !== DEFAULT_LIBRARY_PAGE_SIZE) query.pageSize = String(state.pageSize)
   if (state.search) query.search = state.search
-  if (state.libraryState && state.libraryState !== 'all') query.libraryState = state.libraryState
+  if (state.libraryState && state.libraryState !== 'owned') query.libraryState = state.libraryState
   if (state.loanStatus && state.loanStatus !== 'all') query.loanStatus = state.loanStatus
   if (state.readingStatus && state.readingStatus !== 'all') query.readingStatus = state.readingStatus
   if (state.tag) query.tag = state.tag

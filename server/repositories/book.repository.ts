@@ -1061,6 +1061,7 @@ export const BookRepositoryLive = Layer.effect(
                     : null
                 })
                 .filter((tag): tag is NonNullable<typeof tag> => Boolean(tag))
+              const isWishlisted = input.libraryState === 'wishlisted'
 
               await dbService.executeAtomic((database) => {
                 const statements: AtomicDbStatement[] = [
@@ -1089,12 +1090,12 @@ export const BookRepositoryLive = Layer.effect(
                   id: userBookId,
                   userId,
                   bookId,
-                  rating: input.rating,
+                  rating: isWishlisted ? null : input.rating,
                   note: input.note,
                   libraryState: input.libraryState,
-                  readingStatus: input.readingStatus,
-                  currentPage: input.currentPage,
-                  progressPercent: input.progressPercent,
+                  readingStatus: isWishlisted ? 'unread' : input.readingStatus,
+                  currentPage: isWishlisted ? null : input.currentPage,
+                  progressPercent: isWishlisted ? null : input.progressPercent,
                   addedAt: now
                 }))
 
@@ -2006,7 +2007,7 @@ export const BookRepositoryLive = Layer.effect(
             try: () => dbService.db
               .update(userBooks)
               .set({ rating })
-              .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId), isNull(userBooks.removedAt)))
+              .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId), eq(userBooks.libraryState, 'owned'), isNull(userBooks.removedAt)))
               .returning({ id: userBooks.id }),
             catch: error => new DatabaseError({
               message: `Failed to update rating: ${error}`,
@@ -2015,6 +2016,7 @@ export const BookRepositoryLive = Layer.effect(
           })
 
           if (result.length === 0) {
+            yield* getOwnedPhysicalUserBookRef(userBookId, userId)
             return yield* Effect.fail(new BookNotFoundError({ bookId: userBookId }))
           }
         }),
@@ -2047,7 +2049,7 @@ export const BookRepositoryLive = Layer.effect(
               dbService.db
                 .update(userBooks)
                 .set({ locationId })
-                .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId), isNull(userBooks.removedAt)))
+                .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId), eq(userBooks.libraryState, 'owned'), isNull(userBooks.removedAt)))
                 .returning(),
             catch: error => new DatabaseError({
               message: `Failed to update location: ${error}`,
@@ -2056,6 +2058,7 @@ export const BookRepositoryLive = Layer.effect(
           })
 
           if (result.length === 0) {
+            yield* getOwnedPhysicalUserBookRef(userBookId, userId)
             return yield* Effect.fail(new BookNotFoundError({ bookId: userBookId }))
           }
         }),
@@ -2074,7 +2077,7 @@ export const BookRepositoryLive = Layer.effect(
                 startedAt: progress.startedAt ? new Date(progress.startedAt) : null,
                 finishedAt: progress.finishedAt ? new Date(progress.finishedAt) : null
               })
-              .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId), isNull(userBooks.removedAt)))
+              .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId), eq(userBooks.libraryState, 'owned'), isNull(userBooks.removedAt)))
               .returning({ id: userBooks.id }),
             catch: error => new DatabaseError({
               message: `Failed to update reading progress: ${error}`,
@@ -2083,6 +2086,7 @@ export const BookRepositoryLive = Layer.effect(
           })
 
           if (result.length === 0) {
+            yield* getOwnedPhysicalUserBookRef(userBookId, userId)
             return yield* Effect.fail(new BookNotFoundError({ bookId: userBookId }))
           }
         }),
@@ -2115,7 +2119,18 @@ export const BookRepositoryLive = Layer.effect(
           const updated = yield* Effect.tryPromise({
             try: () => dbService.db
               .update(userBooks)
-              .set({ libraryState: state })
+              .set(state === 'wishlisted'
+                ? {
+                    libraryState: state,
+                    locationId: null,
+                    rating: null,
+                    readingStatus: 'unread',
+                    currentPage: null,
+                    progressPercent: null,
+                    startedAt: null,
+                    finishedAt: null
+                  }
+                : { libraryState: state })
               .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId), isNull(userBooks.removedAt)))
               .returning({ id: userBooks.id }),
             catch: error => new DatabaseError({

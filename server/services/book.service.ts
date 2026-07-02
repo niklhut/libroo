@@ -315,6 +315,7 @@ export const BookServiceLive = Layer.effect(
 
       createManualBook: (userId, input) =>
         Effect.gen(function* () {
+          const isWishlisted = input.libraryState === 'wishlisted'
           let coverPath: string | null = null
           if (input.coverImage) {
             const coverBuffer = yield* decodeCoverImage(input.coverImage.data)
@@ -338,12 +339,12 @@ export const BookServiceLive = Layer.effect(
             publishDate: input.publishDate,
             publisher: input.publisher,
             numberOfPages: input.numberOfPages,
-            rating: input.rating,
+            rating: isWishlisted ? null : input.rating,
             note: input.note,
             libraryState: input.libraryState,
-            readingStatus: input.readingStatus,
-            currentPage: input.currentPage,
-            progressPercent: input.progressPercent,
+            readingStatus: isWishlisted ? 'unread' : input.readingStatus,
+            currentPage: isWishlisted ? null : input.currentPage,
+            progressPercent: isWishlisted ? null : input.progressPercent,
             tags: input.tags
           }).pipe(
             Effect.tapError(error =>

@@ -45,7 +45,7 @@ describe('server/api/books/index.get', () => {
       page: 1,
       pageSize: 100,
       search: 'dune',
-      libraryState: 'all',
+      libraryState: 'owned',
       loanStatus: 'loaned',
       readingStatus: 'read',
       tag: 'classic',

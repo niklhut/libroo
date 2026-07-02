@@ -388,15 +388,16 @@ export const LibraryTransferRepositoryLive = Layer.effect(
                   return tagLinks
                 }
 
-                const locationId = await resolveLocationId(record.locationPath)
+                const isWishlisted = record.libraryState === 'wishlisted'
+                const locationId = isWishlisted ? null : await resolveLocationId(record.locationPath)
                 const userBookValues = {
                   locationId,
                   libraryState: record.libraryState,
-                  rating: record.rating,
+                  rating: isWishlisted ? null : record.rating,
                   note: record.note,
-                  readingStatus: record.readingStatus,
-                  currentPage: record.currentPage,
-                  progressPercent: record.progressPercent
+                  readingStatus: isWishlisted ? 'unread' : record.readingStatus,
+                  currentPage: isWishlisted ? null : record.currentPage,
+                  progressPercent: isWishlisted ? null : record.progressPercent
                 }
 
                 let sharedOpenLibraryBookId: string | null = null

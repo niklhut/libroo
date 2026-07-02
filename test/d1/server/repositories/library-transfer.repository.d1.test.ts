@@ -94,6 +94,46 @@ describe('LibraryTransferRepository.importRecords on D1', () => {
     expect(tagRows).toEqual([{ name: 'Updated' }])
   })
 
+  it('sanitizes physical-only fields for wishlisted imports', async () => {
+    const result = await importRecords([
+      importRecord({
+        title: 'Wishlist CSV Book',
+        authors: ['Ada Lovelace'],
+        locationPath: 'Desk',
+        libraryState: 'wishlisted',
+        readingStatus: 'reading',
+        currentPage: 12,
+        progressPercent: 30,
+        rating: 5,
+        note: 'keep note'
+      })
+    ], 'csv')
+
+    expect(result).toMatchObject({ created: 1, updated: 0, skipped: 0, failed: [] })
+    await expect(db.select().from(locations)).resolves.toHaveLength(0)
+    const rows = await db
+      .select({
+        libraryState: userBooks.libraryState,
+        locationId: userBooks.locationId,
+        rating: userBooks.rating,
+        note: userBooks.note,
+        readingStatus: userBooks.readingStatus,
+        currentPage: userBooks.currentPage,
+        progressPercent: userBooks.progressPercent
+      })
+      .from(userBooks)
+
+    expect(rows).toEqual([{
+      libraryState: 'wishlisted',
+      locationId: null,
+      rating: null,
+      note: 'keep note',
+      readingStatus: 'unread',
+      currentPage: null,
+      progressPercent: null
+    }])
+  })
+
   it('does not fall back to title and author matching when an ISBN is provided', async () => {
     await seedExistingBook(db)
 

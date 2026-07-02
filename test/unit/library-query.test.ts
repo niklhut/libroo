@@ -35,7 +35,7 @@ describe('library query helpers', () => {
     })
   })
 
-  it('falls back to all filters when params are unknown', () => {
+  it('falls back to owned library state and all secondary filters when params are unknown', () => {
     expect(normalizeLibraryQuery({
       loanStatus: 'missing',
       libraryState: 'missing',
@@ -43,7 +43,7 @@ describe('library query helpers', () => {
       search: '   '
     })).toMatchObject({
       search: undefined,
-      libraryState: 'all',
+      libraryState: 'owned',
       loanStatus: 'all',
       readingStatus: 'all',
       tag: undefined,
@@ -78,6 +78,7 @@ describe('library query helpers', () => {
     })).toEqual({
       page: '1',
       search: 'dune',
+      libraryState: 'all',
       loanStatus: 'available',
       tag: 'classic',
       locationId: 'loc-1',
@@ -144,9 +145,9 @@ describe('library query helpers', () => {
     ])
   })
 
-  it('defaults effective library state to all and serializes explicit states', () => {
+  it('defaults effective library state to owned and serializes explicit non-default states', () => {
     expect(normalizeLibraryQuery({})).toMatchObject({
-      libraryState: 'all'
+      libraryState: 'owned'
     })
 
     expect(buildLibraryRouteQuery({
@@ -157,8 +158,19 @@ describe('library query helpers', () => {
       readingStatus: 'all',
       sortBy: 'dateAdded'
     })).toEqual({
+      page: '1'
+    })
+
+    expect(buildLibraryRouteQuery({
+      page: 1,
+      pageSize: 12,
+      libraryState: 'all',
+      loanStatus: 'all',
+      readingStatus: 'all',
+      sortBy: 'dateAdded'
+    })).toEqual({
       page: '1',
-      libraryState: 'owned'
+      libraryState: 'all'
     })
   })
 })

@@ -18,7 +18,7 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
   const pagination = ref<DashboardPagination | null>(null)
   const search = ref('')
   const loanStatus = ref<LibraryLoanFilter>('all')
-  const libraryState = ref<LibraryStateFilter>('all')
+  const libraryState = ref<LibraryStateFilter>('owned')
   const readingStatus = ref<LibraryReadingFilter>('all')
   const tag = ref('')
   const location = ref('')

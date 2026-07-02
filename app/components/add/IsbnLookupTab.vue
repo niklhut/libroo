@@ -13,6 +13,7 @@ const formState = reactive({
 })
 
 const lookupResult = ref<BookLookupResult | null>(null)
+const isMoving = ref(false)
 
 // Lookup book by ISBN
 async function lookupISBN(payload: FormSubmitEvent<BookIsbnSchema>) {
@@ -60,7 +61,7 @@ async function addBookToLibrary(libraryState: LibraryState = 'owned') {
       color: 'success'
     })
 
-    navigateTo('/library')
+    navigateTo(libraryState === 'wishlisted' ? '/library?libraryState=wishlisted' : '/library')
     return
   }
 
@@ -80,8 +81,9 @@ async function addBookToLibrary(libraryState: LibraryState = 'owned') {
 }
 
 async function moveToLibrary() {
-  if (!lookupResult.value?.existingState || lookupResult.value.existingState !== 'wishlisted') return
+  if (!lookupResult.value?.existingState || lookupResult.value.existingState !== 'wishlisted' || isMoving.value) return
 
+  isMoving.value = true
   try {
     const userBookId = (lookupResult.value as BookLookupResult & { existingUserBookId?: string }).existingUserBookId
     if (!userBookId) throw new Error('Wishlist book could not be resolved')
@@ -103,6 +105,8 @@ async function moveToLibrary() {
       description: message,
       color: 'error'
     })
+  } finally {
+    isMoving.value = false
   }
 }
 
@@ -186,6 +190,7 @@ defineExpose({ reset })
       back-label="Search Again"
       back-icon="i-lucide-arrow-left"
       :add-disabled="lookupResult.existsLocally"
+      :move-disabled="isMoving"
       unavailable-label="Already in Library"
       @add="addBookToLibrary('owned')"
       @wishlist="addBookToLibrary('wishlisted')"

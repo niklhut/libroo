@@ -144,16 +144,11 @@ async function updateBookLibraryState(state: LibraryState) {
 
   isUpdatingLibraryState.value = true
   try {
-    const result = await $fetch<{ book: LibraryBook }>(`/api/books/${userBookId}/state`, {
+    await $fetch(`/api/books/${userBookId}/state`, {
       method: 'PUT',
       body: { state }
     })
-    book.value = {
-      ...book.value,
-      libraryState: result.book.libraryState,
-      location: result.book.location,
-      activeLoan: result.book.activeLoan ?? null
-    }
+    await refresh()
     markNeedsSync(getLoadedPages())
     toast.add({
       title: state === 'owned' ? 'Moved to library' : 'Moved to wishlist',

@@ -54,7 +54,7 @@ const routeState = normalizeLibraryQuery(route.query)
 const hasRouteStateMismatch = pageSize.value !== routeState.pageSize
   || search.value !== (routeState.search ?? '')
   || loanStatus.value !== (routeState.loanStatus ?? 'all')
-  || libraryState.value !== (routeState.libraryState ?? 'all')
+  || libraryState.value !== (routeState.libraryState ?? 'owned')
   || readingStatus.value !== (routeState.readingStatus ?? 'all')
   || tag.value !== (routeState.tag ?? '')
   || location.value !== (routeState.location ?? '')
@@ -73,7 +73,7 @@ if (hasRouteStateMismatch || !hasCachedResults) {
 pageSize.value = routeState.pageSize
 search.value = routeState.search ?? ''
 loanStatus.value = routeState.loanStatus ?? 'all'
-libraryState.value = routeState.libraryState ?? 'all'
+libraryState.value = routeState.libraryState ?? 'owned'
 readingStatus.value = routeState.readingStatus ?? 'all'
 tag.value = routeState.tag ?? ''
 location.value = routeState.location ?? ''
@@ -318,7 +318,7 @@ function updateBrowserQuery(state: Parameters<typeof buildLibraryRouteQuery>[0])
 function clearFilters() {
   search.value = ''
   loanStatus.value = 'all'
-  libraryState.value = 'all'
+  libraryState.value = 'owned'
   readingStatus.value = 'all'
   tag.value = ''
   location.value = ''

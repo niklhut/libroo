@@ -35,11 +35,6 @@ const readingStatusItems = [
   { label: 'Read', value: 'read' }
 ]
 
-const libraryStateItems = [
-  { label: 'Library', value: 'owned' },
-  { label: 'Wishlist', value: 'wishlisted' }
-]
-
 const ratingItems = [
   { label: 'Unrated', value: null },
   { label: '1 star', value: 1 },
@@ -48,6 +43,8 @@ const ratingItems = [
   { label: '4 stars', value: 4 },
   { label: '5 stars', value: 5 }
 ]
+
+const isOwnedBook = computed(() => formState.libraryState === 'owned')
 
 watch(tagInput, (value) => {
   formState.tags = value
@@ -401,7 +398,10 @@ defineExpose({ reset })
         />
       </UFormField>
 
-      <div class="grid gap-4 sm:grid-cols-2">
+      <div
+        v-if="isOwnedBook"
+        class="grid gap-4 sm:grid-cols-2"
+      >
         <UFormField
           label="Reading status"
           name="readingStatus"
@@ -425,7 +425,10 @@ defineExpose({ reset })
         </UFormField>
       </div>
 
-      <div class="grid gap-4 sm:grid-cols-2">
+      <div
+        v-if="isOwnedBook"
+        class="grid gap-4 sm:grid-cols-2"
+      >
         <UFormField
           label="Current page"
           name="currentPage"

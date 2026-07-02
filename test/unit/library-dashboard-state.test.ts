@@ -6,6 +6,7 @@ import type { LibraryBook } from '../../shared/types/book'
 const createBook = (id: string): LibraryBook => ({
   id,
   bookId: `book-${id}`,
+  libraryState: 'owned',
   title: `Title ${id}`,
   author: `Author ${id}`,
   isbn: `97800000000${id}`,
@@ -29,6 +30,7 @@ describe('useLibraryDashboardStore', () => {
       pageSize,
       allBooks,
       pagination,
+      libraryState,
       shouldRestoreScroll,
       shouldSync,
       syncTargetPages
@@ -38,6 +40,7 @@ describe('useLibraryDashboardStore', () => {
     expect(pageSize.value).toBe(12)
     expect(allBooks.value).toEqual([])
     expect(pagination.value).toBeNull()
+    expect(libraryState.value).toBe('owned')
     expect(shouldRestoreScroll.value).toBe(false)
     expect(shouldSync.value).toBe(false)
     expect(syncTargetPages.value).toBe(1)
