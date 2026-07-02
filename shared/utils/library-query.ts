@@ -32,6 +32,7 @@ export interface LibraryFilterSummaryOptions {
 }
 
 export const DEFAULT_LIBRARY_PAGE_SIZE = 12
+export const DEFAULT_LIBRARY_STATE_FILTER: LibraryStateFilter = 'all'
 
 const loanFilters = new Set<LibraryLoanFilter>(['all', 'available', 'loaned'])
 const readingFilters = new Set<LibraryReadingFilter>(['all', 'unread', 'reading', 'read'])
@@ -78,7 +79,7 @@ export const normalizeLibraryQuery = (
     search: cleanText(query.search),
     libraryState: libraryStateFilters.has(libraryState as LibraryStateFilter)
       ? libraryState as LibraryStateFilter
-      : 'owned',
+      : DEFAULT_LIBRARY_STATE_FILTER,
     loanStatus: loanFilters.has(loanStatus as LibraryLoanFilter)
       ? loanStatus as LibraryLoanFilter
       : 'all',
@@ -100,7 +101,7 @@ export const buildLibraryRouteQuery = (state: LibraryQueryState): Record<string,
 
   if (state.pageSize !== DEFAULT_LIBRARY_PAGE_SIZE) query.pageSize = String(state.pageSize)
   if (state.search) query.search = state.search
-  if (state.libraryState && state.libraryState !== 'owned') query.libraryState = state.libraryState
+  if (state.libraryState && state.libraryState !== DEFAULT_LIBRARY_STATE_FILTER) query.libraryState = state.libraryState
   if (state.loanStatus && state.loanStatus !== 'all') query.loanStatus = state.loanStatus
   if (state.readingStatus && state.readingStatus !== 'all') query.readingStatus = state.readingStatus
   if (state.tag) query.tag = state.tag
@@ -117,7 +118,7 @@ export const getActiveLibraryFilterCount = (
   options: { includeSearch?: boolean } = {}
 ): number => {
   const advancedFilters = [
-    state.libraryState && state.libraryState !== 'owned',
+    state.libraryState && state.libraryState !== DEFAULT_LIBRARY_STATE_FILTER,
     state.loanStatus && state.loanStatus !== 'all',
     state.readingStatus && state.readingStatus !== 'all',
     state.tag?.trim(),
@@ -138,8 +139,8 @@ export const describeActiveLibraryFilters = (
   const labels: string[] = []
 
   if (options.includeSearch && state.search?.trim()) labels.push(`Search: ${state.search.trim()}`)
-  if (state.libraryState && state.libraryState !== 'owned') {
-    labels.push(state.libraryState === 'all' ? 'All books' : 'Wishlist')
+  if (state.libraryState && state.libraryState !== DEFAULT_LIBRARY_STATE_FILTER) {
+    labels.push(state.libraryState === 'owned' ? 'Library' : 'Wishlist')
   }
   if (state.loanStatus && state.loanStatus !== 'all') {
     labels.push(state.loanStatus === 'loaned' ? 'Loaned out' : 'Available')

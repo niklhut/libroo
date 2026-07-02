@@ -40,7 +40,7 @@ describe('useLibraryDashboardStore', () => {
     expect(pageSize.value).toBe(12)
     expect(allBooks.value).toEqual([])
     expect(pagination.value).toBeNull()
-    expect(libraryState.value).toBe('owned')
+    expect(libraryState.value).toBe('all')
     expect(shouldRestoreScroll.value).toBe(false)
     expect(shouldSync.value).toBe(false)
     expect(syncTargetPages.value).toBe(1)

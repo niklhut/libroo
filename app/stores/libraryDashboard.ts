@@ -1,5 +1,6 @@
 import type { LibraryBook } from '~~/shared/types/book'
 import type { LibraryLoanFilter, LibraryReadingFilter, LibrarySort, LibraryStateFilter } from '~~/shared/utils/library-query'
+import { DEFAULT_LIBRARY_STATE_FILTER } from '~~/shared/utils/library-query'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
@@ -18,7 +19,7 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
   const pagination = ref<DashboardPagination | null>(null)
   const search = ref('')
   const loanStatus = ref<LibraryLoanFilter>('all')
-  const libraryState = ref<LibraryStateFilter>('owned')
+  const libraryState = ref<LibraryStateFilter>(DEFAULT_LIBRARY_STATE_FILTER)
   const readingStatus = ref<LibraryReadingFilter>('all')
   const tag = ref('')
   const location = ref('')

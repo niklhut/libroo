@@ -2,6 +2,7 @@
 import type { LibraryBook, BookLocationWithCount } from '~~/shared/types/book'
 import {
   buildLibraryRouteQuery,
+  DEFAULT_LIBRARY_STATE_FILTER,
   describeActiveLibraryFilters,
   getActiveLibraryFilterCount,
   normalizeLibraryQuery
@@ -54,7 +55,7 @@ const routeState = normalizeLibraryQuery(route.query)
 const hasRouteStateMismatch = pageSize.value !== routeState.pageSize
   || search.value !== (routeState.search ?? '')
   || loanStatus.value !== (routeState.loanStatus ?? 'all')
-  || libraryState.value !== (routeState.libraryState ?? 'owned')
+  || libraryState.value !== (routeState.libraryState ?? DEFAULT_LIBRARY_STATE_FILTER)
   || readingStatus.value !== (routeState.readingStatus ?? 'all')
   || tag.value !== (routeState.tag ?? '')
   || location.value !== (routeState.location ?? '')
@@ -73,7 +74,7 @@ if (hasRouteStateMismatch || !hasCachedResults) {
 pageSize.value = routeState.pageSize
 search.value = routeState.search ?? ''
 loanStatus.value = routeState.loanStatus ?? 'all'
-libraryState.value = routeState.libraryState ?? 'owned'
+libraryState.value = routeState.libraryState ?? DEFAULT_LIBRARY_STATE_FILTER
 readingStatus.value = routeState.readingStatus ?? 'all'
 tag.value = routeState.tag ?? ''
 location.value = routeState.location ?? ''
@@ -88,6 +89,7 @@ const ALL_LOCATIONS_VALUE = '__all_locations__'
 const areFiltersExpanded = ref(false)
 
 const shouldFetchInitial = allBooks.value.length === 0 || !paginationState.value
+const showPhysicalFilters = computed(() => libraryState.value !== 'wishlisted')
 
 const { data: locations } = await useFetch<BookLocationWithCount[]>('/api/locations', {
   headers: useRequestHeaders(['cookie'])
@@ -102,13 +104,13 @@ const { data, refresh, status } = await useFetch<PaginatedResponse>('/api/books'
     page: page.value,
     pageSize: pageSize.value,
     search: search.value || undefined,
-    libraryState: libraryState.value === 'owned' ? undefined : libraryState.value,
-    loanStatus: loanStatus.value === 'all' ? undefined : loanStatus.value,
-    readingStatus: readingStatus.value === 'all' ? undefined : readingStatus.value,
+    libraryState: libraryState.value === DEFAULT_LIBRARY_STATE_FILTER ? undefined : libraryState.value,
+    loanStatus: showPhysicalFilters.value && loanStatus.value !== 'all' ? loanStatus.value : undefined,
+    readingStatus: showPhysicalFilters.value && readingStatus.value !== 'all' ? readingStatus.value : undefined,
     tag: tag.value || undefined,
-    location: location.value || undefined,
-    locationId: locationId.value || undefined,
-    includeLocationDescendants: includeLocationDescendants.value || undefined,
+    location: showPhysicalFilters.value ? location.value || undefined : undefined,
+    locationId: showPhysicalFilters.value ? locationId.value || undefined : undefined,
+    includeLocationDescendants: showPhysicalFilters.value ? includeLocationDescendants.value || undefined : undefined,
     sortBy: sortBy.value === 'dateAdded' ? undefined : sortBy.value
   }))
 })
@@ -184,25 +186,25 @@ const pagination = computed(() => paginationState.value)
 const hasBooks = computed(() => books.value.length > 0)
 const hasActiveFilters = computed(() =>
   Boolean(search.value.trim())
-  || libraryState.value !== 'owned'
-  || loanStatus.value !== 'all'
-  || readingStatus.value !== 'all'
+  || libraryState.value !== DEFAULT_LIBRARY_STATE_FILTER
+  || (showPhysicalFilters.value && loanStatus.value !== 'all')
+  || (showPhysicalFilters.value && readingStatus.value !== 'all')
   || Boolean(tag.value.trim())
-  || Boolean(location.value.trim())
-  || Boolean(locationId.value)
-  || includeLocationDescendants.value
+  || (showPhysicalFilters.value && Boolean(location.value.trim()))
+  || (showPhysicalFilters.value && Boolean(locationId.value))
+  || (showPhysicalFilters.value && includeLocationDescendants.value)
   || sortBy.value !== 'dateAdded'
 )
 const activeAdvancedFilterCount = computed(() => getActiveLibraryFilterCount({
   libraryState: libraryState.value,
-  loanStatus: loanStatus.value,
-  readingStatus: readingStatus.value,
+  loanStatus: showPhysicalFilters.value ? loanStatus.value : 'all',
+  readingStatus: showPhysicalFilters.value ? readingStatus.value : 'all',
   tag: tag.value,
-  location: location.value,
-  locationId: locationId.value,
-  includeLocationDescendants: includeLocationDescendants.value,
+  location: showPhysicalFilters.value ? location.value : undefined,
+  locationId: showPhysicalFilters.value ? locationId.value : undefined,
+  includeLocationDescendants: showPhysicalFilters.value ? includeLocationDescendants.value : false,
   sortBy: sortBy.value,
-  groupByLocation: groupByLocation.value
+  groupByLocation: showPhysicalFilters.value ? groupByLocation.value : false
 }))
 const hasActiveAdvancedFilters = computed(() => activeAdvancedFilterCount.value > 0)
 const loanStatusItems = [
@@ -220,12 +222,13 @@ const readingStatusItems = [
   { label: 'Reading', value: 'reading' },
   { label: 'Read', value: 'read' }
 ]
-const sortItems = [
+const physicalSortItem = { label: 'Location path', value: 'locationPath' }
+const sortItems = computed(() => [
   { label: 'Date added', value: 'dateAdded' },
-  { label: 'Location path', value: 'locationPath' },
+  ...(showPhysicalFilters.value ? [physicalSortItem] : []),
   { label: 'Title', value: 'title' },
   { label: 'Author', value: 'author' }
-]
+])
 const selectedLocationFilter = computed({
   get: () => locationId.value || ALL_LOCATIONS_VALUE,
   set: (value: string) => {
@@ -244,14 +247,14 @@ const selectedLocationLabel = computed(() =>
 )
 const activeFilterSummary = computed(() => describeActiveLibraryFilters({
   libraryState: libraryState.value,
-  loanStatus: loanStatus.value,
-  readingStatus: readingStatus.value,
+  loanStatus: showPhysicalFilters.value ? loanStatus.value : 'all',
+  readingStatus: showPhysicalFilters.value ? readingStatus.value : 'all',
   tag: tag.value,
-  location: location.value,
-  locationId: locationId.value,
-  includeLocationDescendants: includeLocationDescendants.value,
+  location: showPhysicalFilters.value ? location.value : undefined,
+  locationId: showPhysicalFilters.value ? locationId.value : undefined,
+  includeLocationDescendants: showPhysicalFilters.value ? includeLocationDescendants.value : false,
   sortBy: sortBy.value,
-  groupByLocation: groupByLocation.value
+  groupByLocation: showPhysicalFilters.value ? groupByLocation.value : false
 }, {
   locationLabel: selectedLocationLabel.value
 }))
@@ -282,6 +285,20 @@ watch([search, loanStatus, libraryState, readingStatus, tag, location, locationI
   }, 250)
 })
 
+watch(libraryState, (nextState) => {
+  if (nextState !== 'wishlisted') return
+
+  loanStatus.value = 'all'
+  readingStatus.value = 'all'
+  location.value = ''
+  locationId.value = ''
+  includeLocationDescendants.value = false
+  groupByLocation.value = false
+  if (sortBy.value === 'locationPath') {
+    sortBy.value = 'dateAdded'
+  }
+})
+
 watch(locationId, (nextLocationId) => {
   if (!nextLocationId) {
     includeLocationDescendants.value = false
@@ -294,12 +311,12 @@ async function applyFilters() {
     pageSize: pageSize.value,
     search: search.value.trim() || undefined,
     libraryState: libraryState.value,
-    loanStatus: loanStatus.value,
-    readingStatus: readingStatus.value,
+    loanStatus: showPhysicalFilters.value ? loanStatus.value : 'all',
+    readingStatus: showPhysicalFilters.value ? readingStatus.value : 'all',
     tag: tag.value.trim() || undefined,
-    location: location.value.trim() || undefined,
-    locationId: locationId.value || undefined,
-    includeLocationDescendants: includeLocationDescendants.value,
+    location: showPhysicalFilters.value ? location.value.trim() || undefined : undefined,
+    locationId: showPhysicalFilters.value ? locationId.value || undefined : undefined,
+    includeLocationDescendants: showPhysicalFilters.value ? includeLocationDescendants.value : false,
     sortBy: sortBy.value
   })
 
@@ -320,7 +337,7 @@ function updateBrowserQuery(state: Parameters<typeof buildLibraryRouteQuery>[0])
 function clearFilters() {
   search.value = ''
   loanStatus.value = 'all'
-  libraryState.value = 'owned'
+  libraryState.value = DEFAULT_LIBRARY_STATE_FILTER
   readingStatus.value = 'all'
   tag.value = ''
   location.value = ''
@@ -479,14 +496,19 @@ async function syncLoadedPages(targetPages: number) {
               id="library-advanced-filters"
               class="mt-3 space-y-3 rounded-lg border border-default bg-muted/30 p-3"
             >
-              <div class="grid gap-3 md:grid-cols-4">
+              <div
+                class="grid gap-3"
+                :class="showPhysicalFilters ? 'md:grid-cols-4' : 'md:grid-cols-1'"
+              >
                 <USelect
+                  v-if="showPhysicalFilters"
                   v-model="loanStatus"
                   :items="loanStatusItems"
                   aria-label="Loan status"
                   class="w-full"
                 />
                 <USelect
+                  v-if="showPhysicalFilters"
                   v-model="readingStatus"
                   :items="readingStatusItems"
                   aria-label="Reading status"
@@ -499,6 +521,7 @@ async function syncLoadedPages(targetPages: number) {
                   placeholder="Filter tag"
                 />
                 <UInput
+                  v-if="showPhysicalFilters"
                   v-model="location"
                   icon="i-lucide-map-pin"
                   aria-label="Filter by location path"
@@ -506,8 +529,12 @@ async function syncLoadedPages(targetPages: number) {
                 />
               </div>
 
-              <div class="grid gap-3 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto_auto] md:items-center">
+              <div
+                class="grid gap-3 md:items-center"
+                :class="showPhysicalFilters ? 'md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto_auto]' : 'md:grid-cols-[minmax(0,1fr)]'"
+              >
                 <USelect
+                  v-if="showPhysicalFilters"
                   v-model="selectedLocationFilter"
                   :items="locationOptions"
                   icon="i-lucide-map-pin"
@@ -522,12 +549,14 @@ async function syncLoadedPages(targetPages: number) {
                   class="w-full"
                 />
                 <UCheckbox
+                  v-if="showPhysicalFilters"
                   v-model="includeLocationDescendants"
                   :disabled="!locationId"
                   aria-label="Include sub-locations"
                   label="Include sub-locations"
                 />
                 <USwitch
+                  v-if="showPhysicalFilters"
                   v-model="groupByLocation"
                   aria-label="Group by location"
                   label="Group by location"

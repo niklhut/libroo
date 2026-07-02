@@ -139,10 +139,42 @@ async function returnActiveLoan() {
   }
 }
 
+// Per-field request sequencing tokens to prevent stale rollbacks
+let ratingRequestId = 0
+let noteRequestId = 0
+let readingRequestId = 0
+let lastConfirmedRating: number | null = book.value?.rating ?? null
+let lastConfirmedNote: string | null = book.value?.note ?? null
+
 async function updateBookLibraryState(state: LibraryState) {
   if (!book.value || isUpdatingLibraryState.value) return
 
+  const previousBook = book.value
   isUpdatingLibraryState.value = true
+
+  book.value = {
+    ...book.value,
+    libraryState: state,
+    ...(state === 'wishlisted'
+      ? {
+          location: null,
+          activeLoan: null,
+          rating: null,
+          readingProgress: {
+            status: 'unread',
+            currentPage: null,
+            progressPercent: null,
+            startedAt: null,
+            finishedAt: null
+          } satisfies ReadingProgress
+        }
+      : {})
+  }
+
+  if (state === 'wishlisted') {
+    lastConfirmedRating = null
+  }
+
   try {
     await $fetch(`/api/books/${userBookId}/state`, {
       method: 'PUT',
@@ -158,6 +190,8 @@ async function updateBookLibraryState(state: LibraryState) {
       color: 'success'
     })
   } catch (err: unknown) {
+    book.value = previousBook
+    lastConfirmedRating = previousBook.rating
     const message = (err as { data?: { message?: string } })?.data?.message
       ?? (err instanceof Error ? err.message : 'Unable to move book')
     toast.add({
@@ -193,13 +227,6 @@ async function onTagsSaved() {
     })
   }
 }
-
-// Per-field request sequencing tokens to prevent stale rollbacks
-let ratingRequestId = 0
-let noteRequestId = 0
-let readingRequestId = 0
-let lastConfirmedRating: number | null = book.value?.rating ?? null
-let lastConfirmedNote: string | null = book.value?.note ?? null
 
 // Rating
 async function saveRating(rating: number | null) {
@@ -345,7 +372,7 @@ async function saveReadingProgress(progress: {
     <UPageBody>
       <!-- Loading State -->
       <div
-        v-if="status === 'pending'"
+        v-if="status === 'pending' && !book"
         class="flex justify-center py-12"
       >
         <UIcon
