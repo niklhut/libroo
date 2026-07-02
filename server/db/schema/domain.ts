@@ -96,6 +96,9 @@ export const userBooks = sqliteTable('user_books', {
   addedAt: integer('added_at', { mode: 'timestamp' }).notNull(),
   removedAt: integer('removed_at', { mode: 'timestamp' })
 }, table => [
+  uniqueIndex('user_books_active_user_book_unique')
+    .on(table.userId, table.bookId)
+    .where(sql`${table.removedAt} IS NULL`),
   index('user_books_user_active_added_idx')
     .on(table.userId, table.addedAt)
     .where(sql`${table.removedAt} IS NULL`),

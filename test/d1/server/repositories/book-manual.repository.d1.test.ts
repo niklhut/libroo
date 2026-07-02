@@ -9,6 +9,8 @@ import initialMigration from '../../../../server/db/migrations/sqlite/0000_initi
 import termsMigration from '../../../../server/db/migrations/sqlite/0001_add_terms_acceptance.sql?raw'
 import locationRestrictMigration from '../../../../server/db/migrations/sqlite/0002_prevent_location_delete_cascade.sql?raw'
 import libraryStateMigration from '../../../../server/db/migrations/sqlite/0003_add_library_state.sql?raw'
+import libraryIndexesMigration from '../../../../server/db/migrations/sqlite/0004_add_user_books_library_indexes.sql?raw'
+import activeUserBookUniqueMigration from '../../../../server/db/migrations/sqlite/0005_add_active_user_book_unique.sql?raw'
 import { bookAuthors, books, loans, user, userBooks, userBookTags } from '../../../../server/db/schema'
 import { ActiveLoanRemovalError, BookCreateError, BookRepository, BookRepositoryLive } from '../../../../server/repositories/book.repository'
 import { DbService, type DbServiceInterface } from '../../../../server/services/db.service'
@@ -266,10 +268,49 @@ describe('BookRepository.createManualBook on D1', () => {
       .where(eq(userBooks.id, created.id))
     expect(stored?.libraryState).toBe('owned')
   })
+
+  it('enforces one active user book row per user and book', async () => {
+    const now = new Date('2026-06-26T12:00:00.000Z')
+    await db.insert(books).values({
+      id: 'book-unique',
+      title: 'Unique Book',
+      source: 'manual',
+      createdByUserId: 'user-1',
+      createdAt: now
+    })
+    await db.insert(userBooks).values({
+      id: 'ub-active',
+      userId: 'user-1',
+      bookId: 'book-unique',
+      addedAt: now
+    })
+
+    await expect(db.insert(userBooks).values({
+      id: 'ub-active-duplicate',
+      userId: 'user-1',
+      bookId: 'book-unique',
+      addedAt: now
+    })).rejects.toThrow(/user_books_active_user_book_unique|UNIQUE/i)
+
+    await expect(db.insert(userBooks).values({
+      id: 'ub-removed-history',
+      userId: 'user-1',
+      bookId: 'book-unique',
+      addedAt: now,
+      removedAt: now
+    })).resolves.toBeDefined()
+  })
 })
 
 async function applyMigrations(database: D1Database) {
-  for (const migration of [initialMigration, termsMigration, locationRestrictMigration, libraryStateMigration]) {
+  for (const migration of [
+    initialMigration,
+    termsMigration,
+    locationRestrictMigration,
+    libraryStateMigration,
+    libraryIndexesMigration,
+    activeUserBookUniqueMigration
+  ]) {
     for (const statement of migration.split('--> statement-breakpoint')) {
       const migrationStatement = statement.trim()
       if (migrationStatement) {

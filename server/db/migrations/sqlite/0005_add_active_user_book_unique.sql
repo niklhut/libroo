@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `user_books_active_user_book_unique` ON `user_books` (`user_id`,`book_id`) WHERE "user_books"."removed_at" IS NULL;
