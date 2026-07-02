@@ -123,6 +123,14 @@ describe('library query helpers', () => {
 
   it('describes active advanced filters for collapsed summaries', () => {
     expect(describeActiveLibraryFilters({
+      libraryState: 'owned',
+      tag: 'classic'
+    })).toEqual([
+      'Library',
+      'Tag: classic'
+    ])
+
+    expect(describeActiveLibraryFilters({
       loanStatus: 'available',
       libraryState: 'wishlisted',
       readingStatus: 'reading',

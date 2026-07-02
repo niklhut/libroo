@@ -37,6 +37,10 @@ export const DEFAULT_LIBRARY_STATE_FILTER: LibraryStateFilter = 'all'
 const loanFilters = new Set<LibraryLoanFilter>(['all', 'available', 'loaned'])
 const readingFilters = new Set<LibraryReadingFilter>(['all', 'unread', 'reading', 'read'])
 const libraryStateFilters = new Set<LibraryStateFilter>(['all', 'owned', 'wishlisted'])
+const libraryStateLabels = {
+  owned: 'Library',
+  wishlisted: 'Wishlist'
+} satisfies Record<LibraryState, string>
 const sortOptions = new Set<LibrarySort>(['dateAdded', 'title', 'author', 'locationPath'])
 
 const firstString = (value: unknown): string | undefined => {
@@ -140,7 +144,7 @@ export const describeActiveLibraryFilters = (
 
   if (options.includeSearch && state.search?.trim()) labels.push(`Search: ${state.search.trim()}`)
   if (state.libraryState && state.libraryState !== DEFAULT_LIBRARY_STATE_FILTER) {
-    labels.push(state.libraryState === 'owned' ? 'Library' : 'Wishlist')
+    labels.push(libraryStateLabels[state.libraryState])
   }
   if (state.loanStatus && state.loanStatus !== 'all') {
     labels.push(state.loanStatus === 'loaned' ? 'Loaned out' : 'Available')
