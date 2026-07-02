@@ -96,6 +96,18 @@ export const userBooks = sqliteTable('user_books', {
   addedAt: integer('added_at', { mode: 'timestamp' }).notNull(),
   removedAt: integer('removed_at', { mode: 'timestamp' })
 }, table => [
+  index('user_books_user_active_added_idx')
+    .on(table.userId, table.addedAt)
+    .where(sql`${table.removedAt} IS NULL`),
+  index('user_books_user_active_state_added_idx')
+    .on(table.userId, table.libraryState, table.addedAt)
+    .where(sql`${table.removedAt} IS NULL`),
+  index('user_books_user_active_reading_idx')
+    .on(table.userId, table.readingStatus)
+    .where(sql`${table.removedAt} IS NULL`),
+  index('user_books_user_active_location_idx')
+    .on(table.userId, table.locationId)
+    .where(sql`${table.removedAt} IS NULL`),
   check('user_books_rating_check', sql`${table.rating} IS NULL OR ${table.rating} BETWEEN 1 AND 5`),
   check('user_books_library_state_check', sql`${table.libraryState} IN ('owned', 'wishlisted')`),
   check('user_books_reading_status_check', sql`${table.readingStatus} IN ('unread', 'reading', 'read')`),

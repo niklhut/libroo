@@ -102,7 +102,7 @@ const { data, refresh, status } = await useFetch<PaginatedResponse>('/api/books'
     page: page.value,
     pageSize: pageSize.value,
     search: search.value || undefined,
-    libraryState: libraryState.value === 'all' ? undefined : libraryState.value,
+    libraryState: libraryState.value === 'owned' ? undefined : libraryState.value,
     loanStatus: loanStatus.value === 'all' ? undefined : loanStatus.value,
     readingStatus: readingStatus.value === 'all' ? undefined : readingStatus.value,
     tag: tag.value || undefined,

@@ -29,6 +29,13 @@
       "when": 1782892800000,
       "tag": "0003_add_library_state",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1782984734709,
+      "tag": "0004_add_user_books_library_indexes",
+      "breakpoints": true
     }
   ]
 }
