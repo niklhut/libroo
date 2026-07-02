@@ -498,7 +498,7 @@ async function syncLoadedPages(targetPages: number) {
             >
               <div
                 class="grid gap-3"
-                :class="showPhysicalFilters ? 'md:grid-cols-4' : 'md:grid-cols-1'"
+                :class="showPhysicalFilters ? 'md:grid-cols-4' : 'md:grid-cols-2'"
               >
                 <USelect
                   v-if="showPhysicalFilters"
@@ -527,14 +527,21 @@ async function syncLoadedPages(targetPages: number) {
                   aria-label="Filter by location path"
                   placeholder="Search location path"
                 />
+                <USelect
+                  v-if="!showPhysicalFilters"
+                  v-model="sortBy"
+                  :items="sortItems"
+                  icon="i-lucide-arrow-up-down"
+                  aria-label="Sort library"
+                  class="w-full"
+                />
               </div>
 
               <div
-                class="grid gap-3 md:items-center"
-                :class="showPhysicalFilters ? 'md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto_auto]' : 'md:grid-cols-[minmax(0,1fr)]'"
+                v-if="showPhysicalFilters"
+                class="grid gap-3 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto_auto] md:items-center"
               >
                 <USelect
-                  v-if="showPhysicalFilters"
                   v-model="selectedLocationFilter"
                   :items="locationOptions"
                   icon="i-lucide-map-pin"
@@ -549,14 +556,12 @@ async function syncLoadedPages(targetPages: number) {
                   class="w-full"
                 />
                 <UCheckbox
-                  v-if="showPhysicalFilters"
                   v-model="includeLocationDescendants"
                   :disabled="!locationId"
                   aria-label="Include sub-locations"
                   label="Include sub-locations"
                 />
                 <USwitch
-                  v-if="showPhysicalFilters"
                   v-model="groupByLocation"
                   aria-label="Group by location"
                   label="Group by location"
