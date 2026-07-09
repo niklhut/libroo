@@ -48,6 +48,8 @@ const {
 
 const {
   clearNeedsSync: clearNeedsSyncAction,
+  cacheResults: cacheResultsAction,
+  restoreCachedResults: restoreCachedResultsAction,
   resetResults: resetResultsAction
 } = dashboardStore
 
@@ -84,12 +86,32 @@ sortBy.value = routeState.sortBy ?? 'dateAdded'
 
 // Pagination state
 const isLoadingMore = ref(false)
+const isApplyingFilters = ref(false)
 const filterRefreshTimer = ref<ReturnType<typeof setTimeout> | null>(null)
+const suppressFilterWatcher = ref(false)
 const ALL_LOCATIONS_VALUE = '__all_locations__'
 const areFiltersExpanded = ref(false)
-
-const shouldFetchInitial = allBooks.value.length === 0 || !paginationState.value
 const showPhysicalFilters = computed(() => libraryState.value !== 'wishlisted')
+
+function getLibraryResultCacheKey() {
+  const hasPhysicalFilters = libraryState.value !== 'wishlisted'
+
+  return JSON.stringify({
+    pageSize: pageSize.value,
+    search: search.value.trim(),
+    libraryState: libraryState.value,
+    loanStatus: hasPhysicalFilters ? loanStatus.value : 'all',
+    readingStatus: hasPhysicalFilters ? readingStatus.value : 'all',
+    tag: tag.value.trim(),
+    location: hasPhysicalFilters ? location.value.trim() : '',
+    locationId: hasPhysicalFilters ? locationId.value : '',
+    includeLocationDescendants: hasPhysicalFilters ? includeLocationDescendants.value : false,
+    sortBy: sortBy.value
+  })
+}
+
+const activeResultCacheKey = ref(getLibraryResultCacheKey())
+const shouldFetchInitial = allBooks.value.length === 0 || !paginationState.value
 
 const { data: locations } = await useFetch<BookLocationWithCount[]>('/api/locations', {
   headers: useRequestHeaders(['cookie'])
@@ -127,6 +149,8 @@ watch(data, (response) => {
     const newItems = response.items.filter(book => !existingIds.has(book.id))
     allBooks.value.push(...newItems)
   }
+
+  cacheResultsAction(activeResultCacheKey.value)
 }, { immediate: true })
 
 onMounted(() => {
@@ -278,7 +302,18 @@ const groupedBooks = computed(() => {
 })
 
 watch([search, loanStatus, libraryState, readingStatus, tag, location, locationId, includeLocationDescendants, sortBy], () => {
+  if (suppressFilterWatcher.value) return
+  isApplyingFilters.value = true
   if (filterRefreshTimer.value) clearTimeout(filterRefreshTimer.value)
+
+  const nextCacheKey = getLibraryResultCacheKey()
+  if (nextCacheKey !== activeResultCacheKey.value) {
+    cacheResultsAction(activeResultCacheKey.value)
+    const cached = restoreCachedResultsAction(nextCacheKey)
+    if (cached) {
+      activeResultCacheKey.value = nextCacheKey
+    }
+  }
 
   filterRefreshTimer.value = setTimeout(() => {
     void applyFilters()
@@ -306,6 +341,14 @@ watch(locationId, (nextLocationId) => {
 })
 
 async function applyFilters() {
+  isApplyingFilters.value = true
+  cacheResultsAction(activeResultCacheKey.value)
+  const nextCacheKey = getLibraryResultCacheKey()
+  const cached = restoreCachedResultsAction(nextCacheKey)
+  const targetPages = cached?.loadedPage ?? 1
+
+  activeResultCacheKey.value = nextCacheKey
+
   updateBrowserQuery({
     page: 1,
     pageSize: pageSize.value,
@@ -321,7 +364,11 @@ async function applyFilters() {
   })
 
   page.value = 1
-  await refresh()
+  try {
+    await syncLoadedPages(targetPages)
+  } finally {
+    isApplyingFilters.value = false
+  }
 }
 
 function updateBrowserQuery(state: Parameters<typeof buildLibraryRouteQuery>[0]) {
@@ -334,7 +381,14 @@ function updateBrowserQuery(state: Parameters<typeof buildLibraryRouteQuery>[0])
   window.history.replaceState(window.history.state, '', nextUrl)
 }
 
-function clearFilters() {
+async function clearFilters() {
+  isApplyingFilters.value = true
+  suppressFilterWatcher.value = true
+  if (filterRefreshTimer.value) {
+    clearTimeout(filterRefreshTimer.value)
+    filterRefreshTimer.value = null
+  }
+
   search.value = ''
   loanStatus.value = 'all'
   libraryState.value = DEFAULT_LIBRARY_STATE_FILTER
@@ -345,6 +399,10 @@ function clearFilters() {
   includeLocationDescendants.value = false
   sortBy.value = 'dateAdded'
   groupByLocation.value = false
+
+  await nextTick()
+  suppressFilterWatcher.value = false
+  await applyFilters()
 }
 
 // Load more
@@ -574,7 +632,7 @@ async function syncLoadedPages(targetPages: number) {
 
       <!-- Loading State -->
       <div
-        v-if="status === 'pending' && !hasBooks"
+        v-if="(status === 'pending' || isApplyingFilters) && !hasBooks"
         class="flex justify-center py-12"
       >
         <UIcon

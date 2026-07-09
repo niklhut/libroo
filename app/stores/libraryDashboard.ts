@@ -12,11 +12,18 @@ export interface DashboardPagination {
   hasMore: boolean
 }
 
+export interface DashboardResultCacheEntry {
+  books: LibraryBook[]
+  pagination: DashboardPagination
+  loadedPage: number
+}
+
 export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
   const page = ref(1)
   const pageSize = ref(12)
   const allBooks = ref<LibraryBook[]>([])
   const pagination = ref<DashboardPagination | null>(null)
+  const resultCache = ref<Record<string, DashboardResultCacheEntry>>({})
   const search = ref('')
   const loanStatus = ref<LibraryLoanFilter>('all')
   const libraryState = ref<LibraryStateFilter>(DEFAULT_LIBRARY_STATE_FILTER)
@@ -102,11 +109,33 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
     pagination.value = null
   }
 
+  function cacheResults(cacheKey: string) {
+    if (!cacheKey || !pagination.value) return
+
+    resultCache.value[cacheKey] = {
+      books: [...allBooks.value],
+      pagination: { ...pagination.value },
+      loadedPage: page.value
+    }
+  }
+
+  function restoreCachedResults(cacheKey: string) {
+    const cached = resultCache.value[cacheKey]
+    if (!cached) return null
+
+    allBooks.value = [...cached.books]
+    pagination.value = { ...cached.pagination }
+    page.value = cached.loadedPage
+
+    return cached
+  }
+
   return {
     page,
     pageSize,
     allBooks,
     pagination,
+    resultCache,
     search,
     loanStatus,
     libraryState,
@@ -126,6 +155,8 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
     removeBooks,
     markNeedsSync,
     clearNeedsSync,
-    resetResults
+    resetResults,
+    cacheResults,
+    restoreCachedResults
   }
 })
