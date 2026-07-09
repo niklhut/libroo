@@ -11,7 +11,7 @@ import type {
   LibraryImportConflictStrategy,
   LibraryImportResult
 } from '../../shared/types/library-transfer'
-import type { ReadingStatus } from '../../shared/types/book'
+import type { LibraryState, ReadingStatus } from '../../shared/types/book'
 
 export class InvalidLibraryCsvError extends Data.TaggedError('InvalidLibraryCsvError')<{
   message: string
@@ -67,6 +67,12 @@ function parseReadingStatus(value: string): ReadingStatus {
   throw new Error('reading_status must be unread, reading, or read')
 }
 
+function parseLibraryState(value: string): LibraryState {
+  const state = value.trim() || 'owned'
+  if (state === 'owned' || state === 'wishlisted') return state
+  throw new Error('library_state must be owned or wishlisted')
+}
+
 function toImportRecord(row: LibraryCsvRow): LibraryImportBookInput {
   const title = row.title.trim()
   if (!title) {
@@ -79,6 +85,7 @@ function toImportRecord(row: LibraryCsvRow): LibraryImportBookInput {
     isbn: row.isbn.trim() || null,
     tags: parseList(row.tags),
     locationPath: row.location.trim() || null,
+    libraryState: parseLibraryState(row.library_state),
     readingStatus: parseReadingStatus(row.reading_status),
     currentPage: parseNullableInteger(row.current_page, 'current_page', 0, 100000),
     progressPercent: parseNullableInteger(row.progress_percent, 'progress_percent', 0, 100),
@@ -103,6 +110,7 @@ export const LibraryTransferServiceLive = Layer.effect(
             isbn: record.isbn ?? '',
             tags: formatCsvList(record.tags),
             location: record.location ?? '',
+            library_state: record.libraryState,
             reading_status: record.readingStatus,
             current_page: record.currentPage?.toString() ?? '',
             progress_percent: record.progressPercent?.toString() ?? '',

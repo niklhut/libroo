@@ -2,7 +2,8 @@ import { Context, Data, Effect, Layer } from 'effect'
 import { and, desc, eq, exists, isNotNull, isNull, not, or, sql } from 'drizzle-orm'
 import { authors, bookAuthors, books, loans, user, userBooks } from 'hub:db:schema'
 import { DbService } from '../services/db.service'
-import { BookNotFoundError, DatabaseError } from './book.repository'
+import { BookNotFoundError, BookNotOwnedError, DatabaseError } from './book.repository'
+import type { LibraryState } from '../../shared/types/book'
 
 export class LoanNotFoundError extends Data.TaggedError('LoanNotFoundError')<{
   loanId?: string
@@ -42,7 +43,7 @@ interface LoanSnapshotSource {
 }
 
 export interface LendingRepositoryInterface {
-  createLoan: (input: LoanCreateInput) => Effect.Effect<OwnerLoan, BookNotFoundError | ActiveLoanExistsError | DatabaseError, DbService>
+  createLoan: (input: LoanCreateInput) => Effect.Effect<OwnerLoan, BookNotFoundError | BookNotOwnedError | ActiveLoanExistsError | DatabaseError, DbService>
   getActiveLoanForBook: (userBookId: string, ownerUserId: string) => Effect.Effect<OwnerLoan | null, DatabaseError, DbService>
   returnLoan: (loanId: string, ownerUserId: string) => Effect.Effect<OwnerLoan, LoanNotFoundError | DatabaseError, DbService>
   cancelLoan: (loanId: string, ownerUserId: string) => Effect.Effect<OwnerLoan, LoanNotFoundError | DatabaseError, DbService>
@@ -80,7 +81,8 @@ export const LendingRepositoryLive = Layer.effect(
               title: books.title,
               author: authors.name,
               coverPath: books.coverPath,
-              ownerName: user.name
+              ownerName: user.name,
+              libraryState: userBooks.libraryState
             })
             .from(userBooks)
             .innerJoin(books, eq(userBooks.bookId, books.id))
@@ -99,6 +101,13 @@ export const LendingRepositoryLive = Layer.effect(
         const row = rows[0]
         if (!row) {
           return yield* Effect.fail(new BookNotFoundError({ bookId: userBookId }))
+        }
+
+        if (row.libraryState !== 'owned') {
+          return yield* Effect.fail(new BookNotOwnedError({
+            userBookId,
+            libraryState: row.libraryState as LibraryState
+          }))
         }
 
         return {

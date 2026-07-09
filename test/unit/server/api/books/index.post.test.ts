@@ -30,7 +30,22 @@ describe('server/api/books/index.post', () => {
         isbn: '978-0-306-40615-7'
       }
     }))).resolves.toBe(book)
-    expect(serviceMocks.addBookToLibrary).toHaveBeenCalledWith('user-1', '9780306406157')
+    expect(serviceMocks.addBookToLibrary).toHaveBeenCalledWith('user-1', '9780306406157', 'owned')
+  })
+
+  it('passes an initial wishlist state', async () => {
+    mockLoggedInUser()
+    const book = { id: 'ub-1', title: 'A Book', libraryState: 'wishlisted' }
+    serviceMocks.addBookToLibrary.mockReturnValueOnce(Effect.succeed(book))
+    const handler = await importRoute(route)
+
+    await expect(handler(makeEvent({
+      body: {
+        isbn: '978-0-306-40615-7',
+        libraryState: 'wishlisted'
+      }
+    }))).resolves.toBe(book)
+    expect(serviceMocks.addBookToLibrary).toHaveBeenCalledWith('user-1', '9780306406157', 'wishlisted')
   })
 
   it('rejects invalid ISBN payloads', async () => {

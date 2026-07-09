@@ -51,6 +51,7 @@ test('exports library data as CSV with the transfer contract columns', async ({ 
       '',
       '"[""exported"", ""important""]"',
       'Export Room - Shelf 3',
+      'owned',
       'reading',
       '12',
       '20',

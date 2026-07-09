@@ -6,6 +6,7 @@ export interface BookAuthor {
 export interface LibraryBook {
   id: string
   bookId: string
+  libraryState: LibraryState
   title: string
   author: string
   authors?: BookAuthor[]
@@ -41,6 +42,7 @@ export interface BookLocationTreeNode extends BookLocationWithCount {
 }
 
 export type ReadingStatus = 'unread' | 'reading' | 'read'
+export type LibraryState = 'owned' | 'wishlisted'
 
 export interface ReadingProgress {
   status: ReadingStatus
@@ -63,6 +65,8 @@ export interface BookLookupResult {
   publishers?: string[] | null
   numberOfPages?: number
   existsLocally?: boolean
+  existingUserBookId?: string | null
+  existingState?: LibraryState | null
   message?: string
 }
 
@@ -74,6 +78,7 @@ export interface BatchDeleteResult {
 export interface BookDetails {
   id: string
   bookId: string
+  libraryState: LibraryState
   title: string
   author: string
   authors: BookAuthor[]

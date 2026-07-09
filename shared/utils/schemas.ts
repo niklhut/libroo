@@ -124,6 +124,14 @@ export const bookIsbnSchema = z.object({
 
 export type BookIsbnSchema = z.infer<typeof bookIsbnSchema>
 
+export const libraryStateSchema = z.enum(['owned', 'wishlisted'], { error: 'Library state is invalid' })
+
+export const bookIsbnAddSchema = bookIsbnSchema.extend({
+  libraryState: libraryStateSchema.optional().default('owned')
+})
+
+export type BookIsbnAddSchema = z.infer<typeof bookIsbnAddSchema>
+
 export const bookBatchDeleteSchema = z.object({
   ids: z.array(z.string({ error: 'ID must be a string' })).min(1, { error: 'At least one ID is required' })
 })
@@ -317,6 +325,7 @@ export const manualBookCreateSchema = z.object({
     })
     .pipe(z.array(z.string()).min(1, { error: 'At least one author is required' }).max(20, { error: 'Too many authors' })),
   isbn: optionalManualIsbnSchema,
+  libraryState: libraryStateSchema.optional().default('owned'),
   coverImage: z.object({
     data: z.string({ error: 'Cover image data is required' }).min(1, { error: 'Cover image data is required' }),
     contentType: z.string({ error: 'Cover image content type is required' })
@@ -416,6 +425,12 @@ export const bookReadingProgressSchema = z.object({
 )
 
 export type BookReadingProgressSchema = z.infer<typeof bookReadingProgressSchema>
+
+export const bookLibraryStateSchema = z.object({
+  state: libraryStateSchema
+})
+
+export type BookLibraryStateSchema = z.infer<typeof bookLibraryStateSchema>
 
 export const libraryImportSchema = z.object({
   csv: z.string({ error: 'CSV content is required' })

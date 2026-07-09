@@ -12,6 +12,7 @@ describe('library query helpers', () => {
       page: '-2',
       pageSize: '500',
       search: '  dune  ',
+      libraryState: 'wishlisted',
       loanStatus: 'loaned',
       readingStatus: 'reading',
       tag: '  sci-fi ',
@@ -23,6 +24,7 @@ describe('library query helpers', () => {
       page: 1,
       pageSize: 100,
       search: 'dune',
+      libraryState: 'wishlisted',
       loanStatus: 'loaned',
       readingStatus: 'reading',
       tag: 'sci-fi',
@@ -33,13 +35,15 @@ describe('library query helpers', () => {
     })
   })
 
-  it('falls back to all filters when params are unknown', () => {
+  it('falls back to all library state and all secondary filters when params are unknown', () => {
     expect(normalizeLibraryQuery({
       loanStatus: 'missing',
+      libraryState: 'missing',
       readingStatus: 'started',
       search: '   '
     })).toMatchObject({
       search: undefined,
+      libraryState: 'all',
       loanStatus: 'all',
       readingStatus: 'all',
       tag: undefined,
@@ -63,6 +67,7 @@ describe('library query helpers', () => {
       page: 1,
       pageSize: 12,
       search: 'dune',
+      libraryState: 'all',
       loanStatus: 'available',
       readingStatus: 'all',
       tag: 'classic',
@@ -84,6 +89,7 @@ describe('library query helpers', () => {
   it('counts hidden advanced filters separately from primary search', () => {
     expect(getActiveLibraryFilterCount({
       search: 'dune',
+      libraryState: 'all',
       loanStatus: 'all',
       readingStatus: 'all',
       sortBy: 'dateAdded'
@@ -91,6 +97,7 @@ describe('library query helpers', () => {
 
     expect(getActiveLibraryFilterCount({
       search: 'dune',
+      libraryState: 'wishlisted',
       loanStatus: 'loaned',
       readingStatus: 'read',
       tag: 'classic',
@@ -99,12 +106,13 @@ describe('library query helpers', () => {
       includeLocationDescendants: true,
       sortBy: 'author',
       groupByLocation: true
-    })).toBe(8)
+    })).toBe(9)
   })
 
   it('can include search in active filter counts for full criteria checks', () => {
     expect(getActiveLibraryFilterCount({
       search: 'dune',
+      libraryState: 'all',
       loanStatus: 'all',
       readingStatus: 'all',
       sortBy: 'dateAdded'
@@ -115,7 +123,16 @@ describe('library query helpers', () => {
 
   it('describes active advanced filters for collapsed summaries', () => {
     expect(describeActiveLibraryFilters({
+      libraryState: 'owned',
+      tag: 'classic'
+    })).toEqual([
+      'Library',
+      'Tag: classic'
+    ])
+
+    expect(describeActiveLibraryFilters({
       loanStatus: 'available',
+      libraryState: 'wishlisted',
       readingStatus: 'reading',
       tag: 'sci-fi',
       locationId: 'loc-1',
@@ -125,6 +142,7 @@ describe('library query helpers', () => {
     }, {
       locationLabel: 'Living Room - Shelf A'
     })).toEqual([
+      'Wishlist',
       'Available',
       'Reading: reading',
       'Tag: sci-fi',
@@ -133,5 +151,34 @@ describe('library query helpers', () => {
       'Sort: locationPath',
       'Grouped by location'
     ])
+  })
+
+  it('defaults effective library state to all and serializes explicit non-default states', () => {
+    expect(normalizeLibraryQuery({})).toMatchObject({
+      libraryState: 'all'
+    })
+
+    expect(buildLibraryRouteQuery({
+      page: 1,
+      pageSize: 12,
+      libraryState: 'all',
+      loanStatus: 'all',
+      readingStatus: 'all',
+      sortBy: 'dateAdded'
+    })).toEqual({
+      page: '1'
+    })
+
+    expect(buildLibraryRouteQuery({
+      page: 1,
+      pageSize: 12,
+      libraryState: 'owned',
+      loanStatus: 'all',
+      readingStatus: 'all',
+      sortBy: 'dateAdded'
+    })).toEqual({
+      page: '1',
+      libraryState: 'owned'
+    })
   })
 })

@@ -2,6 +2,7 @@
 import type { LibraryBook, BookLocationWithCount } from '~~/shared/types/book'
 import {
   buildLibraryRouteQuery,
+  DEFAULT_LIBRARY_STATE_FILTER,
   describeActiveLibraryFilters,
   getActiveLibraryFilterCount,
   normalizeLibraryQuery
@@ -31,6 +32,7 @@ const {
   pagination: paginationState,
   search,
   loanStatus,
+  libraryState,
   readingStatus,
   tag,
   location,
@@ -46,6 +48,8 @@ const {
 
 const {
   clearNeedsSync: clearNeedsSyncAction,
+  cacheResults: cacheResultsAction,
+  restoreCachedResults: restoreCachedResultsAction,
   resetResults: resetResultsAction
 } = dashboardStore
 
@@ -53,6 +57,7 @@ const routeState = normalizeLibraryQuery(route.query)
 const hasRouteStateMismatch = pageSize.value !== routeState.pageSize
   || search.value !== (routeState.search ?? '')
   || loanStatus.value !== (routeState.loanStatus ?? 'all')
+  || libraryState.value !== (routeState.libraryState ?? DEFAULT_LIBRARY_STATE_FILTER)
   || readingStatus.value !== (routeState.readingStatus ?? 'all')
   || tag.value !== (routeState.tag ?? '')
   || location.value !== (routeState.location ?? '')
@@ -71,6 +76,7 @@ if (hasRouteStateMismatch || !hasCachedResults) {
 pageSize.value = routeState.pageSize
 search.value = routeState.search ?? ''
 loanStatus.value = routeState.loanStatus ?? 'all'
+libraryState.value = routeState.libraryState ?? DEFAULT_LIBRARY_STATE_FILTER
 readingStatus.value = routeState.readingStatus ?? 'all'
 tag.value = routeState.tag ?? ''
 location.value = routeState.location ?? ''
@@ -80,10 +86,31 @@ sortBy.value = routeState.sortBy ?? 'dateAdded'
 
 // Pagination state
 const isLoadingMore = ref(false)
+const isApplyingFilters = ref(false)
 const filterRefreshTimer = ref<ReturnType<typeof setTimeout> | null>(null)
+const suppressFilterWatcher = ref(false)
 const ALL_LOCATIONS_VALUE = '__all_locations__'
 const areFiltersExpanded = ref(false)
+const showPhysicalFilters = computed(() => libraryState.value !== 'wishlisted')
 
+function getLibraryResultCacheKey() {
+  const hasPhysicalFilters = libraryState.value !== 'wishlisted'
+
+  return JSON.stringify({
+    pageSize: pageSize.value,
+    search: search.value.trim(),
+    libraryState: libraryState.value,
+    loanStatus: hasPhysicalFilters ? loanStatus.value : 'all',
+    readingStatus: hasPhysicalFilters ? readingStatus.value : 'all',
+    tag: tag.value.trim(),
+    location: hasPhysicalFilters ? location.value.trim() : '',
+    locationId: hasPhysicalFilters ? locationId.value : '',
+    includeLocationDescendants: hasPhysicalFilters ? includeLocationDescendants.value : false,
+    sortBy: sortBy.value
+  })
+}
+
+const activeResultCacheKey = ref(getLibraryResultCacheKey())
 const shouldFetchInitial = allBooks.value.length === 0 || !paginationState.value
 
 const { data: locations } = await useFetch<BookLocationWithCount[]>('/api/locations', {
@@ -99,12 +126,13 @@ const { data, refresh, status } = await useFetch<PaginatedResponse>('/api/books'
     page: page.value,
     pageSize: pageSize.value,
     search: search.value || undefined,
-    loanStatus: loanStatus.value === 'all' ? undefined : loanStatus.value,
-    readingStatus: readingStatus.value === 'all' ? undefined : readingStatus.value,
+    libraryState: libraryState.value === DEFAULT_LIBRARY_STATE_FILTER ? undefined : libraryState.value,
+    loanStatus: showPhysicalFilters.value && loanStatus.value !== 'all' ? loanStatus.value : undefined,
+    readingStatus: showPhysicalFilters.value && readingStatus.value !== 'all' ? readingStatus.value : undefined,
     tag: tag.value || undefined,
-    location: location.value || undefined,
-    locationId: locationId.value || undefined,
-    includeLocationDescendants: includeLocationDescendants.value || undefined,
+    location: showPhysicalFilters.value ? location.value || undefined : undefined,
+    locationId: showPhysicalFilters.value ? locationId.value || undefined : undefined,
+    includeLocationDescendants: showPhysicalFilters.value ? includeLocationDescendants.value || undefined : undefined,
     sortBy: sortBy.value === 'dateAdded' ? undefined : sortBy.value
   }))
 })
@@ -121,6 +149,8 @@ watch(data, (response) => {
     const newItems = response.items.filter(book => !existingIds.has(book.id))
     allBooks.value.push(...newItems)
   }
+
+  cacheResultsAction(activeResultCacheKey.value)
 }, { immediate: true })
 
 onMounted(() => {
@@ -180,23 +210,25 @@ const pagination = computed(() => paginationState.value)
 const hasBooks = computed(() => books.value.length > 0)
 const hasActiveFilters = computed(() =>
   Boolean(search.value.trim())
-  || loanStatus.value !== 'all'
-  || readingStatus.value !== 'all'
+  || libraryState.value !== DEFAULT_LIBRARY_STATE_FILTER
+  || (showPhysicalFilters.value && loanStatus.value !== 'all')
+  || (showPhysicalFilters.value && readingStatus.value !== 'all')
   || Boolean(tag.value.trim())
-  || Boolean(location.value.trim())
-  || Boolean(locationId.value)
-  || includeLocationDescendants.value
+  || (showPhysicalFilters.value && Boolean(location.value.trim()))
+  || (showPhysicalFilters.value && Boolean(locationId.value))
+  || (showPhysicalFilters.value && includeLocationDescendants.value)
   || sortBy.value !== 'dateAdded'
 )
 const activeAdvancedFilterCount = computed(() => getActiveLibraryFilterCount({
-  loanStatus: loanStatus.value,
-  readingStatus: readingStatus.value,
+  libraryState: libraryState.value,
+  loanStatus: showPhysicalFilters.value ? loanStatus.value : 'all',
+  readingStatus: showPhysicalFilters.value ? readingStatus.value : 'all',
   tag: tag.value,
-  location: location.value,
-  locationId: locationId.value,
-  includeLocationDescendants: includeLocationDescendants.value,
+  location: showPhysicalFilters.value ? location.value : undefined,
+  locationId: showPhysicalFilters.value ? locationId.value : undefined,
+  includeLocationDescendants: showPhysicalFilters.value ? includeLocationDescendants.value : false,
   sortBy: sortBy.value,
-  groupByLocation: groupByLocation.value
+  groupByLocation: showPhysicalFilters.value ? groupByLocation.value : false
 }))
 const hasActiveAdvancedFilters = computed(() => activeAdvancedFilterCount.value > 0)
 const loanStatusItems = [
@@ -204,18 +236,23 @@ const loanStatusItems = [
   { label: 'Available', value: 'available' },
   { label: 'Loaned out', value: 'loaned' }
 ]
+const libraryStateFilterItems = [
+  { label: 'All books', value: 'all' },
+  ...libraryStateItems
+]
 const readingStatusItems = [
   { label: 'All reading', value: 'all' },
   { label: 'Unread', value: 'unread' },
   { label: 'Reading', value: 'reading' },
   { label: 'Read', value: 'read' }
 ]
-const sortItems = [
+const physicalSortItem = { label: 'Location path', value: 'locationPath' }
+const sortItems = computed(() => [
   { label: 'Date added', value: 'dateAdded' },
-  { label: 'Location path', value: 'locationPath' },
+  ...(showPhysicalFilters.value ? [physicalSortItem] : []),
   { label: 'Title', value: 'title' },
   { label: 'Author', value: 'author' }
-]
+])
 const selectedLocationFilter = computed({
   get: () => locationId.value || ALL_LOCATIONS_VALUE,
   set: (value: string) => {
@@ -233,14 +270,15 @@ const selectedLocationLabel = computed(() =>
   locationOptions.value.find(option => option.value === selectedLocationFilter.value)?.label
 )
 const activeFilterSummary = computed(() => describeActiveLibraryFilters({
-  loanStatus: loanStatus.value,
-  readingStatus: readingStatus.value,
+  libraryState: libraryState.value,
+  loanStatus: showPhysicalFilters.value ? loanStatus.value : 'all',
+  readingStatus: showPhysicalFilters.value ? readingStatus.value : 'all',
   tag: tag.value,
-  location: location.value,
-  locationId: locationId.value,
-  includeLocationDescendants: includeLocationDescendants.value,
+  location: showPhysicalFilters.value ? location.value : undefined,
+  locationId: showPhysicalFilters.value ? locationId.value : undefined,
+  includeLocationDescendants: showPhysicalFilters.value ? includeLocationDescendants.value : false,
   sortBy: sortBy.value,
-  groupByLocation: groupByLocation.value
+  groupByLocation: showPhysicalFilters.value ? groupByLocation.value : false
 }, {
   locationLabel: selectedLocationLabel.value
 }))
@@ -263,12 +301,37 @@ const groupedBooks = computed(() => {
   })
 })
 
-watch([search, loanStatus, readingStatus, tag, location, locationId, includeLocationDescendants, sortBy], () => {
+watch([search, loanStatus, libraryState, readingStatus, tag, location, locationId, includeLocationDescendants, sortBy], () => {
+  if (suppressFilterWatcher.value) return
+  isApplyingFilters.value = true
   if (filterRefreshTimer.value) clearTimeout(filterRefreshTimer.value)
+
+  const nextCacheKey = getLibraryResultCacheKey()
+  if (nextCacheKey !== activeResultCacheKey.value) {
+    cacheResultsAction(activeResultCacheKey.value)
+    const cached = restoreCachedResultsAction(nextCacheKey)
+    if (cached) {
+      activeResultCacheKey.value = nextCacheKey
+    }
+  }
 
   filterRefreshTimer.value = setTimeout(() => {
     void applyFilters()
   }, 250)
+})
+
+watch(libraryState, (nextState) => {
+  if (nextState !== 'wishlisted') return
+
+  loanStatus.value = 'all'
+  readingStatus.value = 'all'
+  location.value = ''
+  locationId.value = ''
+  includeLocationDescendants.value = false
+  groupByLocation.value = false
+  if (sortBy.value === 'locationPath') {
+    sortBy.value = 'dateAdded'
+  }
 })
 
 watch(locationId, (nextLocationId) => {
@@ -278,23 +341,34 @@ watch(locationId, (nextLocationId) => {
 })
 
 async function applyFilters() {
-  resetResultsAction()
+  isApplyingFilters.value = true
+  cacheResultsAction(activeResultCacheKey.value)
+  const nextCacheKey = getLibraryResultCacheKey()
+  const cached = restoreCachedResultsAction(nextCacheKey)
+  const targetPages = cached?.loadedPage ?? 1
+
+  activeResultCacheKey.value = nextCacheKey
 
   updateBrowserQuery({
     page: 1,
     pageSize: pageSize.value,
     search: search.value.trim() || undefined,
-    loanStatus: loanStatus.value,
-    readingStatus: readingStatus.value,
+    libraryState: libraryState.value,
+    loanStatus: showPhysicalFilters.value ? loanStatus.value : 'all',
+    readingStatus: showPhysicalFilters.value ? readingStatus.value : 'all',
     tag: tag.value.trim() || undefined,
-    location: location.value.trim() || undefined,
-    locationId: locationId.value || undefined,
-    includeLocationDescendants: includeLocationDescendants.value,
+    location: showPhysicalFilters.value ? location.value.trim() || undefined : undefined,
+    locationId: showPhysicalFilters.value ? locationId.value || undefined : undefined,
+    includeLocationDescendants: showPhysicalFilters.value ? includeLocationDescendants.value : false,
     sortBy: sortBy.value
   })
 
   page.value = 1
-  await refresh()
+  try {
+    await syncLoadedPages(targetPages)
+  } finally {
+    isApplyingFilters.value = false
+  }
 }
 
 function updateBrowserQuery(state: Parameters<typeof buildLibraryRouteQuery>[0]) {
@@ -307,9 +381,17 @@ function updateBrowserQuery(state: Parameters<typeof buildLibraryRouteQuery>[0])
   window.history.replaceState(window.history.state, '', nextUrl)
 }
 
-function clearFilters() {
+async function clearFilters() {
+  isApplyingFilters.value = true
+  suppressFilterWatcher.value = true
+  if (filterRefreshTimer.value) {
+    clearTimeout(filterRefreshTimer.value)
+    filterRefreshTimer.value = null
+  }
+
   search.value = ''
   loanStatus.value = 'all'
+  libraryState.value = DEFAULT_LIBRARY_STATE_FILTER
   readingStatus.value = 'all'
   tag.value = ''
   location.value = ''
@@ -317,6 +399,10 @@ function clearFilters() {
   includeLocationDescendants.value = false
   sortBy.value = 'dateAdded'
   groupByLocation.value = false
+
+  await nextTick()
+  suppressFilterWatcher.value = false
+  await applyFilters()
 }
 
 // Load more
@@ -383,16 +469,26 @@ async function syncLoadedPages(targetPages: number) {
 
     <!-- Page Body -->
     <UPageBody>
-      <section class="mb-6 space-y-3">
+      <section class="mb-6">
         <div class="flex flex-col gap-3 md:flex-row md:items-center">
-          <UInput
-            v-model="search"
-            icon="i-lucide-search"
-            size="lg"
-            aria-label="Search library"
-            placeholder="Search title, author, ISBN, tag, or location"
-            class="w-full md:flex-1"
-          />
+          <div class="grid w-full gap-2 md:flex md:flex-1 md:items-center">
+            <UInput
+              v-model="search"
+              icon="i-lucide-search"
+              size="lg"
+              aria-label="Search library"
+              placeholder="Search title, author, ISBN, tag, or location"
+              class="w-full md:flex-1"
+            />
+            <USelect
+              v-model="libraryState"
+              :items="libraryStateFilterItems"
+              icon="i-lucide-bookmark"
+              size="lg"
+              aria-label="Library state"
+              class="w-full md:w-42"
+            />
+          </div>
 
           <div class="flex w-full flex-wrap items-center gap-2 md:w-auto">
             <UButton
@@ -433,7 +529,7 @@ async function syncLoadedPages(targetPages: number) {
 
         <div
           v-if="hasActiveAdvancedFilters && !areFiltersExpanded"
-          class="flex flex-wrap items-center gap-2 text-sm text-muted"
+          class="mt-3 flex flex-wrap items-center gap-2 text-sm text-muted"
         >
           <span>Active:</span>
           <UBadge
@@ -456,16 +552,21 @@ async function syncLoadedPages(targetPages: number) {
           <template #content>
             <div
               id="library-advanced-filters"
-              class="space-y-3 rounded-lg border border-default bg-muted/30 p-3"
+              class="mt-3 space-y-3 rounded-lg border border-default bg-muted/30 p-3"
             >
-              <div class="grid gap-3 md:grid-cols-4">
+              <div
+                class="grid gap-3"
+                :class="showPhysicalFilters ? 'md:grid-cols-4' : 'md:grid-cols-2'"
+              >
                 <USelect
+                  v-if="showPhysicalFilters"
                   v-model="loanStatus"
                   :items="loanStatusItems"
                   aria-label="Loan status"
                   class="w-full"
                 />
                 <USelect
+                  v-if="showPhysicalFilters"
                   v-model="readingStatus"
                   :items="readingStatusItems"
                   aria-label="Reading status"
@@ -478,14 +579,26 @@ async function syncLoadedPages(targetPages: number) {
                   placeholder="Filter tag"
                 />
                 <UInput
+                  v-if="showPhysicalFilters"
                   v-model="location"
                   icon="i-lucide-map-pin"
                   aria-label="Filter by location path"
                   placeholder="Search location path"
                 />
+                <USelect
+                  v-if="!showPhysicalFilters"
+                  v-model="sortBy"
+                  :items="sortItems"
+                  icon="i-lucide-arrow-up-down"
+                  aria-label="Sort library"
+                  class="w-full"
+                />
               </div>
 
-              <div class="grid gap-3 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto_auto] md:items-center">
+              <div
+                v-if="showPhysicalFilters"
+                class="grid gap-3 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto_auto] md:items-center"
+              >
                 <USelect
                   v-model="selectedLocationFilter"
                   :items="locationOptions"
@@ -519,7 +632,7 @@ async function syncLoadedPages(targetPages: number) {
 
       <!-- Loading State -->
       <div
-        v-if="status === 'pending' && !hasBooks"
+        v-if="(status === 'pending' || isApplyingFilters) && !hasBooks"
         class="flex justify-center py-12"
       >
         <UIcon
@@ -608,6 +721,7 @@ async function syncLoadedPages(targetPages: number) {
                 :location="book.location"
                 :added-at="book.addedAt"
                 :active-loan="book.activeLoan"
+                :library-state="book.libraryState"
               />
             </div>
           </section>
@@ -629,6 +743,7 @@ async function syncLoadedPages(targetPages: number) {
             :location="book.location"
             :added-at="book.addedAt"
             :active-loan="book.activeLoan"
+            :library-state="book.libraryState"
           />
         </div>
 

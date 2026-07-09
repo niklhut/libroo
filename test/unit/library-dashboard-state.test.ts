@@ -6,6 +6,7 @@ import type { LibraryBook } from '../../shared/types/book'
 const createBook = (id: string): LibraryBook => ({
   id,
   bookId: `book-${id}`,
+  libraryState: 'owned',
   title: `Title ${id}`,
   author: `Author ${id}`,
   isbn: `97800000000${id}`,
@@ -29,6 +30,7 @@ describe('useLibraryDashboardStore', () => {
       pageSize,
       allBooks,
       pagination,
+      libraryState,
       shouldRestoreScroll,
       shouldSync,
       syncTargetPages
@@ -38,6 +40,7 @@ describe('useLibraryDashboardStore', () => {
     expect(pageSize.value).toBe(12)
     expect(allBooks.value).toEqual([])
     expect(pagination.value).toBeNull()
+    expect(libraryState.value).toBe('all')
     expect(shouldRestoreScroll.value).toBe(false)
     expect(shouldSync.value).toBe(false)
     expect(syncTargetPages.value).toBe(1)
@@ -166,5 +169,45 @@ describe('useLibraryDashboardStore', () => {
     expect(page.value).toBe(1)
     expect(allBooks.value).toEqual([])
     expect(pagination.value).toBeNull()
+  })
+
+  it('caches and restores query-scoped results', () => {
+    const store = createStore()
+    const { page, allBooks, pagination } = storeToRefs(store)
+
+    page.value = 2
+    allBooks.value = [createBook('1'), createBook('2')]
+    pagination.value = {
+      page: 2,
+      pageSize: 12,
+      totalItems: 20,
+      totalPages: 2,
+      hasMore: false
+    }
+
+    store.cacheResults('all-books')
+
+    page.value = 1
+    allBooks.value = [createBook('wishlist')]
+    pagination.value = {
+      page: 1,
+      pageSize: 12,
+      totalItems: 1,
+      totalPages: 1,
+      hasMore: false
+    }
+
+    const restored = store.restoreCachedResults('all-books')
+
+    expect(restored?.loadedPage).toBe(2)
+    expect(page.value).toBe(2)
+    expect(allBooks.value.map((book: LibraryBook) => book.id)).toEqual(['1', '2'])
+    expect(pagination.value).toEqual({
+      page: 2,
+      pageSize: 12,
+      totalItems: 20,
+      totalPages: 2,
+      hasMore: false
+    })
   })
 })

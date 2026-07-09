@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
+import { DEFAULT_LIBRARY_PAGE_SIZE, buildLibraryRouteQuery } from '~~/shared/utils/library-query'
 
 const toast = useToast()
 
@@ -8,6 +9,7 @@ const bulkIsbnText = ref('')
 const scannerStore = useIsbnScannerStore()
 const {
   scannedBooks,
+  targetLibraryState,
   isLookingUp,
   isAddingBooks,
   counts
@@ -41,7 +43,13 @@ async function handleBulkImport() {
 async function handleAddSelected() {
   const result = await addSelectedToLibrary()
   if (result.success.length > 0 && result.failed.length === 0) {
-    navigateTo('/library')
+    const query = new URLSearchParams(buildLibraryRouteQuery({
+      page: 1,
+      pageSize: DEFAULT_LIBRARY_PAGE_SIZE,
+      libraryState: targetLibraryState.value
+    }))
+    const queryString = query.toString()
+    navigateTo(queryString ? `/library?${queryString}` : '/library')
   }
 }
 
@@ -86,6 +94,14 @@ defineExpose({ reset })
         />
       </UFormField>
 
+      <UFormField label="Add as">
+        <USelect
+          v-model="targetLibraryState"
+          :items="libraryStateItems"
+          class="w-full"
+        />
+      </UFormField>
+
       <p class="text-sm text-muted">
         Enter multiple ISBNs to look them all up at once. You can paste a list from a spreadsheet or text file.
       </p>
@@ -103,18 +119,31 @@ defineExpose({ reset })
     </div>
 
     <!-- Results -->
-    <BulkScanReview
+    <div
       v-else
-      :scanned-books="scannedBooks"
-      :is-adding-books="isAddingBooks"
-      :counts="counts"
-      @remove="removeIsbn"
-      @retry="retryIsbn"
-      @toggle="toggleSelection"
-      @select-all="selectAll"
-      @deselect-all="deselectAll"
-      @add-selected="handleAddSelected"
-      @clear-all="clearAll"
-    />
+      class="space-y-4"
+    >
+      <UFormField label="Add selected as">
+        <USelect
+          v-model="targetLibraryState"
+          :items="libraryStateItems"
+          class="w-full"
+        />
+      </UFormField>
+
+      <BulkScanReview
+        :scanned-books="scannedBooks"
+        :is-adding-books="isAddingBooks"
+        :counts="counts"
+        :target-library-state="targetLibraryState"
+        @remove="removeIsbn"
+        @retry="retryIsbn"
+        @toggle="toggleSelection"
+        @select-all="selectAll"
+        @deselect-all="deselectAll"
+        @add-selected="handleAddSelected"
+        @clear-all="clearAll"
+      />
+    </div>
   </UCard>
 </template>

@@ -3,10 +3,12 @@ import type * as HttpClient from '@effect/platform/HttpClient'
 import { normalizeReadingProgress } from '../../shared/utils/reading-progress'
 import { MANUAL_COVER_MAX_BYTES } from '../../shared/utils/schemas'
 import type { LibraryQueryFilters } from '../../shared/utils/library-query'
+import type { LibraryState } from '../../shared/types/book'
 
 interface UserBookViewModel {
   id: string
   bookId: string
+  libraryState: LibraryState
   book: {
     title: string
     author: string
@@ -37,6 +39,7 @@ export interface RepairOpenLibraryCoversResult {
 
 export interface BulkAddBookInput {
   isbn: string
+  libraryState?: LibraryState
 }
 
 export interface BulkAddBooksResult {
@@ -47,6 +50,7 @@ export interface BulkAddBooksResult {
 export const toLibraryBook = (userBook: UserBookViewModel): LibraryBook => ({
   id: userBook.id,
   bookId: userBook.bookId,
+  libraryState: userBook.libraryState,
   title: userBook.book.title,
   author: userBook.book.author,
   authors: userBook.book.authors,
@@ -74,7 +78,8 @@ export interface BookServiceInterface {
 
   addBookToLibrary: (
     userId: string,
-    isbn: string
+    isbn: string,
+    libraryState?: LibraryState
   ) => Effect.Effect<
     LibraryBook,
     BookCreateError | BookAlreadyOwnedError | OpenLibraryBookNotFoundError | OpenLibraryApiError | DatabaseError,
@@ -162,7 +167,7 @@ export interface BookServiceInterface {
     userBookId: string,
     userId: string,
     rating: number | null
-  ) => Effect.Effect<void, BookNotFoundError | DatabaseError, DbService>
+  ) => Effect.Effect<void, BookNotFoundError | BookNotOwnedError | DatabaseError, DbService>
 
   updateNote: (
     userBookId: string,
@@ -174,13 +179,19 @@ export interface BookServiceInterface {
     userBookId: string,
     userId: string,
     locationId: string | null
-  ) => Effect.Effect<BookLocation | null, BookNotFoundError | LocationNotFoundError | DatabaseError, DbService>
+  ) => Effect.Effect<BookLocation | null, BookNotFoundError | BookNotOwnedError | LocationNotFoundError | DatabaseError, DbService>
 
   updateReadingProgress: (
     userBookId: string,
     userId: string,
     progress: BookReadingProgressSchema
-  ) => Effect.Effect<ReadingProgress, BookNotFoundError | InvalidReadingProgressError | DatabaseError, DbService>
+  ) => Effect.Effect<ReadingProgress, BookNotFoundError | BookNotOwnedError | InvalidReadingProgressError | DatabaseError, DbService>
+
+  updateLibraryState: (
+    userBookId: string,
+    userId: string,
+    state: LibraryState
+  ) => Effect.Effect<LibraryBook, BookNotFoundError | ActiveLoanRemovalError | DatabaseError, DbService>
 }
 
 // ===== Service Tag =====
@@ -261,10 +272,10 @@ export const BookServiceLive = Layer.effect(
           }
         }),
 
-      addBookToLibrary: (userId, isbn) =>
+      addBookToLibrary: (userId, isbn, libraryState = 'owned') =>
         Effect.gen(function* () {
           const normalizedISBN = normalizeISBN(isbn)
-          const userBook = yield* bookRepo.addBookByISBN(userId, normalizedISBN)
+          const userBook = yield* bookRepo.addBookByISBN(userId, normalizedISBN, libraryState)
 
           return toLibraryBook(userBook)
         }),
@@ -274,13 +285,14 @@ export const BookServiceLive = Layer.effect(
           const added: Array<{ isbn: string }> = []
           const failed: Array<{ isbn: string, error: string }> = []
           const normalizedBooks = books.map(book => ({
-            isbn: normalizeISBN(book.isbn)
+            isbn: normalizeISBN(book.isbn),
+            libraryState: book.libraryState ?? 'owned' as LibraryState
           }))
 
           const results = yield* Effect.forEach(
             normalizedBooks,
             book => Effect.either(
-              bookRepo.addBookByISBN(userId, book.isbn).pipe(
+              bookRepo.addBookByISBN(userId, book.isbn, book.libraryState).pipe(
                 Effect.map(() => ({ isbn: book.isbn }))
               )
             ),
@@ -303,6 +315,7 @@ export const BookServiceLive = Layer.effect(
 
       createManualBook: (userId, input) =>
         Effect.gen(function* () {
+          const isWishlisted = input.libraryState === 'wishlisted'
           let coverPath: string | null = null
           if (input.coverImage) {
             const coverBuffer = yield* decodeCoverImage(input.coverImage.data)
@@ -326,11 +339,12 @@ export const BookServiceLive = Layer.effect(
             publishDate: input.publishDate,
             publisher: input.publisher,
             numberOfPages: input.numberOfPages,
-            rating: input.rating,
+            rating: isWishlisted ? null : input.rating,
             note: input.note,
-            readingStatus: input.readingStatus,
-            currentPage: input.currentPage,
-            progressPercent: input.progressPercent,
+            libraryState: input.libraryState,
+            readingStatus: isWishlisted ? 'unread' : input.readingStatus,
+            currentPage: isWishlisted ? null : input.currentPage,
+            progressPercent: isWishlisted ? null : input.progressPercent,
             tags: input.tags
           }).pipe(
             Effect.tapError(error =>
@@ -440,7 +454,7 @@ export const BookServiceLive = Layer.effect(
       lookupBook: (userId, isbn) =>
         Effect.gen(function* () {
           const normalizedISBN = normalizeISBN(isbn)
-          const existsInUserLibrary = yield* bookRepo.hasBookInUserLibrary(userId, normalizedISBN)
+          const existingInUserLibrary = yield* bookRepo.hasBookInUserLibrary(userId, normalizedISBN)
 
           // First check if book exists locally
           const localBook = yield* bookRepo.findByIsbn(normalizedISBN)
@@ -460,7 +474,9 @@ export const BookServiceLive = Layer.effect(
               publishDate: localBook.publishDate ?? undefined,
               publishers: localBook.publishers ? localBook.publishers.split(', ') : null,
               numberOfPages: localBook.numberOfPages ?? undefined,
-              existsLocally: existsInUserLibrary
+              existsLocally: Boolean(existingInUserLibrary),
+              existingUserBookId: existingInUserLibrary?.userBookId ?? null,
+              existingState: existingInUserLibrary?.libraryState ?? null
             } satisfies BookLookupResult
           }
 
@@ -490,7 +506,9 @@ export const BookServiceLive = Layer.effect(
                   publishDate: book.publishDate ?? undefined,
                   publishers: book.publishers ? book.publishers.split(', ') : null,
                   numberOfPages: book.numberOfPages ?? undefined,
-                  existsLocally: existsInUserLibrary
+                  existsLocally: Boolean(existingInUserLibrary),
+                  existingUserBookId: existingInUserLibrary?.userBookId ?? null,
+                  existingState: existingInUserLibrary?.libraryState ?? null
                 } satisfies BookLookupResult
               })
             ),
@@ -542,6 +560,12 @@ export const BookServiceLive = Layer.effect(
           const normalized = yield* normalizeProgress(details, progress)
           yield* bookRepo.updateReadingProgress(userBookId, userId, normalized)
           return normalized
+        }),
+
+      updateLibraryState: (userBookId, userId, state) =>
+        Effect.gen(function* () {
+          const userBook = yield* bookRepo.updateLibraryState(userBookId, userId, state)
+          return toLibraryBook(userBook)
         })
     }
   })
@@ -555,8 +579,8 @@ export const getUserLibrary = (userId: string, pagination: PaginationParams & Li
 export const getAuthorLibrary = (userId: string, authorId: string, pagination: PaginationParams) =>
   Effect.flatMap(BookService, service => service.getAuthorLibrary(userId, authorId, pagination))
 
-export const addBookToLibrary = (userId: string, isbn: string) =>
-  Effect.flatMap(BookService, service => service.addBookToLibrary(userId, isbn))
+export const addBookToLibrary = (userId: string, isbn: string, libraryState?: LibraryState) =>
+  Effect.flatMap(BookService, service => service.addBookToLibrary(userId, isbn, libraryState))
 
 export const bulkAddBooks = (userId: string, books: BulkAddBookInput[]) =>
   Effect.flatMap(BookService, service => service.bulkAddBooks(userId, books))
@@ -616,3 +640,6 @@ export const updateReadingProgress = (
   progress: BookReadingProgressSchema
 ) =>
   Effect.flatMap(BookService, service => service.updateReadingProgress(userBookId, userId, progress))
+
+export const updateLibraryState = (userBookId: string, userId: string, state: LibraryState) =>
+  Effect.flatMap(BookService, service => service.updateLibraryState(userBookId, userId, state))

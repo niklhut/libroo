@@ -91,6 +91,7 @@ export const LibraryTransferRepositoryLive = Layer.effect(
                 isbn: books.isbn,
                 source: books.source,
                 locationPath: locations.path,
+                libraryState: userBooks.libraryState,
                 readingStatus: userBooks.readingStatus,
                 currentPage: userBooks.currentPage,
                 progressPercent: userBooks.progressPercent,
@@ -157,6 +158,7 @@ export const LibraryTransferRepositoryLive = Layer.effect(
               isbn: row.isbn ?? null,
               tags: tagsByUserBook.get(row.userBookId) ?? [],
               location: row.locationPath ?? null,
+              libraryState: row.libraryState,
               readingStatus: row.readingStatus,
               currentPage: row.currentPage ?? null,
               progressPercent: row.progressPercent ?? null,
@@ -386,14 +388,26 @@ export const LibraryTransferRepositoryLive = Layer.effect(
                   return tagLinks
                 }
 
-                const locationId = await resolveLocationId(record.locationPath)
+                const isWishlisted = record.libraryState === 'wishlisted'
+                if (existing && isWishlisted) {
+                  const activeLoan = await dbService.db
+                    .select({ id: loans.id })
+                    .from(loans)
+                    .where(and(eq(loans.userBookId, existing.userBookId), eq(loans.ownerUserId, userId), eq(loans.status, 'active')))
+                    .limit(1)
+                  if (activeLoan[0]) {
+                    throw new Error('Cannot move a book with an active loan to the wishlist')
+                  }
+                }
+                const locationId = isWishlisted ? null : await resolveLocationId(record.locationPath)
                 const userBookValues = {
                   locationId,
-                  rating: record.rating,
+                  libraryState: record.libraryState,
+                  rating: isWishlisted ? null : record.rating,
                   note: record.note,
-                  readingStatus: record.readingStatus,
-                  currentPage: record.currentPage,
-                  progressPercent: record.progressPercent
+                  readingStatus: isWishlisted ? 'unread' : record.readingStatus,
+                  currentPage: isWishlisted ? null : record.currentPage,
+                  progressPercent: isWishlisted ? null : record.progressPercent
                 }
 
                 let sharedOpenLibraryBookId: string | null = null

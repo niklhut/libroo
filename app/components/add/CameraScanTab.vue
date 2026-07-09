@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { LibraryState } from '~~/shared/types/book'
 import { storeToRefs } from 'pinia'
 import { defaultContinuousMode } from '~/utils/cameraScanDefaults'
 
@@ -12,6 +13,7 @@ const showScanner = ref(false)
 const scannerStore = useIsbnScannerStore()
 const {
   scannedBooks,
+  targetLibraryState,
   isAddingBooks,
   counts
 } = storeToRefs(scannerStore)
@@ -62,8 +64,8 @@ async function onIsbnDetected(isbn: string) {
   }
 }
 
-// Add book to library (single scan mode) - uses composable's addSelectedToLibrary
-async function addBookToLibrary() {
+async function addSingleScanBook(targetState: LibraryState, redirectPath: string) {
+  targetLibraryState.value = targetState
   if (singleScanBook.value?.result?.found && singleScanBook.value.status !== 'already_owned') {
     singleScanBook.value.status = 'found'
     singleScanBook.value.selected = true
@@ -71,15 +73,24 @@ async function addBookToLibrary() {
 
   const result = await addSelectedToLibrary()
   if (result.success.length > 0 && result.failed.length === 0) {
-    navigateTo('/library')
+    navigateTo(redirectPath)
   }
+}
+
+// Add book to library (single scan mode) - uses composable's addSelectedToLibrary
+async function addBookToLibrary() {
+  await addSingleScanBook('owned', '/library')
+}
+
+async function addBookToWishlist() {
+  await addSingleScanBook('wishlisted', '/library?libraryState=wishlisted')
 }
 
 // Handle adding selected books in continuous mode
 async function handleAddSelected() {
   const result = await addSelectedToLibrary()
   if (result.success.length > 0 && result.failed.length === 0) {
-    navigateTo('/library')
+    navigateTo(targetLibraryState.value === 'wishlisted' ? '/library?libraryState=wishlisted' : '/library')
   }
 }
 
@@ -113,6 +124,13 @@ defineExpose({ reset })
           v-if="!singleScanBook?.result?.found || continuousMode"
           class="flex items-center gap-2"
         >
+          <USelect
+            v-model="targetLibraryState"
+            :items="libraryStateItems"
+            size="sm"
+            aria-label="Add scanned books as"
+            class="w-32"
+          />
           <span class="text-sm text-muted">Continuous</span>
           <USwitch v-model="continuousMode" />
         </div>
@@ -135,6 +153,7 @@ defineExpose({ reset })
         back-label="Scan Again"
         back-icon="i-lucide-scan-barcode"
         @add="addBookToLibrary"
+        @wishlist="addBookToWishlist"
         @back="resetLookup"
       />
     </template>
@@ -203,6 +222,7 @@ defineExpose({ reset })
         :scanned-books="scannedBooks"
         :is-adding-books="isAddingBooks"
         :counts="counts"
+        :target-library-state="targetLibraryState"
         @remove="removeIsbn"
         @retry="retryIsbn"
         @toggle="toggleSelection"

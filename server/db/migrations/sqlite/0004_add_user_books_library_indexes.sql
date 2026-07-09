@@ -1,0 +1,4 @@
+CREATE INDEX `user_books_user_active_added_idx` ON `user_books` (`user_id`,`added_at`) WHERE "user_books"."removed_at" IS NULL;--> statement-breakpoint
+CREATE INDEX `user_books_user_active_state_added_idx` ON `user_books` (`user_id`,`library_state`,`added_at`) WHERE "user_books"."removed_at" IS NULL;--> statement-breakpoint
+CREATE INDEX `user_books_user_active_reading_idx` ON `user_books` (`user_id`,`reading_status`) WHERE "user_books"."removed_at" IS NULL;--> statement-breakpoint
+CREATE INDEX `user_books_user_active_location_idx` ON `user_books` (`user_id`,`location_id`) WHERE "user_books"."removed_at" IS NULL;

@@ -1,4 +1,4 @@
-import type { ReadingStatus } from './book'
+import type { LibraryState, ReadingStatus } from './book'
 
 export type LibraryImportConflictStrategy = 'existing' | 'csv'
 
@@ -8,6 +8,7 @@ export interface LibraryExportRecord {
   isbn: string | null
   tags: string[]
   location: string | null
+  libraryState: LibraryState
   readingStatus: ReadingStatus
   currentPage: number | null
   progressPercent: number | null
@@ -29,6 +30,7 @@ export interface LibraryImportBookInput {
   isbn: string | null
   tags: string[]
   locationPath: string | null
+  libraryState: LibraryState
   readingStatus: ReadingStatus
   currentPage: number | null
   progressPercent: number | null

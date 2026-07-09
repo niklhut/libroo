@@ -1,3 +1,4 @@
+import type { LibraryState } from '~~/shared/types/book'
 import { extractIsbn } from '~~/shared/utils/schemas'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
@@ -17,6 +18,7 @@ export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
 
   const scannedBooks = ref<ScannedBook[]>([])
   const isBulkLookingUp = ref(false)
+  const targetLibraryState = ref<LibraryState>('owned')
 
   const lookupUnavailableMessage = 'We could not look up this ISBN right now. Try again in a moment.'
   const addUnavailableMessage = 'Could not add this book to your library. Try again in a moment.'
@@ -151,7 +153,7 @@ export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
       return { success: [], failed: [] }
     }
 
-    const result = await isbnLookupStore.addIsbnsToLibrary(selectedBooks.map(book => book.isbn))
+    const result = await isbnLookupStore.addIsbnsToLibrary(selectedBooks.map(book => book.isbn), targetLibraryState.value)
     const success = result.success
     const failed = result.failedIsbns
 
@@ -175,7 +177,9 @@ export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
     if (success.length > 0 && failed.length === 0) {
       toast.add({
         title: success.length === 1 ? 'Book added!' : 'Books added!',
-        description: `Successfully added ${success.length} book${success.length > 1 ? 's' : ''} to your library`,
+        description: targetLibraryState.value === 'wishlisted'
+          ? `Successfully added ${success.length} book${success.length > 1 ? 's' : ''} to your wishlist`
+          : `Successfully added ${success.length} book${success.length > 1 ? 's' : ''} to your library`,
         color: 'success'
       })
     } else if (success.length > 0 && failed.length > 0) {
@@ -214,6 +218,7 @@ export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
 
   return {
     scannedBooks,
+    targetLibraryState,
     isLookingUp,
     isAddingBooks,
     counts,

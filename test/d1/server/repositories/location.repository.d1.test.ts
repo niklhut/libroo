@@ -15,6 +15,7 @@ import { DbService, type DbServiceInterface } from '../../../../server/services/
 import initialMigration from '../../../../server/db/migrations/sqlite/0000_initial_beta.sql?raw'
 import termsMigration from '../../../../server/db/migrations/sqlite/0001_add_terms_acceptance.sql?raw'
 import locationRestrictMigration from '../../../../server/db/migrations/sqlite/0002_prevent_location_delete_cascade.sql?raw'
+import libraryStateMigration from '../../../../server/db/migrations/sqlite/0003_add_library_state.sql?raw'
 
 type D1Db = ReturnType<typeof drizzle>
 
@@ -138,7 +139,7 @@ async function expectCompletes(promise: Promise<unknown>) {
 }
 
 async function applyMigrations(database: D1Database) {
-  for (const migration of [initialMigration, termsMigration, locationRestrictMigration]) {
+  for (const migration of [initialMigration, termsMigration, locationRestrictMigration, libraryStateMigration]) {
     for (const statement of migration.split('--> statement-breakpoint')) {
       const migrationStatement = statement.trim()
       if (migrationStatement) {

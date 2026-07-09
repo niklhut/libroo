@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { FormSubmitEvent } from '@nuxt/ui'
+import type { LibraryState } from '~~/shared/types/book'
 import { storeToRefs } from 'pinia'
 
 const toast = useToast()
@@ -12,6 +13,7 @@ const formState = reactive({
 })
 
 const lookupResult = ref<BookLookupResult | null>(null)
+const isMoving = ref(false)
 
 // Lookup book by ISBN
 async function lookupISBN(payload: FormSubmitEvent<BookIsbnSchema>) {
@@ -23,7 +25,7 @@ async function lookupISBN(payload: FormSubmitEvent<BookIsbnSchema>) {
     const result = lookup.result
     lookupResult.value = result
 
-    if (result.found && result.existsLocally) {
+    if (result.found && result.existsLocally && result.existingState !== 'wishlisted') {
       toast.add({
         title: 'Already in library',
         description: `${result.title || 'This book'} is already in your library`,
@@ -45,20 +47,21 @@ async function lookupISBN(payload: FormSubmitEvent<BookIsbnSchema>) {
   }
 }
 
-// Add book to library
-async function addBookToLibrary() {
+async function addBookToLibrary(libraryState: LibraryState = 'owned') {
   if (!lookupResult.value?.found || lookupResult.value.existsLocally) return
 
-  const result = await addIsbnsToLibrary([lookupResult.value.isbn])
+  const result = await addIsbnsToLibrary([lookupResult.value.isbn], libraryState)
 
   if (result.success.length === 1) {
     toast.add({
-      title: 'Book added!',
-      description: `${lookupResult.value.title} has been added to your library`,
+      title: libraryState === 'wishlisted' ? 'Book wishlisted!' : 'Book added!',
+      description: libraryState === 'wishlisted'
+        ? `${lookupResult.value.title} has been added to your wishlist`
+        : `${lookupResult.value.title} has been added to your library`,
       color: 'success'
     })
 
-    navigateTo('/library')
+    navigateTo(libraryState === 'wishlisted' ? '/library?libraryState=wishlisted' : '/library')
     return
   }
 
@@ -75,6 +78,36 @@ async function addBookToLibrary() {
       : 'Could not add this book to your library. Try again in a moment.',
     color: alreadyOwned ? 'info' : 'error'
   })
+}
+
+async function moveToLibrary() {
+  if (!lookupResult.value?.existingState || lookupResult.value.existingState !== 'wishlisted' || isMoving.value) return
+
+  isMoving.value = true
+  try {
+    const userBookId = (lookupResult.value as BookLookupResult & { existingUserBookId?: string }).existingUserBookId
+    if (!userBookId) throw new Error('Wishlist book could not be resolved')
+    await $fetch(`/api/books/${userBookId}/state`, {
+      method: 'PUT',
+      body: { state: 'owned' }
+    })
+    toast.add({
+      title: 'Moved to library',
+      description: `${lookupResult.value.title || 'This book'} is now in your library`,
+      color: 'success'
+    })
+    navigateTo(`/library/${userBookId}`)
+  } catch (err: unknown) {
+    const message = (err as { data?: { message?: string } })?.data?.message
+      ?? (err instanceof Error ? err.message : 'Unable to move book')
+    toast.add({
+      title: 'Could not move book',
+      description: message,
+      color: 'error'
+    })
+  } finally {
+    isMoving.value = false
+  }
 }
 
 function reset() {
@@ -157,8 +190,11 @@ defineExpose({ reset })
       back-label="Search Again"
       back-icon="i-lucide-arrow-left"
       :add-disabled="lookupResult.existsLocally"
+      :move-disabled="isMoving"
       unavailable-label="Already in Library"
-      @add="addBookToLibrary"
+      @add="addBookToLibrary('owned')"
+      @wishlist="addBookToLibrary('wishlisted')"
+      @move="moveToLibrary"
       @back="reset"
     />
   </UCard>

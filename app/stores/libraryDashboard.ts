@@ -1,5 +1,6 @@
 import type { LibraryBook } from '~~/shared/types/book'
-import type { LibraryLoanFilter, LibraryReadingFilter, LibrarySort } from '~~/shared/utils/library-query'
+import type { LibraryLoanFilter, LibraryReadingFilter, LibrarySort, LibraryStateFilter } from '~~/shared/utils/library-query'
+import { DEFAULT_LIBRARY_STATE_FILTER } from '~~/shared/utils/library-query'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
@@ -11,13 +12,21 @@ export interface DashboardPagination {
   hasMore: boolean
 }
 
+export interface DashboardResultCacheEntry {
+  books: LibraryBook[]
+  pagination: DashboardPagination
+  loadedPage: number
+}
+
 export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
   const page = ref(1)
   const pageSize = ref(12)
   const allBooks = ref<LibraryBook[]>([])
   const pagination = ref<DashboardPagination | null>(null)
+  const resultCache = ref<Record<string, DashboardResultCacheEntry>>({})
   const search = ref('')
   const loanStatus = ref<LibraryLoanFilter>('all')
+  const libraryState = ref<LibraryStateFilter>(DEFAULT_LIBRARY_STATE_FILTER)
   const readingStatus = ref<LibraryReadingFilter>('all')
   const tag = ref('')
   const location = ref('')
@@ -35,6 +44,8 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
   }
 
   function addBook(book: LibraryBook) {
+    if (libraryState.value !== 'all' && book.libraryState !== libraryState.value) return
+
     const existingIndex = allBooks.value.findIndex(item => item.id === book.id)
     const existed = existingIndex !== -1
 
@@ -98,13 +109,36 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
     pagination.value = null
   }
 
+  function cacheResults(cacheKey: string) {
+    if (!cacheKey || !pagination.value) return
+
+    resultCache.value[cacheKey] = {
+      books: [...allBooks.value],
+      pagination: { ...pagination.value },
+      loadedPage: page.value
+    }
+  }
+
+  function restoreCachedResults(cacheKey: string) {
+    const cached = resultCache.value[cacheKey]
+    if (!cached) return null
+
+    allBooks.value = [...cached.books]
+    pagination.value = { ...cached.pagination }
+    page.value = cached.loadedPage
+
+    return cached
+  }
+
   return {
     page,
     pageSize,
     allBooks,
     pagination,
+    resultCache,
     search,
     loanStatus,
+    libraryState,
     readingStatus,
     tag,
     location,
@@ -121,6 +155,8 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
     removeBooks,
     markNeedsSync,
     clearNeedsSync,
-    resetResults
+    resetResults,
+    cacheResults,
+    restoreCachedResults
   }
 })

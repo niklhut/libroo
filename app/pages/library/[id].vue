@@ -16,6 +16,7 @@ const isLocationModalOpen = ref(false)
 const isLoanRemovalDialogOpen = ref(false)
 const isSavingReadingProgress = ref(false)
 const isReturningLoan = ref(false)
+const isUpdatingLibraryState = ref(false)
 
 // Fetch book details
 const { data: book, status, refresh } = await useFetch<BookDetails>(`/api/books/${userBookId}`, {
@@ -63,6 +64,7 @@ const formattedPublishDate = computed(() => formatDate(book.value?.publishDate ?
 const showOpenLibraryLinks = computed(() =>
   booleanConfigValue(config.public.openLibraryLinksEnabled, false)
 )
+const isOwnedBook = computed(() => book.value?.libraryState === 'owned')
 
 // Remove book
 async function removeBook(confirmActiveLoan = false) {
@@ -137,6 +139,71 @@ async function returnActiveLoan() {
   }
 }
 
+// Per-field request sequencing tokens to prevent stale rollbacks
+let ratingRequestId = 0
+let noteRequestId = 0
+let readingRequestId = 0
+let lastConfirmedRating: number | null = book.value?.rating ?? null
+let lastConfirmedNote: string | null = book.value?.note ?? null
+
+async function updateBookLibraryState(state: LibraryState) {
+  if (!book.value || isUpdatingLibraryState.value) return
+
+  const previousBook = book.value
+  isUpdatingLibraryState.value = true
+
+  book.value = {
+    ...book.value,
+    libraryState: state,
+    ...(state === 'wishlisted'
+      ? {
+          location: null,
+          activeLoan: null,
+          rating: null,
+          readingProgress: {
+            status: 'unread',
+            currentPage: null,
+            progressPercent: null,
+            startedAt: null,
+            finishedAt: null
+          } satisfies ReadingProgress
+        }
+      : {})
+  }
+
+  if (state === 'wishlisted') {
+    lastConfirmedRating = null
+  }
+
+  try {
+    await $fetch(`/api/books/${userBookId}/state`, {
+      method: 'PUT',
+      body: { state }
+    })
+    await refresh()
+    markNeedsSync(getLoadedPages())
+    toast.add({
+      title: state === 'owned' ? 'Moved to library' : 'Moved to wishlist',
+      description: state === 'owned'
+        ? 'Physical inventory options are now available.'
+        : 'This book is now on your wishlist.',
+      color: 'success'
+    })
+  } catch (err: unknown) {
+    book.value = previousBook
+    lastConfirmedRating = previousBook.rating
+    const message = (err as { data?: { message?: string } })?.data?.message
+      ?? (err instanceof Error ? err.message : 'Unable to move book')
+    toast.add({
+      title: 'Could not update book state',
+      description: message,
+      color: 'error'
+    })
+  } finally {
+    isUpdatingLibraryState.value = false
+  }
+}
+
 function openTagModal() {
   isTagModalOpen.value = true
 }
@@ -160,13 +227,6 @@ async function onTagsSaved() {
     })
   }
 }
-
-// Per-field request sequencing tokens to prevent stale rollbacks
-let ratingRequestId = 0
-let noteRequestId = 0
-let readingRequestId = 0
-let lastConfirmedRating: number | null = book.value?.rating ?? null
-let lastConfirmedNote: string | null = book.value?.note ?? null
 
 // Rating
 async function saveRating(rating: number | null) {
@@ -312,7 +372,7 @@ async function saveReadingProgress(progress: {
     <UPageBody>
       <!-- Loading State -->
       <div
-        v-if="status === 'pending'"
+        v-if="status === 'pending' && !book"
         class="flex justify-center py-12"
       >
         <UIcon
@@ -434,10 +494,24 @@ async function saveReadingProgress(progress: {
             >
               Added: {{ formattedAddedAt }}
             </div>
+            <div
+              v-if="book.libraryState === 'wishlisted'"
+              class="flex justify-center md:justify-start"
+            >
+              <UBadge
+                color="info"
+                variant="subtle"
+              >
+                Wishlist
+              </UBadge>
+            </div>
           </div>
 
           <!-- Physical Location -->
-          <div class="space-y-3">
+          <div
+            v-if="isOwnedBook"
+            class="space-y-3"
+          >
             <div class="flex items-center justify-between gap-3">
               <div>
                 <h2 class="text-lg font-semibold">
@@ -476,12 +550,14 @@ async function saveReadingProgress(progress: {
 
           <!-- Rating -->
           <BookRating
+            v-if="isOwnedBook"
             :rating="book.rating"
             @update:rating="saveRating"
           />
 
           <!-- Reading Progress -->
           <BookReadingProgress
+            v-if="isOwnedBook"
             :progress="book.readingProgress"
             :total-pages="book.numberOfPages"
             @edit="isReadingModalOpen = true"
@@ -583,13 +659,33 @@ async function saveReadingProgress(progress: {
           <USeparator />
           <div class="flex flex-wrap gap-3">
             <UButton
-              v-if="!book.activeLoan"
+              v-if="isOwnedBook && !book.activeLoan"
               color="neutral"
               variant="outline"
               icon="i-lucide-handshake"
               @click="isLendingModalOpen = true"
             >
               Record loan
+            </UButton>
+            <UButton
+              v-if="!isOwnedBook"
+              icon="i-lucide-arrow-up-right"
+              :loading="isUpdatingLibraryState"
+              :disabled="isUpdatingLibraryState"
+              @click="updateBookLibraryState('owned')"
+            >
+              Move to Library
+            </UButton>
+            <UButton
+              v-if="isOwnedBook && !book.activeLoan"
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-bookmark"
+              :loading="isUpdatingLibraryState"
+              :disabled="isUpdatingLibraryState"
+              @click="updateBookLibraryState('wishlisted')"
+            >
+              Move to Wishlist
             </UButton>
             <UButton
               v-if="showOpenLibraryLinks && book.openLibraryKey"
@@ -644,7 +740,7 @@ async function saveReadingProgress(progress: {
       />
 
       <BookReadingProgressModal
-        v-if="book"
+        v-if="book && isOwnedBook"
         v-model:open="isReadingModalOpen"
         :progress="book.readingProgress"
         :total-pages="book.numberOfPages"
@@ -653,14 +749,14 @@ async function saveReadingProgress(progress: {
       />
 
       <BookLendingModal
-        v-if="book"
+        v-if="book && isOwnedBook"
         v-model:open="isLendingModalOpen"
         :user-book-id="userBookId"
         @saved="onLoanSaved"
       />
 
       <BookLocationModal
-        v-if="book"
+        v-if="book && isOwnedBook"
         v-model:open="isLocationModalOpen"
         :user-book-id="userBookId"
         :current-location="book.location"

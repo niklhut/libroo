@@ -1,7 +1,10 @@
 <script setup lang="ts">
+import type { LibraryState } from '~~/shared/types/book'
+
 interface Props {
   id: string
   bookId: string
+  libraryState?: LibraryState
   title: string
   author: string
   isbn?: string | null
@@ -61,6 +64,15 @@ const coverUrl = computed(() => {
             class="absolute top-2 left-2"
           >
             Lent out
+          </UBadge>
+          <UBadge
+            v-if="libraryState === 'wishlisted'"
+            color="info"
+            variant="solid"
+            size="sm"
+            class="absolute top-2 right-2"
+          >
+            Wishlist
           </UBadge>
         </div>
       </template>

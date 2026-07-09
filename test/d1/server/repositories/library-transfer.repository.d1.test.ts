@@ -8,7 +8,8 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import initialMigration from '../../../../server/db/migrations/sqlite/0000_initial_beta.sql?raw'
 import termsMigration from '../../../../server/db/migrations/sqlite/0001_add_terms_acceptance.sql?raw'
 import locationRestrictMigration from '../../../../server/db/migrations/sqlite/0002_prevent_location_delete_cascade.sql?raw'
-import { authors, bookAuthors, books, locations, tags, user, userBooks, userBookTags } from '../../../../server/db/schema'
+import libraryStateMigration from '../../../../server/db/migrations/sqlite/0003_add_library_state.sql?raw'
+import { authors, bookAuthors, books, loans, locations, tags, user, userBooks, userBookTags } from '../../../../server/db/schema'
 import { LibraryTransferRepository, LibraryTransferRepositoryLive } from '../../../../server/repositories/library-transfer.repository'
 import { DbService, type DbServiceInterface } from '../../../../server/services/db.service'
 import type { LibraryImportBookInput, LibraryImportConflictStrategy } from '../../../../shared/types/library-transfer'
@@ -25,6 +26,7 @@ describe('LibraryTransferRepository.importRecords on D1', () => {
 
   beforeEach(async () => {
     for (const table of [
+      'loans',
       'user_book_tags',
       'book_authors',
       'tags',
@@ -93,6 +95,89 @@ describe('LibraryTransferRepository.importRecords on D1', () => {
     expect(tagRows).toEqual([{ name: 'Updated' }])
   })
 
+  it('sanitizes physical-only fields for wishlisted imports', async () => {
+    const result = await importRecords([
+      importRecord({
+        title: 'Wishlist CSV Book',
+        authors: ['Ada Lovelace'],
+        locationPath: 'Desk',
+        libraryState: 'wishlisted',
+        readingStatus: 'reading',
+        currentPage: 12,
+        progressPercent: 30,
+        rating: 5,
+        note: 'keep note'
+      })
+    ], 'csv')
+
+    expect(result).toMatchObject({ created: 1, updated: 0, skipped: 0, failed: [] })
+    await expect(db.select().from(locations)).resolves.toHaveLength(0)
+    const rows = await db
+      .select({
+        libraryState: userBooks.libraryState,
+        locationId: userBooks.locationId,
+        rating: userBooks.rating,
+        note: userBooks.note,
+        readingStatus: userBooks.readingStatus,
+        currentPage: userBooks.currentPage,
+        progressPercent: userBooks.progressPercent
+      })
+      .from(userBooks)
+
+    expect(rows).toEqual([{
+      libraryState: 'wishlisted',
+      locationId: null,
+      rating: null,
+      note: 'keep note',
+      readingStatus: 'unread',
+      currentPage: null,
+      progressPercent: null
+    }])
+  })
+
+  it('rejects wishlisted updates for existing books with active loans', async () => {
+    await seedExistingBook(db)
+    const now = new Date('2026-06-26T11:00:00.000Z')
+    await db.insert(loans).values({
+      id: 'loan-active',
+      ownerUserId: 'user-1',
+      userBookId: 'ub-existing',
+      borrowerDisplayName: 'Borrower',
+      status: 'active',
+      loanedAt: now,
+      snapshotBookTitle: 'Existing Book',
+      snapshotBookAuthor: 'Ada Lovelace',
+      snapshotOwnerName: 'Reader',
+      createdAt: now,
+      updatedAt: now
+    })
+
+    const result = await importRecords([
+      importRecord({
+        title: 'Existing Book',
+        authors: ['Ada Lovelace'],
+        isbn: '9781111111111',
+        libraryState: 'wishlisted'
+      })
+    ], 'csv')
+
+    expect(result).toMatchObject({
+      created: 0,
+      updated: 0,
+      skipped: 0,
+      failed: [{
+        row: 2,
+        title: 'Existing Book',
+        reason: 'Cannot move a book with an active loan to the wishlist'
+      }]
+    })
+    const rows = await db
+      .select({ libraryState: userBooks.libraryState })
+      .from(userBooks)
+      .where(eq(userBooks.id, 'ub-existing'))
+    expect(rows).toEqual([{ libraryState: 'owned' }])
+  })
+
   it('does not fall back to title and author matching when an ISBN is provided', async () => {
     await seedExistingBook(db)
 
@@ -131,7 +216,7 @@ describe('LibraryTransferRepository.importRecords on D1', () => {
 })
 
 async function applyMigrations(database: D1Database) {
-  for (const migration of [initialMigration, termsMigration, locationRestrictMigration]) {
+  for (const migration of [initialMigration, termsMigration, locationRestrictMigration, libraryStateMigration]) {
     for (const statement of migration.split('--> statement-breakpoint')) {
       const migrationStatement = statement.trim()
       if (migrationStatement) {
@@ -212,6 +297,7 @@ function importRecord(overrides: Partial<LibraryImportBookInput>): LibraryImport
     isbn: null,
     tags: [],
     locationPath: null,
+    libraryState: 'owned',
     readingStatus: 'unread',
     currentPage: null,
     progressPercent: null,

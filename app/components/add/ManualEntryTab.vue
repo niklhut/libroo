@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { FormSubmitEvent } from '@nuxt/ui'
-import type { LibraryBook, ReadingStatus } from '~~/shared/types/book'
+import type { LibraryBook, LibraryState, ReadingStatus } from '~~/shared/types/book'
 import { MANUAL_COVER_MAX_BYTES, manualBookCreateSchema, type ManualBookCreateSchema } from '~~/shared/utils/schemas'
 
 const toast = useToast()
@@ -16,6 +16,7 @@ const formState = reactive({
   title: '',
   authors: [''],
   isbn: '',
+  libraryState: 'owned' as LibraryState,
   coverImage: null as { data: string, contentType: string, size: number } | null,
   publishDate: '',
   publisher: '',
@@ -42,6 +43,8 @@ const ratingItems = [
   { label: '4 stars', value: 4 },
   { label: '5 stars', value: 5 }
 ]
+
+const isOwnedBook = computed(() => formState.libraryState === 'owned')
 
 watch(tagInput, (value) => {
   formState.tags = value
@@ -185,6 +188,7 @@ function reset() {
   formState.title = ''
   formState.authors = ['']
   formState.isbn = ''
+  formState.libraryState = 'owned'
   formState.coverImage = null
   formState.publishDate = ''
   formState.publisher = ''
@@ -284,6 +288,19 @@ defineExpose({ reset })
         </UFormField>
 
         <UFormField
+          label="Book state"
+          name="libraryState"
+        >
+          <USelect
+            v-model="formState.libraryState"
+            :items="libraryStateItems"
+            class="w-full"
+          />
+        </UFormField>
+      </div>
+
+      <div class="grid gap-4 sm:grid-cols-2">
+        <UFormField
           label="Publish date"
           name="publishDate"
         >
@@ -381,7 +398,10 @@ defineExpose({ reset })
         />
       </UFormField>
 
-      <div class="grid gap-4 sm:grid-cols-2">
+      <div
+        v-if="isOwnedBook"
+        class="grid gap-4 sm:grid-cols-2"
+      >
         <UFormField
           label="Reading status"
           name="readingStatus"
@@ -405,7 +425,10 @@ defineExpose({ reset })
         </UFormField>
       </div>
 
-      <div class="grid gap-4 sm:grid-cols-2">
+      <div
+        v-if="isOwnedBook"
+        class="grid gap-4 sm:grid-cols-2"
+      >
         <UFormField
           label="Current page"
           name="currentPage"

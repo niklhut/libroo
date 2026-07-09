@@ -54,10 +54,31 @@ describe('server/api/books/manual.post', () => {
       tags: ['math'],
       rating: 5,
       note: 'first edition',
+      libraryState: 'owned',
       readingStatus: 'read',
       currentPage: null,
       progressPercent: null
     })
+  })
+
+  it('passes manual wishlist state', async () => {
+    mockLoggedInUser()
+    const book = { id: 'ub-1', title: 'Manual Book', libraryState: 'wishlisted' }
+    serviceMocks.createManualBook.mockReturnValueOnce(Effect.succeed(book))
+    const handler = await importRoute(route)
+
+    await expect(handler(makeEvent({
+      body: {
+        title: 'Manual Book',
+        authors: ['Ada Lovelace'],
+        libraryState: 'wishlisted'
+      }
+    }))).resolves.toBe(book)
+
+    expect(serviceMocks.createManualBook).toHaveBeenCalledWith(
+      'user-1',
+      expect.objectContaining({ libraryState: 'wishlisted' })
+    )
   })
 
   it('normalizes optional ISBNs', async () => {

@@ -280,7 +280,7 @@ describe('useIsbnScannerStore', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/books/bulk-add', {
       method: 'POST',
       body: {
-        isbns: [lookupIsbn]
+        books: [{ isbn: lookupIsbn, libraryState: 'owned' }]
       }
     })
     expect(scannerStore.scannedBooks).toEqual([])
