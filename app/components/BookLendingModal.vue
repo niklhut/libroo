@@ -182,7 +182,7 @@ async function copyInvite(options: { showToast?: boolean } = {}) {
               color="neutral"
               variant="outline"
               icon="i-lucide-copy"
-              @click="copyInvite()"
+              @click="() => { void copyInvite() }"
             >
               Copy link
             </UButton>
@@ -195,7 +195,7 @@ async function copyInvite(options: { showToast?: boolean } = {}) {
       <UButton
         color="neutral"
         variant="soft"
-        @click="modalOpen = false"
+        @click="() => { modalOpen = false }"
       >
         Close
       </UButton>

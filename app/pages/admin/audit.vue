@@ -199,7 +199,7 @@ function pageQuery(page: number) {
           size="sm"
           :color="currentCategory === filter.value ? 'primary' : 'neutral'"
           :variant="currentCategory === filter.value ? 'solid' : 'outline'"
-          @click="currentCategory = filter.value"
+          @click="() => { currentCategory = filter.value }"
         >
           {{ filter.label }}
         </UButton>

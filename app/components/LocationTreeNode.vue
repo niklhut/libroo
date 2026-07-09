@@ -110,7 +110,7 @@ watch(
             variant="outline"
             size="sm"
             icon="i-lucide-plus"
-            @click="isAdding = !isAdding"
+            @click="() => { isAdding = !isAdding }"
           >
             Add
           </UButton>
@@ -119,7 +119,7 @@ watch(
             variant="outline"
             size="sm"
             icon="i-lucide-pencil"
-            @click="isRenaming = !isRenaming"
+            @click="() => { isRenaming = !isRenaming }"
           >
             Rename
           </UButton>

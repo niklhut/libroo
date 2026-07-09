@@ -414,7 +414,7 @@ function showErrorToast(title: string, err: unknown) {
         <UButton
           color="neutral"
           variant="soft"
-          @click="deleteTarget = null"
+          @click="() => { deleteTarget = null }"
         >
           Cancel
         </UButton>

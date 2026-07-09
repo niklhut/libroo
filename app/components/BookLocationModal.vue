@@ -196,7 +196,7 @@ async function saveLocation() {
       <UButton
         color="neutral"
         variant="soft"
-        @click="modalOpen = false"
+        @click="() => { modalOpen = false }"
       >
         Cancel
       </UButton>
