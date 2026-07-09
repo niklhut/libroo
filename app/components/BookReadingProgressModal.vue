@@ -307,7 +307,7 @@ function saveProgress() {
         color="neutral"
         variant="soft"
         :disabled="saving"
-        @click="modalOpen = false"
+        @click="() => { modalOpen = false }"
       >
         Cancel
       </UButton>

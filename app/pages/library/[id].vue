@@ -533,7 +533,7 @@ async function saveReadingProgress(progress: {
                 variant="outline"
                 size="sm"
                 icon="i-lucide-pencil"
-                @click="isLocationModalOpen = true"
+                @click="() => { isLocationModalOpen = true }"
               >
                 Manage
               </UButton>
@@ -663,7 +663,7 @@ async function saveReadingProgress(progress: {
               color="neutral"
               variant="outline"
               icon="i-lucide-handshake"
-              @click="isLendingModalOpen = true"
+              @click="() => { isLendingModalOpen = true }"
             >
               Record loan
             </UButton>
@@ -773,7 +773,7 @@ async function saveReadingProgress(progress: {
           <UButton
             color="neutral"
             variant="soft"
-            @click="isLoanRemovalDialogOpen = false"
+            @click="() => { isLoanRemovalDialogOpen = false }"
           >
             Cancel
           </UButton>

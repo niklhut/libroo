@@ -189,7 +189,7 @@ defineExpose({ reset })
         <UButton
           icon="i-lucide-camera"
           size="lg"
-          @click="showScanner = true"
+          @click="() => { showScanner = true }"
         >
           Start Camera
         </UButton>
@@ -208,7 +208,7 @@ defineExpose({ reset })
           icon="i-lucide-camera-off"
           color="neutral"
           variant="outline"
-          @click="showScanner = false"
+          @click="() => { showScanner = false }"
         >
           Stop Camera
         </UButton>

@@ -500,7 +500,7 @@ async function syncLoadedPages(targetPages: number) {
               :aria-expanded="areFiltersExpanded"
               :aria-controls="areFiltersExpanded ? 'library-advanced-filters' : undefined"
               class="w-full justify-center md:w-auto"
-              @click="areFiltersExpanded = !areFiltersExpanded"
+              @click="() => { areFiltersExpanded = !areFiltersExpanded }"
             >
               Filters
               <UBadge

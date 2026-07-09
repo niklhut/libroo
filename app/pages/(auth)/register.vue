@@ -334,7 +334,7 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
                 :icon="showPassword ? 'i-lucide-eye-off' : 'i-lucide-eye'"
                 :aria-label="showPassword ? 'Hide password' : 'Show password'"
                 :aria-pressed="showPassword"
-                @click="showPassword = !showPassword"
+                @click="() => { showPassword = !showPassword }"
               />
             </template>
           </UInput>
@@ -356,7 +356,7 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
                 :icon="showConfirmPassword ? 'i-lucide-eye-off' : 'i-lucide-eye'"
                 :aria-label="showConfirmPassword ? 'Hide confirmed password' : 'Show confirmed password'"
                 :aria-pressed="showConfirmPassword"
-                @click="showConfirmPassword = !showConfirmPassword"
+                @click="() => { showConfirmPassword = !showConfirmPassword }"
               />
             </template>
           </UInput>

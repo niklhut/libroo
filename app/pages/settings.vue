@@ -481,7 +481,7 @@ async function importLibraryCsvFile() {
                     size="xs"
                     :icon="showEmailCurrentPassword ? 'i-lucide-eye-off' : 'i-lucide-eye'"
                     :aria-label="showEmailCurrentPassword ? 'Hide current password' : 'Show current password'"
-                    @click="showEmailCurrentPassword = !showEmailCurrentPassword"
+                    @click="() => { showEmailCurrentPassword = !showEmailCurrentPassword }"
                   />
                 </template>
               </UInput>
@@ -535,7 +535,7 @@ async function importLibraryCsvFile() {
                     size="xs"
                     :icon="showCurrentPassword ? 'i-lucide-eye-off' : 'i-lucide-eye'"
                     :aria-label="showCurrentPassword ? 'Hide current password' : 'Show current password'"
-                    @click="showCurrentPassword = !showCurrentPassword"
+                    @click="() => { showCurrentPassword = !showCurrentPassword }"
                   />
                 </template>
               </UInput>
@@ -559,7 +559,7 @@ async function importLibraryCsvFile() {
                     size="xs"
                     :icon="showNewPassword ? 'i-lucide-eye-off' : 'i-lucide-eye'"
                     :aria-label="showNewPassword ? 'Hide new password' : 'Show new password'"
-                    @click="showNewPassword = !showNewPassword"
+                    @click="() => { showNewPassword = !showNewPassword }"
                   />
                 </template>
               </UInput>
@@ -583,7 +583,7 @@ async function importLibraryCsvFile() {
                     size="xs"
                     :icon="showConfirmPassword ? 'i-lucide-eye-off' : 'i-lucide-eye'"
                     :aria-label="showConfirmPassword ? 'Hide confirmed password' : 'Show confirmed password'"
-                    @click="showConfirmPassword = !showConfirmPassword"
+                    @click="() => { showConfirmPassword = !showConfirmPassword }"
                   />
                 </template>
               </UInput>
@@ -723,7 +723,7 @@ async function importLibraryCsvFile() {
             variant="soft"
             icon="i-lucide-trash-2"
             class="w-fit shrink-0 whitespace-nowrap px-5"
-            @click="accountDeletionOpen = true"
+            @click="() => { accountDeletionOpen = true }"
           >
             Delete account
           </UButton>
@@ -755,7 +755,7 @@ async function importLibraryCsvFile() {
             color="neutral"
             variant="soft"
             :disabled="isImporting"
-            @click="importConfirmOpen = false"
+            @click="() => { importConfirmOpen = false }"
           >
             Cancel
           </UButton>
@@ -831,7 +831,7 @@ async function importLibraryCsvFile() {
                 color="neutral"
                 variant="soft"
                 :disabled="isDeletingAccount"
-                @click="accountDeletionOpen = false"
+                @click="() => { accountDeletionOpen = false }"
               >
                 Cancel
               </UButton>

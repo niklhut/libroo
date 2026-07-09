@@ -182,7 +182,7 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
                 :icon="showPassword ? 'i-lucide-eye-off' : 'i-lucide-eye'"
                 :aria-label="showPassword ? 'Hide password' : 'Show password'"
                 :aria-pressed="showPassword"
-                @click="showPassword = !showPassword"
+                @click="() => { showPassword = !showPassword }"
               />
             </template>
           </UInput>
