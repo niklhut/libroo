@@ -9,6 +9,41 @@ describe('library transfer CSV', () => {
     expect(escapeCsvValue(null)).toBe('')
   })
 
+  it('neutralizes formula-triggering values and restores them on import', () => {
+    for (const value of ['=SUM(A1:A2)', '+1', '-1', '@name', '\tvalue']) {
+      expect(escapeCsvValue(value)).toBe(`'${value}`)
+    }
+    expect(escapeCsvValue('\rvalue')).toBe('"\'\rvalue"')
+    expect(escapeCsvValue('=SUM(A1,A2)')).toBe('"\'=SUM(A1,A2)"')
+
+    const csv = formatLibraryCsv([{
+      title: '=SUM(A1:A2)',
+      authors: '["Ada"]',
+      isbn: '+123',
+      tags: '[]',
+      location: '-Shelf',
+      library_state: '@owned',
+      reading_status: 'read',
+      current_page: '',
+      progress_percent: '',
+      rating: '',
+      note: '\'ordinary text',
+      added_date: '',
+      active_loan_status: '',
+      active_loan_borrower: '',
+      active_loan_loaned_at: '',
+      active_loan_due_at: ''
+    }])
+
+    expect(parseLibraryCsv(csv)[0]).toMatchObject({
+      title: '=SUM(A1:A2)',
+      isbn: '+123',
+      location: '-Shelf',
+      library_state: '@owned',
+      note: '\'ordinary text'
+    })
+  })
+
   it('round trips exported rows', () => {
     const csv = formatLibraryCsv([{
       title: 'The Left Hand, of "Darkness"',

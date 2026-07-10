@@ -20,13 +20,22 @@ export const libraryCsvColumns = [
 export type LibraryCsvColumn = typeof libraryCsvColumns[number]
 export type LibraryCsvRow = Record<LibraryCsvColumn, string>
 
+const formulaTriggerPattern = /^[=+@\t\r-]/
+
+function stripFormulaNeutralization(value: string): string {
+  return value.startsWith('\'') && formulaTriggerPattern.test(value[1] ?? '')
+    ? value.slice(1)
+    : value
+}
+
 export function escapeCsvValue(value: unknown): string {
   if (value === null || value === undefined) return ''
 
   const text = value instanceof Date ? value.toISOString() : String(value)
-  if (!/[",\n\r]/.test(text)) return text
+  const escapedText = formulaTriggerPattern.test(text) ? `'${text}` : text
+  if (!/[",\n\r]/.test(escapedText)) return escapedText
 
-  return `"${text.replaceAll('"', '""')}"`
+  return `"${escapedText.replaceAll('"', '""')}"`
 }
 
 export function formatLibraryCsv(rows: LibraryCsvRow[]): string {
@@ -121,7 +130,7 @@ export function parseLibraryCsv(csv: string): LibraryCsvRow[] {
     const parsed = {} as LibraryCsvRow
     for (const column of libraryCsvColumns) {
       const index = headerIndexes.get(column)
-      parsed[column] = index === undefined ? '' : row[index] ?? ''
+      parsed[column] = index === undefined ? '' : stripFormulaNeutralization(row[index] ?? '')
     }
     return parsed
   })
