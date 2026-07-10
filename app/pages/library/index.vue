@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { LibraryBook, BookLocationWithCount, LibraryState } from '~~/shared/types/book'
+import type { LibraryBook, BookLocationWithCount, LibraryState, TagWithCount } from '~~/shared/types/book'
 import {
   buildLibraryRouteQuery,
   DEFAULT_LIBRARY_STATE_FILTER,
@@ -41,7 +41,7 @@ const {
   loanStatus,
   libraryState,
   readingStatus,
-  tag,
+  tags,
   location,
   locationId,
   includeLocationDescendants,
@@ -74,7 +74,7 @@ const hasRouteStateMismatch = pageSize.value !== routeState.pageSize
   || loanStatus.value !== (routeState.loanStatus ?? 'all')
   || libraryState.value.join(',') !== initialLibraryState.join(',')
   || readingStatus.value !== (routeState.readingStatus ?? 'all')
-  || tag.value !== (routeState.tag ?? '')
+  || tags.value.join(',') !== (routeState.tags ?? []).join(',')
   || location.value !== (routeState.location ?? '')
   || locationId.value !== (routeState.locationId ?? '')
   || includeLocationDescendants.value !== Boolean(routeState.includeLocationDescendants)
@@ -93,7 +93,7 @@ search.value = routeState.search ?? ''
 loanStatus.value = routeState.loanStatus ?? 'all'
 libraryState.value = [...initialLibraryState]
 readingStatus.value = routeState.readingStatus ?? 'all'
-tag.value = routeState.tag ?? ''
+tags.value = [...(routeState.tags ?? [])]
 location.value = routeState.location ?? ''
 locationId.value = routeState.locationId ?? ''
 includeLocationDescendants.value = Boolean(routeState.includeLocationDescendants)
@@ -119,7 +119,7 @@ function getLibraryResultCacheKey() {
     libraryState: [...libraryState.value],
     loanStatus: hasPhysicalFilters ? loanStatus.value : 'all',
     readingStatus: hasPhysicalFilters ? readingStatus.value : 'all',
-    tag: tag.value.trim(),
+    tags: [...tags.value],
     location: hasPhysicalFilters ? location.value.trim() : '',
     locationId: hasPhysicalFilters ? locationId.value : '',
     includeLocationDescendants: hasPhysicalFilters ? includeLocationDescendants.value : false,
@@ -131,6 +131,9 @@ const activeResultCacheKey = ref(getLibraryResultCacheKey())
 const shouldFetchInitial = allBooks.value.length === 0 || !paginationState.value
 
 const { data: locations } = await useFetch<BookLocationWithCount[]>('/api/locations', {
+  headers: useRequestHeaders(['cookie'])
+})
+const { data: availableTags } = await useFetch<TagWithCount[]>('/api/tags', {
   headers: useRequestHeaders(['cookie'])
 })
 
@@ -146,7 +149,7 @@ const { data, refresh, status } = await useFetch<PaginatedResponse>('/api/books'
     libraryState: hasLibraryStateFilter(libraryState.value) ? libraryState.value.join(',') : undefined,
     loanStatus: showPhysicalFilters.value && loanStatus.value !== 'all' ? loanStatus.value : undefined,
     readingStatus: showPhysicalFilters.value && readingStatus.value !== 'all' ? readingStatus.value : undefined,
-    tag: tag.value || undefined,
+    tags: tags.value.length ? tags.value.join(',') : undefined,
     location: showPhysicalFilters.value ? location.value || undefined : undefined,
     locationId: showPhysicalFilters.value ? locationId.value || undefined : undefined,
     includeLocationDescendants: showPhysicalFilters.value ? includeLocationDescendants.value || undefined : undefined,
@@ -237,7 +240,7 @@ const hasActiveFilters = computed(() =>
   Boolean(search.value.trim())
   || (showPhysicalFilters.value && loanStatus.value !== 'all')
   || (showPhysicalFilters.value && readingStatus.value !== 'all')
-  || Boolean(tag.value.trim())
+  || tags.value.length > 0
   || (showPhysicalFilters.value && Boolean(location.value.trim()))
   || (showPhysicalFilters.value && Boolean(locationId.value))
   || (showPhysicalFilters.value && includeLocationDescendants.value)
@@ -247,7 +250,7 @@ const activeAdvancedFilterCount = computed(() => getActiveLibraryFilterCount({
   libraryState: [],
   loanStatus: showPhysicalFilters.value ? loanStatus.value : 'all',
   readingStatus: showPhysicalFilters.value ? readingStatus.value : 'all',
-  tag: tag.value,
+  tags: tags.value,
   location: showPhysicalFilters.value ? location.value : undefined,
   locationId: showPhysicalFilters.value ? locationId.value : undefined,
   includeLocationDescendants: showPhysicalFilters.value ? includeLocationDescendants.value : false,
@@ -294,6 +297,10 @@ const locationOptions = computed(() => [
     value: location.id
   }))
 ])
+const tagOptions = computed(() => (availableTags.value ?? []).map(tag => ({
+  label: `${tag.name} (${tag.bookCount})`,
+  value: tag.name.toLowerCase()
+})))
 const selectedLocationLabel = computed(() =>
   locationOptions.value.find(option => option.value === selectedLocationFilter.value)?.label
 )
@@ -301,7 +308,7 @@ const activeFilterSummary = computed(() => describeActiveLibraryFilters({
   libraryState: [],
   loanStatus: showPhysicalFilters.value ? loanStatus.value : 'all',
   readingStatus: showPhysicalFilters.value ? readingStatus.value : 'all',
-  tag: tag.value,
+  tags: tags.value,
   location: showPhysicalFilters.value ? location.value : undefined,
   locationId: showPhysicalFilters.value ? locationId.value : undefined,
   includeLocationDescendants: showPhysicalFilters.value ? includeLocationDescendants.value : false,
@@ -329,7 +336,7 @@ const groupedBooks = computed(() => {
   })
 })
 
-watch([search, loanStatus, libraryState, readingStatus, tag, location, locationId, includeLocationDescendants, sortBy], () => {
+watch([search, loanStatus, libraryState, readingStatus, tags, location, locationId, includeLocationDescendants, sortBy], () => {
   if (suppressFilterWatcher.value) return
   isApplyingFilters.value = true
   if (filterRefreshTimer.value) clearTimeout(filterRefreshTimer.value)
@@ -386,6 +393,14 @@ watch(locationId, (nextLocationId) => {
   }
 })
 
+function toggleTagFilter(tag: string) {
+  const normalizedTag = tag.trim().toLowerCase()
+  const existingIndex = tags.value.findIndex(selected => selected.toLowerCase() === normalizedTag)
+  tags.value = existingIndex === -1
+    ? [...tags.value, normalizedTag]
+    : tags.value.filter((_, index) => index !== existingIndex)
+}
+
 async function applyFilters() {
   isApplyingFilters.value = true
   cacheResultsAction(activeResultCacheKey.value)
@@ -402,7 +417,7 @@ async function applyFilters() {
     libraryState: libraryState.value,
     loanStatus: showPhysicalFilters.value ? loanStatus.value : 'all',
     readingStatus: showPhysicalFilters.value ? readingStatus.value : 'all',
-    tag: tag.value.trim() || undefined,
+    tags: tags.value,
     location: showPhysicalFilters.value ? location.value.trim() || undefined : undefined,
     locationId: showPhysicalFilters.value ? locationId.value || undefined : undefined,
     includeLocationDescendants: showPhysicalFilters.value ? includeLocationDescendants.value : false,
@@ -438,7 +453,7 @@ async function clearFilters() {
   search.value = ''
   loanStatus.value = 'all'
   readingStatus.value = 'all'
-  tag.value = ''
+  tags.value = []
   location.value = ''
   locationId.value = ''
   includeLocationDescendants.value = false
@@ -624,11 +639,16 @@ async function syncLoadedPages(targetPages: number) {
                   aria-label="Reading status"
                   class="w-full"
                 />
-                <UInput
-                  v-model="tag"
+                <USelectMenu
+                  v-model="tags"
+                  :items="tagOptions"
+                  multiple
+                  searchable
+                  value-key="value"
                   icon="i-lucide-tag"
                   aria-label="Filter by tag"
-                  placeholder="Filter tag"
+                  placeholder="Filter tags"
+                  class="w-full"
                 />
                 <UInput
                   v-if="showPhysicalFilters"
@@ -778,6 +798,8 @@ async function syncLoadedPages(targetPages: number) {
                 :added-at="book.addedAt"
                 :active-loan="book.activeLoan"
                 :library-state="book.libraryState"
+                :tags="book.tags"
+                @tag-selected="toggleTagFilter"
               />
             </div>
           </section>
@@ -801,6 +823,8 @@ async function syncLoadedPages(targetPages: number) {
             :added-at="book.addedAt"
             :active-loan="book.activeLoan"
             :library-state="book.libraryState"
+            :tags="book.tags"
+            @tag-selected="toggleTagFilter"
           />
         </div>
 

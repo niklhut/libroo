@@ -28,7 +28,7 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
   const loanStatus = ref<LibraryLoanFilter>('all')
   const libraryState = ref<LibraryStateFilter>([...DEFAULT_LIBRARY_STATE_FILTER])
   const readingStatus = ref<LibraryReadingFilter>('all')
-  const tag = ref('')
+  const tags = ref<string[]>([])
   const location = ref('')
   const locationId = ref('')
   const includeLocationDescendants = ref(false)
@@ -93,6 +93,20 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
     }
   }
 
+  function updateBookTags(userBookId: string, tags: string[]) {
+    const updateTags = (book: LibraryBook) => book.id === userBookId
+      ? { ...book, tags: [...tags] }
+      : book
+
+    allBooks.value = allBooks.value.map(updateTags)
+    resultCache.value = Object.fromEntries(
+      Object.entries(resultCache.value).map(([key, entry]) => [key, {
+        ...entry,
+        books: entry.books.map(updateTags)
+      }])
+    )
+  }
+
   function markNeedsSync(targetPages = getLoadedPages()) {
     shouldSync.value = true
     syncTargetPages.value = Math.max(1, targetPages)
@@ -140,7 +154,7 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
     loanStatus,
     libraryState,
     readingStatus,
-    tag,
+    tags,
     location,
     locationId,
     includeLocationDescendants,
@@ -153,6 +167,7 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
     getLoadedPages,
     addBook,
     removeBooks,
+    updateBookTags,
     markNeedsSync,
     clearNeedsSync,
     resetResults,

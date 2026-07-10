@@ -138,6 +138,7 @@ interface ApiRouteTestGlobals {
   updateReadingProgress: (...args: unknown[]) => unknown
   updateLibraryState: (...args: unknown[]) => unknown
   listLocations: (...args: unknown[]) => unknown
+  listTags: (...args: unknown[]) => unknown
   createLocation: (...args: unknown[]) => unknown
   renameLocation: (...args: unknown[]) => unknown
   moveLocation: (...args: unknown[]) => unknown
@@ -207,6 +208,7 @@ export const serviceMocks = {
   updateReadingProgress: vi.fn(),
   updateLibraryState: vi.fn(),
   listLocations: vi.fn(),
+  listTags: vi.fn(),
   createLocation: vi.fn(),
   renameLocation: vi.fn(),
   moveLocation: vi.fn(),
@@ -266,6 +268,7 @@ const originalGlobals = {
   updateReadingProgress: testGlobal.updateReadingProgress,
   updateLibraryState: testGlobal.updateLibraryState,
   listLocations: testGlobal.listLocations,
+  listTags: testGlobal.listTags,
   createLocation: testGlobal.createLocation,
   renameLocation: testGlobal.renameLocation,
   moveLocation: testGlobal.moveLocation,
@@ -383,6 +386,7 @@ export async function setupApiRouteTest() {
   testGlobal.updateReadingProgress = (...args: unknown[]) => serviceMocks.updateReadingProgress(...args)
   testGlobal.updateLibraryState = (...args: unknown[]) => serviceMocks.updateLibraryState(...args)
   testGlobal.listLocations = (...args: unknown[]) => serviceMocks.listLocations(...args)
+  testGlobal.listTags = (...args: unknown[]) => serviceMocks.listTags(...args)
   testGlobal.createLocation = (...args: unknown[]) => serviceMocks.createLocation(...args)
   testGlobal.renameLocation = (...args: unknown[]) => serviceMocks.renameLocation(...args)
   testGlobal.moveLocation = (...args: unknown[]) => serviceMocks.moveLocation(...args)

@@ -28,7 +28,7 @@ export function libraryFilters(page: Page) {
     libraryState: page.getByLabel('Library state'),
     loanStatus: page.getByLabel('Loan status'),
     readingStatus: page.getByLabel('Reading status'),
-    tag: page.getByLabel('Filter by tag'),
+    tags: page.getByLabel('Filter by tag'),
     locationPath: page.getByLabel('Filter by location path'),
     locationMode: page.getByLabel('Location filter mode'),
     sort: page.getByLabel('Sort library'),

@@ -5,7 +5,7 @@ const route = useRoute()
 const config = useRuntimeConfig()
 const toast = useToast()
 const dashboardStore = useLibraryDashboardStore()
-const { removeBooks, getLoadedPages, markNeedsSync } = dashboardStore
+const { removeBooks, getLoadedPages, markNeedsSync, updateBookTags } = dashboardStore
 
 const userBookId = route.params.id as string
 const isDeleting = ref(false)
@@ -251,6 +251,9 @@ function openTagModal() {
 async function onTagsSaved() {
   try {
     await refresh()
+    if (book.value) {
+      updateBookTags(userBookId, book.value.userTags.map(tag => tag.name))
+    }
     toast.add({
       title: 'Tags updated',
       description: 'Your tag changes were saved successfully.',

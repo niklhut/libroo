@@ -16,7 +16,7 @@ describe('library query helpers', () => {
       libraryState: ['wishlisted'],
       loanStatus: 'loaned',
       readingStatus: 'reading',
-      tag: '  sci-fi ',
+      tags: ['  sci-fi, art ', 'fiction'],
       location: ' shelf b ',
       locationId: ' loc-1 ',
       includeLocationDescendants: 'true',
@@ -28,7 +28,7 @@ describe('library query helpers', () => {
       libraryState: ['wishlisted'],
       loanStatus: 'loaned',
       readingStatus: 'reading',
-      tag: 'sci-fi',
+      tags: ['art', 'fiction', 'sci-fi'],
       location: 'shelf b',
       locationId: 'loc-1',
       includeLocationDescendants: true,
@@ -47,7 +47,7 @@ describe('library query helpers', () => {
       libraryState: [],
       loanStatus: 'all',
       readingStatus: 'all',
-      tag: undefined,
+      tags: [],
       location: undefined,
       locationId: undefined,
       includeLocationDescendants: false,
@@ -83,6 +83,12 @@ describe('library query helpers', () => {
     })
   })
 
+  it('folds the legacy single tag query into normalized tags', () => {
+    expect(normalizeLibraryQuery({ tag: '  Sci-Fi ' })).toMatchObject({
+      tags: ['sci-fi']
+    })
+  })
+
   it('builds compact route query params', () => {
     expect(buildLibraryRouteQuery({
       page: 1,
@@ -91,7 +97,7 @@ describe('library query helpers', () => {
       libraryState: [],
       loanStatus: 'available',
       readingStatus: 'all',
-      tag: 'classic',
+      tags: ['classic', 'art'],
       location: undefined,
       locationId: 'loc-1',
       includeLocationDescendants: true,
@@ -100,7 +106,7 @@ describe('library query helpers', () => {
       page: '1',
       search: 'dune',
       loanStatus: 'available',
-      tag: 'classic',
+      tags: 'classic,art',
       locationId: 'loc-1',
       includeLocationDescendants: 'true',
       sortBy: 'author'
@@ -121,7 +127,7 @@ describe('library query helpers', () => {
       libraryState: ['wishlisted'],
       loanStatus: 'loaned',
       readingStatus: 'read',
-      tag: 'classic',
+      tags: ['classic'],
       location: 'shelf',
       locationId: 'loc-1',
       includeLocationDescendants: true,
@@ -154,14 +160,14 @@ describe('library query helpers', () => {
       tag: 'classic'
     })).toEqual([
       'Library',
-      'Tag: classic'
+      'Tags: classic'
     ])
 
     expect(describeActiveLibraryFilters({
       loanStatus: 'available',
       libraryState: ['wishlisted'],
       readingStatus: 'reading',
-      tag: 'sci-fi',
+      tags: ['sci-fi', 'art'],
       locationId: 'loc-1',
       includeLocationDescendants: true,
       sortBy: 'locationPath',
@@ -172,7 +178,7 @@ describe('library query helpers', () => {
       'Wishlist',
       'Available',
       'Reading: reading',
-      'Tag: sci-fi',
+      'Tags: sci-fi, art',
       'Location: Living Room - Shelf A',
       'Includes sub-locations',
       'Sort: locationPath',

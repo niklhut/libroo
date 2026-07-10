@@ -117,6 +117,22 @@ describe('useLibraryDashboardStore', () => {
     expect(pagination.value?.totalItems).toBe(2)
   })
 
+  it('updates tags in the displayed books and cached results', () => {
+    const store = createStore()
+    const { allBooks, pagination } = storeToRefs(store)
+    const book = { ...createBook('1'), tags: ['Old tag'] }
+    allBooks.value = [book]
+    pagination.value = { page: 1, pageSize: 12, totalItems: 1, totalPages: 1, hasMore: false }
+    store.cacheResults('library')
+
+    store.updateBookTags('1', ['New tag'])
+
+    expect(allBooks.value[0]?.tags).toEqual(['New tag'])
+    allBooks.value = []
+    store.restoreCachedResults('library')
+    expect(allBooks.value[0]?.tags).toEqual(['New tag'])
+  })
+
   it('removes books, updates pagination, and clamps page', () => {
     const store = createStore()
     const { page, pageSize, allBooks, pagination } = storeToRefs(store)
