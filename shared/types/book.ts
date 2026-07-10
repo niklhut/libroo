@@ -24,6 +24,12 @@ export interface BookTag {
   name: string
 }
 
+export interface TagWithCount {
+  id: string
+  name: string
+  bookCount: number
+}
+
 export interface BookLocation {
   id: string
   name: string

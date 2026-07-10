@@ -10,7 +10,7 @@ import type { AtomicDbStatement, AtomicDbStatements } from '../services/db.servi
 import { getBlob, type StorageService } from '../services/storage.service'
 import { downloadCover, lookupByISBN } from './openLibrary.repository'
 import type { OpenLibraryApiError, OpenLibraryBookNotFoundError, OpenLibraryRepository } from './openLibrary.repository'
-import type { LibraryState } from '../../shared/types/book'
+import type { LibraryState, TagWithCount } from '../../shared/types/book'
 
 // Error types
 export class BookNotFoundError extends Data.TaggedError('BookNotFoundError')<{
@@ -152,6 +152,8 @@ export interface BookRepositoryInterface {
     userId: string,
     pagination: PaginationParams & BookLibraryFilters
   ) => Effect.Effect<PaginatedResult<UserBook>, DatabaseError, DbService>
+
+  listTags: (userId: string) => Effect.Effect<TagWithCount[], DatabaseError, DbService>
 
   getLibraryByAuthor: (
     userId: string,
@@ -1183,7 +1185,11 @@ export const BookRepositoryLive = Layer.effect(
           const normalizedSearch = pagination.search?.trim().toLowerCase()
           const hasSearch = Boolean(normalizedSearch)
           const likePattern = `%${normalizedSearch}%`
-          const normalizedTag = pagination.tag?.trim().toLowerCase()
+          const hasSelectedTags = Boolean(pagination.tags?.length)
+          const rawTagFilters = hasSelectedTags ? pagination.tags! : [pagination.tag]
+          const normalizedTags = [...new Set(rawTagFilters
+            .filter((tag): tag is string => Boolean(tag?.trim()))
+            .map(tag => tag.trim().toLowerCase()))]
           const normalizedLocation = pagination.location?.trim().toLowerCase()
           const selectedLocationPath = pagination.locationPath?.trim()
           const selectedLocationDescendantPattern = selectedLocationPath
@@ -1195,23 +1201,25 @@ export const BookRepositoryLive = Layer.effect(
               .from(loans)
               .where(and(eq(loans.userBookId, userBooks.id), eq(loans.status, 'active')))
           )
-          const tagCondition = normalizedTag
-            ? or(
+          // Library tag filters intentionally use user-confirmed tags only.
+          // System tags are Open Library suggestions until promoted in the UI.
+          // Discrete `tags` selections match exactly; the legacy single `tag`
+          // parameter retains its substring behavior for older callers/links.
+          const tagCondition = normalizedTags.length
+            ? or(...normalizedTags.map(normalizedTag =>
                 exists(
                   dbService.db
                     .select({ value: sql`1` })
                     .from(userBookTags)
                     .innerJoin(tags, eq(userBookTags.tagId, tags.id))
-                    .where(and(eq(userBookTags.userBookId, userBooks.id), sql`lower(${tags.name}) like ${`%${normalizedTag}%`}`))
-                ),
-                exists(
-                  dbService.db
-                    .select({ value: sql`1` })
-                    .from(bookSystemTags)
-                    .innerJoin(tags, eq(bookSystemTags.tagId, tags.id))
-                    .where(and(eq(bookSystemTags.bookId, books.id), sql`lower(${tags.name}) like ${`%${normalizedTag}%`}`))
+                    .where(and(
+                      eq(userBookTags.userBookId, userBooks.id),
+                      hasSelectedTags
+                        ? sql`lower(${tags.name}) = ${normalizedTag}`
+                        : sql`lower(${tags.name}) like ${`%${normalizedTag}%`}`
+                    ))
                 )
-              )
+              ))
             : undefined
 
           const searchCondition = hasSearch
@@ -1353,6 +1361,29 @@ export const BookRepositoryLive = Layer.effect(
               hasMore: page < totalPages
             }
           }
+        }),
+
+      listTags: userId =>
+        Effect.tryPromise({
+          try: async () => {
+            // Only user-confirmed tags belong in the library's filter list.
+            const userTagRows = await dbService.db.select({ id: tags.id, name: tags.name, userBookId: userBooks.id })
+              .from(userBooks)
+              .innerJoin(userBookTags, eq(userBookTags.userBookId, userBooks.id))
+              .innerJoin(tags, eq(tags.id, userBookTags.tagId))
+              .where(and(eq(userBooks.userId, userId), isNull(userBooks.removedAt)))
+              .groupBy(tags.id, tags.name, userBooks.id)
+            const tagBooks = new Map<string, { name: string, books: Set<string> }>()
+            for (const row of userTagRows) {
+              const entry = tagBooks.get(row.id) ?? { name: row.name, books: new Set<string>() }
+              entry.books.add(row.userBookId)
+              tagBooks.set(row.id, entry)
+            }
+            return [...tagBooks.entries()]
+              .map(([id, entry]) => ({ id, name: entry.name, bookCount: entry.books.size }))
+              .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+          },
+          catch: error => new DatabaseError({ message: `Failed to list tags: ${error}`, operation: 'listTags' })
         }),
 
       getLibraryByAuthor: (userId, authorId, pagination) =>

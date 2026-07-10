@@ -3,7 +3,7 @@ import type * as HttpClient from '@effect/platform/HttpClient'
 import { normalizeReadingProgress } from '../../shared/utils/reading-progress'
 import { MANUAL_COVER_MAX_BYTES } from '../../shared/utils/schemas'
 import type { LibraryQueryFilters } from '../../shared/utils/library-query'
-import type { LibraryState } from '../../shared/types/book'
+import type { LibraryState, TagWithCount } from '../../shared/types/book'
 
 interface UserBookViewModel {
   id: string
@@ -67,6 +67,7 @@ export const toLibraryBook = (userBook: UserBookViewModel): LibraryBook => ({
 // ===== Service Interface =====
 
 export interface BookServiceInterface {
+  listTags: (userId: string) => Effect.Effect<TagWithCount[], DatabaseError, DbService>
   getUserLibrary: (
     userId: string,
     pagination: PaginationParams & LibraryQueryFilters
@@ -258,6 +259,7 @@ export const BookServiceLive = Layer.effect(
       })
 
     return {
+      listTags: userId => bookRepo.listTags(userId),
       getUserLibrary: (userId, pagination) =>
         Effect.gen(function* () {
           const selectedLocation = pagination.locationId
@@ -577,6 +579,9 @@ export const BookServiceLive = Layer.effect(
 
 export const getUserLibrary = (userId: string, pagination: PaginationParams & LibraryQueryFilters) =>
   Effect.flatMap(BookService, service => service.getUserLibrary(userId, pagination))
+
+export const listTags = (userId: string) =>
+  Effect.flatMap(BookService, service => service.listTags(userId))
 
 export const getAuthorLibrary = (userId: string, authorId: string, pagination: PaginationParams) =>
   Effect.flatMap(BookService, service => service.getAuthorLibrary(userId, authorId, pagination))

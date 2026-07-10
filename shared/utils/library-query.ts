@@ -10,6 +10,11 @@ export interface LibraryQueryFilters {
   libraryState?: LibraryStateFilter
   loanStatus?: LibraryLoanFilter
   readingStatus?: LibraryReadingFilter
+  /**
+   * Canonical multi-tag filter. The legacy `tag` field is accepted on input
+   * for old links/callers and folded into this list during normalization.
+   */
+  tags?: string[]
   tag?: string
   location?: string
   locationId?: string
@@ -69,6 +74,15 @@ const valuesAsStrings = (value: unknown): string[] => {
   return value.split(',').map(item => item.trim()).filter(Boolean)
 }
 
+const normalizeTagFilter = (value: unknown): string[] => {
+  const seen = new Set<string>()
+  return valuesAsStrings(value).map(tag => tag.toLowerCase()).filter((normalized) => {
+    if (seen.has(normalized)) return false
+    seen.add(normalized)
+    return true
+  })
+}
+
 export const normalizeLibraryStateFilter = (value: unknown): LibraryStateFilter => {
   const states: LibraryState[] = []
   const seen = new Set<LibraryState>()
@@ -102,6 +116,8 @@ export const normalizeLibraryQuery = (
   const loanStatus = firstString(query.loanStatus)
   const readingStatus = firstString(query.readingStatus)
   const libraryState = normalizeLibraryStateFilter(query.libraryState)
+  // `tags` takes precedence over the legacy single `tag` query parameter.
+  const tags = normalizeTagFilter(query.tags ?? query.tag)
   const sortBy = firstString(query.sortBy)
 
   return {
@@ -115,7 +131,7 @@ export const normalizeLibraryQuery = (
     readingStatus: readingFilters.has(readingStatus as LibraryReadingFilter)
       ? readingStatus as LibraryReadingFilter
       : 'all',
-    tag: cleanText(query.tag),
+    tags,
     location: cleanText(query.location),
     locationId: cleanText(query.locationId),
     includeLocationDescendants: cleanBoolean(query.includeLocationDescendants) ?? false,
@@ -133,7 +149,7 @@ export const buildLibraryRouteQuery = (state: LibraryQueryState): Record<string,
   if (hasLibraryStateFilter(state.libraryState)) query.libraryState = state.libraryState!.join(',')
   if (state.loanStatus && state.loanStatus !== 'all') query.loanStatus = state.loanStatus
   if (state.readingStatus && state.readingStatus !== 'all') query.readingStatus = state.readingStatus
-  if (state.tag) query.tag = state.tag
+  if (state.tags?.length) query.tags = state.tags.join(',')
   if (state.location) query.location = state.location
   if (state.locationId) query.locationId = state.locationId
   if (state.includeLocationDescendants) query.includeLocationDescendants = 'true'
@@ -150,7 +166,7 @@ export const getActiveLibraryFilterCount = (
     hasLibraryStateFilter(state.libraryState),
     state.loanStatus && state.loanStatus !== 'all',
     state.readingStatus && state.readingStatus !== 'all',
-    state.tag?.trim(),
+    state.tags?.length || state.tag?.trim(),
     state.location?.trim(),
     state.locationId,
     state.includeLocationDescendants,
@@ -177,7 +193,8 @@ export const describeActiveLibraryFilters = (
   if (state.readingStatus && state.readingStatus !== 'all') {
     labels.push(`Reading: ${state.readingStatus}`)
   }
-  if (state.tag?.trim()) labels.push(`Tag: ${state.tag.trim()}`)
+  const tags = state.tags?.length ? state.tags : state.tag?.trim() ? [state.tag.trim()] : []
+  if (tags.length) labels.push(`Tags: ${tags.join(', ')}`)
   if (state.location?.trim()) labels.push(`Location search: ${state.location.trim()}`)
   if (state.locationId) labels.push(`Location: ${options.locationLabel || 'selected'}`)
   if (state.includeLocationDescendants) labels.push('Includes sub-locations')

@@ -94,6 +94,60 @@ describe('BookRepository tag mutations on D1', () => {
 
     await expect(selectTagNames(db)).resolves.toEqual(['Delete Me', 'Other', 'System'])
   })
+
+  it('aggregates only user-confirmed tags across active library books', async () => {
+    const now = new Date('2026-06-26T10:00:00.000Z')
+    await db.insert(userBooks).values([
+      { id: 'ub-3', userId: 'user-1', bookId: 'book-2', addedAt: now },
+      { id: 'ub-removed', userId: 'user-1', bookId: 'book-2', addedAt: now, removedAt: now }
+    ])
+    await db.insert(bookSystemTags).values({ bookId: 'book-2', tagId: 'tag-system', createdAt: now, updatedAt: now })
+    await db.insert(userBookTags).values([
+      { id: 'ubt-delete-second', userBookId: 'ub-3', tagId: 'tag-delete', createdAt: now, updatedAt: now },
+      { id: 'ubt-other-removed', userBookId: 'ub-removed', tagId: 'tag-other', createdAt: now, updatedAt: now }
+    ])
+
+    const result = await runRepository(db, Effect.flatMap(BookRepository, repository => repository.listTags('user-1')))
+
+    expect(result).toEqual([
+      { id: 'tag-delete', name: 'Delete Me', bookCount: 2 }
+    ])
+  })
+
+  it('filters the library by any selected user-confirmed tag', async () => {
+    const now = new Date('2026-06-26T10:00:00.000Z')
+    await db.insert(userBooks).values({ id: 'ub-3', userId: 'user-1', bookId: 'book-2', addedAt: now })
+    await db.insert(userBookTags).values({ id: 'ubt-other', userBookId: 'ub-3', tagId: 'tag-other', createdAt: now, updatedAt: now })
+
+    const result = await runRepository(db, Effect.flatMap(BookRepository, repository => repository.getLibrary('user-1', {
+      page: 1,
+      pageSize: 10,
+      tags: ['delete me', 'other']
+    })))
+
+    expect(result.pagination.totalItems).toBe(2)
+    expect(result.items.map(item => item.id).sort()).toEqual(['ub-1', 'ub-3'])
+  })
+
+  it('matches selected tags exactly while retaining legacy substring matching', async () => {
+    const now = new Date('2026-06-26T10:00:00.000Z')
+    await db.insert(tags).values({ id: 'tag-artwork', name: 'Artwork', normalizedName: 'artwork', createdAt: now, updatedAt: now })
+    await db.insert(userBookTags).values({ id: 'ubt-artwork', userBookId: 'ub-1', tagId: 'tag-artwork', createdAt: now, updatedAt: now })
+
+    const selectedResult = await runRepository(db, Effect.flatMap(BookRepository, repository => repository.getLibrary('user-1', {
+      page: 1,
+      pageSize: 10,
+      tags: ['art']
+    })))
+    const legacyResult = await runRepository(db, Effect.flatMap(BookRepository, repository => repository.getLibrary('user-1', {
+      page: 1,
+      pageSize: 10,
+      tag: 'art'
+    })))
+
+    expect(selectedResult.pagination.totalItems).toBe(0)
+    expect(legacyResult.pagination.totalItems).toBe(1)
+  })
 })
 
 async function applyMigrations(database: D1Database) {

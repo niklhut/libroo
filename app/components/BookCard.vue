@@ -13,9 +13,19 @@ interface Props {
   lastKnownLocation?: string | null
   addedAt?: string | Date
   activeLoan?: ActiveLoanSummary | null
+  tags?: string[]
 }
 
 const props = defineProps<Props>()
+const emit = defineEmits<{ 'tag-selected': [tag: string] }>()
+const visibleTags = computed(() => props.tags?.slice(0, 3) ?? [])
+const hiddenTagCount = computed(() => Math.max(0, (props.tags?.length ?? 0) - visibleTags.value.length))
+
+function selectTag(event: MouseEvent, tag: string) {
+  event.preventDefault()
+  event.stopPropagation()
+  emit('tag-selected', tag)
+}
 
 // Computed cover URL - blob images are already WebP, use directly
 const coverUrl = computed(() => {
@@ -94,6 +104,30 @@ const coverUrl = computed(() => {
         <p class="text-xs text-muted line-clamp-1">
           {{ author }}
         </p>
+        <div
+          v-if="visibleTags.length"
+          class="flex flex-wrap gap-1 pt-1"
+        >
+          <UBadge
+            v-for="tag in visibleTags"
+            :key="tag"
+            color="primary"
+            variant="soft"
+            size="sm"
+            class="cursor-pointer"
+            @click="selectTag($event, tag)"
+          >
+            {{ tag }}
+          </UBadge>
+          <UBadge
+            v-if="hiddenTagCount"
+            color="neutral"
+            variant="soft"
+            size="sm"
+          >
+            +{{ hiddenTagCount }}
+          </UBadge>
+        </div>
         <div
           v-if="location || lastKnownLocation"
           class="flex items-center gap-1 text-xs text-muted"
