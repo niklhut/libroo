@@ -17,7 +17,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "typecheck": "nuxt typecheck",
-    "test": "vitest run",
+    "test": "vitest run --project unit --project d1 --project integration --project scripts",
     "test:unit": "vitest run --project unit",
     "test:d1": "vitest run --project d1",
     "test:integration": "vitest run --project integration",

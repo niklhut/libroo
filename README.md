@@ -68,8 +68,25 @@ Useful checks before shipping changes:
 ```bash
 pnpm lint:fix
 pnpm typecheck
+pnpm test
 pnpm test:unit
+pnpm test:d1
+pnpm test:integration
+pnpm test:scripts
+pnpm test:e2e
 ```
+
+- `pnpm test` runs all Vitest projects.
+- `pnpm test:unit` runs pure logic tests.
+- `pnpm test:d1` runs Cloudflare D1/Miniflare-bound tests.
+- `pnpm test:integration` runs cross-service and booted-server flows.
+- `pnpm test:scripts` runs backup, restore, and migration script tests.
+- `pnpm test:e2e` runs Playwright browser flows and builds the self-host runtime first.
+
+CI runs these same Vitest projects through a per-project matrix, so a passing
+`pnpm test` locally mirrors CI coverage. E2E runs separately because it depends
+on its own Playwright build/runtime; CI still reports each Vitest project's
+status individually.
 
 The full first-release manual QA pass lives in [docs/first-release-qa.md](docs/first-release-qa.md).
 

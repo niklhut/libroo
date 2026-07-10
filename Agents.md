@@ -69,4 +69,4 @@ export default effectHandler((event, user) =>
 - Create Repository: Implement data access in `server/repositories/`.
 - Create Service: Implement business logic in `server/services/`.
 - Expose API: Link service to route in `server/api/`.
-- Finalize: Run `pnpm lint:fix` and `pnpm typecheck`.
+- Finalize: Run `pnpm lint:fix`, `pnpm typecheck`, and `pnpm test`. This runs all Vitest projects; `pnpm test:e2e` is a separate, build-dependent Playwright suite.
