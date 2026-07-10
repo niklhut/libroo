@@ -104,6 +104,7 @@ const isLoadingMore = ref(false)
 const isApplyingFilters = ref(false)
 const filterRefreshTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 const preferenceSaveTimer = ref<ReturnType<typeof setTimeout> | null>(null)
+const shouldPersistLibraryStatePreference = ref(false)
 const suppressFilterWatcher = ref(false)
 const ALL_LOCATIONS_VALUE = '__all_locations__'
 const areFiltersExpanded = ref(false)
@@ -347,7 +348,13 @@ watch([search, loanStatus, libraryState, readingStatus, tag, location, locationI
   }, 250)
 })
 
+function markLibraryStatePreferenceAsUserSelected() {
+  shouldPersistLibraryStatePreference.value = true
+}
+
 watch(libraryState, (nextState) => {
+  if (!shouldPersistLibraryStatePreference.value) return
+
   if (preferenceSaveTimer.value) clearTimeout(preferenceSaveTimer.value)
   preferenceSaveTimer.value = setTimeout(() => {
     void $fetch('/api/preferences', {
@@ -371,7 +378,7 @@ watch(libraryState, (nextState) => {
   if (sortBy.value === 'locationPath') {
     sortBy.value = 'dateAdded'
   }
-})
+}, { flush: 'post' })
 
 watch(locationId, (nextLocationId) => {
   if (!nextLocationId) {
@@ -527,6 +534,7 @@ async function syncLoadedPages(targetPages: number) {
               size="lg"
               aria-label="Library state"
               class="w-full md:w-42"
+              @update:model-value="markLibraryStatePreferenceAsUserSelected"
             >
               <template #default>
                 <span class="truncate">{{ libraryStateFilterLabel }}</span>
