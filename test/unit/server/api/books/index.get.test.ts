@@ -48,7 +48,7 @@ describe('server/api/books/index.get', () => {
       libraryState: [],
       loanStatus: 'loaned',
       readingStatus: 'read',
-      tags: ['classic', 'art'],
+      tags: ['art', 'classic'],
       location: 'Shelf B',
       locationId: 'loc-1',
       includeLocationDescendants: true,
