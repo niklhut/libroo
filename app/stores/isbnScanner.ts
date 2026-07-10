@@ -12,13 +12,15 @@ export interface ScannedBook {
   errorMessage?: string
 }
 
+type AddLibraryState = Exclude<LibraryState, 'previously_owned'>
+
 export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
   const toast = useToast()
   const isbnLookupStore = useIsbnLookupStore()
 
   const scannedBooks = ref<ScannedBook[]>([])
   const isBulkLookingUp = ref(false)
-  const targetLibraryState = ref<LibraryState>('owned')
+  const targetLibraryState = ref<AddLibraryState>('owned')
 
   const lookupUnavailableMessage = 'We could not look up this ISBN right now. Try again in a moment.'
   const addUnavailableMessage = 'Could not add this book to your library. Try again in a moment.'

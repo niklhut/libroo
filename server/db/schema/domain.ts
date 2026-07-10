@@ -87,7 +87,8 @@ export const userBooks = sqliteTable('user_books', {
   locationId: text('location_id').references(() => locations.id, { onDelete: 'set null' }),
   rating: integer('rating'), // 1–5 star rating, null = unrated
   note: text('note'), // Private user note
-  libraryState: text('library_state', { enum: ['owned', 'wishlisted'] }).notNull().default('owned'),
+  libraryState: text('library_state', { enum: ['owned', 'wishlisted', 'previously_owned'] }).notNull().default('owned'),
+  lastKnownLocation: text('last_known_location'),
   readingStatus: text('reading_status', { enum: ['unread', 'reading', 'read'] }).notNull().default('unread'),
   currentPage: integer('current_page'),
   progressPercent: integer('progress_percent'),
@@ -112,11 +113,18 @@ export const userBooks = sqliteTable('user_books', {
     .on(table.userId, table.locationId)
     .where(sql`${table.removedAt} IS NULL`),
   check('user_books_rating_check', sql`${table.rating} IS NULL OR ${table.rating} BETWEEN 1 AND 5`),
-  check('user_books_library_state_check', sql`${table.libraryState} IN ('owned', 'wishlisted')`),
+  check('user_books_library_state_check', sql`${table.libraryState} IN ('owned', 'wishlisted', 'previously_owned')`),
   check('user_books_reading_status_check', sql`${table.readingStatus} IN ('unread', 'reading', 'read')`),
   check('user_books_current_page_check', sql`${table.currentPage} IS NULL OR ${table.currentPage} >= 0`),
   check('user_books_progress_percent_check', sql`${table.progressPercent} IS NULL OR ${table.progressPercent} BETWEEN 0 AND 100`)
 ])
+
+export const userPreferences = sqliteTable('user_preferences', {
+  userId: text('user_id').primaryKey().references(() => user.id, { onDelete: 'cascade' }),
+  defaultLibraryStateFilter: text('default_library_state_filter', { mode: 'json' }).$type<Array<'owned' | 'wishlisted' | 'previously_owned'>>().notNull().default(sql`'["owned"]'`),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
+})
 
 // Global tag dictionary with case-insensitive uniqueness enforced in migration
 export const tags = sqliteTable('tags', {

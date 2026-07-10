@@ -91,6 +91,7 @@ export const LibraryTransferRepositoryLive = Layer.effect(
                 isbn: books.isbn,
                 source: books.source,
                 locationPath: locations.path,
+                lastKnownLocation: userBooks.lastKnownLocation,
                 libraryState: userBooks.libraryState,
                 readingStatus: userBooks.readingStatus,
                 currentPage: userBooks.currentPage,
@@ -157,7 +158,9 @@ export const LibraryTransferRepositoryLive = Layer.effect(
               authors: authorsByBook.get(row.bookId) ?? ['Unknown Author'],
               isbn: row.isbn ?? null,
               tags: tagsByUserBook.get(row.userBookId) ?? [],
-              location: row.locationPath ?? null,
+              location: row.libraryState === 'previously_owned'
+                ? row.lastKnownLocation ?? null
+                : row.locationPath ?? null,
               libraryState: row.libraryState,
               readingStatus: row.readingStatus,
               currentPage: row.currentPage ?? null,
@@ -389,20 +392,22 @@ export const LibraryTransferRepositoryLive = Layer.effect(
                 }
 
                 const isWishlisted = record.libraryState === 'wishlisted'
-                if (existing && isWishlisted) {
+                const isPreviouslyOwned = record.libraryState === 'previously_owned'
+                if (existing && (isWishlisted || isPreviouslyOwned)) {
                   const activeLoan = await dbService.db
                     .select({ id: loans.id })
                     .from(loans)
                     .where(and(eq(loans.userBookId, existing.userBookId), eq(loans.ownerUserId, userId), eq(loans.status, 'active')))
                     .limit(1)
                   if (activeLoan[0]) {
-                    throw new Error('Cannot move a book with an active loan to the wishlist')
+                    throw new Error(`Cannot move a book with an active loan to ${isPreviouslyOwned ? 'previously_owned' : 'the wishlist'}`)
                   }
                 }
-                const locationId = isWishlisted ? null : await resolveLocationId(record.locationPath)
+                const locationId = isWishlisted || isPreviouslyOwned ? null : await resolveLocationId(record.locationPath)
                 const userBookValues = {
                   locationId,
                   libraryState: record.libraryState,
+                  lastKnownLocation: isPreviouslyOwned ? record.locationPath : null,
                   rating: isWishlisted ? null : record.rating,
                   note: record.note,
                   readingStatus: isWishlisted ? 'unread' : record.readingStatus,

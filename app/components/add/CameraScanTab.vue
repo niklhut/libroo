@@ -64,7 +64,9 @@ async function onIsbnDetected(isbn: string) {
   }
 }
 
-async function addSingleScanBook(targetState: LibraryState, redirectPath: string) {
+type AddLibraryState = Exclude<LibraryState, 'previously_owned'>
+
+async function addSingleScanBook(targetState: AddLibraryState, redirectPath: string) {
   targetLibraryState.value = targetState
   if (singleScanBook.value?.result?.found && singleScanBook.value.status !== 'already_owned') {
     singleScanBook.value.status = 'found'

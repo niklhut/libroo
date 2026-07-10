@@ -9,6 +9,7 @@ import initialMigration from '../../../../server/db/migrations/sqlite/0000_initi
 import termsMigration from '../../../../server/db/migrations/sqlite/0001_add_terms_acceptance.sql?raw'
 import locationRestrictMigration from '../../../../server/db/migrations/sqlite/0002_prevent_location_delete_cascade.sql?raw'
 import libraryStateMigration from '../../../../server/db/migrations/sqlite/0003_add_library_state.sql?raw'
+import previouslyOwnedMigration from '../../../../server/db/migrations/sqlite/0006_huge_tiger_shark.sql?raw'
 import { authors, bookAuthors, books, loans, locations, tags, user, userBooks, userBookTags } from '../../../../server/db/schema'
 import { LibraryTransferRepository, LibraryTransferRepositoryLive } from '../../../../server/repositories/library-transfer.repository'
 import { DbService, type DbServiceInterface } from '../../../../server/services/db.service'
@@ -216,7 +217,7 @@ describe('LibraryTransferRepository.importRecords on D1', () => {
 })
 
 async function applyMigrations(database: D1Database) {
-  for (const migration of [initialMigration, termsMigration, locationRestrictMigration, libraryStateMigration]) {
+  for (const migration of [initialMigration, termsMigration, locationRestrictMigration, libraryStateMigration, previouslyOwnedMigration]) {
     for (const statement of migration.split('--> statement-breakpoint')) {
       const migrationStatement = statement.trim()
       if (migrationStatement) {

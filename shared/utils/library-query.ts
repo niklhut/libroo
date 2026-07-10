@@ -2,7 +2,7 @@ import type { LibraryState } from '../types/book'
 
 export type LibraryLoanFilter = 'all' | 'available' | 'loaned'
 export type LibraryReadingFilter = 'all' | 'unread' | 'reading' | 'read'
-export type LibraryStateFilter = 'all' | LibraryState
+export type LibraryStateFilter = LibraryState[]
 export type LibrarySort = 'dateAdded' | 'title' | 'author' | 'locationPath'
 
 export interface LibraryQueryFilters {
@@ -32,15 +32,17 @@ export interface LibraryFilterSummaryOptions {
 }
 
 export const DEFAULT_LIBRARY_PAGE_SIZE = 12
-export const DEFAULT_LIBRARY_STATE_FILTER: LibraryStateFilter = 'all'
+export const DEFAULT_LIBRARY_STATE_FILTER: LibraryStateFilter = ['owned']
 
 const loanFilters = new Set<LibraryLoanFilter>(['all', 'available', 'loaned'])
 const readingFilters = new Set<LibraryReadingFilter>(['all', 'unread', 'reading', 'read'])
-const libraryStateFilters = new Set<LibraryStateFilter>(['all', 'owned', 'wishlisted'])
-const libraryStateLabels = {
+export const libraryStateFilters = new Set<LibraryState>(['owned', 'wishlisted', 'previously_owned'])
+export const libraryStateLabels = {
   owned: 'Library',
-  wishlisted: 'Wishlist'
+  wishlisted: 'Wishlist',
+  previously_owned: 'Previously owned'
 } satisfies Record<LibraryState, string>
+export const libraryStateFilterValues = [...libraryStateFilters]
 const sortOptions = new Set<LibrarySort>(['dateAdded', 'title', 'author', 'locationPath'])
 
 const firstString = (value: unknown): string | undefined => {
@@ -61,6 +63,31 @@ const cleanBoolean = (value: unknown): boolean | undefined => {
   return undefined
 }
 
+const valuesAsStrings = (value: unknown): string[] => {
+  if (Array.isArray(value)) return value.flatMap(valuesAsStrings)
+  if (typeof value !== 'string') return []
+  return value.split(',').map(item => item.trim()).filter(Boolean)
+}
+
+export const normalizeLibraryStateFilter = (value: unknown): LibraryStateFilter => {
+  const states: LibraryState[] = []
+  const seen = new Set<LibraryState>()
+
+  for (const item of valuesAsStrings(value)) {
+    if (item === 'all') return []
+    if (!libraryStateFilters.has(item as LibraryState)) continue
+    const state = item as LibraryState
+    if (seen.has(state)) continue
+    seen.add(state)
+    states.push(state)
+  }
+
+  return states
+}
+
+export const hasLibraryStateFilter = (state?: LibraryStateFilter): boolean =>
+  Boolean(state && state.length > 0 && state.length < libraryStateFilters.size)
+
 export const normalizeLibraryQuery = (
   query: Record<string, unknown>,
   options: { defaultPageSize?: number, maxPageSize?: number } = {}
@@ -74,16 +101,14 @@ export const normalizeLibraryQuery = (
   )
   const loanStatus = firstString(query.loanStatus)
   const readingStatus = firstString(query.readingStatus)
-  const libraryState = firstString(query.libraryState)
+  const libraryState = normalizeLibraryStateFilter(query.libraryState)
   const sortBy = firstString(query.sortBy)
 
   return {
     page,
     pageSize,
     search: cleanText(query.search),
-    libraryState: libraryStateFilters.has(libraryState as LibraryStateFilter)
-      ? libraryState as LibraryStateFilter
-      : DEFAULT_LIBRARY_STATE_FILTER,
+    libraryState,
     loanStatus: loanFilters.has(loanStatus as LibraryLoanFilter)
       ? loanStatus as LibraryLoanFilter
       : 'all',
@@ -105,7 +130,7 @@ export const buildLibraryRouteQuery = (state: LibraryQueryState): Record<string,
 
   if (state.pageSize !== DEFAULT_LIBRARY_PAGE_SIZE) query.pageSize = String(state.pageSize)
   if (state.search) query.search = state.search
-  if (state.libraryState && state.libraryState !== DEFAULT_LIBRARY_STATE_FILTER) query.libraryState = state.libraryState
+  if (hasLibraryStateFilter(state.libraryState)) query.libraryState = state.libraryState!.join(',')
   if (state.loanStatus && state.loanStatus !== 'all') query.loanStatus = state.loanStatus
   if (state.readingStatus && state.readingStatus !== 'all') query.readingStatus = state.readingStatus
   if (state.tag) query.tag = state.tag
@@ -122,7 +147,7 @@ export const getActiveLibraryFilterCount = (
   options: { includeSearch?: boolean } = {}
 ): number => {
   const advancedFilters = [
-    state.libraryState && state.libraryState !== DEFAULT_LIBRARY_STATE_FILTER,
+    hasLibraryStateFilter(state.libraryState),
     state.loanStatus && state.loanStatus !== 'all',
     state.readingStatus && state.readingStatus !== 'all',
     state.tag?.trim(),
@@ -143,8 +168,8 @@ export const describeActiveLibraryFilters = (
   const labels: string[] = []
 
   if (options.includeSearch && state.search?.trim()) labels.push(`Search: ${state.search.trim()}`)
-  if (state.libraryState && state.libraryState !== DEFAULT_LIBRARY_STATE_FILTER) {
-    labels.push(libraryStateLabels[state.libraryState])
+  if (hasLibraryStateFilter(state.libraryState)) {
+    labels.push(...state.libraryState!.map(item => libraryStateLabels[item]))
   }
   if (state.loanStatus && state.loanStatus !== 'all') {
     labels.push(state.loanStatus === 'loaned' ? 'Loaned out' : 'Available')

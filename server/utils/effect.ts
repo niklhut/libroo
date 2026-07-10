@@ -20,6 +20,7 @@ const RepositoriesLive = Layer.provideMerge(
     AuditRepositoryLive,
     LocationRepositoryLive,
     LibraryTransferRepositoryLive,
+    PreferencesRepositoryLive,
     AuthRepositoryLive,
     AccountDeletionRepositoryLive,
     SignupInviteRepositoryLive,
@@ -31,7 +32,7 @@ const RepositoriesLive = Layer.provideMerge(
 
 // Service layer (depends on repositories)
 const CoreServicesLive = Layer.provideMerge(
-  Layer.mergeAll(BookServiceLive, LendingServiceLive, AdminServiceLive, AuditServiceLive, LocationServiceLive, LibraryTransferServiceLive, AccountDeletionServiceLive, SignupInviteServiceLive, EmailCapabilityServiceLive, HealthServiceLive, LegalServiceLive),
+  Layer.mergeAll(BookServiceLive, LendingServiceLive, AdminServiceLive, AuditServiceLive, LocationServiceLive, LibraryTransferServiceLive, PreferencesServiceLive, AccountDeletionServiceLive, SignupInviteServiceLive, EmailCapabilityServiceLive, HealthServiceLive, LegalServiceLive),
   RepositoriesLive
 )
 
@@ -58,6 +59,7 @@ export type MainServices
     | AuditRepository
     | LocationRepository
     | LibraryTransferRepository
+    | PreferencesRepository
     | AuthRepository
     | AccountDeletionRepository
     | SignupInviteRepository
@@ -69,6 +71,7 @@ export type MainServices
     | AuditService
     | LocationService
     | LibraryTransferService
+    | PreferencesService
     | AccountDeletionService
     | SignupInviteService
     | AuthRequestService
@@ -109,6 +112,8 @@ const errorStatusCodes: Record<string, number> = {
   InvalidReadingProgressError: 400,
   InvalidManualCoverError: 400,
   InvalidLibraryCsvError: 400,
+  InvalidPreferencesError: 400,
+  PreferencesError: 500,
   InvalidLocationError: 400,
   InvalidLocationMoveError: 400,
   LocationNotFoundError: 404,
@@ -144,7 +149,7 @@ const errorMessageFormatters: Record<string, (error: unknown) => string> = {
     const isbn = getProp<string>(error, 'isbn')
     return `You already have this book (ISBN: ${isbn || 'unknown'}) in your library`
   },
-  BookNotOwnedError: () => 'This action is only available for books you own.',
+  BookNotOwnedError: () => 'This action is only available for currently owned books.',
   BookCreateError: () => 'We could not save this book right now. Please try again.',
   ActiveLoanRemovalError: (error) => {
     const borrower = getProp<string>(error, 'borrowerDisplayName')

@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import type { LibraryBook, BookLocationWithCount } from '~~/shared/types/book'
+import type { LibraryBook, BookLocationWithCount, LibraryState } from '~~/shared/types/book'
 import {
   buildLibraryRouteQuery,
   DEFAULT_LIBRARY_STATE_FILTER,
   describeActiveLibraryFilters,
   getActiveLibraryFilterCount,
+  hasLibraryStateFilter,
+  libraryStateFilterValues,
+  libraryStateLabels,
   normalizeLibraryQuery
 } from '~~/shared/utils/library-query'
 
@@ -17,6 +20,10 @@ interface PaginatedResponse {
     totalPages: number
     hasMore: boolean
   }
+}
+
+interface PreferencesResponse {
+  defaultLibraryStateFilter: LibraryState[]
 }
 
 usePageTitle('Library')
@@ -53,11 +60,19 @@ const {
   resetResults: resetResultsAction
 } = dashboardStore
 
+const { data: preferences } = await useFetch<PreferencesResponse>('/api/preferences', {
+  headers: useRequestHeaders(['cookie'])
+})
+
 const routeState = normalizeLibraryQuery(route.query)
+const hasExplicitLibraryStateQuery = route.query.libraryState !== undefined
+const initialLibraryState: LibraryState[] = hasExplicitLibraryStateQuery
+  ? routeState.libraryState ?? DEFAULT_LIBRARY_STATE_FILTER
+  : preferences.value?.defaultLibraryStateFilter ?? DEFAULT_LIBRARY_STATE_FILTER
 const hasRouteStateMismatch = pageSize.value !== routeState.pageSize
   || search.value !== (routeState.search ?? '')
   || loanStatus.value !== (routeState.loanStatus ?? 'all')
-  || libraryState.value !== (routeState.libraryState ?? DEFAULT_LIBRARY_STATE_FILTER)
+  || libraryState.value.join(',') !== initialLibraryState.join(',')
   || readingStatus.value !== (routeState.readingStatus ?? 'all')
   || tag.value !== (routeState.tag ?? '')
   || location.value !== (routeState.location ?? '')
@@ -76,7 +91,7 @@ if (hasRouteStateMismatch || !hasCachedResults) {
 pageSize.value = routeState.pageSize
 search.value = routeState.search ?? ''
 loanStatus.value = routeState.loanStatus ?? 'all'
-libraryState.value = routeState.libraryState ?? DEFAULT_LIBRARY_STATE_FILTER
+libraryState.value = [...initialLibraryState]
 readingStatus.value = routeState.readingStatus ?? 'all'
 tag.value = routeState.tag ?? ''
 location.value = routeState.location ?? ''
@@ -88,18 +103,19 @@ sortBy.value = routeState.sortBy ?? 'dateAdded'
 const isLoadingMore = ref(false)
 const isApplyingFilters = ref(false)
 const filterRefreshTimer = ref<ReturnType<typeof setTimeout> | null>(null)
+const preferenceSaveTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 const suppressFilterWatcher = ref(false)
 const ALL_LOCATIONS_VALUE = '__all_locations__'
 const areFiltersExpanded = ref(false)
-const showPhysicalFilters = computed(() => libraryState.value !== 'wishlisted')
+const showPhysicalFilters = computed(() => libraryState.value.length === 0 || libraryState.value.includes('owned'))
 
 function getLibraryResultCacheKey() {
-  const hasPhysicalFilters = libraryState.value !== 'wishlisted'
+  const hasPhysicalFilters = showPhysicalFilters.value
 
   return JSON.stringify({
     pageSize: pageSize.value,
     search: search.value.trim(),
-    libraryState: libraryState.value,
+    libraryState: [...libraryState.value],
     loanStatus: hasPhysicalFilters ? loanStatus.value : 'all',
     readingStatus: hasPhysicalFilters ? readingStatus.value : 'all',
     tag: tag.value.trim(),
@@ -126,7 +142,7 @@ const { data, refresh, status } = await useFetch<PaginatedResponse>('/api/books'
     page: page.value,
     pageSize: pageSize.value,
     search: search.value || undefined,
-    libraryState: libraryState.value === DEFAULT_LIBRARY_STATE_FILTER ? undefined : libraryState.value,
+    libraryState: hasLibraryStateFilter(libraryState.value) ? libraryState.value.join(',') : undefined,
     loanStatus: showPhysicalFilters.value && loanStatus.value !== 'all' ? loanStatus.value : undefined,
     readingStatus: showPhysicalFilters.value && readingStatus.value !== 'all' ? readingStatus.value : undefined,
     tag: tag.value || undefined,
@@ -189,6 +205,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   if (filterRefreshTimer.value) clearTimeout(filterRefreshTimer.value)
+  if (preferenceSaveTimer.value) clearTimeout(preferenceSaveTimer.value)
 })
 
 onBeforeRouteLeave((to) => {
@@ -208,9 +225,15 @@ onBeforeRouteLeave((to) => {
 const books = computed(() => allBooks.value)
 const pagination = computed(() => paginationState.value)
 const hasBooks = computed(() => books.value.length > 0)
+const isDefaultLibraryState = computed(() =>
+  libraryState.value.length === DEFAULT_LIBRARY_STATE_FILTER.length
+  && libraryState.value.every(state => DEFAULT_LIBRARY_STATE_FILTER.includes(state))
+)
+const hasNonDefaultLibraryView = computed(() =>
+  !isDefaultLibraryState.value && hasLibraryStateFilter(libraryState.value)
+)
 const hasActiveFilters = computed(() =>
   Boolean(search.value.trim())
-  || libraryState.value !== DEFAULT_LIBRARY_STATE_FILTER
   || (showPhysicalFilters.value && loanStatus.value !== 'all')
   || (showPhysicalFilters.value && readingStatus.value !== 'all')
   || Boolean(tag.value.trim())
@@ -220,7 +243,7 @@ const hasActiveFilters = computed(() =>
   || sortBy.value !== 'dateAdded'
 )
 const activeAdvancedFilterCount = computed(() => getActiveLibraryFilterCount({
-  libraryState: libraryState.value,
+  libraryState: [],
   loanStatus: showPhysicalFilters.value ? loanStatus.value : 'all',
   readingStatus: showPhysicalFilters.value ? readingStatus.value : 'all',
   tag: tag.value,
@@ -236,10 +259,14 @@ const loanStatusItems = [
   { label: 'Available', value: 'available' },
   { label: 'Loaned out', value: 'loaned' }
 ]
-const libraryStateFilterItems = [
-  { label: 'All books', value: 'all' },
-  ...libraryStateItems
-]
+const libraryStateFilterLabel = computed(() => {
+  const selectedStates = libraryState.value
+  const hasAllStates = libraryStateFilterValues.every(state => selectedStates.includes(state))
+
+  if (selectedStates.length === 0 || hasAllStates) return 'All books'
+
+  return selectedStates.map(state => libraryStateLabels[state]).join(', ')
+})
 const readingStatusItems = [
   { label: 'All reading', value: 'all' },
   { label: 'Unread', value: 'unread' },
@@ -270,7 +297,7 @@ const selectedLocationLabel = computed(() =>
   locationOptions.value.find(option => option.value === selectedLocationFilter.value)?.label
 )
 const activeFilterSummary = computed(() => describeActiveLibraryFilters({
-  libraryState: libraryState.value,
+  libraryState: [],
   loanStatus: showPhysicalFilters.value ? loanStatus.value : 'all',
   readingStatus: showPhysicalFilters.value ? readingStatus.value : 'all',
   tag: tag.value,
@@ -321,7 +348,19 @@ watch([search, loanStatus, libraryState, readingStatus, tag, location, locationI
 })
 
 watch(libraryState, (nextState) => {
-  if (nextState !== 'wishlisted') return
+  if (preferenceSaveTimer.value) clearTimeout(preferenceSaveTimer.value)
+  preferenceSaveTimer.value = setTimeout(() => {
+    void $fetch('/api/preferences', {
+      method: 'PUT',
+      body: {
+        defaultLibraryStateFilter: nextState
+      }
+    }).catch((err: unknown) => {
+      console.error('Failed to save library state preference', err)
+    })
+  }, 500)
+
+  if (nextState.length === 0 || nextState.includes('owned')) return
 
   loanStatus.value = 'all'
   readingStatus.value = 'all'
@@ -391,7 +430,6 @@ async function clearFilters() {
 
   search.value = ''
   loanStatus.value = 'all'
-  libraryState.value = DEFAULT_LIBRARY_STATE_FILTER
   readingStatus.value = 'all'
   tag.value = ''
   location.value = ''
@@ -480,14 +518,20 @@ async function syncLoadedPages(targetPages: number) {
               placeholder="Search title, author, ISBN, tag, or location"
               class="w-full md:flex-1"
             />
-            <USelect
+            <USelectMenu
               v-model="libraryState"
               :items="libraryStateFilterItems"
+              multiple
+              value-key="value"
               icon="i-lucide-bookmark"
               size="lg"
               aria-label="Library state"
               class="w-full md:w-42"
-            />
+            >
+              <template #default>
+                <span class="truncate">{{ libraryStateFilterLabel }}</span>
+              </template>
+            </USelectMenu>
           </div>
 
           <div class="flex w-full flex-wrap items-center gap-2 md:w-auto">
@@ -643,7 +687,7 @@ async function syncLoadedPages(targetPages: number) {
 
       <!-- Empty State -->
       <UCard
-        v-else-if="!hasBooks && !hasActiveFilters"
+        v-else-if="!hasBooks && !hasActiveFilters && !hasNonDefaultLibraryView"
         class="text-center py-12"
       >
         <UIcon
@@ -674,12 +718,15 @@ async function syncLoadedPages(targetPages: number) {
           class="text-6xl text-muted mx-auto mb-4"
         />
         <h2 class="text-xl font-semibold mb-2">
-          No books found
+          {{ hasNonDefaultLibraryView && !hasActiveFilters ? 'No books in this view' : 'No books found' }}
         </h2>
         <p class="text-muted mb-6">
-          Try a different title, author, ISBN, tag, or shelf location.
+          {{ hasNonDefaultLibraryView && !hasActiveFilters
+            ? 'Choose another view to see a different set of books.'
+            : 'Try a different title, author, ISBN, tag, or shelf location.' }}
         </p>
         <UButton
+          v-if="hasActiveFilters"
           color="neutral"
           variant="outline"
           icon="i-lucide-x"
@@ -719,6 +766,7 @@ async function syncLoadedPages(targetPages: number) {
                 :isbn="book.isbn"
                 :cover-path="book.coverPath"
                 :location="book.location"
+                :last-known-location="book.lastKnownLocation"
                 :added-at="book.addedAt"
                 :active-loan="book.activeLoan"
                 :library-state="book.libraryState"
@@ -741,6 +789,7 @@ async function syncLoadedPages(targetPages: number) {
             :isbn="book.isbn"
             :cover-path="book.coverPath"
             :location="book.location"
+            :last-known-location="book.lastKnownLocation"
             :added-at="book.addedAt"
             :active-loan="book.activeLoan"
             :library-state="book.libraryState"

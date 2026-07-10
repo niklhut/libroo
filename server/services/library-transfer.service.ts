@@ -69,8 +69,8 @@ function parseReadingStatus(value: string): ReadingStatus {
 
 function parseLibraryState(value: string): LibraryState {
   const state = value.trim() || 'owned'
-  if (state === 'owned' || state === 'wishlisted') return state
-  throw new Error('library_state must be owned or wishlisted')
+  if (state === 'owned' || state === 'wishlisted' || state === 'previously_owned') return state
+  throw new Error('library_state must be owned, wishlisted, or previously_owned')
 }
 
 function toImportRecord(row: LibraryCsvRow): LibraryImportBookInput {

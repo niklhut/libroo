@@ -25,6 +25,7 @@ export function librarySearchInput(page: Page) {
 export function libraryFilters(page: Page) {
   return {
     toggle: page.getByRole('button', { name: /Filters/ }),
+    libraryState: page.getByLabel('Library state'),
     loanStatus: page.getByLabel('Loan status'),
     readingStatus: page.getByLabel('Reading status'),
     tag: page.getByLabel('Filter by tag'),

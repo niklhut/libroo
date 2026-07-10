@@ -73,7 +73,7 @@ describe.each<AtomicMode>(['d1-batch', 'selfhost-transaction'])('LocationReposit
     db = drizzle(client)
     await client.execute('PRAGMA foreign_keys = ON')
 
-    for (const migrationFile of ['0000_initial_beta.sql', '0001_add_terms_acceptance.sql', '0002_prevent_location_delete_cascade.sql', '0003_add_library_state.sql']) {
+    for (const migrationFile of ['0000_initial_beta.sql', '0001_add_terms_acceptance.sql', '0002_prevent_location_delete_cascade.sql', '0003_add_library_state.sql', '0006_huge_tiger_shark.sql']) {
       const migrationPath = fileURLToPath(
         new URL(`../../../../server/db/migrations/sqlite/${migrationFile}`, import.meta.url)
       )

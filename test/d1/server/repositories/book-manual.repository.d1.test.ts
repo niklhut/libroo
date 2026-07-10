@@ -9,6 +9,7 @@ import initialMigration from '../../../../server/db/migrations/sqlite/0000_initi
 import termsMigration from '../../../../server/db/migrations/sqlite/0001_add_terms_acceptance.sql?raw'
 import locationRestrictMigration from '../../../../server/db/migrations/sqlite/0002_prevent_location_delete_cascade.sql?raw'
 import libraryStateMigration from '../../../../server/db/migrations/sqlite/0003_add_library_state.sql?raw'
+import previouslyOwnedMigration from '../../../../server/db/migrations/sqlite/0006_huge_tiger_shark.sql?raw'
 import libraryIndexesMigration from '../../../../server/db/migrations/sqlite/0004_add_user_books_library_indexes.sql?raw'
 import activeUserBookUniqueMigration from '../../../../server/db/migrations/sqlite/0005_add_active_user_book_unique.sql?raw'
 import { bookAuthors, books, loans, user, userBooks, userBookTags } from '../../../../server/db/schema'
@@ -309,7 +310,8 @@ async function applyMigrations(database: D1Database) {
     locationRestrictMigration,
     libraryStateMigration,
     libraryIndexesMigration,
-    activeUserBookUniqueMigration
+    activeUserBookUniqueMigration,
+    previouslyOwnedMigration
   ]) {
     for (const statement of migration.split('--> statement-breakpoint')) {
       const migrationStatement = statement.trim()

@@ -46,7 +46,7 @@ async function handleAddSelected() {
     const query = new URLSearchParams(buildLibraryRouteQuery({
       page: 1,
       pageSize: DEFAULT_LIBRARY_PAGE_SIZE,
-      libraryState: targetLibraryState.value
+      libraryState: [targetLibraryState.value]
     }))
     const queryString = query.toString()
     navigateTo(queryString ? `/library?${queryString}` : '/library')

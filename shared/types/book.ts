@@ -13,6 +13,7 @@ export interface LibraryBook {
   isbn: string | null
   coverPath: string | null
   location: BookLocation | null
+  lastKnownLocation?: string | null
   tags?: string[]
   addedAt: Date | string
   activeLoan?: ActiveLoanSummary | null
@@ -42,7 +43,7 @@ export interface BookLocationTreeNode extends BookLocationWithCount {
 }
 
 export type ReadingStatus = 'unread' | 'reading' | 'read'
-export type LibraryState = 'owned' | 'wishlisted'
+export type LibraryState = 'owned' | 'wishlisted' | 'previously_owned'
 
 export interface ReadingProgress {
   status: ReadingStatus
@@ -88,6 +89,7 @@ export interface BookDetails {
   rating: number | null
   note: string | null
   location: BookLocation | null
+  lastKnownLocation?: string | null
   readingProgress: ReadingProgress
   userTags: BookTag[]
   suggestedTags: BookTag[]

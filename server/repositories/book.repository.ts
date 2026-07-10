@@ -72,6 +72,7 @@ export interface UserBook {
   libraryState: LibraryState
   book: Book
   location: BookLocation | null
+  lastKnownLocation: string | null
   tags: string[]
   addedAt: Date
   activeLoan: ActiveLoanSummary | null
@@ -999,6 +1000,7 @@ export const BookRepositoryLive = Layer.effect(
             libraryState,
             book,
             location: null,
+            lastKnownLocation: null,
             tags: [],
             addedAt,
             activeLoan: null
@@ -1157,6 +1159,7 @@ export const BookRepositoryLive = Layer.effect(
                 libraryState: input.libraryState,
                 book: toBookModel(createdBook, authorRows),
                 location: null,
+                lastKnownLocation: null,
                 tags: userTagRows.map(tag => tag.name),
                 addedAt: now,
                 activeLoan: null
@@ -1240,13 +1243,16 @@ export const BookRepositoryLive = Layer.effect(
               )
             : undefined
 
+          const selectedLibraryStates = pagination.libraryState ?? []
+          const libraryStateCondition = selectedLibraryStates.length > 0 && selectedLibraryStates.length < 3
+            ? inArray(userBooks.libraryState, selectedLibraryStates)
+            : undefined
+
           const whereClause = and(
             eq(userBooks.userId, userId),
             isNull(userBooks.removedAt),
             searchCondition,
-            pagination.libraryState && pagination.libraryState !== 'all'
-              ? eq(userBooks.libraryState, pagination.libraryState)
-              : undefined,
+            libraryStateCondition,
             pagination.loanStatus === 'loaned' ? activeLoanCondition : undefined,
             pagination.loanStatus === 'available' ? not(activeLoanCondition) : undefined,
             pagination.readingStatus && pagination.readingStatus !== 'all'
@@ -1331,6 +1337,7 @@ export const BookRepositoryLive = Layer.effect(
             libraryState: row.user_books.libraryState as LibraryState,
             book: toBookModel(row.books, authorsByBook.get(row.books.id) || []),
             location: toLocationModel(row.locations),
+            lastKnownLocation: row.user_books.lastKnownLocation ?? null,
             tags: userTagsByUserBook.get(row.user_books.id) || [],
             addedAt: row.user_books.addedAt,
             activeLoan: activeLoansByUserBook.get(row.user_books.id) ?? null
@@ -1418,6 +1425,7 @@ export const BookRepositoryLive = Layer.effect(
             libraryState: row.user_books.libraryState as LibraryState,
             book: toBookModel(row.books, authorsByBook.get(row.books.id) || []),
             location: toLocationModel(row.locations),
+            lastKnownLocation: row.user_books.lastKnownLocation ?? null,
             tags: userTagsByUserBook.get(row.user_books.id) || [],
             addedAt: row.user_books.addedAt,
             activeLoan: activeLoansByUserBook.get(row.user_books.id) ?? null
@@ -1735,6 +1743,7 @@ export const BookRepositoryLive = Layer.effect(
             rating: row.user_books.rating ?? null,
             note: row.user_books.note ?? null,
             location: toLocationModel(row.locations),
+            lastKnownLocation: row.user_books.lastKnownLocation ?? null,
             readingProgress: {
               status: row.user_books.readingStatus,
               currentPage: row.user_books.currentPage ?? null,
@@ -2095,7 +2104,7 @@ export const BookRepositoryLive = Layer.effect(
         Effect.gen(function* () {
           yield* getOwnedUserBookRef(userBookId, userId)
 
-          if (state === 'wishlisted') {
+          if (state === 'wishlisted' || state === 'previously_owned') {
             const activeLoan = yield* Effect.tryPromise({
               try: () => dbService.db
                 .select({ borrowerDisplayName: loans.borrowerDisplayName })
@@ -2116,21 +2125,53 @@ export const BookRepositoryLive = Layer.effect(
             }
           }
 
+          const currentRows = yield* Effect.tryPromise({
+            try: () => dbService.db
+              .select({
+                libraryState: userBooks.libraryState,
+                locationPath: locations.path
+              })
+              .from(userBooks)
+              .leftJoin(locations, eq(userBooks.locationId, locations.id))
+              .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId), isNull(userBooks.removedAt)))
+              .limit(1),
+            catch: error => new DatabaseError({
+              message: `Failed to load current library state: ${error}`,
+              operation: 'updateLibraryState.current'
+            })
+          })
+          const current = currentRows[0]
+          if (!current) {
+            return yield* Effect.fail(new BookNotFoundError({ bookId: userBookId }))
+          }
+
           const updated = yield* Effect.tryPromise({
             try: () => dbService.db
               .update(userBooks)
-              .set(state === 'wishlisted'
-                ? {
-                    libraryState: state,
-                    locationId: null,
-                    rating: null,
-                    readingStatus: 'unread',
-                    currentPage: null,
-                    progressPercent: null,
-                    startedAt: null,
-                    finishedAt: null
-                  }
-                : { libraryState: state })
+              .set(
+                state === 'wishlisted'
+                  ? {
+                      libraryState: state,
+                      locationId: null,
+                      lastKnownLocation: null,
+                      rating: null,
+                      readingStatus: 'unread',
+                      currentPage: null,
+                      progressPercent: null,
+                      startedAt: null,
+                      finishedAt: null
+                    }
+                  : state === 'previously_owned'
+                    ? {
+                        libraryState: state,
+                        locationId: null,
+                        lastKnownLocation: current.locationPath ?? null
+                      }
+                    : {
+                        libraryState: state,
+                        lastKnownLocation: null
+                      }
+              )
               .where(and(eq(userBooks.id, userBookId), eq(userBooks.userId, userId), isNull(userBooks.removedAt)))
               .returning({ id: userBooks.id }),
             catch: error => new DatabaseError({
@@ -2172,6 +2213,7 @@ export const BookRepositoryLive = Layer.effect(
             libraryState: row.user_books.libraryState as LibraryState,
             book: toBookModel(row.books, authorMap.get(row.books.id) || []),
             location: toLocationModel(row.locations),
+            lastKnownLocation: row.user_books.lastKnownLocation ?? null,
             tags: tagMap.get(userBookId) || [],
             addedAt: row.user_books.addedAt,
             activeLoan: activeLoansByUserBook.get(userBookId) ?? null

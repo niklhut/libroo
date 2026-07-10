@@ -32,7 +32,7 @@ describe.each<AtomicMode>(['d1-batch', 'selfhost-transaction'])('LendingReposito
     db = drizzle(client)
     await client.execute('PRAGMA foreign_keys = ON')
 
-    for (const migrationFile of ['0000_initial_beta.sql', '0001_add_terms_acceptance.sql', '0002_prevent_location_delete_cascade.sql', '0003_add_library_state.sql']) {
+    for (const migrationFile of ['0000_initial_beta.sql', '0001_add_terms_acceptance.sql', '0002_prevent_location_delete_cascade.sql', '0003_add_library_state.sql', '0006_huge_tiger_shark.sql']) {
       const migrationPath = fileURLToPath(
         new URL(`../../../../server/db/migrations/sqlite/${migrationFile}`, import.meta.url)
       )
@@ -149,8 +149,8 @@ describe.each<AtomicMode>(['d1-batch', 'selfhost-transaction'])('LendingReposito
 
   it('lists only loans for the requested owner across all statuses', async () => {
     await seedUserBook(db, 'ub-owner-active', 'owner-1', 'book-1')
-    await seedUserBook(db, 'ub-owner-returned', 'owner-1', 'book-1')
-    await seedUserBook(db, 'ub-owner-canceled', 'owner-1', 'book-1')
+    await seedUserBook(db, 'ub-owner-returned', 'owner-1', 'book-2')
+    await seedUserBook(db, 'ub-owner-canceled', 'owner-1', 'book-3')
     await seedUserBook(db, 'ub-other-active', 'owner-2', 'book-2')
     await seedLoan(db, { id: 'loan-owner-active', userBookId: 'ub-owner-active', ownerUserId: 'owner-1', status: 'active', loanedAt: new Date('2026-06-24T13:00:00.000Z') })
     await seedLoan(db, { id: 'loan-owner-returned', userBookId: 'ub-owner-returned', ownerUserId: 'owner-1', status: 'returned', loanedAt: new Date('2026-06-24T12:00:00.000Z'), returnedAt: new Date('2026-06-25T12:00:00.000Z') })
@@ -170,8 +170,8 @@ describe.each<AtomicMode>(['d1-batch', 'selfhost-transaction'])('LendingReposito
 
   it('lists only accepted borrowed books for the borrower', async () => {
     await seedUserBook(db, 'ub-accepted', 'owner-1', 'book-1')
-    await seedUserBook(db, 'ub-unaccepted', 'owner-1', 'book-1')
-    await seedUserBook(db, 'ub-other-borrower', 'owner-1', 'book-1')
+    await seedUserBook(db, 'ub-unaccepted', 'owner-1', 'book-2')
+    await seedUserBook(db, 'ub-other-borrower', 'owner-1', 'book-3')
     await seedLoan(db, { id: 'loan-accepted', userBookId: 'ub-accepted', ownerUserId: 'owner-1', borrowerUserId: 'borrower-1', acceptedAt: new Date('2026-06-24T12:00:00.000Z'), acceptTokenHash: null, loanedAt: new Date('2026-06-24T12:00:00.000Z') })
     await seedLoan(db, { id: 'loan-unaccepted', userBookId: 'ub-unaccepted', ownerUserId: 'owner-1', borrowerUserId: 'borrower-1', acceptedAt: null, loanedAt: new Date('2026-06-24T13:00:00.000Z') })
     await seedLoan(db, { id: 'loan-other-borrower', userBookId: 'ub-other-borrower', ownerUserId: 'owner-1', borrowerUserId: 'borrower-2', acceptedAt: new Date('2026-06-24T14:00:00.000Z'), acceptTokenHash: null, loanedAt: new Date('2026-06-24T14:00:00.000Z') })
@@ -239,7 +239,8 @@ async function seedUsers(database: Database) {
 async function seedBooksAndAuthors(database: Database) {
   await database.insert(books).values([
     { id: 'book-1', title: 'Book One', source: 'manual', createdByUserId: 'owner-1', coverPath: '/covers/book-1.webp', createdAt: baseTime },
-    { id: 'book-2', title: 'Book Two', source: 'manual', createdByUserId: 'owner-2', coverPath: null, createdAt: baseTime }
+    { id: 'book-2', title: 'Book Two', source: 'manual', createdByUserId: 'owner-2', coverPath: null, createdAt: baseTime },
+    { id: 'book-3', title: 'Book Three', source: 'manual', createdByUserId: 'owner-1', coverPath: null, createdAt: baseTime }
   ])
   await database.insert(authors).values([
     { id: 'author-1', name: 'Author One', normalizedName: 'author one', createdAt: baseTime, updatedAt: baseTime },
@@ -247,7 +248,8 @@ async function seedBooksAndAuthors(database: Database) {
   ])
   await database.insert(bookAuthors).values([
     { bookId: 'book-1', authorId: 'author-1', sortOrder: 0, createdAt: baseTime },
-    { bookId: 'book-2', authorId: 'author-2', sortOrder: 0, createdAt: baseTime }
+    { bookId: 'book-2', authorId: 'author-2', sortOrder: 0, createdAt: baseTime },
+    { bookId: 'book-3', authorId: 'author-1', sortOrder: 0, createdAt: baseTime }
   ])
 }
 
