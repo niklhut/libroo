@@ -17,6 +17,7 @@ interface UserBookViewModel {
     coverPath: string | null
   }
   location: BookLocation | null
+  lastKnownLocation: string | null
   tags: string[]
   addedAt: Date
   activeLoan: ActiveLoanSummary | null
@@ -58,6 +59,7 @@ export const toLibraryBook = (userBook: UserBookViewModel): LibraryBook => ({
   coverPath: userBook.book.coverPath,
   tags: userBook.tags,
   location: userBook.location,
+  lastKnownLocation: userBook.lastKnownLocation,
   addedAt: userBook.addedAt,
   activeLoan: userBook.activeLoan
 })

@@ -26,7 +26,7 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
   const resultCache = ref<Record<string, DashboardResultCacheEntry>>({})
   const search = ref('')
   const loanStatus = ref<LibraryLoanFilter>('all')
-  const libraryState = ref<LibraryStateFilter>(DEFAULT_LIBRARY_STATE_FILTER)
+  const libraryState = ref<LibraryStateFilter>([...DEFAULT_LIBRARY_STATE_FILTER])
   const readingStatus = ref<LibraryReadingFilter>('all')
   const tag = ref('')
   const location = ref('')
@@ -44,7 +44,7 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
   }
 
   function addBook(book: LibraryBook) {
-    if (libraryState.value !== 'all' && book.libraryState !== libraryState.value) return
+    if (libraryState.value.length > 0 && !libraryState.value.includes(book.libraryState)) return
 
     const existingIndex = allBooks.value.findIndex(item => item.id === book.id)
     const existed = existingIndex !== -1

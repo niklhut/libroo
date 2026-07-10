@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia, storeToRefs } from 'pinia'
 import { useLibraryDashboardStore } from '../../app/stores/libraryDashboard'
 import type { LibraryBook } from '../../shared/types/book'
+import { DEFAULT_LIBRARY_STATE_FILTER } from '../../shared/utils/library-query'
 
 const createBook = (id: string): LibraryBook => ({
   id,
@@ -40,7 +41,7 @@ describe('useLibraryDashboardStore', () => {
     expect(pageSize.value).toBe(12)
     expect(allBooks.value).toEqual([])
     expect(pagination.value).toBeNull()
-    expect(libraryState.value).toBe('all')
+    expect(libraryState.value).toEqual(DEFAULT_LIBRARY_STATE_FILTER)
     expect(shouldRestoreScroll.value).toBe(false)
     expect(shouldSync.value).toBe(false)
     expect(syncTargetPages.value).toBe(1)
@@ -80,6 +81,19 @@ describe('useLibraryDashboardStore', () => {
       totalPages: 1,
       hasMore: false
     })
+  })
+
+  it('only inserts added books that match the selected library states', () => {
+    const store = createStore()
+    const { allBooks, libraryState } = storeToRefs(store)
+
+    libraryState.value = ['wishlisted', 'previously_owned']
+
+    store.addBook(createBook('1'))
+    store.addBook({ ...createBook('2'), libraryState: 'wishlisted' })
+    store.addBook({ ...createBook('3'), libraryState: 'previously_owned' })
+
+    expect(allBooks.value.map((b: LibraryBook) => b.id)).toEqual(['3', '2'])
   })
 
   it('reorders an existing book without increasing totals', () => {

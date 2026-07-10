@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildLibraryRouteQuery,
+  DEFAULT_LIBRARY_STATE_FILTER,
   describeActiveLibraryFilters,
   getActiveLibraryFilterCount,
   normalizeLibraryQuery
@@ -12,7 +13,7 @@ describe('library query helpers', () => {
       page: '-2',
       pageSize: '500',
       search: '  dune  ',
-      libraryState: 'wishlisted',
+      libraryState: ['wishlisted'],
       loanStatus: 'loaned',
       readingStatus: 'reading',
       tag: '  sci-fi ',
@@ -24,7 +25,7 @@ describe('library query helpers', () => {
       page: 1,
       pageSize: 100,
       search: 'dune',
-      libraryState: 'wishlisted',
+      libraryState: ['wishlisted'],
       loanStatus: 'loaned',
       readingStatus: 'reading',
       tag: 'sci-fi',
@@ -43,7 +44,7 @@ describe('library query helpers', () => {
       search: '   '
     })).toMatchObject({
       search: undefined,
-      libraryState: 'all',
+      libraryState: [],
       loanStatus: 'all',
       readingStatus: 'all',
       tag: undefined,
@@ -62,12 +63,32 @@ describe('library query helpers', () => {
     })
   })
 
+  it('parses repeated and comma-separated library state filters', () => {
+    expect(normalizeLibraryQuery({
+      libraryState: ['owned,wishlisted', 'previously_owned']
+    })).toMatchObject({
+      libraryState: ['owned', 'wishlisted', 'previously_owned']
+    })
+
+    expect(normalizeLibraryQuery({
+      libraryState: ['wishlisted', 'owned']
+    })).toMatchObject({
+      libraryState: ['wishlisted', 'owned']
+    })
+
+    expect(normalizeLibraryQuery({
+      libraryState: 'all'
+    })).toMatchObject({
+      libraryState: []
+    })
+  })
+
   it('builds compact route query params', () => {
     expect(buildLibraryRouteQuery({
       page: 1,
       pageSize: 12,
       search: 'dune',
-      libraryState: 'all',
+      libraryState: [],
       loanStatus: 'available',
       readingStatus: 'all',
       tag: 'classic',
@@ -89,7 +110,7 @@ describe('library query helpers', () => {
   it('counts hidden advanced filters separately from primary search', () => {
     expect(getActiveLibraryFilterCount({
       search: 'dune',
-      libraryState: 'all',
+      libraryState: [],
       loanStatus: 'all',
       readingStatus: 'all',
       sortBy: 'dateAdded'
@@ -97,7 +118,7 @@ describe('library query helpers', () => {
 
     expect(getActiveLibraryFilterCount({
       search: 'dune',
-      libraryState: 'wishlisted',
+      libraryState: ['wishlisted'],
       loanStatus: 'loaned',
       readingStatus: 'read',
       tag: 'classic',
@@ -107,12 +128,18 @@ describe('library query helpers', () => {
       sortBy: 'author',
       groupByLocation: true
     })).toBe(9)
+
+    expect(getActiveLibraryFilterCount({
+      libraryState: ['owned', 'wishlisted', 'previously_owned'],
+      loanStatus: 'all',
+      readingStatus: 'all'
+    })).toBe(0)
   })
 
   it('can include search in active filter counts for full criteria checks', () => {
     expect(getActiveLibraryFilterCount({
       search: 'dune',
-      libraryState: 'all',
+      libraryState: [],
       loanStatus: 'all',
       readingStatus: 'all',
       sortBy: 'dateAdded'
@@ -123,7 +150,7 @@ describe('library query helpers', () => {
 
   it('describes active advanced filters for collapsed summaries', () => {
     expect(describeActiveLibraryFilters({
-      libraryState: 'owned',
+      libraryState: ['owned'],
       tag: 'classic'
     })).toEqual([
       'Library',
@@ -132,7 +159,7 @@ describe('library query helpers', () => {
 
     expect(describeActiveLibraryFilters({
       loanStatus: 'available',
-      libraryState: 'wishlisted',
+      libraryState: ['wishlisted'],
       readingStatus: 'reading',
       tag: 'sci-fi',
       locationId: 'loc-1',
@@ -153,15 +180,17 @@ describe('library query helpers', () => {
     ])
   })
 
-  it('defaults effective library state to all and serializes explicit non-default states', () => {
+  it('defaults the UI to Library while preserving All books as an explicit empty filter', () => {
+    expect(DEFAULT_LIBRARY_STATE_FILTER).toEqual(['owned'])
+
     expect(normalizeLibraryQuery({})).toMatchObject({
-      libraryState: 'all'
+      libraryState: []
     })
 
     expect(buildLibraryRouteQuery({
       page: 1,
       pageSize: 12,
-      libraryState: 'all',
+      libraryState: [],
       loanStatus: 'all',
       readingStatus: 'all',
       sortBy: 'dateAdded'
@@ -172,7 +201,19 @@ describe('library query helpers', () => {
     expect(buildLibraryRouteQuery({
       page: 1,
       pageSize: 12,
-      libraryState: 'owned',
+      libraryState: ['owned'],
+      loanStatus: 'all',
+      readingStatus: 'all',
+      sortBy: 'dateAdded'
+    })).toEqual({
+      page: '1',
+      libraryState: 'owned'
+    })
+
+    expect(buildLibraryRouteQuery({
+      page: 1,
+      pageSize: 12,
+      libraryState: ['owned'],
       loanStatus: 'all',
       readingStatus: 'all',
       sortBy: 'dateAdded'

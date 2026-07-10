@@ -124,7 +124,7 @@ export const bookIsbnSchema = z.object({
 
 export type BookIsbnSchema = z.infer<typeof bookIsbnSchema>
 
-export const libraryStateSchema = z.enum(['owned', 'wishlisted'], { error: 'Library state is invalid' })
+export const libraryStateSchema = z.enum(['owned', 'wishlisted', 'previously_owned'], { error: 'Library state is invalid' })
 
 export const bookIsbnAddSchema = bookIsbnSchema.extend({
   libraryState: libraryStateSchema.optional().default('owned')
@@ -431,6 +431,12 @@ export const bookLibraryStateSchema = z.object({
 })
 
 export type BookLibraryStateSchema = z.infer<typeof bookLibraryStateSchema>
+
+export const preferencesSchema = z.object({
+  defaultLibraryStateFilter: z.array(libraryStateSchema).default([])
+})
+
+export type PreferencesSchema = z.infer<typeof preferencesSchema>
 
 export const libraryImportSchema = z.object({
   csv: z.string({ error: 'CSV content is required' })

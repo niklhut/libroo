@@ -10,6 +10,7 @@ interface Props {
   isbn?: string | null
   coverPath?: string | null
   location?: BookLocation | null
+  lastKnownLocation?: string | null
   addedAt?: string | Date
   activeLoan?: ActiveLoanSummary | null
 }
@@ -74,6 +75,15 @@ const coverUrl = computed(() => {
           >
             Wishlist
           </UBadge>
+          <UBadge
+            v-if="libraryState === 'previously_owned'"
+            color="neutral"
+            variant="subtle"
+            size="sm"
+            class="absolute top-2 right-2"
+          >
+            Previously owned
+          </UBadge>
         </div>
       </template>
 
@@ -85,14 +95,14 @@ const coverUrl = computed(() => {
           {{ author }}
         </p>
         <div
-          v-if="location"
+          v-if="location || lastKnownLocation"
           class="flex items-center gap-1 text-xs text-muted"
         >
           <UIcon
             name="i-lucide-map-pin"
             class="size-3 shrink-0"
           />
-          <span class="line-clamp-1">{{ location.path }}</span>
+          <span class="line-clamp-1">{{ location?.path || `Last known: ${lastKnownLocation}` }}</span>
         </div>
       </div>
     </UCard>

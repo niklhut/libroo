@@ -9,6 +9,7 @@ import initialMigration from '../../../../server/db/migrations/sqlite/0000_initi
 import termsMigration from '../../../../server/db/migrations/sqlite/0001_add_terms_acceptance.sql?raw'
 import locationRestrictMigration from '../../../../server/db/migrations/sqlite/0002_prevent_location_delete_cascade.sql?raw'
 import libraryStateMigration from '../../../../server/db/migrations/sqlite/0003_add_library_state.sql?raw'
+import previouslyOwnedMigration from '../../../../server/db/migrations/sqlite/0006_huge_tiger_shark.sql?raw'
 import { authors, bookAuthors, books, loans, user, userBooks } from '../../../../server/db/schema'
 import { BookNotOwnedError } from '../../../../server/repositories/book.repository'
 import {
@@ -51,23 +52,25 @@ describe('LendingRepository transitions on D1', () => {
     expect(stored.acceptTokenHash).toBeNull()
   })
 
-  it('rejects loan creation for wishlisted books', async () => {
-    await seedUserBook(db, 'ub-wishlist', 'owner-1', 'book-1', 'wishlisted')
+  it.each(['wishlisted', 'previously_owned'] as const)('rejects loan creation for %s books', async (libraryState) => {
+    const userBookId = `ub-${libraryState}`
+    await seedUserBook(db, userBookId, 'owner-1', 'book-1', libraryState)
 
     const result = await runRepository(db, Effect.either(Effect.flatMap(LendingRepository, repository =>
       repository.createLoan({
-        userBookId: 'ub-wishlist',
+        userBookId,
         ownerUserId: 'owner-1',
         borrowerDisplayName: 'Borrower',
         borrowerEmail: null,
         dueAt: null,
-        acceptTokenHash: 'token-wishlist'
+        acceptTokenHash: `token-${libraryState}`
       })
     )))
 
     expect(Either.isLeft(result)).toBe(true)
     if (Either.isLeft(result)) {
       expect(result.left).toBeInstanceOf(BookNotOwnedError)
+      expect(result.left.libraryState).toBe(libraryState)
     }
   })
 
@@ -109,7 +112,7 @@ describe('LendingRepository transitions on D1', () => {
 })
 
 async function applyMigrations(database: D1Database) {
-  for (const migration of [initialMigration, termsMigration, locationRestrictMigration, libraryStateMigration]) {
+  for (const migration of [initialMigration, termsMigration, locationRestrictMigration, libraryStateMigration, previouslyOwnedMigration]) {
     for (const statement of migration.split('--> statement-breakpoint')) {
       const migrationStatement = statement.trim()
       if (migrationStatement) {
@@ -161,7 +164,7 @@ async function seedBase(database: D1Db) {
   })
 }
 
-async function seedUserBook(database: D1Db, id: string, userId: string, bookId: string, libraryState: 'owned' | 'wishlisted' = 'owned') {
+async function seedUserBook(database: D1Db, id: string, userId: string, bookId: string, libraryState: 'owned' | 'wishlisted' | 'previously_owned' = 'owned') {
   await database.insert(userBooks).values({
     id,
     userId,

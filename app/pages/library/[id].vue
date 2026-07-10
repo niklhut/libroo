@@ -14,6 +14,11 @@ const isReadingModalOpen = ref(false)
 const isLendingModalOpen = ref(false)
 const isLocationModalOpen = ref(false)
 const isLoanRemovalDialogOpen = ref(false)
+const isOwnershipDialogOpen = ref(false)
+const isWishlistRemovalDialogOpen = ref(false)
+const isRecordDeletionDialogOpen = ref(false)
+const isMoveToWishlistDialogOpen = ref(false)
+const isMoveToLibraryDialogOpen = ref(false)
 const isSavingReadingProgress = ref(false)
 const isReturningLoan = ref(false)
 const isUpdatingLibraryState = ref(false)
@@ -107,6 +112,28 @@ async function removeBook(confirmActiveLoan = false) {
   }
 }
 
+function markAsPreviouslyOwned() {
+  isOwnershipDialogOpen.value = false
+  void updateBookLibraryState('previously_owned')
+}
+
+function deleteBookRecord() {
+  isOwnershipDialogOpen.value = false
+  isWishlistRemovalDialogOpen.value = false
+  isRecordDeletionDialogOpen.value = false
+  void removeBook(false)
+}
+
+function moveToWishlist() {
+  isMoveToWishlistDialogOpen.value = false
+  void updateBookLibraryState('wishlisted')
+}
+
+function moveToLibrary() {
+  isMoveToLibraryDialogOpen.value = false
+  void updateBookLibraryState('owned')
+}
+
 async function onLoanSaved() {
   await refresh()
   markNeedsSync(getLoadedPages())
@@ -158,6 +185,7 @@ async function updateBookLibraryState(state: LibraryState) {
     ...(state === 'wishlisted'
       ? {
           location: null,
+          lastKnownLocation: null,
           activeLoan: null,
           rating: null,
           readingProgress: {
@@ -168,7 +196,13 @@ async function updateBookLibraryState(state: LibraryState) {
             finishedAt: null
           } satisfies ReadingProgress
         }
-      : {})
+      : state === 'previously_owned'
+        ? {
+            location: null,
+            lastKnownLocation: previousBook.location?.path ?? previousBook.lastKnownLocation ?? null,
+            activeLoan: null
+          }
+        : {})
   }
 
   if (state === 'wishlisted') {
@@ -183,10 +217,16 @@ async function updateBookLibraryState(state: LibraryState) {
     await refresh()
     markNeedsSync(getLoadedPages())
     toast.add({
-      title: state === 'owned' ? 'Moved to library' : 'Moved to wishlist',
+      title: state === 'owned'
+        ? 'Moved to library'
+        : state === 'previously_owned'
+          ? 'Marked previously owned'
+          : 'Moved to wishlist',
       description: state === 'owned'
         ? 'Physical inventory options are now available.'
-        : 'This book is now on your wishlist.',
+        : state === 'previously_owned'
+          ? 'This book is kept in your history without active inventory controls.'
+          : 'This book is now on your wishlist.',
       color: 'success'
     })
   } catch (err: unknown) {
@@ -495,14 +535,14 @@ async function saveReadingProgress(progress: {
               Added: {{ formattedAddedAt }}
             </div>
             <div
-              v-if="book.libraryState === 'wishlisted'"
+              v-if="book.libraryState === 'wishlisted' || book.libraryState === 'previously_owned'"
               class="flex justify-center md:justify-start"
             >
               <UBadge
-                color="info"
+                :color="book.libraryState === 'wishlisted' ? 'info' : 'neutral'"
                 variant="subtle"
               >
-                Wishlist
+                {{ book.libraryState === 'wishlisted' ? 'Wishlist' : 'Previously owned' }}
               </UBadge>
             </div>
           </div>
@@ -537,6 +577,24 @@ async function saveReadingProgress(progress: {
               >
                 Manage
               </UButton>
+            </div>
+          </div>
+
+          <div
+            v-else-if="book.libraryState === 'previously_owned' && book.lastKnownLocation"
+            class="space-y-3"
+          >
+            <div>
+              <h2 class="text-lg font-semibold">
+                Last known location
+              </h2>
+              <div class="mt-1 flex items-center gap-2 text-sm text-muted">
+                <UIcon
+                  name="i-lucide-map-pin"
+                  class="size-4 shrink-0"
+                />
+                <span>{{ book.lastKnownLocation }}</span>
+              </div>
             </div>
           </div>
 
@@ -668,7 +726,16 @@ async function saveReadingProgress(progress: {
               Record loan
             </UButton>
             <UButton
-              v-if="!isOwnedBook"
+              v-if="book.libraryState === 'wishlisted'"
+              icon="i-lucide-arrow-up-right"
+              :loading="isUpdatingLibraryState"
+              :disabled="isUpdatingLibraryState"
+              @click="() => { isMoveToLibraryDialogOpen = true }"
+            >
+              Move to Library
+            </UButton>
+            <UButton
+              v-else-if="!isOwnedBook"
               icon="i-lucide-arrow-up-right"
               :loading="isUpdatingLibraryState"
               :disabled="isUpdatingLibraryState"
@@ -683,9 +750,39 @@ async function saveReadingProgress(progress: {
               icon="i-lucide-bookmark"
               :loading="isUpdatingLibraryState"
               :disabled="isUpdatingLibraryState"
-              @click="updateBookLibraryState('wishlisted')"
+              @click="() => { isMoveToWishlistDialogOpen = true }"
             >
               Move to Wishlist
+            </UButton>
+            <UButton
+              v-if="isOwnedBook"
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-history"
+              :disabled="isUpdatingLibraryState || isDeleting"
+              @click="() => { isOwnershipDialogOpen = true }"
+            >
+              No longer own this book
+            </UButton>
+            <UButton
+              v-if="book.libraryState === 'wishlisted'"
+              color="error"
+              variant="subtle"
+              icon="i-lucide-x"
+              :disabled="isDeleting"
+              @click="() => { isWishlistRemovalDialogOpen = true }"
+            >
+              Remove from Wishlist
+            </UButton>
+            <UButton
+              v-if="book.libraryState === 'previously_owned'"
+              color="error"
+              variant="subtle"
+              icon="i-lucide-trash-2"
+              :disabled="isDeleting"
+              @click="() => { isRecordDeletionDialogOpen = true }"
+            >
+              Delete this book
             </UButton>
             <UButton
               v-if="showOpenLibraryLinks && book.openLibraryKey"
@@ -707,25 +804,6 @@ async function saveReadingProgress(progress: {
             >
               View Work
             </UButton>
-            <DeleteConfirmDialog
-              title="Remove this book from your library?"
-              description="This will remove the book from your library. Lending history is kept when it exists."
-              confirm-label="Remove from Library"
-              @confirm="removeBook(false)"
-            >
-              <template #trigger="{ open }">
-                <UButton
-                  color="error"
-                  variant="outline"
-                  icon="i-lucide-trash-2"
-                  :loading="isDeleting"
-                  :disabled="isDeleting"
-                  @click="open"
-                >
-                  Remove from Library
-                </UButton>
-              </template>
-            </DeleteConfirmDialog>
           </div>
         </div>
       </div>
@@ -764,9 +842,160 @@ async function saveReadingProgress(progress: {
       />
 
       <UModal
+        v-if="book"
+        v-model:open="isMoveToWishlistDialogOpen"
+        title="Move to Wishlist?"
+        description="This clears the book's location, rating, and reading progress."
+        :close="false"
+        :ui="{ content: 'max-w-md', footer: 'justify-end gap-2 p-5' }"
+      >
+        <template #footer>
+          <UButton
+            color="neutral"
+            variant="soft"
+            @click="() => { isMoveToWishlistDialogOpen = false }"
+          >
+            Cancel
+          </UButton>
+          <UButton
+            icon="i-lucide-bookmark"
+            :loading="isUpdatingLibraryState"
+            @click="moveToWishlist"
+          >
+            Move to Wishlist
+          </UButton>
+        </template>
+      </UModal>
+
+      <UModal
+        v-if="book"
+        v-model:open="isMoveToLibraryDialogOpen"
+        title="Move to Library?"
+        description="This will make the book available for physical inventory and lending."
+        :close="false"
+        :ui="{ content: 'max-w-md', footer: 'justify-end gap-2 p-5' }"
+      >
+        <template #footer>
+          <UButton
+            color="neutral"
+            variant="soft"
+            @click="() => { isMoveToLibraryDialogOpen = false }"
+          >
+            Cancel
+          </UButton>
+          <UButton
+            icon="i-lucide-arrow-up-right"
+            :loading="isUpdatingLibraryState"
+            @click="moveToLibrary"
+          >
+            Move to Library
+          </UButton>
+        </template>
+      </UModal>
+
+      <UModal
+        v-if="book"
+        v-model:open="isOwnershipDialogOpen"
+        title="No longer own this book?"
+        :description="book.activeLoan
+          ? 'This book has an active loan, so it cannot be marked previously owned until the loan is returned. You can delete this book instead.'
+          : 'Keep this book as previously owned, or delete this book.'"
+        :close="false"
+        :ui="{
+          content: 'max-w-md',
+          header: 'p-5',
+          footer: 'flex-wrap justify-end gap-2 p-5'
+        }"
+      >
+        <template #footer>
+          <UButton
+            color="neutral"
+            variant="soft"
+            @click="() => { isOwnershipDialogOpen = false }"
+          >
+            Cancel
+          </UButton>
+          <UButton
+            v-if="!book.activeLoan"
+            icon="i-lucide-history"
+            :loading="isUpdatingLibraryState"
+            @click="markAsPreviouslyOwned"
+          >
+            Previously owned
+          </UButton>
+          <UButton
+            color="error"
+            variant="subtle"
+            icon="i-lucide-trash-2"
+            :loading="isDeleting"
+            :disabled="isUpdatingLibraryState"
+            @click="deleteBookRecord"
+          >
+            Delete this book
+          </UButton>
+        </template>
+      </UModal>
+
+      <UModal
+        v-if="book"
+        v-model:open="isWishlistRemovalDialogOpen"
+        title="Remove from Wishlist?"
+        description="This book will no longer appear in your wishlist."
+        :close="false"
+        :ui="{ content: 'max-w-md', footer: 'justify-end gap-2 p-5' }"
+      >
+        <template #footer>
+          <UButton
+            color="neutral"
+            variant="soft"
+            @click="() => { isWishlistRemovalDialogOpen = false }"
+          >
+            Cancel
+          </UButton>
+          <UButton
+            color="error"
+            variant="subtle"
+            icon="i-lucide-x"
+            :loading="isDeleting"
+            @click="deleteBookRecord"
+          >
+            Remove from Wishlist
+          </UButton>
+        </template>
+      </UModal>
+
+      <UModal
+        v-if="book"
+        v-model:open="isRecordDeletionDialogOpen"
+        title="Delete this book?"
+        description="This removes the book from your library history."
+        :close="false"
+        :ui="{ content: 'max-w-md', footer: 'justify-end gap-2 p-5' }"
+      >
+        <template #footer>
+          <UButton
+            color="neutral"
+            variant="soft"
+            @click="() => { isRecordDeletionDialogOpen = false }"
+          >
+            Cancel
+          </UButton>
+          <UButton
+            color="error"
+            variant="subtle"
+            icon="i-lucide-trash-2"
+            :loading="isDeleting"
+            @click="deleteBookRecord"
+          >
+            Delete this book
+          </UButton>
+        </template>
+      </UModal>
+
+      <UModal
         v-model:open="isLoanRemovalDialogOpen"
         title="Remove a lent-out book?"
-        description="This book will leave your library, but the active lending record and borrower history will remain."
+        description="This book will leave your library, but its active loan and borrower history will remain."
         :ui="{ footer: 'justify-end gap-3' }"
       >
         <template #footer>
@@ -779,6 +1008,7 @@ async function saveReadingProgress(progress: {
           </UButton>
           <UButton
             color="error"
+            variant="subtle"
             icon="i-lucide-trash-2"
             :loading="isDeleting"
             @click="removeBook(true)"

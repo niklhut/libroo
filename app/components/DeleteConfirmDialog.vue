@@ -38,7 +38,7 @@ function confirmDialog() {
     :description="description"
     :close="false"
     :ui="{
-      footer: 'justify-end gap-3'
+      footer: 'justify-end gap-2'
     }"
   >
     <template #default>
@@ -58,6 +58,7 @@ function confirmDialog() {
       </UButton>
       <UButton
         color="error"
+        variant="subtle"
         icon="i-lucide-trash-2"
         @click="confirmDialog"
       >
