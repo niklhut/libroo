@@ -12,7 +12,7 @@ export interface ScannedBook {
   errorMessage?: string
 }
 
-type AddLibraryState = Exclude<LibraryState, 'previously_owned'>
+export type AddLibraryState = Exclude<LibraryState, 'previously_owned'>
 
 export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
   const toast = useToast()

@@ -52,23 +52,25 @@ describe('LendingRepository transitions on D1', () => {
     expect(stored.acceptTokenHash).toBeNull()
   })
 
-  it('rejects loan creation for wishlisted books', async () => {
-    await seedUserBook(db, 'ub-wishlist', 'owner-1', 'book-1', 'wishlisted')
+  it.each(['wishlisted', 'previously_owned'] as const)('rejects loan creation for %s books', async (libraryState) => {
+    const userBookId = `ub-${libraryState}`
+    await seedUserBook(db, userBookId, 'owner-1', 'book-1', libraryState)
 
     const result = await runRepository(db, Effect.either(Effect.flatMap(LendingRepository, repository =>
       repository.createLoan({
-        userBookId: 'ub-wishlist',
+        userBookId,
         ownerUserId: 'owner-1',
         borrowerDisplayName: 'Borrower',
         borrowerEmail: null,
         dueAt: null,
-        acceptTokenHash: 'token-wishlist'
+        acceptTokenHash: `token-${libraryState}`
       })
     )))
 
     expect(Either.isLeft(result)).toBe(true)
     if (Either.isLeft(result)) {
       expect(result.left).toBeInstanceOf(BookNotOwnedError)
+      expect(result.left.libraryState).toBe(libraryState)
     }
   })
 

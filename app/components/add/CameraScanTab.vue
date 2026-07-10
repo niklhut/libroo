@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { LibraryState } from '~~/shared/types/book'
+import type { AddLibraryState } from '~/stores/isbnScanner'
 import { storeToRefs } from 'pinia'
 import { defaultContinuousMode } from '~/utils/cameraScanDefaults'
 
@@ -63,8 +63,6 @@ async function onIsbnDetected(isbn: string) {
     }
   }
 }
-
-type AddLibraryState = Exclude<LibraryState, 'previously_owned'>
 
 async function addSingleScanBook(targetState: AddLibraryState, redirectPath: string) {
   targetLibraryState.value = targetState
