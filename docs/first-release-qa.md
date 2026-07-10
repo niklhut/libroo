@@ -24,15 +24,15 @@ Run these from the repository root before release.
 ```bash
 pnpm lint:fix
 pnpm typecheck
-pnpm test:unit
+pnpm test
 pnpm test:e2e
 pnpm build
 ```
 
 - [ ] `pnpm lint:fix` passes.
 - [ ] `pnpm typecheck` passes.
-- [ ] `pnpm test:unit` passes.
-- [ ] `pnpm test:e2e` passes against the isolated Playwright self-host runtime.
+- [ ] `pnpm test` passes (it runs all Vitest projects; CI runs the same projects in a per-project matrix and reports each status individually).
+- [ ] `pnpm test:e2e` passes against the isolated Playwright self-host runtime. It is a separate, build-dependent suite.
 - [ ] `pnpm build` passes.
 - [ ] Any code formatting changes from `lint:fix` are reviewed and committed.
 
