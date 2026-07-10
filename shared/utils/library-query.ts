@@ -80,7 +80,7 @@ const normalizeTagFilter = (value: unknown): string[] => {
     if (seen.has(normalized)) return false
     seen.add(normalized)
     return true
-  })
+  }).sort()
 }
 
 export const normalizeLibraryStateFilter = (value: unknown): LibraryStateFilter => {

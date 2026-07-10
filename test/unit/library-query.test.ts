@@ -28,7 +28,7 @@ describe('library query helpers', () => {
       libraryState: ['wishlisted'],
       loanStatus: 'loaned',
       readingStatus: 'reading',
-      tags: ['sci-fi', 'art', 'fiction'],
+      tags: ['art', 'fiction', 'sci-fi'],
       location: 'shelf b',
       locationId: 'loc-1',
       includeLocationDescendants: true,
