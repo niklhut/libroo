@@ -5,6 +5,15 @@ import { useLibraryDashboardStore } from '../../app/stores/libraryDashboard'
 
 const _orig$fetch = (globalThis as { $fetch?: unknown }).$fetch
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve = promiseResolve
+  })
+
+  return { promise, resolve }
+}
+
 describe('useIsbnLookupStore', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -113,5 +122,20 @@ describe('useIsbnLookupStore', () => {
     expect(store.pendingAdds).toBe(0)
     expect(store.lookupError).toBeNull()
     expect(store.addError).toBeNull()
+  })
+
+  it('does not allow pending counters to become negative after reset', async () => {
+    const lookupResponse = deferred<{ found: true, isbn: string, title: string, author: string }>()
+    const fetchMock = vi.fn(() => lookupResponse.promise)
+    ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
+
+    const store = useIsbnLookupStore()
+    const lookup = store.lookupIsbn('9781234567890')
+    store.reset()
+    lookupResponse.resolve({ found: true, isbn: '9781234567890', title: 'Book A', author: 'Author A' })
+    await lookup
+
+    expect(store.pendingLookups).toBe(0)
+    expect(store.isLookingUp).toBe(false)
   })
 })

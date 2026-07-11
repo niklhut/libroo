@@ -64,10 +64,13 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function signOut() {
-    await authClient.signOut()
-    const { clearUserScopedState } = useClearUserScopedState()
-    clearUserScopedState()
-    session.data.value = null
+    try {
+      await authClient.signOut()
+    } finally {
+      const { clearUserScopedState } = useClearUserScopedState()
+      clearUserScopedState()
+      session.data.value = null
+    }
   }
 
   async function refresh() {

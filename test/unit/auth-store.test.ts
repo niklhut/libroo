@@ -157,6 +157,27 @@ describe('useAuthStore', () => {
     expect(lookupStore.addError).toBeNull()
   })
 
+  it('clears user-scoped stores and session data when API sign-out fails', async () => {
+    const session = {
+      data: ref({ user: { id: 'account-a', email: 'a@example.com' }, session: { id: 'session-a' } }),
+      error: ref<Error | null>(null),
+      isPending: ref(false)
+    }
+    ;(globalThis as unknown as { useNuxtApp: () => { $authSession: typeof session } }).useNuxtApp = () => ({ $authSession: session })
+    authClientMocks.signOut.mockRejectedValueOnce(new Error('network'))
+
+    const dashboardStore = useLibraryDashboardStore()
+    dashboardStore.search = 'account A book'
+    const scannerStore = useIsbnScannerStore()
+    scannerStore.scannedBooks = [{ isbn: '9781234567890', status: 'found', selected: true }]
+
+    await expect(useAuthStore().signOut()).rejects.toThrow('network')
+
+    expect(session.data.value).toBeNull()
+    expect(dashboardStore.search).toBe('')
+    expect(scannerStore.scannedBooks).toEqual([])
+  })
+
   it('passes the Turnstile token as a captcha response header on signup', async () => {
     const session = {
       data: ref(null),

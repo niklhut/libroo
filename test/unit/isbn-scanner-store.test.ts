@@ -258,6 +258,24 @@ describe('useIsbnScannerStore', () => {
     expect(lookupStore.addError).toBeNull()
   })
 
+  it('ignores bulk-add results that complete after scanner state is cleared', async () => {
+    const bulkAddResponse = deferred<{ added: Array<{ isbn: string }>, failed: Array<{ isbn: string, error: string }> }>()
+    const fetchMock = vi.fn(() => bulkAddResponse.promise)
+    ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
+
+    const store = useIsbnScannerStore()
+    store.scannedBooks = [{ isbn: '9781234567890', status: 'found', selected: true }]
+    const addPromise = store.addSelectedToLibrary()
+    await nextTick()
+
+    store.clearAll()
+    store.scannedBooks = [{ isbn: '9781234567890', status: 'found', selected: true }]
+    bulkAddResponse.resolve({ added: [{ isbn: '9781234567890' }], failed: [] })
+
+    await expect(addPromise).resolves.toEqual({ success: [], failed: [] })
+    expect(store.scannedBooks).toEqual([{ isbn: '9781234567890', status: 'found', selected: true }])
+  })
+
   it('bulk-add success removes scanned books and marks dashboard sync', async () => {
     const lookupIsbn = '9781234567890'
     const fetchMock = vi.fn(async (url: string) => {
