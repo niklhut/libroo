@@ -106,7 +106,7 @@ describe('AuthRequestService', () => {
     expect(signupInviteServiceMock.deleteCompensatingSignupAccount).not.toHaveBeenCalled()
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('manual reconciliation'), expect.objectContaining({
       reservationToken: 'reservation-1',
-      email: 'ada@example.com'
+      email: 'a***@example.com'
     }))
     warn.mockRestore()
   })
@@ -145,6 +145,9 @@ describe('AuthRequestService', () => {
     expect(consoleError).toHaveBeenCalledWith(expect.stringContaining('Failed to compensate orphaned signup account'), expect.objectContaining({
       userId: 'user-1',
       error: compensationError
+    }))
+    expect(consoleError).toHaveBeenCalledWith(expect.stringContaining('Failed to compensate orphaned signup account'), expect.not.objectContaining({
+      email: expect.anything()
     }))
     consoleError.mockRestore()
   })

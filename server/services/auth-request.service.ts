@@ -94,7 +94,7 @@ export const AuthRequestServiceLive = Layer.effect(
             if (userId) {
               yield* signupInviteService.acceptInvite(inviteReservationToken, userId).pipe(
                 Effect.catchAll(error =>
-                  compensateSignupAccount(signupInviteService, userId, inviteReservationToken, signupEmail).pipe(
+                  compensateSignupAccount(signupInviteService, userId, inviteReservationToken).pipe(
                     Effect.andThen(releaseReservation(signupInviteService, inviteReservationToken)),
                     Effect.andThen(Effect.fail(error))
                   )
@@ -103,7 +103,7 @@ export const AuthRequestServiceLive = Layer.effect(
             } else {
               console.warn('Successful invited signup response did not include a user id; manual reconciliation is required', {
                 reservationToken: inviteReservationToken,
-                email: signupEmail
+                email: maskEmailForLog(signupEmail)
               })
               yield* releaseReservation(signupInviteService, inviteReservationToken)
               return yield* Effect.fail(new InvalidSignupInviteError({
@@ -141,16 +141,14 @@ async function readSignupBody(request: Request) {
 function compensateSignupAccount(
   signupInviteService: SignupInviteServiceInterface,
   userId: string,
-  reservationToken: string,
-  email: string | null
+  reservationToken: string
 ) {
   return signupInviteService.deleteCompensatingSignupAccount(userId).pipe(
     Effect.tap(deleted => Effect.sync(() => {
       if (!deleted) {
         console.error('Failed to compensate orphaned signup account: user was not deleted', {
           userId,
-          reservationToken,
-          email
+          reservationToken
         })
       }
     })),
@@ -158,11 +156,19 @@ function compensateSignupAccount(
       console.error('Failed to compensate orphaned signup account', {
         userId,
         reservationToken,
-        email,
         error
       })
     }))
   )
+}
+
+function maskEmailForLog(email: string | null) {
+  if (!email) return null
+
+  const [localPart, domain] = email.split('@')
+  if (!localPart || !domain) return '***'
+
+  return `${localPart.slice(0, 1)}***@${domain}`
 }
 
 function releaseReservation(
