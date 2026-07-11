@@ -271,6 +271,28 @@ export const locationPathSchema = z.object({
 export type LocationPathSchema = z.infer<typeof locationPathSchema>
 
 export const MANUAL_COVER_MAX_BYTES = 2 * 1024 * 1024
+export const MANUAL_COVER_MAX_BASE64_LENGTH = Math.ceil(MANUAL_COVER_MAX_BYTES / 3) * 4
+export const MANUAL_COVER_MAX_DATA_URL_PREFIX_LENGTH = 256
+const BASE64_PATTERN = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/
+const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+
+export const stripBase64DataUrlPrefix = (value: string) =>
+  value.replace(/^data:[^,]*;base64,/i, '')
+
+export const isCanonicalBase64 = (value: string) => {
+  if (!BASE64_PATTERN.test(value)) return false
+  if (value.endsWith('==')) return BASE64_ALPHABET.indexOf(value.at(-3)!) % 16 === 0
+  if (value.endsWith('=')) return BASE64_ALPHABET.indexOf(value.at(-2)!) % 4 === 0
+  return true
+}
+
+export const isManualCoverDataWithinLimit = (value: string) => {
+  const base64 = stripBase64DataUrlPrefix(value)
+  const prefixLength = value.length - base64.length
+
+  return prefixLength <= MANUAL_COVER_MAX_DATA_URL_PREFIX_LENGTH
+    && base64.length <= MANUAL_COVER_MAX_BASE64_LENGTH
+}
 
 const trimmedNullableString = (maxLength: number, fieldName: string) =>
   z.preprocess(
@@ -327,7 +349,16 @@ export const manualBookCreateSchema = z.object({
   isbn: optionalManualIsbnSchema,
   libraryState: libraryStateSchema.optional().default('owned'),
   coverImage: z.object({
-    data: z.string({ error: 'Cover image data is required' }).min(1, { error: 'Cover image data is required' }),
+    data: z.string({ error: 'Cover image data is required' })
+      .min(1, { error: 'Cover image data is required' })
+      .refine(
+        isManualCoverDataWithinLimit,
+        { error: 'Cover image is too large' }
+      )
+      .refine(
+        value => isCanonicalBase64(stripBase64DataUrlPrefix(value)),
+        { error: 'Cover image data must be valid base64' }
+      ),
     contentType: z.string({ error: 'Cover image content type is required' })
       .refine(value => value.startsWith('image/'), { error: 'Cover image must be an image' }),
     size: z.number({ error: 'Cover image size must be a number' })

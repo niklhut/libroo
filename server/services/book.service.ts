@@ -1,8 +1,14 @@
 import { Context, Effect, Layer, Either, Data } from 'effect'
 import type * as HttpClient from '@effect/platform/HttpClient'
 import { normalizeReadingProgress } from '../../shared/utils/reading-progress'
-import { MANUAL_COVER_MAX_BYTES } from '../../shared/utils/schemas'
+import {
+  isCanonicalBase64,
+  isManualCoverDataWithinLimit,
+  MANUAL_COVER_MAX_BYTES,
+  stripBase64DataUrlPrefix
+} from '../../shared/utils/schemas'
 import type { LibraryQueryFilters } from '../../shared/utils/library-query'
+import { detectImageContentType, UNKNOWN_IMAGE_CONTENT_TYPE } from '../../shared/utils/image-content-type'
 import type { LibraryState, TagWithCount } from '../../shared/types/book'
 
 interface UserBookViewModel {
@@ -30,6 +36,34 @@ export class InvalidReadingProgressError extends Data.TaggedError('InvalidReadin
 export class InvalidManualCoverError extends Data.TaggedError('InvalidManualCoverError')<{
   message: string
 }> { }
+
+export const decodeCoverImage = (data: string): Effect.Effect<Buffer, InvalidManualCoverError> =>
+  Effect.try({
+    try: () => {
+      if (!isManualCoverDataWithinLimit(data)) {
+        throw new Error('Cover image is too large')
+      }
+      const base64 = stripBase64DataUrlPrefix(data)
+      if (!isCanonicalBase64(base64)) {
+        throw new Error('Cover image data must be valid base64')
+      }
+
+      const buffer = Buffer.from(base64, 'base64')
+      if (buffer.length === 0) {
+        throw new Error('Cover image is empty')
+      }
+      if (buffer.length > MANUAL_COVER_MAX_BYTES) {
+        throw new Error('Cover image is too large')
+      }
+      if (detectImageContentType(buffer) === UNKNOWN_IMAGE_CONTENT_TYPE) {
+        throw new Error('Cover image is invalid or unsupported')
+      }
+      return buffer
+    },
+    catch: error => new InvalidManualCoverError({
+      message: error instanceof Error ? error.message : 'Cover image is invalid'
+    })
+  })
 
 export interface RepairOpenLibraryCoversResult {
   attempted: number
@@ -237,24 +271,6 @@ export const BookServiceLive = Layer.effect(
         try: () => normalizeReadingProgress(details, input),
         catch: error => new InvalidReadingProgressError({
           message: error instanceof Error ? error.message : 'Invalid reading progress'
-        })
-      })
-
-    const decodeCoverImage = (data: string): Effect.Effect<Buffer, InvalidManualCoverError> =>
-      Effect.try({
-        try: () => {
-          const base64 = data.includes(',') ? data.split(',').at(-1)! : data
-          const buffer = Buffer.from(base64, 'base64')
-          if (buffer.length === 0) {
-            throw new Error('Cover image is empty')
-          }
-          if (buffer.length > MANUAL_COVER_MAX_BYTES) {
-            throw new Error('Cover image is too large')
-          }
-          return buffer
-        },
-        catch: error => new InvalidManualCoverError({
-          message: error instanceof Error ? error.message : 'Cover image is invalid'
         })
       })
 

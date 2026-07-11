@@ -1,10 +1,10 @@
-import path from 'node:path'
 import type { Page } from '@playwright/test'
 import { expect } from '@playwright/test'
 import { addBookTabs } from './selectors'
 
 export const fixtureIsbn = '9780385533225'
 export const fixtureIsbnTitle = 'Fixture Driven Development'
+const manualCoverPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEklEQVQImWNwtjjlbHGKAUIBACF+BRVveqO2AAAAAElFTkSuQmCC', 'base64')
 
 export async function addFixtureIsbnBook(page: Page) {
   await addBookTabs(page).gotoIsbn()
@@ -21,7 +21,11 @@ export async function addManualBook(page: Page, title: string) {
   await page.getByLabel('Title').fill(title)
   await page.getByPlaceholder('Author name').fill('Manual Author')
   await page.getByLabel('Publisher').fill('Libroo Manual Press')
-  await page.locator('input[type="file"]').setInputFiles(path.resolve('test/e2e/fixtures/manual-cover.svg'))
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'manual-cover.png',
+    mimeType: 'image/png',
+    buffer: manualCoverPng
+  })
   await expect(page.getByAltText('Selected cover preview')).toBeVisible()
   await page.getByRole('button', { name: 'Add Book' }).click()
   await expect(page).toHaveURL(/\/library\/[^/]+$/)
