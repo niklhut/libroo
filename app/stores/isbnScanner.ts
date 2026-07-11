@@ -206,6 +206,9 @@ export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
 
   function clearAll() {
     scannedBooks.value = []
+    isBulkLookingUp.value = false
+    targetLibraryState.value = 'owned'
+    isbnLookupStore.reset()
   }
 
   const counts = computed(() => ({
@@ -221,6 +224,7 @@ export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
   return {
     scannedBooks,
     targetLibraryState,
+    isBulkLookingUp,
     isLookingUp,
     isAddingBooks,
     counts,

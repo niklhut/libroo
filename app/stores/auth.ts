@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import type { Ref } from 'vue'
 import { computed, unref } from 'vue'
 import { authClient } from '~/utils/auth-client'
+import { useClearUserScopedState } from '~/composables/useClearUserScopedState'
 
 interface InjectedAuthSession {
   data: Ref<{ user?: AuthUser, session?: Record<string, unknown> } | null>
@@ -64,6 +65,9 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function signOut() {
     await authClient.signOut()
+    const { clearUserScopedState } = useClearUserScopedState()
+    clearUserScopedState()
+    session.data.value = null
   }
 
   async function refresh() {

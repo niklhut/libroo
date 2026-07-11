@@ -99,4 +99,19 @@ describe('useIsbnLookupStore', () => {
       failedIsbns: ['9780987654321']
     })
   })
+
+  it('resets pending state and lookup errors', () => {
+    const store = useIsbnLookupStore()
+    store.pendingLookups = 1
+    store.pendingAdds = 2
+    store.lookupError = 'lookup failed'
+    store.addError = 'add failed'
+
+    store.reset()
+
+    expect(store.pendingLookups).toBe(0)
+    expect(store.pendingAdds).toBe(0)
+    expect(store.lookupError).toBeNull()
+    expect(store.addError).toBeNull()
+  })
 })

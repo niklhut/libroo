@@ -3,6 +3,9 @@ import { createPinia, setActivePinia, storeToRefs } from 'pinia'
 import { ref } from 'vue'
 
 import { useAuthStore } from '../../app/stores/auth'
+import { useIsbnLookupStore } from '../../app/stores/isbnLookup'
+import { useIsbnScannerStore } from '../../app/stores/isbnScanner'
+import { useLibraryDashboardStore } from '../../app/stores/libraryDashboard'
 
 const _origUseNuxtApp = (globalThis as { useNuxtApp?: unknown }).useNuxtApp
 
@@ -30,6 +33,7 @@ describe('useAuthStore', () => {
     authClientMocks.signInEmail.mockReset()
     authClientMocks.signUpEmail.mockReset()
     authClientMocks.signOut.mockReset()
+    ;(globalThis as unknown as { useToast: () => { add: () => void } }).useToast = () => ({ add: () => undefined })
   })
 
   afterEach(() => {
@@ -119,6 +123,38 @@ describe('useAuthStore', () => {
       fetchOptions: undefined
     })
     expect(authClientMocks.signOut).toHaveBeenCalledTimes(1)
+  })
+
+  it('clears user-scoped stores and session data on sign-out', async () => {
+    const session = {
+      data: ref({ user: { id: 'account-a', email: 'a@example.com' }, session: { id: 'session-a' } }),
+      error: ref<Error | null>(null),
+      isPending: ref(false)
+    }
+    ;(globalThis as unknown as { useNuxtApp: () => { $authSession: typeof session } }).useNuxtApp = () => ({ $authSession: session })
+    authClientMocks.signOut.mockResolvedValueOnce(undefined)
+
+    const dashboardStore = useLibraryDashboardStore()
+    dashboardStore.search = 'account A book'
+    dashboardStore.allBooks = [{ id: 'book-a', bookId: 'book-a', libraryState: 'owned', title: 'Account A title', author: 'Author', isbn: '9781234567890', coverPath: null, addedAt: new Date().toISOString() }]
+    dashboardStore.shouldSync = true
+    const lookupStore = useIsbnLookupStore()
+    lookupStore.lookupError = 'lookup failed'
+    lookupStore.addError = 'add failed'
+    const scannerStore = useIsbnScannerStore()
+    scannerStore.scannedBooks = [{ isbn: '9781234567890', status: 'found', selected: true }]
+    scannerStore.targetLibraryState = 'wishlisted'
+
+    await useAuthStore().signOut()
+
+    expect(session.data.value).toBeNull()
+    expect(dashboardStore.allBooks).toEqual([])
+    expect(dashboardStore.search).toBe('')
+    expect(dashboardStore.shouldSync).toBe(false)
+    expect(scannerStore.scannedBooks).toEqual([])
+    expect(scannerStore.targetLibraryState).toBe('owned')
+    expect(lookupStore.lookupError).toBeNull()
+    expect(lookupStore.addError).toBeNull()
   })
 
   it('passes the Turnstile token as a captcha response header on signup', async () => {

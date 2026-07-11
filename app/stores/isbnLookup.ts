@@ -36,6 +36,13 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
   const isLookingUp = computed(() => pendingLookups.value > 0)
   const isAdding = computed(() => pendingAdds.value > 0)
 
+  function reset() {
+    pendingLookups.value = 0
+    pendingAdds.value = 0
+    lookupError.value = null
+    addError.value = null
+  }
+
   function getErrorMessage(err: unknown, fallback: string): string {
     return getApiErrorMessage(err, fallback)
   }
@@ -105,10 +112,13 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
   return {
     isLookingUp,
     isAdding,
+    pendingLookups,
+    pendingAdds,
     lookupError,
     addError,
     getErrorMessage,
     lookupIsbn,
-    addIsbnsToLibrary
+    addIsbnsToLibrary,
+    reset
   }
 })
