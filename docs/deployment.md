@@ -52,7 +52,7 @@ The Docker CI workflow builds `linux/amd64` on pull requests for a faster produc
 The Node base image in the `Dockerfile` retains its readable version tag and is pinned to an immutable SHA-256 digest for reproducible builds. To obtain the current multi-platform image digest, run:
 
 ```bash
-docker buildx imagetools inspect node:24.16.0-alpine --format '{{.Manifest}}'
+docker buildx imagetools inspect node:24.16.0-alpine --format '{{.Manifest.Digest}}'
 ```
 
 Update the `FROM node:24.16.0-alpine@sha256:...` line with that digest. Renovate automatically proposes digest updates; as with other dependency PRs, those changes must pass the existing Docker image build check before review and merge.
