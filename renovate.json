@@ -3,7 +3,8 @@
   "extends": [
     "github>nuxt/renovate-config-nuxt",
     ":enableVulnerabilityAlertsWithAdditionalLabel(security)",
-    "helpers:pinGitHubActionDigests"
+    "helpers:pinGitHubActionDigests",
+    "docker:pinDigests"
   ],
   "schedule": ["on Monday"],
   "labels": ["dependencies"],

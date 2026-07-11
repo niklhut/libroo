@@ -47,6 +47,16 @@ docker buildx build \
 
 The Docker CI workflow builds `linux/amd64` on pull requests for a faster production-image check. Same-repository pull requests push `ghcr.io/OWNER/libroo:pr-<number>` so the image can be inspected from GitHub Packages. Pull requests from forks are build-only and load the image into the runner instead of pushing, because forked PRs should not receive package write access. Pushes to `main` and release tags build and push both `linux/amd64` and `linux/arm64`. It uses Docker metadata rules so release tags like `v1.2.3` produce `1.2.3` and `1.2`, and branch/SHA tags are available for traceability. The same metadata is written as OCI image labels.
 
+### Base-Image Pinning
+
+The Node base image in the `Dockerfile` retains its readable version tag and is pinned to an immutable SHA-256 digest for reproducible builds. To obtain the current multi-platform image digest, run:
+
+```bash
+docker buildx imagetools inspect node:24.16.0-alpine --format '{{.Manifest}}'
+```
+
+Update the `FROM node:24.16.0-alpine@sha256:...` line with that digest. Renovate automatically proposes digest updates; as with other dependency PRs, those changes must pass the existing Docker image build check before review and merge.
+
 Run locally with Docker Compose:
 
 ```bash
