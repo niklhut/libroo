@@ -465,7 +465,11 @@ async function clearFilters() {
 
   await nextTick()
   suppressFilterWatcher.value = false
-  await applyFilters()
+  try {
+    await applyFilters()
+  } finally {
+    isApplyingFilters.value = false
+  }
 }
 
 // Load more

@@ -114,8 +114,8 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
         color: 'error'
       })
     } else {
-      await authStore.refresh()
       isFromSignout.value = false
+      await authStore.refresh()
       toast.add({
         title: 'Welcome back!',
         description: 'You have been signed in successfully.',
