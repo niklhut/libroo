@@ -2,6 +2,7 @@ import { Effect, Layer } from 'effect'
 import { blob } from '@nuxthub/blob'
 import { StorageError, StorageService } from '../../services/storage.service'
 import type { BlobMetadata } from '../../services/storage.service'
+import { detectImageContentType, UNKNOWN_IMAGE_CONTENT_TYPE } from '../../../shared/utils/image-content-type'
 
 function toMetadata(result: {
   pathname: string
@@ -15,26 +16,6 @@ function toMetadata(result: {
     size: result.size,
     uploadedAt: result.uploadedAt instanceof Date ? result.uploadedAt : new Date(result.uploadedAt)
   }
-}
-
-function detectImageContentType(data: Buffer | ArrayBuffer) {
-  const bytes = Buffer.isBuffer(data)
-    ? data
-    : Buffer.from(new Uint8Array(data))
-
-  if (bytes.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))) {
-    return 'image/jpeg'
-  }
-  if (bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
-    return 'image/png'
-  }
-  if (bytes.subarray(0, 4).toString('ascii') === 'RIFF' && bytes.subarray(8, 12).toString('ascii') === 'WEBP') {
-    return 'image/webp'
-  }
-  if (bytes.subarray(0, 6).toString('ascii').startsWith('GIF')) {
-    return 'image/gif'
-  }
-  return 'application/octet-stream'
 }
 
 function extensionForContentType(contentType: string) {
@@ -83,7 +64,7 @@ export const StorageServiceCloudflareLive = Layer.succeed(StorageService, {
     Effect.tryPromise({
       try: () => {
         const contentType = detectImageContentType(data)
-        if (contentType === 'application/octet-stream') {
+        if (contentType === UNKNOWN_IMAGE_CONTENT_TYPE) {
           throw new StorageError({
             message: 'Unsupported cover image format',
             operation: 'convertCoverImage'

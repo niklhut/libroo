@@ -10,7 +10,11 @@ import {
   serviceMocks,
   setupApiRouteTest
 } from '../_helpers/api-route'
-import { MANUAL_COVER_MAX_BYTES } from '../../../../../shared/utils/schemas'
+import {
+  MANUAL_COVER_MAX_BASE64_LENGTH,
+  MANUAL_COVER_MAX_BYTES,
+  MANUAL_COVER_MAX_DATA_URL_PREFIX_LENGTH
+} from '../../../../../shared/utils/schemas'
 
 const route = routePath('books/manual.post')
 
@@ -138,6 +142,57 @@ describe('server/api/books/manual.post', () => {
       statusCode: 400,
       message: 'Validation Error'
     })
+  })
+
+  it('rejects cover image data exceeding the encoded-length limit', async () => {
+    mockLoggedInUser()
+    const handler = await importRoute(route)
+
+    await expect(handler(makeEvent({
+      body: {
+        title: 'Manual Book',
+        authors: ['Ada Lovelace'],
+        coverImage: {
+          data: 'A'.repeat(MANUAL_COVER_MAX_BASE64_LENGTH + 1),
+          contentType: 'image/png',
+          size: 1
+        }
+      }
+    }))).rejects.toMatchObject({ statusCode: 400, message: 'Validation Error' })
+  })
+
+  it('rejects cover image data with an oversized data URL header', async () => {
+    mockLoggedInUser()
+    const handler = await importRoute(route)
+
+    await expect(handler(makeEvent({
+      body: {
+        title: 'Manual Book',
+        authors: ['Ada Lovelace'],
+        coverImage: {
+          data: `data:${'x'.repeat(MANUAL_COVER_MAX_DATA_URL_PREFIX_LENGTH)};base64,iVBORw0KGgoA`,
+          contentType: 'image/png',
+          size: 1
+        }
+      }
+    }))).rejects.toMatchObject({ statusCode: 400, message: 'Validation Error' })
+  })
+
+  it('rejects oversized cover data despite a tiny declared size', async () => {
+    mockLoggedInUser()
+    const handler = await importRoute(route)
+
+    await expect(handler(makeEvent({
+      body: {
+        title: 'Manual Book',
+        authors: ['Ada Lovelace'],
+        coverImage: {
+          data: 'A'.repeat(MANUAL_COVER_MAX_BASE64_LENGTH + 1),
+          contentType: 'image/png',
+          size: 1
+        }
+      }
+    }))).rejects.toMatchObject({ statusCode: 400, message: 'Validation Error' })
   })
 
   it('rejects invalid manual payloads', async () => {
