@@ -33,10 +33,9 @@ const redirectPath = computed(() => {
 // Redirect if already logged in (but not if we just signed out - race condition with stale state)
 const isFromSignout = ref(route.query.signout === 'true')
 
-watch(user, (newUser) => {
+watch([user, isFromSignout], ([newUser, signingOut]) => {
   // Skip auto-redirect if we just came from sign-out (stale user state may still be present)
-  if (isFromSignout.value) {
-    isFromSignout.value = false
+  if (signingOut) {
     return
   }
 
@@ -115,6 +114,8 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
         color: 'error'
       })
     } else {
+      await authStore.refresh()
+      isFromSignout.value = false
       toast.add({
         title: 'Welcome back!',
         description: 'You have been signed in successfully.',

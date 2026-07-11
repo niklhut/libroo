@@ -30,6 +30,7 @@ usePageTitle('Library')
 
 const toast = useToast()
 const route = useRoute()
+const authStore = useAuthStore()
 
 const dashboardStore = useLibraryDashboardStore()
 const {
@@ -337,7 +338,7 @@ const groupedBooks = computed(() => {
 })
 
 watch([search, loanStatus, libraryState, readingStatus, tags, location, locationId, includeLocationDescendants, sortBy], () => {
-  if (suppressFilterWatcher.value) return
+  if (suppressFilterWatcher.value || !authStore.isAuthenticated) return
   isApplyingFilters.value = true
   if (filterRefreshTimer.value) clearTimeout(filterRefreshTimer.value)
 
@@ -402,6 +403,8 @@ function toggleTagFilter(tag: string) {
 }
 
 async function applyFilters() {
+  if (!authStore.isAuthenticated) return
+
   isApplyingFilters.value = true
   cacheResultsAction(activeResultCacheKey.value)
   const nextCacheKey = getLibraryResultCacheKey()
