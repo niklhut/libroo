@@ -3,11 +3,14 @@ import { createError, defineEventHandler, getHeader } from 'h3'
 export const GLOBAL_REQUEST_BODY_MAX_BYTES = 12 * 1024 * 1024
 
 const BODY_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
-const EXEMPT_PATH_PREFIXES = ['/_nuxt/', '/__nuxt', '/_ipx/']
+const EXEMPT_PATH_PREFIXES = ['/_nuxt/', '/_ipx/']
+
+const isExemptPath = (path: string) =>
+  path === '/__nuxt' || path.startsWith('/__nuxt/') || EXEMPT_PATH_PREFIXES.some(prefix => path.startsWith(prefix))
 
 export function shouldEnforceBodyLimit(event: { method?: string, path?: string }) {
   if (!BODY_METHODS.has(event.method ?? 'GET')) return false
-  return !EXEMPT_PATH_PREFIXES.some(prefix => (event.path ?? '/').startsWith(prefix))
+  return !isExemptPath(event.path ?? '/')
 }
 
 export default defineEventHandler((event) => {

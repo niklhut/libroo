@@ -16,7 +16,8 @@ export function detectImageContentType(data: Buffer | ArrayBuffer): ImageContent
   if (bytes.subarray(0, 4).toString('ascii') === 'RIFF' && bytes.subarray(8, 12).toString('ascii') === 'WEBP') {
     return 'image/webp'
   }
-  if (bytes.subarray(0, 6).toString('ascii').startsWith('GIF')) {
+  const gifSignature = bytes.subarray(0, 6).toString('ascii')
+  if (gifSignature === 'GIF87a' || gifSignature === 'GIF89a') {
     return 'image/gif'
   }
   return UNKNOWN_IMAGE_CONTENT_TYPE

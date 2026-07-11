@@ -2,6 +2,7 @@ import { Context, Effect, Layer, Either, Data } from 'effect'
 import type * as HttpClient from '@effect/platform/HttpClient'
 import { normalizeReadingProgress } from '../../shared/utils/reading-progress'
 import {
+  isCanonicalBase64,
   isManualCoverDataWithinLimit,
   MANUAL_COVER_MAX_BYTES,
   stripBase64DataUrlPrefix
@@ -43,6 +44,9 @@ export const decodeCoverImage = (data: string): Effect.Effect<Buffer, InvalidMan
         throw new Error('Cover image is too large')
       }
       const base64 = stripBase64DataUrlPrefix(data)
+      if (!isCanonicalBase64(base64)) {
+        throw new Error('Cover image data must be valid base64')
+      }
 
       const buffer = Buffer.from(base64, 'base64')
       if (buffer.length === 0) {

@@ -41,6 +41,7 @@ describe('manual cover validation', () => {
     ['a payload with an oversized data URL header', `data:${'x'.repeat(MANUAL_COVER_MAX_DATA_URL_PREFIX_LENGTH)};base64,iVBORw0KGgoA`],
     ['a payload that decodes over the byte limit', Buffer.alloc(2 * 1024 * 1024 + 1).toString('base64')],
     ['an empty payload', '   '],
+    ['a non-canonical base64 payload', '/9j/4AB='],
     ['a non-image payload', Buffer.from('not an image').toString('base64')]
   ])('rejects %s as InvalidManualCoverError', async (_label, data) => {
     const result = await Effect.runPromise(Effect.either(decodeCoverImage(data)))

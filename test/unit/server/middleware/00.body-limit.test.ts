@@ -14,10 +14,26 @@ describe('server/middleware/00.body-limit', () => {
     await expect(runMiddleware(makeEvent('/api/books/manual', 'POST', GLOBAL_REQUEST_BODY_MAX_BYTES - 1))).resolves.toBeUndefined()
   })
 
+  it.each(['PUT', 'PATCH', 'DELETE'])('enforces the cap for %s requests', async (method) => {
+    await expect(runMiddleware(makeEvent('/api/books/manual', method, GLOBAL_REQUEST_BODY_MAX_BYTES + 1))).rejects.toMatchObject({
+      statusCode: 413,
+      message: 'Payload Too Large'
+    })
+  })
+
   it('does not apply to body-less methods or exempt asset paths', async () => {
     await expect(runMiddleware(makeEvent('/api/books/manual', 'GET', GLOBAL_REQUEST_BODY_MAX_BYTES + 1))).resolves.toBeUndefined()
     await expect(runMiddleware(makeEvent('/api/books/manual', 'HEAD', GLOBAL_REQUEST_BODY_MAX_BYTES + 1))).resolves.toBeUndefined()
     await expect(runMiddleware(makeEvent('/_nuxt/app.js', 'POST', GLOBAL_REQUEST_BODY_MAX_BYTES + 1))).resolves.toBeUndefined()
+    await expect(runMiddleware(makeEvent('/__nuxt', 'POST', GLOBAL_REQUEST_BODY_MAX_BYTES + 1))).resolves.toBeUndefined()
+    await expect(runMiddleware(makeEvent('/__nuxt/chunk.js', 'POST', GLOBAL_REQUEST_BODY_MAX_BYTES + 1))).resolves.toBeUndefined()
+    await expect(runMiddleware(makeEvent('/_ipx/image.png', 'POST', GLOBAL_REQUEST_BODY_MAX_BYTES + 1))).resolves.toBeUndefined()
+  })
+
+  it('does not exempt unrelated __nuxt-prefixed paths', async () => {
+    await expect(runMiddleware(makeEvent('/__nuxtfoo', 'POST', GLOBAL_REQUEST_BODY_MAX_BYTES + 1))).rejects.toMatchObject({
+      statusCode: 413
+    })
   })
 })
 
