@@ -97,6 +97,37 @@ describe('SignupInviteService', () => {
     expect(state.invites[0]?.reservationToken).toBeNull()
   })
 
+  it('accepts an unexpired invite after its reservation TTL has lapsed', async () => {
+    const state = createFakeState()
+    state.invites.push(makeInvite({
+      reservationToken: 'reservation-1',
+      reservedAt: new Date(Date.now() - 120_000),
+      reservationExpiresAt: new Date(Date.now() - 60_000)
+    }))
+
+    await expect(runWithFakes(acceptSignupInvite('reservation-1', 'user-1'), state))
+      .resolves.toMatchObject({ status: 'accepted', acceptedByUserId: 'user-1' })
+  })
+
+  it('rejects acceptance when the invite is expired or the reservation token is stale', async () => {
+    const expiredState = createFakeState()
+    expiredState.invites.push(makeInvite({
+      reservationToken: 'reservation-1',
+      reservationExpiresAt: new Date(Date.now() - 60_000),
+      expiresAt: new Date(Date.now() - 1)
+    }))
+    await expect(runWithFakes(acceptSignupInvite('reservation-1', 'user-1'), expiredState))
+      .rejects.toThrow('Invite is no longer available')
+
+    const staleTokenState = createFakeState()
+    staleTokenState.invites.push(makeInvite({
+      reservationToken: 'replacement-reservation',
+      reservationExpiresAt: new Date(Date.now() + 60_000)
+    }))
+    await expect(runWithFakes(acceptSignupInvite('reservation-1', 'user-1'), staleTokenState))
+      .rejects.toThrow('Invite is no longer available')
+  })
+
   it('records invite revocation audit entries', async () => {
     const state = createFakeState()
     state.invites.push(makeInvite({ id: 'invite-1' }))
@@ -378,7 +409,6 @@ function createFakeRepository(state: FakeState): SignupInviteRepositoryInterface
           invite.reservationToken === reservationToken
           && invite.status === 'pending'
           && invite.expiresAt.getTime() > now.getTime()
-          && (invite.reservationExpiresAt?.getTime() ?? 0) > now.getTime()
         )
         if (!invite) return null
 
@@ -408,6 +438,8 @@ function createFakeRepository(state: FakeState): SignupInviteRepositoryInterface
           updatedAt: now
         })
       }),
+
+    deleteCompensatingAccount: () => Effect.succeed(true),
 
     revoke: (inviteId, now) =>
       Effect.sync(() => updateInvite(state, inviteId, {

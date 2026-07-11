@@ -41,6 +41,7 @@ describe('AuthRequestService', () => {
     signupInviteServiceMock.reserveSignupAttempt.mockReset()
     signupInviteServiceMock.acceptInvite.mockReset()
     signupInviteServiceMock.releaseInviteReservation.mockReset()
+    signupInviteServiceMock.deleteCompensatingSignupAccount.mockReset()
     authServiceMock.validateEmailVerificationToken.mockReset()
 
     emailCapabilitiesMock.getEmailCapabilities.mockReturnValue({
@@ -52,6 +53,7 @@ describe('AuthRequestService', () => {
     signupInviteServiceMock.reserveSignupAttempt.mockReturnValue(Effect.succeed({ reservationToken: 'reservation-1' }))
     signupInviteServiceMock.acceptInvite.mockReturnValue(Effect.succeed({ id: 'invite-1' }))
     signupInviteServiceMock.releaseInviteReservation.mockReturnValue(Effect.void)
+    signupInviteServiceMock.deleteCompensatingSignupAccount.mockReturnValue(Effect.succeed(true))
     authServiceMock.validateEmailVerificationToken.mockReturnValue(Effect.succeed({ status: true }))
   })
 
@@ -92,14 +94,21 @@ describe('AuthRequestService', () => {
     expect(signupInviteServiceMock.acceptInvite).not.toHaveBeenCalled()
   })
 
-  it('releases the reservation when an ok response has no user id', async () => {
+  it('warns for manual reconciliation, releases the reservation, and fails when an ok response has no user id', async () => {
     const response = Response.json({ user: {} })
     authMock.handler.mockResolvedValueOnce(response)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
 
-    await expect(runAuthRequestService(handle(makeSignupRequest()))).resolves.toBe(response)
+    await expect(runAuthRequestService(handle(makeSignupRequest()))).rejects.toThrow('Account creation could not be confirmed')
 
     expect(signupInviteServiceMock.releaseInviteReservation).toHaveBeenCalledWith('reservation-1')
     expect(signupInviteServiceMock.acceptInvite).not.toHaveBeenCalled()
+    expect(signupInviteServiceMock.deleteCompensatingSignupAccount).not.toHaveBeenCalled()
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('manual reconciliation'), expect.objectContaining({
+      reservationToken: 'reservation-1',
+      email: 'ada@example.com'
+    }))
+    warn.mockRestore()
   })
 
   it('releases the reservation and re-raises when accepting the invite fails', async () => {
@@ -116,7 +125,28 @@ describe('AuthRequestService', () => {
     expect(result._tag).toBe('Left')
     expect(result.left).toBe(error)
     expect(signupInviteServiceMock.acceptInvite).toHaveBeenCalledWith('reservation-1', 'user-1')
+    expect(signupInviteServiceMock.deleteCompensatingSignupAccount).toHaveBeenCalledWith('user-1')
     expect(signupInviteServiceMock.releaseInviteReservation).toHaveBeenCalledWith('reservation-1')
+  })
+
+  it('logs a failed compensation delete without masking the invite acceptance error', async () => {
+    const response = Response.json({ user: { id: 'user-1' } })
+    const error = new DatabaseError({ message: 'accept failed', operation: 'signupInvite.acceptInvite' })
+    const compensationError = new DatabaseError({ message: 'delete failed', operation: 'signupInvite.deleteCompensatingAccount' })
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    authMock.handler.mockResolvedValueOnce(response)
+    signupInviteServiceMock.acceptInvite.mockReturnValueOnce(Effect.fail(error))
+    signupInviteServiceMock.deleteCompensatingSignupAccount.mockReturnValueOnce(Effect.fail(compensationError))
+
+    const result = await runAuthRequestService(Effect.either(handle(makeSignupRequest())))
+
+    expect(result).toMatchObject({ _tag: 'Left', left: error })
+    expect(signupInviteServiceMock.releaseInviteReservation).toHaveBeenCalledWith('reservation-1')
+    expect(consoleError).toHaveBeenCalledWith(expect.stringContaining('Failed to compensate orphaned signup account'), expect.objectContaining({
+      userId: 'user-1',
+      error: compensationError
+    }))
+    consoleError.mockRestore()
   })
 
   it('swallows release failures without masking the original result', async () => {
@@ -183,7 +213,8 @@ const signupInviteServiceMock = {
   validateSignupAttempt: vi.fn(),
   reserveSignupAttempt: vi.fn(),
   acceptInvite: vi.fn(),
-  releaseInviteReservation: vi.fn()
+  releaseInviteReservation: vi.fn(),
+  deleteCompensatingSignupAccount: vi.fn()
 }
 
 const authServiceMock = {

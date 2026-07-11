@@ -59,6 +59,7 @@ export interface SignupInviteServiceInterface {
   reserveSignupAttempt: (input: SignupAttemptInput) => Effect.Effect<{ reservationToken: string | null }, InvalidSignupInviteError | DatabaseError, DbService>
   acceptInvite: (reservationToken: string, userId: string) => Effect.Effect<SignupInvite, InvalidSignupInviteError | DatabaseError, DbService>
   releaseInviteReservation: (reservationToken: string) => Effect.Effect<void, DatabaseError, DbService>
+  deleteCompensatingSignupAccount: (userId: string) => Effect.Effect<boolean, DatabaseError, DbService>
 }
 
 export class SignupInviteService extends Context.Tag('SignupInviteService')<SignupInviteService, SignupInviteServiceInterface>() { }
@@ -281,7 +282,10 @@ export const SignupInviteServiceLive = Layer.effect(
         Effect.gen(function* () {
           if (!reservationToken) return
           yield* repository.releaseReservation(reservationToken, new Date())
-        })
+        }),
+
+      deleteCompensatingSignupAccount: userId =>
+        repository.deleteCompensatingAccount(userId)
     }
   })
 )
@@ -309,6 +313,9 @@ export const acceptSignupInvite = (reservationToken: string, userId: string) =>
 
 export const releaseSignupInviteReservation = (reservationToken: string) =>
   Effect.flatMap(SignupInviteService, service => service.releaseInviteReservation(reservationToken))
+
+export const deleteCompensatingSignupAccount = (userId: string) =>
+  Effect.flatMap(SignupInviteService, service => service.deleteCompensatingSignupAccount(userId))
 
 export function normalizeCreateSignupInviteInput(input: CreateSignupInviteInput) {
   const email = normalizeEmail(input.email)

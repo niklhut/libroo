@@ -5,7 +5,7 @@ import { getEmailVerificationConfig } from '../utils/email-verification-config'
 import type { AuthRepository } from '../repositories/auth.repository'
 import type { DbService } from './db.service'
 import { AuthService } from './auth.service'
-import { SignupInviteService } from './signup-invite.service'
+import { InvalidSignupInviteError, SignupInviteService } from './signup-invite.service'
 import type { SignupInviteServiceInterface } from './signup-invite.service'
 
 export class PasswordResetUnavailableError extends Data.TaggedError('PasswordResetUnavailableError')<{
@@ -36,6 +36,7 @@ export const AuthRequestServiceLive = Layer.effect(
           const capabilities = getEmailCapabilities()
           const isEmailSignup = url.pathname.endsWith('/api/auth/sign-up/email') && request.method === 'POST'
           let inviteReservationToken: string | null = null
+          let signupEmail: string | null = null
 
           if (url.pathname.endsWith('/api/auth/request-password-reset') && request.method === 'POST' && !capabilities.passwordResetEnabled) {
             return yield* Effect.fail(new PasswordResetUnavailableError({
@@ -66,6 +67,7 @@ export const AuthRequestServiceLive = Layer.effect(
               email: body?.email
             })
             inviteReservationToken = reservation.reservationToken
+            signupEmail = typeof body?.email === 'string' ? body.email : null
           }
 
           const response = yield* Effect.tryPromise({
@@ -92,13 +94,21 @@ export const AuthRequestServiceLive = Layer.effect(
             if (userId) {
               yield* signupInviteService.acceptInvite(inviteReservationToken, userId).pipe(
                 Effect.catchAll(error =>
-                  releaseReservation(signupInviteService, inviteReservationToken).pipe(
+                  compensateSignupAccount(signupInviteService, userId, inviteReservationToken, signupEmail).pipe(
+                    Effect.andThen(releaseReservation(signupInviteService, inviteReservationToken)),
                     Effect.andThen(Effect.fail(error))
                   )
                 )
               )
             } else {
+              console.warn('Successful invited signup response did not include a user id; manual reconciliation is required', {
+                reservationToken: inviteReservationToken,
+                email: signupEmail
+              })
               yield* releaseReservation(signupInviteService, inviteReservationToken)
+              return yield* Effect.fail(new InvalidSignupInviteError({
+                message: 'Account creation could not be confirmed. Please contact an administrator.'
+              }))
             }
           }
 
@@ -126,6 +136,33 @@ async function readSignupBody(request: Request) {
   }
 
   return null
+}
+
+function compensateSignupAccount(
+  signupInviteService: SignupInviteServiceInterface,
+  userId: string,
+  reservationToken: string,
+  email: string | null
+) {
+  return signupInviteService.deleteCompensatingSignupAccount(userId).pipe(
+    Effect.tap(deleted => Effect.sync(() => {
+      if (!deleted) {
+        console.error('Failed to compensate orphaned signup account: user was not deleted', {
+          userId,
+          reservationToken,
+          email
+        })
+      }
+    })),
+    Effect.catchAll(error => Effect.sync(() => {
+      console.error('Failed to compensate orphaned signup account', {
+        userId,
+        reservationToken,
+        email,
+        error
+      })
+    }))
+  )
 }
 
 function releaseReservation(

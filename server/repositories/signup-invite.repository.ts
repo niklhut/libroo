@@ -1,7 +1,7 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { Context, Effect, Layer } from 'effect'
 import { and, desc, eq, gt, isNull, lte, or, sql } from 'drizzle-orm'
-import { signupInvites, user } from 'hub:db:schema'
+import { account, session, signupInvites, user } from 'hub:db:schema'
 import type { SignupInviteStatus } from '~~/shared/types/signup-invite'
 import { DatabaseError } from './book.repository'
 import { DbService } from '../services/db.service'
@@ -39,6 +39,7 @@ export interface SignupInviteRepositoryInterface {
   markAccepted: (inviteId: string, userId: string, now: Date) => Effect.Effect<SignupInviteRecord | null, DatabaseError, DbService>
   markAcceptedReservation: (reservationToken: string, userId: string, now: Date) => Effect.Effect<SignupInviteRecord | null, DatabaseError, DbService>
   releaseReservation: (reservationToken: string, now: Date) => Effect.Effect<void, DatabaseError, DbService>
+  deleteCompensatingAccount: (userId: string) => Effect.Effect<boolean, DatabaseError, DbService>
   revoke: (inviteId: string, now: Date) => Effect.Effect<SignupInviteRecord | null, DatabaseError, DbService>
   emailExists: (email: string) => Effect.Effect<boolean, DatabaseError, DbService>
 }
@@ -191,8 +192,7 @@ export const SignupInviteRepositoryLive = Layer.effect(
               .where(and(
                 eq(signupInvites.reservationToken, reservationToken),
                 eq(signupInvites.status, 'pending'),
-                gt(signupInvites.expiresAt, now),
-                gt(signupInvites.reservationExpiresAt, now)
+                gt(signupInvites.expiresAt, now)
               ))
               .returning()
 
@@ -223,6 +223,24 @@ export const SignupInviteRepositoryLive = Layer.effect(
           catch: error => new DatabaseError({
             message: `Failed to release signup invite reservation: ${error}`,
             operation: 'signupInvite.releaseReservation'
+          })
+        }),
+
+      deleteCompensatingAccount: userId =>
+        Effect.tryPromise({
+          try: async () => {
+            const results = await dbService.executeAtomic(database => [
+              database.delete(session).where(eq(session.userId, userId)),
+              database.delete(account).where(eq(account.userId, userId)),
+              database.delete(user).where(eq(user.id, userId)).returning({ id: user.id })
+            ])
+
+            const deletedUsers = results[2] as Array<{ id: string }>
+            return deletedUsers.length > 0
+          },
+          catch: error => new DatabaseError({
+            message: `Failed to delete compensated signup account: ${error}`,
+            operation: 'signupInvite.deleteCompensatingAccount'
           })
         }),
 
