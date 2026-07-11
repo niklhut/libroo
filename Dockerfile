@@ -3,11 +3,12 @@ ARG REVISION=unknown
 ARG CREATED=unknown
 ARG SOURCE=https://github.com/niklhut/libroo
 
-FROM node:24.16.0-alpine AS base
+FROM node:24.16.0-alpine@sha256:21f403ab171f2dc89bad4dd69d7721bfd15f084ccb46cdd225f31f2bc59b5c9a AS base
 WORKDIR /app
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
-RUN npm install --global pnpm@11.1.1
+RUN corepack enable
 
 FROM base AS deps
 RUN apk add --no-cache libc6-compat
