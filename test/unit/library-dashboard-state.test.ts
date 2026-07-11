@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia, storeToRefs } from 'pinia'
-import { useLibraryDashboardStore } from '../../app/stores/libraryDashboard'
+import { MAX_DASHBOARD_RESULT_CACHE_ENTRIES, useLibraryDashboardStore } from '../../app/stores/libraryDashboard'
 import type { LibraryBook } from '../../shared/types/book'
 import { DEFAULT_LIBRARY_STATE_FILTER } from '../../shared/utils/library-query'
 
@@ -201,6 +201,53 @@ describe('useLibraryDashboardStore', () => {
     expect(pagination.value).toBeNull()
   })
 
+  it('fully resets user-scoped dashboard state', () => {
+    const store = createStore()
+    const { page, pageSize, allBooks, pagination, resultCache, search, loanStatus, libraryState, readingStatus, tags, location, locationId, includeLocationDescendants, sortBy, groupByLocation, scrollY, shouldRestoreScroll, shouldSync, syncTargetPages } = storeToRefs(store)
+
+    page.value = 3
+    pageSize.value = 24
+    allBooks.value = [createBook('1')]
+    pagination.value = { page: 3, pageSize: 24, totalItems: 25, totalPages: 2, hasMore: false }
+    resultCache.value = { stale: { books: [createBook('1')], pagination: { page: 1, pageSize: 12, totalItems: 1, totalPages: 1, hasMore: false }, loadedPage: 1 } }
+    search.value = 'stale query'
+    loanStatus.value = 'on_loan'
+    libraryState.value = ['wishlisted']
+    readingStatus.value = 'reading'
+    tags.value = ['stale tag']
+    location.value = 'stale location'
+    locationId.value = 'location-1'
+    includeLocationDescendants.value = true
+    sortBy.value = 'title'
+    groupByLocation.value = true
+    scrollY.value = 240
+    shouldRestoreScroll.value = true
+    shouldSync.value = true
+    syncTargetPages.value = 3
+
+    store.resetAll()
+
+    expect(page.value).toBe(1)
+    expect(pageSize.value).toBe(12)
+    expect(allBooks.value).toEqual([])
+    expect(pagination.value).toBeNull()
+    expect(resultCache.value).toEqual({})
+    expect(search.value).toBe('')
+    expect(loanStatus.value).toBe('all')
+    expect(libraryState.value).toEqual(DEFAULT_LIBRARY_STATE_FILTER)
+    expect(readingStatus.value).toBe('all')
+    expect(tags.value).toEqual([])
+    expect(location.value).toBe('')
+    expect(locationId.value).toBe('')
+    expect(includeLocationDescendants.value).toBe(false)
+    expect(sortBy.value).toBe('dateAdded')
+    expect(groupByLocation.value).toBe(false)
+    expect(scrollY.value).toBe(0)
+    expect(shouldRestoreScroll.value).toBe(false)
+    expect(shouldSync.value).toBe(false)
+    expect(syncTargetPages.value).toBe(1)
+  })
+
   it('caches and restores query-scoped results', () => {
     const store = createStore()
     const { page, allBooks, pagination } = storeToRefs(store)
@@ -239,5 +286,24 @@ describe('useLibraryDashboardStore', () => {
       totalPages: 2,
       hasMore: false
     })
+  })
+
+  it('evicts the least recently accessed cached result once the cache cap is exceeded', () => {
+    const store = createStore()
+    const { allBooks, pagination, resultCache } = storeToRefs(store)
+    pagination.value = { page: 1, pageSize: 12, totalItems: 1, totalPages: 1, hasMore: false }
+
+    for (let index = 0; index < MAX_DASHBOARD_RESULT_CACHE_ENTRIES; index += 1) {
+      allBooks.value = [createBook(String(index))]
+      store.cacheResults(`key-${index}`)
+    }
+    store.restoreCachedResults('key-0')
+    allBooks.value = [createBook('new')]
+    store.cacheResults('new-key')
+
+    expect(Object.keys(resultCache.value)).toHaveLength(MAX_DASHBOARD_RESULT_CACHE_ENTRIES)
+    expect(resultCache.value['key-0']).toBeDefined()
+    expect(resultCache.value['key-1']).toBeUndefined()
+    expect(resultCache.value['new-key']).toBeDefined()
   })
 })

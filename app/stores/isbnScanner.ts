@@ -21,6 +21,7 @@ export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
   const scannedBooks = ref<ScannedBook[]>([])
   const isBulkLookingUp = ref(false)
   const targetLibraryState = ref<AddLibraryState>('owned')
+  let resetVersion = 0
 
   const lookupUnavailableMessage = 'We could not look up this ISBN right now. Try again in a moment.'
   const addUnavailableMessage = 'Could not add this book to your library. Try again in a moment.'
@@ -29,6 +30,7 @@ export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
   const isAddingBooks = computed(() => isbnLookupStore.isAdding)
 
   async function lookupScannedBook(book: ScannedBook) {
+    const requestVersion = resetVersion
     book.status = 'loading'
     book.selected = true
     book.errorMessage = undefined
@@ -37,6 +39,8 @@ export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
     const lookup = await isbnLookupStore.lookupIsbn(book.isbn, {
       fallbackMessage: lookupUnavailableMessage
     })
+
+    if (requestVersion !== resetVersion) return
 
     if (!lookup.ok) {
       book.status = 'error'
@@ -104,12 +108,13 @@ export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
       return
     }
 
+    const requestVersion = resetVersion
     isBulkLookingUp.value = true
 
     try {
       await Promise.all(inputs.map(isbn => addIsbn(isbn)))
     } finally {
-      isBulkLookingUp.value = false
+      if (requestVersion === resetVersion) isBulkLookingUp.value = false
     }
   }
 
@@ -142,6 +147,7 @@ export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
   }
 
   async function addSelectedToLibrary(): Promise<{ success: string[], failed: string[] }> {
+    const requestVersion = resetVersion
     const selectedBooks = scannedBooks.value.filter(
       book => book.selected && book.status === 'found'
     )
@@ -156,6 +162,7 @@ export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
     }
 
     const result = await isbnLookupStore.addIsbnsToLibrary(selectedBooks.map(book => book.isbn), targetLibraryState.value)
+    if (requestVersion !== resetVersion) return { success: [], failed: [] }
     const success = result.success
     const failed = result.failedIsbns
 
@@ -205,7 +212,11 @@ export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
   }
 
   function clearAll() {
+    resetVersion += 1
     scannedBooks.value = []
+    isBulkLookingUp.value = false
+    targetLibraryState.value = 'owned'
+    isbnLookupStore.reset()
   }
 
   const counts = computed(() => ({
@@ -221,6 +232,7 @@ export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
   return {
     scannedBooks,
     targetLibraryState,
+    isBulkLookingUp,
     isLookingUp,
     isAddingBooks,
     counts,

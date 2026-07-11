@@ -111,6 +111,20 @@ describe('app/middleware/auth.global', () => {
     await expect(middleware(makeRoute('/admin/users'))).resolves.toBe('/library')
     expect(globalThis.navigateTo).toHaveBeenCalledWith('/library')
   })
+
+  it('signs out banned users through the auth store before redirecting', async () => {
+    const signOut = vi.fn().mockResolvedValue(undefined)
+    globalThis.useAuthStore = vi.fn(() => ({
+      user: { id: 'user-1', emailVerified: true, banned: true },
+      status: 'authenticated',
+      signOut
+    }))
+    const middleware = await loadMiddleware()
+
+    await expect(middleware(makeRoute('/library'))).resolves.toBe('/login')
+    expect(signOut).toHaveBeenCalledTimes(1)
+    expect(globalThis.authClient.signOut).not.toHaveBeenCalled()
+  })
 })
 
 async function loadMiddleware() {

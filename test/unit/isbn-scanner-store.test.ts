@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { computed, nextTick, ref, watchEffect } from 'vue'
 import { useIsbnScannerStore } from '../../app/stores/isbnScanner'
+import { useIsbnLookupStore } from '../../app/stores/isbnLookup'
 import { useLibraryDashboardStore } from '../../app/stores/libraryDashboard'
 import { defaultContinuousMode } from '../../app/utils/cameraScanDefaults'
 
@@ -233,6 +234,46 @@ describe('useIsbnScannerStore', () => {
     expect(defaultContinuousMode).toBe(true)
     expect(singleScanBook.value).toBeNull()
     expect(showsBulkScanReview.value).toBe(true)
+  })
+
+  it('clears scanner state and cascades to lookup state', () => {
+    const scannerStore = useIsbnScannerStore()
+    const lookupStore = useIsbnLookupStore()
+    scannerStore.scannedBooks = [{ isbn: '9781234567890', status: 'found', selected: true }]
+    scannerStore.targetLibraryState = 'wishlisted'
+    scannerStore.isBulkLookingUp = true
+    lookupStore.pendingLookups = 1
+    lookupStore.pendingAdds = 1
+    lookupStore.lookupError = 'lookup failed'
+    lookupStore.addError = 'add failed'
+
+    scannerStore.clearAll()
+
+    expect(scannerStore.scannedBooks).toEqual([])
+    expect(scannerStore.targetLibraryState).toBe('owned')
+    expect(scannerStore.isBulkLookingUp).toBe(false)
+    expect(lookupStore.pendingLookups).toBe(0)
+    expect(lookupStore.pendingAdds).toBe(0)
+    expect(lookupStore.lookupError).toBeNull()
+    expect(lookupStore.addError).toBeNull()
+  })
+
+  it('ignores bulk-add results that complete after scanner state is cleared', async () => {
+    const bulkAddResponse = deferred<{ added: Array<{ isbn: string }>, failed: Array<{ isbn: string, error: string }> }>()
+    const fetchMock = vi.fn(() => bulkAddResponse.promise)
+    ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
+
+    const store = useIsbnScannerStore()
+    store.scannedBooks = [{ isbn: '9781234567890', status: 'found', selected: true }]
+    const addPromise = store.addSelectedToLibrary()
+    await nextTick()
+
+    store.clearAll()
+    store.scannedBooks = [{ isbn: '9781234567890', status: 'found', selected: true }]
+    bulkAddResponse.resolve({ added: [{ isbn: '9781234567890' }], failed: [] })
+
+    await expect(addPromise).resolves.toEqual({ success: [], failed: [] })
+    expect(store.scannedBooks).toEqual([{ isbn: '9781234567890', status: 'found', selected: true }])
   })
 
   it('bulk-add success removes scanned books and marks dashboard sync', async () => {

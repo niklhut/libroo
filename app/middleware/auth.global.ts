@@ -13,7 +13,6 @@ export default defineNuxtRouteMiddleware(async (to) => {
   }
 
   const authStore = useAuthStore()
-  const { $authSession } = useNuxtApp()
 
   if (authStore.status === 'error') {
     throw createError({
@@ -38,8 +37,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
   }
 
   if (isActiveBan(user)) {
-    await authClient.signOut().catch(() => undefined)
-    $authSession.data.value = null
+    await authStore.signOut().catch(() => undefined)
     return navigateTo('/login')
   }
 

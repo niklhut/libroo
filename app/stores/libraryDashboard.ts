@@ -18,9 +18,14 @@ export interface DashboardResultCacheEntry {
   loadedPage: number
 }
 
+const DEFAULT_PAGE = 1
+const DEFAULT_PAGE_SIZE = 12
+const DEFAULT_SORT = 'dateAdded' satisfies LibrarySort
+export const MAX_DASHBOARD_RESULT_CACHE_ENTRIES = 10
+
 export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
-  const page = ref(1)
-  const pageSize = ref(12)
+  const page = ref(DEFAULT_PAGE)
+  const pageSize = ref(DEFAULT_PAGE_SIZE)
   const allBooks = ref<LibraryBook[]>([])
   const pagination = ref<DashboardPagination | null>(null)
   const resultCache = ref<Record<string, DashboardResultCacheEntry>>({})
@@ -32,12 +37,13 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
   const location = ref('')
   const locationId = ref('')
   const includeLocationDescendants = ref(false)
-  const sortBy = ref<LibrarySort>('dateAdded')
+  const sortBy = ref<LibrarySort>(DEFAULT_SORT)
   const groupByLocation = ref(false)
   const scrollY = ref(0)
   const shouldRestoreScroll = ref(false)
   const shouldSync = ref(false)
-  const syncTargetPages = ref(1)
+  const syncTargetPages = ref(DEFAULT_PAGE)
+  const resultCacheKeyOrder = ref<string[]>([])
 
   function getLoadedPages() {
     return Math.max(1, Math.ceil(allBooks.value.length / pageSize.value))
@@ -118,18 +124,51 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
   }
 
   function resetResults() {
-    page.value = 1
+    page.value = DEFAULT_PAGE
     allBooks.value = []
     pagination.value = null
+  }
+
+  function resetAll() {
+    page.value = DEFAULT_PAGE
+    pageSize.value = DEFAULT_PAGE_SIZE
+    allBooks.value = []
+    pagination.value = null
+    resultCache.value = {}
+    resultCacheKeyOrder.value = []
+    search.value = ''
+    loanStatus.value = 'all'
+    libraryState.value = [...DEFAULT_LIBRARY_STATE_FILTER]
+    readingStatus.value = 'all'
+    tags.value = []
+    location.value = ''
+    locationId.value = ''
+    includeLocationDescendants.value = false
+    sortBy.value = DEFAULT_SORT
+    groupByLocation.value = false
+    scrollY.value = 0
+    shouldRestoreScroll.value = false
+    shouldSync.value = false
+    syncTargetPages.value = DEFAULT_PAGE
   }
 
   function cacheResults(cacheKey: string) {
     if (!cacheKey || !pagination.value) return
 
+    resultCacheKeyOrder.value = resultCacheKeyOrder.value.filter(key => key !== cacheKey)
     resultCache.value[cacheKey] = {
       books: [...allBooks.value],
       pagination: { ...pagination.value },
       loadedPage: page.value
+    }
+    resultCacheKeyOrder.value.push(cacheKey)
+
+    while (resultCacheKeyOrder.value.length > MAX_DASHBOARD_RESULT_CACHE_ENTRIES) {
+      const oldestKey = resultCacheKeyOrder.value.shift()
+      if (oldestKey) {
+        const { [oldestKey]: _evictedEntry, ...remainingEntries } = resultCache.value
+        resultCache.value = remainingEntries
+      }
     }
   }
 
@@ -140,6 +179,10 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
     allBooks.value = [...cached.books]
     pagination.value = { ...cached.pagination }
     page.value = cached.loadedPage
+    resultCacheKeyOrder.value = [
+      ...resultCacheKeyOrder.value.filter(key => key !== cacheKey),
+      cacheKey
+    ]
 
     return cached
   }
@@ -171,6 +214,7 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
     markNeedsSync,
     clearNeedsSync,
     resetResults,
+    resetAll,
     cacheResults,
     restoreCachedResults
   }

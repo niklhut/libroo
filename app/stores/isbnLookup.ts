@@ -32,9 +32,18 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
   const pendingAdds = ref(0)
   const lookupError = ref<string | null>(null)
   const addError = ref<string | null>(null)
+  let resetVersion = 0
 
   const isLookingUp = computed(() => pendingLookups.value > 0)
   const isAdding = computed(() => pendingAdds.value > 0)
+
+  function reset() {
+    resetVersion += 1
+    pendingLookups.value = 0
+    pendingAdds.value = 0
+    lookupError.value = null
+    addError.value = null
+  }
 
   function getErrorMessage(err: unknown, fallback: string): string {
     return getApiErrorMessage(err, fallback)
@@ -44,6 +53,7 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
     isbn: string,
     options: { fallbackMessage?: string } = {}
   ): Promise<IsbnLookupSuccess | IsbnLookupFailure> {
+    const requestVersion = resetVersion
     pendingLookups.value += 1
     lookupError.value = null
 
@@ -53,13 +63,15 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
         body: { isbn }
       })
 
-      return { ok: true, result }
+      return requestVersion === resetVersion
+        ? { ok: true, result }
+        : { ok: false, message: options.fallbackMessage || 'Failed to lookup book' }
     } catch (err: unknown) {
       const message = getErrorMessage(err, options.fallbackMessage || 'Failed to lookup book')
-      lookupError.value = message
+      if (requestVersion === resetVersion) lookupError.value = message
       return { ok: false, message }
     } finally {
-      pendingLookups.value -= 1
+      pendingLookups.value = Math.max(0, pendingLookups.value - 1)
     }
   }
 
@@ -68,6 +80,7 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
       return { success: [], failed: [], failedIsbns: [] }
     }
 
+    const requestVersion = resetVersion
     pendingAdds.value += 1
     addError.value = null
 
@@ -78,6 +91,10 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
         method: 'POST',
         body: { books: isbns.map(isbn => ({ isbn, libraryState })) }
       })
+
+      if (requestVersion !== resetVersion) {
+        return { success: [], failed: [], failedIsbns: [] }
+      }
 
       const success = result.added.map(book => book.isbn)
       const failed = result.failed
@@ -90,7 +107,7 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
       return { success, failed, failedIsbns }
     } catch (err: unknown) {
       const message = getErrorMessage(err, 'Failed to add books')
-      addError.value = message
+      if (requestVersion === resetVersion) addError.value = message
 
       return {
         success: [],
@@ -98,17 +115,20 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
         failedIsbns: isbns
       }
     } finally {
-      pendingAdds.value -= 1
+      pendingAdds.value = Math.max(0, pendingAdds.value - 1)
     }
   }
 
   return {
     isLookingUp,
     isAdding,
+    pendingLookups,
+    pendingAdds,
     lookupError,
     addError,
     getErrorMessage,
     lookupIsbn,
-    addIsbnsToLibrary
+    addIsbnsToLibrary,
+    reset
   }
 })
