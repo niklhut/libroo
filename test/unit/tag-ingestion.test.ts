@@ -6,7 +6,13 @@ import {
   toSensibleTitleCase,
   normalizeTagInput
 } from '../../shared/utils/tag-ingestion'
-import { bookTagAddSchema } from '../../shared/utils/schemas'
+import {
+  BATCH_TAG_UPDATE_MAX_ENTRIES,
+  BOOK_BATCH_DELETE_MAX_IDS,
+  batchTagUpdateSchema,
+  bookBatchDeleteSchema,
+  bookTagAddSchema
+} from '../../shared/utils/schemas'
 
 describe('tag ingestion', () => {
   it('splits hierarchical subjects by slash, double-dash, and colon', () => {
@@ -69,5 +75,27 @@ describe('tag ingestion', () => {
     expect(bookTagAddSchema.safeParse({ name: '12345' }).success).toBe(false)
     expect(bookTagAddSchema.safeParse({ name: 'http://example.com' }).success).toBe(false)
     expect(bookTagAddSchema.safeParse({ name: 'TRUE CRIME' }).success).toBe(true)
+  })
+
+  it('bounds and de-duplicates batch-delete IDs', () => {
+    expect(bookBatchDeleteSchema.parse({ ids: ['ub-1', 'ub-1', 'ub-2'] }).ids).toEqual(['ub-1', 'ub-2'])
+    expect(bookBatchDeleteSchema.safeParse({
+      ids: Array.from({ length: BOOK_BATCH_DELETE_MAX_IDS + 1 }, (_, index) => `ub-${index}`)
+    }).success).toBe(false)
+  })
+
+  it('bounds and de-duplicates each batch tag update input', () => {
+    expect(batchTagUpdateSchema.parse({
+      deleteIds: ['tag-1', 'tag-1'],
+      promoteIds: ['tag-2', 'tag-2'],
+      createNames: ['TRUE CRIME', 'TRUE CRIME']
+    })).toEqual({
+      deleteIds: ['tag-1'],
+      promoteIds: ['tag-2'],
+      createNames: ['TRUE CRIME']
+    })
+    expect(batchTagUpdateSchema.safeParse({
+      createNames: Array.from({ length: BATCH_TAG_UPDATE_MAX_ENTRIES + 1 }, (_, index) => `Topic ${index}`)
+    }).success).toBe(false)
   })
 })

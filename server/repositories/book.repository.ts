@@ -1882,19 +1882,19 @@ export const BookRepositoryLive = Layer.effect(
               shouldInsertTag: boolean
             }>()
 
-            for (const tagId of uniquePromoteIds) {
-              const systemTag = await dbService.db
+            if (uniquePromoteIds.length > 0) {
+              const systemTags = await dbService.db
                 .select({ tagId: bookSystemTags.tagId })
                 .from(bookSystemTags)
-                .where(and(eq(bookSystemTags.bookId, owned.bookId), eq(bookSystemTags.tagId, tagId)))
-                .limit(1)
+                .where(and(eq(bookSystemTags.bookId, owned.bookId), inArray(bookSystemTags.tagId, uniquePromoteIds)))
 
-              if (!systemTag[0]) {
+              const systemTagIds = new Set(systemTags.map(tag => tag.tagId))
+              if (uniquePromoteIds.some(tagId => !systemTagIds.has(tagId))) {
                 throw new BookNotFoundError({ bookId: userBookId })
               }
-
-              promoteInputs.push({ tagId, userBookTagId: generateId() })
             }
+
+            promoteInputs.push(...uniquePromoteIds.map(tagId => ({ tagId, userBookTagId: generateId() })))
 
             for (const name of createNames.map(name => name.trim()).filter(Boolean)) {
               const normalized = normalizeTagInput(name)
@@ -1904,19 +1904,29 @@ export const BookRepositoryLive = Layer.effect(
               if (createInputMap.has(normalized.key)) {
                 continue
               }
-
-              const existing = await dbService.db
-                .select({ id: tags.id })
-                .from(tags)
-                .where(eq(tags.normalizedName, normalized.key))
-                .limit(1)
-              const existingTagId = existing[0]?.id ?? null
-
               createInputMap.set(normalized.key, {
-                tagId: existingTagId ?? generateId(),
+                tagId: '',
                 userBookTagId: generateId(),
                 displayName: normalized.displayName,
                 normalizedName: normalized.key,
+                shouldInsertTag: true
+              })
+            }
+
+            const normalizedKeys = [...createInputMap.keys()]
+            const existingTags = normalizedKeys.length > 0
+              ? await dbService.db
+                  .select({ id: tags.id, normalizedName: tags.normalizedName })
+                  .from(tags)
+                  .where(inArray(tags.normalizedName, normalizedKeys))
+              : []
+            const existingTagIds = new Map(existingTags.map(tag => [tag.normalizedName, tag.id]))
+
+            for (const [normalizedName, input] of createInputMap) {
+              const existingTagId = existingTagIds.get(normalizedName)
+              createInputMap.set(normalizedName, {
+                ...input,
+                tagId: existingTagId ?? generateId(),
                 shouldInsertTag: !existingTagId
               })
             }
