@@ -1,11 +1,5 @@
 import { Effect } from 'effect'
-import { z } from 'zod'
-
-const batchTagUpdateSchema = z.object({
-  deleteIds: z.array(z.string({ error: 'Tag ID must be a string' })).default([]),
-  promoteIds: z.array(z.string({ error: 'Tag ID must be a string' })).default([]),
-  createNames: z.array(z.string({ error: 'Tag name must be a string' })).default([])
-})
+import { batchTagUpdateSchema } from '../../../../../shared/utils/schemas'
 
 export default effectHandler((event, user) =>
   Effect.gen(function* () {

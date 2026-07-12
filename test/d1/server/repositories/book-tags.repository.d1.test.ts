@@ -47,6 +47,23 @@ describe('BookRepository tag mutations on D1', () => {
     await expect(selectTagNames(db)).resolves.toEqual(['Delete Me', 'Fresh Tag', 'Other', 'System'])
   })
 
+  it('de-duplicates delete IDs and promote IDs before applying the batch', async () => {
+    await runRepository(db, Effect.flatMap(BookRepository, repository =>
+      repository.batchUpdateTags('ub-1', 'user-1', ['tag-delete', 'tag-delete'], ['tag-system', 'tag-system'], [])
+    ))
+
+    await expect(userTagNames(db, 'ub-1')).resolves.toEqual(['System'])
+  })
+
+  it('collapses duplicate create names to one tag', async () => {
+    await runRepository(db, Effect.flatMap(BookRepository, repository =>
+      repository.batchUpdateTags('ub-1', 'user-1', [], [], ['Fresh Tag', 'fresh tag', ' FRESH TAG '])
+    ))
+
+    await expect(userTagNames(db, 'ub-1')).resolves.toEqual(['Delete Me', 'Fresh Tag'])
+    await expect(selectTagNames(db)).resolves.toEqual(['Delete Me', 'Fresh Tag', 'Other', 'System'])
+  })
+
   it('rejects batch updates for books not owned by the user', async () => {
     const result = await runRepository(db, Effect.either(Effect.flatMap(BookRepository, repository =>
       repository.batchUpdateTags('ub-1', 'user-2', ['tag-delete'], [], [])
