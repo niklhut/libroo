@@ -38,18 +38,8 @@ function onCameraReady(capabilities: Partial<MediaTrackCapabilities>) {
 
 function onError(error: Error) {
   isLoading.value = false
-
-  if (error.name === 'NotAllowedError') {
-    errorMessage.value = 'Camera permission was denied. Please allow camera access to scan barcodes.'
-  } else if (error.name === 'NotFoundError') {
-    errorMessage.value = 'No camera found on this device.'
-  } else if (error.name === 'NotReadableError') {
-    errorMessage.value = 'Camera is already in use by another application.'
-  } else if (error.name === 'OverconstrainedError') {
-    errorMessage.value = 'Could not find a suitable camera. Try using a different device.'
-  } else {
-    errorMessage.value = `Camera error: ${error.message}`
-  }
+  errorMessage.value = getScannerErrorMessage(error)
+  console.error('IsbnScanner camera error', error)
 
   emit('error', errorMessage.value)
 }

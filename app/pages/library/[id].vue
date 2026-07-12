@@ -794,6 +794,7 @@ async function saveReadingProgress(progress: {
               icon="i-lucide-external-link"
               :href="`https://openlibrary.org${book.openLibraryKey}`"
               target="_blank"
+              rel="noopener noreferrer"
             >
               View Edition
             </UButton>
@@ -804,6 +805,7 @@ async function saveReadingProgress(progress: {
               icon="i-lucide-library"
               :href="`https://openlibrary.org${book.workKey}`"
               target="_blank"
+              rel="noopener noreferrer"
             >
               View Work
             </UButton>
