@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { escapeCsvValue, formatCsvList, formatLibraryCsv, parseCsvList, parseLibraryCsv } from '../../shared/utils/library-transfer-csv'
+import {
+  escapeCsvValue,
+  formatCsvList,
+  formatLibraryCsv,
+  LIBRARY_CSV_MAX_CELL_LENGTH,
+  LIBRARY_CSV_MAX_DATA_ROWS,
+  LIBRARY_CSV_MAX_LIST_ITEM_LENGTH,
+  LIBRARY_CSV_MAX_LIST_ITEMS,
+  libraryCsvColumns,
+  parseCsvList,
+  parseLibraryCsv
+} from '../../shared/utils/library-transfer-csv'
 
 describe('library transfer CSV', () => {
   it('escapes commas, quotes, newlines, and missing values', () => {
@@ -92,6 +103,10 @@ describe('library transfer CSV', () => {
     expect(parseCsvList('classic; sci-fi')).toEqual(['classic', 'sci-fi'])
   })
 
+  it('reports malformed JSON list fields clearly', () => {
+    expect(() => parseCsvList('[not valid JSON]', 'tags')).toThrow('Invalid JSON in tags field')
+  })
+
   it('accepts a UTF-8 BOM before the first header cell', () => {
     const csv = `\uFEFFtitle,authors,isbn,tags,location,library_state,reading_status,current_page,progress_percent,rating,note,added_date,active_loan_status,active_loan_borrower,active_loan_loaned_at,active_loan_due_at
 Dune,["Frank Herbert"],9780441172719,[],Shelf,owned,read,,100,5,,2026-06-12T10:00:00.000Z,,,,`
@@ -106,6 +121,45 @@ Dune,["Frank Herbert"],9780441172719,[],Shelf,read,,100,5,,2026-06-12T10:00:00.0
     expect(parseLibraryCsv(csv)[0]).toMatchObject({
       title: 'Dune',
       library_state: ''
+    })
+  })
+
+  it('enforces the data-row limit while accepting the maximum', () => {
+    const header = libraryCsvColumns.join(',')
+    const maximumCsv = `${header}\n${Array.from({ length: LIBRARY_CSV_MAX_DATA_ROWS }, () => 'Dune').join('\n')}`
+    const tooLargeCsv = `${maximumCsv}\nDune`
+
+    expect(parseLibraryCsv(maximumCsv)).toHaveLength(LIBRARY_CSV_MAX_DATA_ROWS)
+    expect(() => parseLibraryCsv(tooLargeCsv)).toThrow(
+      `CSV has too many data rows (maximum ${LIBRARY_CSV_MAX_DATA_ROWS})`
+    )
+  })
+
+  it('enforces per-cell and list structural limits', () => {
+    const row = {
+      title: 'Dune', authors: '[]', isbn: '', tags: '[]', location: '', library_state: '', reading_status: '',
+      current_page: '', progress_percent: '', rating: '', note: '', added_date: '', active_loan_status: '',
+      active_loan_borrower: '', active_loan_loaned_at: '', active_loan_due_at: ''
+    }
+
+    expect(() => parseLibraryCsv(formatLibraryCsv([{ ...row, title: 'a'.repeat(LIBRARY_CSV_MAX_CELL_LENGTH + 1) }]))).toThrow(
+      `CSV column title is too long (maximum ${LIBRARY_CSV_MAX_CELL_LENGTH} characters)`
+    )
+    expect(() => parseCsvList(Array.from({ length: LIBRARY_CSV_MAX_LIST_ITEMS + 1 }, () => 'tag').join(';'), 'tags')).toThrow(
+      `Too many tags in row (maximum ${LIBRARY_CSV_MAX_LIST_ITEMS})`
+    )
+    expect(() => parseCsvList('a'.repeat(LIBRARY_CSV_MAX_LIST_ITEM_LENGTH + 1), 'tags')).toThrow(
+      `tags item is too long (maximum ${LIBRARY_CSV_MAX_LIST_ITEM_LENGTH} characters)`
+    )
+  })
+
+  it('backfills missing trailing cells in short rows', () => {
+    const header = [...libraryCsvColumns.filter(column => column !== 'title'), 'title']
+    const csv = `${header.join(',')}\n"[""Frank Herbert""]"`
+
+    expect(parseLibraryCsv(csv)[0]).toMatchObject({
+      authors: '["Frank Herbert"]',
+      title: ''
     })
   })
 })
