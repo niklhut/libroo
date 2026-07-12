@@ -170,7 +170,7 @@ function getConfiguredTrustedIpHeaders() {
   return parseCommaSeparated(value)
 }
 
-function getTrustedIpHeaders() {
+export function getTrustedIpHeaders() {
   const configuredHeaders = getConfiguredTrustedIpHeaders()
   const platformHeaders = runtimeProfile === 'cloudflare'
     ? ['cf-connecting-ip']

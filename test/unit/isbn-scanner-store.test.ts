@@ -5,6 +5,11 @@ import { useIsbnScannerStore } from '../../app/stores/isbnScanner'
 import { useIsbnLookupStore } from '../../app/stores/isbnLookup'
 import { useLibraryDashboardStore } from '../../app/stores/libraryDashboard'
 import { defaultContinuousMode } from '../../app/utils/cameraScanDefaults'
+import {
+  BULK_LOOKUP_CONCURRENCY,
+  MAX_BULK_ISBN_COUNT,
+  MAX_BULK_ISBN_INPUT_BYTES
+} from '../../shared/utils/schemas'
 
 const _origUseToast = (globalThis as { useToast?: unknown }).useToast
 const _orig$fetch = (globalThis as { $fetch?: unknown }).$fetch
@@ -69,6 +74,87 @@ describe('useIsbnScannerStore', () => {
       title: 'Already scanned',
       color: 'warning'
     }))
+  })
+
+  it('rejects bulk input that exceeds the byte cap', async () => {
+    const fetchMock = vi.fn()
+    ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
+
+    const store = useIsbnScannerStore()
+    await expect(store.addMultipleIsbns('é'.repeat(MAX_BULK_ISBN_INPUT_BYTES))).resolves.toBe(false)
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(toastAdd).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Bulk import is too large',
+      color: 'warning'
+    }))
+  })
+
+  it('looks up every valid ISBN beyond the server bulk-add cap', async () => {
+    const validIsbns = Array.from({ length: MAX_BULK_ISBN_COUNT + 1 }, (_, index) => validIsbn13(index + 1))
+    const fetchMock = vi.fn(async (_url: string, options: { body: { isbn: string } }) => ({
+      found: true,
+      isbn: options.body.isbn,
+      title: 'Book',
+      author: 'Author'
+    }))
+    ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
+
+    const store = useIsbnScannerStore()
+    await store.addMultipleIsbns(validIsbns.join('\n'))
+
+    expect(fetchMock).toHaveBeenCalledTimes(MAX_BULK_ISBN_COUNT + 1)
+    expect(store.scannedBooks).toHaveLength(MAX_BULK_ISBN_COUNT + 1)
+    expect(toastAdd).not.toHaveBeenCalledWith(expect.objectContaining({ title: 'Some ISBNs were skipped' }))
+  })
+
+  it('filters invalid, duplicate, and already scanned ISBNs from a bulk paste', async () => {
+    const firstIsbn = '9780306406157'
+    const secondIsbn = '9780141439518'
+    const fetchMock = vi.fn(async (_url: string, options: { body: { isbn: string } }) => ({
+      found: true,
+      isbn: options.body.isbn,
+      title: 'Book',
+      author: 'Author'
+    }))
+    ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
+
+    const store = useIsbnScannerStore()
+    await store.addIsbn(firstIsbn)
+    await store.addMultipleIsbns([firstIsbn, firstIsbn, '9780306406158', 'not-an-isbn', secondIsbn].join('\n'))
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(store.scannedBooks.map(book => book.isbn).sort()).toEqual([firstIsbn, secondIsbn].sort())
+    expect(toastAdd).toHaveBeenCalledWith(expect.objectContaining({ title: 'Some ISBNs were skipped' }))
+  })
+
+  it('bounds concurrent bulk lookups', async () => {
+    const lookups: Array<ReturnType<typeof deferred<{ found: true, isbn: string, title: string, author: string }>>> = []
+    let inFlight = 0
+    let maxInFlight = 0
+    const fetchMock = vi.fn((_url: string, options: { body: { isbn: string } }) => {
+      const lookup = deferred<{ found: true, isbn: string, title: string, author: string }>()
+      lookups.push(lookup)
+      inFlight += 1
+      maxInFlight = Math.max(maxInFlight, inFlight)
+      return lookup.promise.then(() => {
+        inFlight -= 1
+        return { found: true, isbn: options.body.isbn, title: 'Book', author: 'Author' }
+      })
+    })
+    ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
+
+    const store = useIsbnScannerStore()
+    const bulkLookup = store.addMultipleIsbns(Array.from({ length: BULK_LOOKUP_CONCURRENCY + 3 }, (_, index) => validIsbn13(index + 1)).join('\n'))
+    await nextTick()
+
+    while (store.isBulkLookingUp) {
+      lookups.shift()?.resolve({ found: true, isbn: '', title: '', author: '' })
+      await new Promise(resolve => setTimeout(resolve, 0))
+    }
+    await bulkLookup
+
+    expect(maxInFlight).toBe(BULK_LOOKUP_CONCURRENCY)
   })
 
   it('marks existing local books as already owned and deselected', async () => {
@@ -409,3 +495,9 @@ describe('useIsbnScannerStore', () => {
     })
   })
 })
+
+function validIsbn13(seed: number) {
+  const body = `978${String(seed).padStart(9, '0')}`
+  const sum = [...body].reduce((total, digit, index) => total + Number(digit) * (index % 2 === 0 ? 1 : 3), 0)
+  return `${body}${(10 - (sum % 10)) % 10}`
+}

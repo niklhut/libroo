@@ -1,4 +1,6 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
+import { MAX_BULK_ISBN_COUNT } from './shared/utils/schemas'
+
 const runtimeProfile = process.env.NUXT_LIBROO_RUNTIME_PROFILE === 'cloudflare'
   ? 'cloudflare'
   : 'selfhost'
@@ -21,6 +23,10 @@ function definedEnvVars(vars: Record<string, string | undefined>) {
 
 const cloudflareRuntimeVars = definedEnvVars({
   NUXT_BETTER_AUTH_URL: process.env.NUXT_BETTER_AUTH_URL,
+  NUXT_BOOKS_BULK_ADD_MAX_COUNT: process.env.NUXT_BOOKS_BULK_ADD_MAX_COUNT || String(MAX_BULK_ISBN_COUNT),
+  NUXT_BOOKS_RATE_LIMIT_ENABLED: process.env.NUXT_BOOKS_RATE_LIMIT_ENABLED || 'false',
+  NUXT_BOOKS_RATE_LIMIT_WINDOW_SECONDS: process.env.NUXT_BOOKS_RATE_LIMIT_WINDOW_SECONDS || '60',
+  NUXT_BOOKS_RATE_LIMIT_MAX_REQUESTS: process.env.NUXT_BOOKS_RATE_LIMIT_MAX_REQUESTS || '30',
   NUXT_CLOUDFLARE_ACCESS_AUDIENCE: process.env.NUXT_CLOUDFLARE_ACCESS_AUDIENCE,
   NUXT_CLOUDFLARE_ACCESS_TEAM_DOMAIN: process.env.NUXT_CLOUDFLARE_ACCESS_TEAM_DOMAIN,
   NUXT_CLOUDFLARE_PREVIEW: cloudflarePreview ? 'true' : undefined,
@@ -72,6 +78,10 @@ export default defineNuxtConfig({
   runtimeConfig: {
     betterAuthSecret: '',
     betterAuthUrl: '',
+    booksBulkAddMaxCount: String(MAX_BULK_ISBN_COUNT),
+    booksRateLimitEnabled: 'false',
+    booksRateLimitWindowSeconds: '60',
+    booksRateLimitMaxRequests: '30',
     cloudflareAccessAudience: '',
     cloudflareAccessTeamDomain: '',
     cloudflarePreview: '',

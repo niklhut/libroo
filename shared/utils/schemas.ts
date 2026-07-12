@@ -13,6 +13,11 @@ import {
   normalizeBookLocationPath
 } from './book-location'
 
+/** Limits shared by the bulk ISBN client flow and server API. */
+export const MAX_BULK_ISBN_INPUT_BYTES = 8 * 1024
+export const MAX_BULK_ISBN_COUNT = 20
+export const BULK_LOOKUP_CONCURRENCY = 4
+
 /**
  * Validate ISBN-10 check digit
  * The check digit is calculated such that the sum of all digits
@@ -48,6 +53,11 @@ function isValidIsbn13Checksum(isbn: string): boolean {
   }
 
   return sum % 10 === 0
+}
+
+/** Returns whether a normalized ISBN-10 or ISBN-13 has a valid checksum. */
+export function isValidIsbnChecksum(isbn: string): boolean {
+  return isValidIsbn10Checksum(isbn) || isValidIsbn13Checksum(isbn)
 }
 
 /**

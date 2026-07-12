@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useIsbnLookupStore } from '../../app/stores/isbnLookup'
 import { useLibraryDashboardStore } from '../../app/stores/libraryDashboard'
+import { MAX_BULK_ISBN_COUNT } from '../../shared/utils/schemas'
 
 const _orig$fetch = (globalThis as { $fetch?: unknown }).$fetch
 
@@ -107,6 +108,27 @@ describe('useIsbnLookupStore', () => {
       failed: [{ isbn: '9780987654321', error: 'BookCreateError' }],
       failedIsbns: ['9780987654321']
     })
+  })
+
+  it('submits large selections in server-sized batches', async () => {
+    const isbns = Array.from({ length: MAX_BULK_ISBN_COUNT * 2 + 5 }, (_, index) => `isbn-${index + 1}`)
+    const fetchMock = vi.fn((_url: string, options: { body: { books: Array<{ isbn: string }> } }) => Promise.resolve({
+      added: options.body.books,
+      failed: []
+    }))
+    ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
+
+    const store = useIsbnLookupStore()
+    const result = await store.addIsbnsToLibrary(isbns)
+
+    expect(result.success).toEqual(isbns)
+    expect(result.failed).toEqual([])
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(fetchMock.mock.calls.map(([, options]) => options.body.books)).toEqual([
+      isbns.slice(0, MAX_BULK_ISBN_COUNT).map(isbn => ({ isbn, libraryState: 'owned' })),
+      isbns.slice(MAX_BULK_ISBN_COUNT, MAX_BULK_ISBN_COUNT * 2).map(isbn => ({ isbn, libraryState: 'owned' })),
+      isbns.slice(MAX_BULK_ISBN_COUNT * 2).map(isbn => ({ isbn, libraryState: 'owned' }))
+    ])
   })
 
   it('resets pending state and lookup errors', () => {

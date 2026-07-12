@@ -72,6 +72,18 @@ describe('server/api/books/bulk-add.post', () => {
     })
   })
 
+  it('rejects requests over the configured batch limit', async () => {
+    mockLoggedInUser()
+    const handler = await importRoute(route)
+
+    await expect(handler(makeEvent({
+      body: { isbns: Array.from({ length: 21 }, () => '9780306406157') }
+    }))).rejects.toMatchObject({
+      statusCode: 400,
+      message: 'Validation Error'
+    })
+  })
+
   it('rejects requests that mix legacy ISBNs and book objects', async () => {
     mockLoggedInUser()
     const handler = await importRoute(route)
