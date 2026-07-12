@@ -1,5 +1,6 @@
 import type { BookLookupResult, LibraryState } from '~~/shared/types/book'
 import { getApiErrorMessage } from '~~/shared/utils/api-error'
+import { MAX_BULK_ISBN_COUNT } from '~~/shared/utils/schemas'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { useLibraryDashboardStore } from './libraryDashboard'
@@ -86,34 +87,36 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
 
     const loadedPagesBeforeAdd = dashboardStore.getLoadedPages()
 
+    const success: string[] = []
+    const failed: Array<{ isbn: string, error: string }> = []
+
     try {
-      const result = await $fetch<AddIsbnsApiResult>('/api/books/bulk-add', {
-        method: 'POST',
-        body: { books: isbns.map(isbn => ({ isbn, libraryState })) }
-      })
+      for (let start = 0; start < isbns.length; start += MAX_BULK_ISBN_COUNT) {
+        const batch = isbns.slice(start, start + MAX_BULK_ISBN_COUNT)
 
-      if (requestVersion !== resetVersion) {
-        return { success: [], failed: [], failedIsbns: [] }
+        try {
+          const result = await $fetch<AddIsbnsApiResult>('/api/books/bulk-add', {
+            method: 'POST',
+            body: { books: batch.map(isbn => ({ isbn, libraryState })) }
+          })
+          success.push(...result.added.map(book => book.isbn))
+          failed.push(...result.failed)
+
+          if (requestVersion !== resetVersion) break
+        } catch (err: unknown) {
+          const message = getErrorMessage(err, 'Failed to add books')
+          if (requestVersion !== resetVersion) break
+
+          addError.value = message
+          failed.push(...batch.map(isbn => ({ isbn, error: message })))
+        }
       }
 
-      const success = result.added.map(book => book.isbn)
-      const failed = result.failed
-      const failedIsbns = failed.map(book => book.isbn)
+      if (success.length > 0) dashboardStore.markNeedsSync(loadedPagesBeforeAdd)
 
-      if (success.length > 0) {
-        dashboardStore.markNeedsSync(loadedPagesBeforeAdd)
-      }
-
-      return { success, failed, failedIsbns }
-    } catch (err: unknown) {
-      const message = getErrorMessage(err, 'Failed to add books')
-      if (requestVersion === resetVersion) addError.value = message
-
-      return {
-        success: [],
-        failed: isbns.map(isbn => ({ isbn, error: message })),
-        failedIsbns: isbns
-      }
+      return requestVersion === resetVersion
+        ? { success, failed, failedIsbns: failed.map(book => book.isbn) }
+        : { success: [], failed: [], failedIsbns: [] }
     } finally {
       pendingAdds.value = Math.max(0, pendingAdds.value - 1)
     }

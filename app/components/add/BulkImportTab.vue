@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
 import { DEFAULT_LIBRARY_PAGE_SIZE, buildLibraryRouteQuery } from '~~/shared/utils/library-query'
+import { MAX_BULK_ISBN_INPUT_BYTES } from '~~/shared/utils/schemas'
 
 const toast = useToast()
 
 const bulkIsbnText = ref('')
+const bulkIsbnBytes = computed(() => new TextEncoder().encode(bulkIsbnText.value).byteLength)
+const bulkIsbnCount = computed(() => bulkIsbnText.value.split(/[\n,\s]+/).filter(Boolean).length)
 
 const scannerStore = useIsbnScannerStore()
 const {
@@ -36,8 +39,9 @@ async function handleBulkImport() {
     return
   }
 
-  await addMultipleIsbns(bulkIsbnText.value)
-  bulkIsbnText.value = ''
+  if (await addMultipleIsbns(bulkIsbnText.value)) {
+    bulkIsbnText.value = ''
+  }
 }
 
 async function handleAddSelected() {
@@ -93,6 +97,10 @@ defineExpose({ reset })
           @keydown.ctrl.enter="handleBulkImport"
         />
       </UFormField>
+
+      <p class="text-sm text-muted">
+        {{ bulkIsbnBytes.toLocaleString() }} / {{ MAX_BULK_ISBN_INPUT_BYTES.toLocaleString() }} bytes · {{ bulkIsbnCount }} ISBN{{ bulkIsbnCount === 1 ? '' : 's' }} detected
+      </p>
 
       <UFormField label="Add as">
         <USelect

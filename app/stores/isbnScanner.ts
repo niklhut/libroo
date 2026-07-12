@@ -1,8 +1,14 @@
 import type { LibraryState } from '~~/shared/types/book'
-import { extractIsbn } from '~~/shared/utils/schemas'
+import {
+  BULK_LOOKUP_CONCURRENCY,
+  extractIsbn,
+  isValidIsbnChecksum,
+  MAX_BULK_ISBN_INPUT_BYTES
+} from '~~/shared/utils/schemas'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { useIsbnLookupStore } from './isbnLookup'
+import { withBoundedConcurrency } from '../utils/boundedConcurrency'
 
 export interface ScannedBook {
   isbn: string
@@ -61,7 +67,9 @@ export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
     }
   }
 
-  async function addIsbn(rawIsbn: string) {
+  async function addIsbn(rawIsbn: string, requestVersion = resetVersion) {
+    if (requestVersion !== resetVersion) return
+
     const normalizedIsbn = extractIsbn(rawIsbn) || rawIsbn.replace(/[-\s]/g, '')
 
     if (scannedBooks.value.some(book => book.isbn === normalizedIsbn)) {
@@ -93,29 +101,59 @@ export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
     await lookupScannedBook(book)
   }
 
-  async function addMultipleIsbns(text: string) {
-    const inputs = text
+  async function addMultipleIsbns(text: string): Promise<boolean> {
+    if (new TextEncoder().encode(text).byteLength > MAX_BULK_ISBN_INPUT_BYTES) {
+      toast.add({
+        title: 'Bulk import is too large',
+        description: `Paste up to ${MAX_BULK_ISBN_INPUT_BYTES.toLocaleString()} bytes of ISBNs at a time.`,
+        color: 'warning'
+      })
+      return false
+    }
+
+    const rawInputs = text
       .split(/[\n,\s]+/)
       .map(s => s.trim().replace(/[-\s]/g, ''))
       .filter(s => s.length > 0)
 
-    if (inputs.length === 0) {
+    if (rawInputs.length === 0) {
       toast.add({
         title: 'No input',
         description: 'Please enter at least one ISBN',
         color: 'warning'
       })
-      return
+      return false
     }
+
+    const alreadyScanned = new Set(scannedBooks.value.map(book => book.isbn))
+    const seen = new Set<string>()
+    const inputs = rawInputs.filter((input) => {
+      const isbn = extractIsbn(input)
+      if (!isbn || !isValidIsbnChecksum(isbn) || seen.has(isbn) || alreadyScanned.has(isbn)) return false
+      seen.add(isbn)
+      return true
+    })
+    const skipped = rawInputs.length - inputs.length
+    if (skipped > 0) {
+      toast.add({
+        title: 'Some ISBNs were skipped',
+        description: `Looking up ${inputs.length} ISBN${inputs.length === 1 ? '' : 's'}; skipped ${skipped} invalid, duplicate, or already scanned ISBN${skipped === 1 ? '' : 's'}.`,
+        color: 'warning'
+      })
+    }
+
+    if (inputs.length === 0) return false
 
     const requestVersion = resetVersion
     isBulkLookingUp.value = true
 
     try {
-      await Promise.all(inputs.map(isbn => addIsbn(isbn)))
+      await withBoundedConcurrency(inputs, BULK_LOOKUP_CONCURRENCY, isbn => addIsbn(isbn, requestVersion))
     } finally {
       if (requestVersion === resetVersion) isBulkLookingUp.value = false
     }
+
+    return true
   }
 
   function removeIsbn(isbn: string) {
