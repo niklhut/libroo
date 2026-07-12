@@ -8,6 +8,7 @@ import {
 } from '../../shared/utils/tag-ingestion'
 import {
   BATCH_TAG_UPDATE_MAX_ENTRIES,
+  BULK_REQUEST_RAW_ARRAY_MAX_ENTRIES,
   BOOK_BATCH_DELETE_MAX_IDS,
   batchTagUpdateSchema,
   bookBatchDeleteSchema,
@@ -82,6 +83,9 @@ describe('tag ingestion', () => {
     expect(bookBatchDeleteSchema.safeParse({
       ids: Array.from({ length: BOOK_BATCH_DELETE_MAX_IDS + 1 }, (_, index) => `ub-${index}`)
     }).success).toBe(false)
+    expect(bookBatchDeleteSchema.safeParse({
+      ids: Array.from({ length: BULK_REQUEST_RAW_ARRAY_MAX_ENTRIES + 1 }, () => 'ub-1')
+    }).success).toBe(false)
   })
 
   it('bounds and de-duplicates each batch tag update input', () => {
@@ -96,6 +100,9 @@ describe('tag ingestion', () => {
     })
     expect(batchTagUpdateSchema.safeParse({
       createNames: Array.from({ length: BATCH_TAG_UPDATE_MAX_ENTRIES + 1 }, (_, index) => `Topic ${index}`)
+    }).success).toBe(false)
+    expect(batchTagUpdateSchema.safeParse({
+      promoteIds: Array.from({ length: BULK_REQUEST_RAW_ARRAY_MAX_ENTRIES + 1 }, () => 'tag-1')
     }).success).toBe(false)
   })
 })

@@ -146,9 +146,12 @@ export const bookIsbnAddSchema = bookIsbnSchema.extend({
 export type BookIsbnAddSchema = z.infer<typeof bookIsbnAddSchema>
 
 export const BOOK_BATCH_DELETE_MAX_IDS = 100
+/** Prevent excessively large request arrays from reaching deduplication transforms. */
+export const BULK_REQUEST_RAW_ARRAY_MAX_ENTRIES = 1000
 
 export const bookBatchDeleteSchema = z.object({
   ids: z.array(z.string({ error: 'ID must be a string' }))
+    .max(BULK_REQUEST_RAW_ARRAY_MAX_ENTRIES, { error: 'Too many IDs' })
     .transform(values => [...new Set(values)])
     .pipe(
       z.array(z.string())
@@ -180,14 +183,17 @@ export const BATCH_TAG_UPDATE_MAX_ENTRIES = 50
 
 export const batchTagUpdateSchema = z.object({
   deleteIds: z.array(z.string({ error: 'Tag ID must be a string' }))
+    .max(BULK_REQUEST_RAW_ARRAY_MAX_ENTRIES, { error: 'Too many tag IDs' })
     .default([])
     .transform(values => [...new Set(values)])
     .pipe(z.array(z.string()).max(BATCH_TAG_UPDATE_MAX_ENTRIES, { error: 'Too many tag IDs' })),
   promoteIds: z.array(z.string({ error: 'Tag ID must be a string' }))
+    .max(BULK_REQUEST_RAW_ARRAY_MAX_ENTRIES, { error: 'Too many tag IDs' })
     .default([])
     .transform(values => [...new Set(values)])
     .pipe(z.array(z.string()).max(BATCH_TAG_UPDATE_MAX_ENTRIES, { error: 'Too many tag IDs' })),
   createNames: z.array(bookTagAddSchema.shape.name)
+    .max(BULK_REQUEST_RAW_ARRAY_MAX_ENTRIES, { error: 'Too many tag names' })
     .default([])
     .transform(values => [...new Set(values)])
     .pipe(z.array(z.string()).max(BATCH_TAG_UPDATE_MAX_ENTRIES, { error: 'Too many tag names' }))
