@@ -157,6 +157,28 @@ describe('useIsbnScannerStore', () => {
     expect(maxInFlight).toBe(BULK_LOOKUP_CONCURRENCY)
   })
 
+  it('does not add queued bulk ISBNs after scanner state is cleared', async () => {
+    const lookups: Array<ReturnType<typeof deferred<{ found: true, isbn: string, title: string, author: string }>>> = []
+    const fetchMock = vi.fn(() => {
+      const lookup = deferred<{ found: true, isbn: string, title: string, author: string }>()
+      lookups.push(lookup)
+      return lookup.promise
+    })
+    ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
+
+    const store = useIsbnScannerStore()
+    const bulkLookup = store.addMultipleIsbns(Array.from({ length: BULK_LOOKUP_CONCURRENCY + 1 }, (_, index) => validIsbn13(index + 1)).join('\n'))
+    await nextTick()
+    expect(fetchMock).toHaveBeenCalledTimes(BULK_LOOKUP_CONCURRENCY)
+
+    store.clearAll()
+    lookups.forEach(lookup => lookup.resolve({ found: true, isbn: '', title: '', author: '' }))
+    await bulkLookup
+
+    expect(fetchMock).toHaveBeenCalledTimes(BULK_LOOKUP_CONCURRENCY)
+    expect(store.scannedBooks).toEqual([])
+  })
+
   it('marks existing local books as already owned and deselected', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({

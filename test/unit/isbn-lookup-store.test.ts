@@ -160,4 +160,19 @@ describe('useIsbnLookupStore', () => {
     expect(store.pendingLookups).toBe(0)
     expect(store.isLookingUp).toBe(false)
   })
+
+  it('marks the dashboard for sync when a stale add request already succeeded', async () => {
+    const addResponse = deferred<{ added: Array<{ isbn: string }>, failed: [] }>()
+    const fetchMock = vi.fn(() => addResponse.promise)
+    ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
+
+    const dashboardStore = useLibraryDashboardStore()
+    const store = useIsbnLookupStore()
+    const add = store.addIsbnsToLibrary(['9780306406157'])
+    store.reset()
+    addResponse.resolve({ added: [{ isbn: '9780306406157' }], failed: [] })
+
+    await expect(add).resolves.toEqual({ success: [], failed: [], failedIsbns: [] })
+    expect(dashboardStore.shouldSync).toBe(true)
+  })
 })

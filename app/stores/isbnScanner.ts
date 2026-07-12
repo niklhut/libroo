@@ -67,7 +67,9 @@ export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
     }
   }
 
-  async function addIsbn(rawIsbn: string) {
+  async function addIsbn(rawIsbn: string, requestVersion = resetVersion) {
+    if (requestVersion !== resetVersion) return
+
     const normalizedIsbn = extractIsbn(rawIsbn) || rawIsbn.replace(/[-\s]/g, '')
 
     if (scannedBooks.value.some(book => book.isbn === normalizedIsbn)) {
@@ -146,7 +148,7 @@ export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
     isBulkLookingUp.value = true
 
     try {
-      await withBoundedConcurrency(inputs, BULK_LOOKUP_CONCURRENCY, addIsbn)
+      await withBoundedConcurrency(inputs, BULK_LOOKUP_CONCURRENCY, isbn => addIsbn(isbn, requestVersion))
     } finally {
       if (requestVersion === resetVersion) isBulkLookingUp.value = false
     }

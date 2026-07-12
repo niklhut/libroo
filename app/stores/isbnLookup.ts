@@ -99,22 +99,24 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
             method: 'POST',
             body: { books: batch.map(isbn => ({ isbn, libraryState })) }
           })
-          if (requestVersion !== resetVersion) {
-            return { success: [], failed: [], failedIsbns: [] }
-          }
-
           success.push(...result.added.map(book => book.isbn))
           failed.push(...result.failed)
+
+          if (requestVersion !== resetVersion) break
         } catch (err: unknown) {
           const message = getErrorMessage(err, 'Failed to add books')
-          if (requestVersion === resetVersion) addError.value = message
+          if (requestVersion !== resetVersion) break
+
+          addError.value = message
           failed.push(...batch.map(isbn => ({ isbn, error: message })))
         }
       }
 
       if (success.length > 0) dashboardStore.markNeedsSync(loadedPagesBeforeAdd)
 
-      return { success, failed, failedIsbns: failed.map(book => book.isbn) }
+      return requestVersion === resetVersion
+        ? { success, failed, failedIsbns: failed.map(book => book.isbn) }
+        : { success: [], failed: [], failedIsbns: [] }
     } finally {
       pendingAdds.value = Math.max(0, pendingAdds.value - 1)
     }

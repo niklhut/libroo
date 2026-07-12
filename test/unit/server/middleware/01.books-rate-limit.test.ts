@@ -50,6 +50,41 @@ describe('server/middleware/01.books-rate-limit', () => {
     })
     expect(event.responseHeaders['Retry-After']).toBe('60')
   })
+
+  it('bypasses rate limiting when disabled', async () => {
+    mocks.config.enabled = false
+    const middleware = await import('../../../../server/middleware/01.books-rate-limit')
+    const event = makeEvent('/api/books/lookup', 'POST', 'disabled-limit')
+
+    await expect(middleware.default(event as never)).resolves.toBeUndefined()
+    await expect(middleware.default(event as never)).resolves.toBeUndefined()
+    await expect(middleware.default(event as never)).resolves.toBeUndefined()
+    expect(mocks.getSession).not.toHaveBeenCalled()
+  })
+
+  it('uses the authenticated user id instead of the client IP as the key', async () => {
+    mocks.config.maxRequests = 1
+    mocks.getSession
+      .mockResolvedValueOnce({ user: { id: 'ada' } })
+      .mockResolvedValueOnce({ user: { id: 'grace' } })
+      .mockResolvedValueOnce({ user: { id: 'ada' } })
+    const middleware = await import('../../../../server/middleware/01.books-rate-limit')
+    const event = makeEvent('/api/books/lookup', 'POST', 'shared-ip')
+
+    await expect(middleware.default(event as never)).resolves.toBeUndefined()
+    await expect(middleware.default(event as never)).resolves.toBeUndefined()
+    await expect(middleware.default(event as never)).rejects.toMatchObject({ statusCode: 429 })
+  })
+
+  it('falls back to the client IP when session lookup fails', async () => {
+    mocks.config.maxRequests = 1
+    mocks.getSession.mockRejectedValue(new Error('session unavailable'))
+    const middleware = await import('../../../../server/middleware/01.books-rate-limit')
+    const event = makeEvent('/api/books/lookup', 'POST', 'session-fallback')
+
+    await expect(middleware.default(event as never)).resolves.toBeUndefined()
+    await expect(middleware.default(event as never)).rejects.toMatchObject({ statusCode: 429 })
+  })
 })
 
 function makeEvent(path: string, method = 'POST', ip = '127.0.0.1') {
