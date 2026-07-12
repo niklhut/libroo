@@ -61,7 +61,12 @@ export function parseCsvList(value: string, fieldName = 'list items'): string[] 
 
   let items: string[]
   if (trimmed.startsWith('[')) {
-    const parsed = JSON.parse(trimmed)
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(trimmed)
+    } catch {
+      throw new Error(`Invalid JSON in ${fieldName} field`)
+    }
     if (!Array.isArray(parsed) || parsed.some(item => typeof item !== 'string')) {
       throw new Error('CSV list field must be an array of strings')
     }

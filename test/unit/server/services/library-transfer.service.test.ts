@@ -35,6 +35,7 @@ function runImport(csv: string, importRecords = vi.fn(() => Effect.succeed(resul
 describe('LibraryTransferService.importLibraryCsv', () => {
   it.each([
     ['title is required', `${[...libraryCsvColumns.filter(column => column !== 'title'), 'title'].join(',')}\n[""Ada""]`],
+    ['Invalid JSON in tags field', `${header}\nDune,,,[not valid JSON]`],
     [`CSV has too many data rows (maximum ${LIBRARY_CSV_MAX_DATA_ROWS})`, `${header}\n${Array.from({ length: LIBRARY_CSV_MAX_DATA_ROWS + 1 }, () => 'Dune').join('\n')}`],
     [`CSV column title is too long (maximum ${LIBRARY_CSV_MAX_CELL_LENGTH} characters)`, `${header}\n${'a'.repeat(LIBRARY_CSV_MAX_CELL_LENGTH + 1)}`],
     [`Too many tags in row (maximum ${LIBRARY_CSV_MAX_LIST_ITEMS})`, `${header}\nDune,,,"${Array.from({ length: LIBRARY_CSV_MAX_LIST_ITEMS + 1 }, () => 'tag').join(';')}"`],

@@ -475,7 +475,9 @@ export type PreferencesSchema = z.infer<typeof preferencesSchema>
 export const libraryImportSchema = z.object({
   csv: z.string({ error: 'CSV content is required' })
     .min(1, { error: 'CSV content is required' })
-    .max(LIBRARY_CSV_MAX_BYTES, { error: 'CSV file is too large' }),
+    .refine(csv => new TextEncoder().encode(csv).byteLength <= LIBRARY_CSV_MAX_BYTES, {
+      error: 'CSV file is too large'
+    }),
   conflictStrategy: z.enum(['existing', 'csv'], { error: 'Conflict strategy is invalid' }).default('existing')
 })
 
