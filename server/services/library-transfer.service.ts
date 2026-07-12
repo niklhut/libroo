@@ -3,15 +3,20 @@ import {
   formatCsvList,
   formatLibraryCsv,
   parseCsvList,
-  parseLibraryCsv,
+  parseLibraryCsvRows,
   type LibraryCsvRow
 } from '../../shared/utils/library-transfer-csv'
+import { BOOK_LOCATION_PATH_SEPARATOR_PATTERN } from '../../shared/utils/book-location'
+import { LOCATION_MAX_DEPTH } from '../../shared/utils/location-hierarchy'
 import type {
   LibraryImportBookInput,
   LibraryImportConflictStrategy,
   LibraryImportResult
 } from '../../shared/types/library-transfer'
 import type { LibraryState, ReadingStatus } from '../../shared/types/book'
+import type { DatabaseError } from '../repositories/book.repository'
+import { LibraryTransferRepository } from '../repositories/library-transfer.repository'
+import type { DbService } from './db.service'
 
 export class InvalidLibraryCsvError extends Data.TaggedError('InvalidLibraryCsvError')<{
   message: string
@@ -57,8 +62,8 @@ function parseNullableDate(value: string, field: string): Date | null {
   return date
 }
 
-function parseList(value: string): string[] {
-  return parseCsvList(value)
+function parseList(value: string, fieldName: string): string[] {
+  return parseCsvList(value, fieldName)
 }
 
 function parseReadingStatus(value: string): ReadingStatus {
@@ -79,12 +84,21 @@ function toImportRecord(row: LibraryCsvRow): LibraryImportBookInput {
     throw new Error('title is required')
   }
 
+  const locationPath = row.location.trim() || null
+  if (locationPath) {
+    const locationDepth = locationPath.split(BOOK_LOCATION_PATH_SEPARATOR_PATTERN)
+      .filter(segment => segment.trim() !== '').length
+    if (locationDepth > LOCATION_MAX_DEPTH) {
+      throw new Error(`Location nesting is too deep (maximum ${LOCATION_MAX_DEPTH} levels)`)
+    }
+  }
+
   return {
     title,
-    authors: parseList(row.authors),
+    authors: parseList(row.authors, 'authors'),
     isbn: row.isbn.trim() || null,
-    tags: parseList(row.tags),
-    locationPath: row.location.trim() || null,
+    tags: parseList(row.tags, 'tags'),
+    locationPath,
     libraryState: parseLibraryState(row.library_state),
     readingStatus: parseReadingStatus(row.reading_status),
     currentPage: parseNullableInteger(row.current_page, 'current_page', 0, 100000),
@@ -127,7 +141,13 @@ export const LibraryTransferServiceLive = Layer.effect(
       importLibraryCsv: (userId, csv, conflictStrategy) =>
         Effect.gen(function* () {
           const rows = yield* Effect.try({
-            try: () => parseLibraryCsv(csv).map(toImportRecord),
+            try: () => {
+              const records: LibraryImportBookInput[] = []
+              for (const row of parseLibraryCsvRows(csv)) {
+                records.push(toImportRecord(row))
+              }
+              return records
+            },
             catch: error => new InvalidLibraryCsvError({
               message: error instanceof Error ? error.message : 'CSV could not be parsed'
             })

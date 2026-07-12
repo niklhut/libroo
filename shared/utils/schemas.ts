@@ -6,6 +6,9 @@ import {
   TAG_INPUT_MIN_LENGTH
 } from './tag-ingestion'
 import {
+  LIBRARY_CSV_MAX_BYTES
+} from './library-transfer-csv'
+import {
   BOOK_LOCATION_MAX_LENGTH,
   BOOK_LOCATION_NAME_MAX_LENGTH,
   BOOK_LOCATION_PATH_SEPARATOR_PATTERN,
@@ -472,7 +475,7 @@ export type PreferencesSchema = z.infer<typeof preferencesSchema>
 export const libraryImportSchema = z.object({
   csv: z.string({ error: 'CSV content is required' })
     .min(1, { error: 'CSV content is required' })
-    .max(10 * 1024 * 1024, { error: 'CSV file is too large' }),
+    .max(LIBRARY_CSV_MAX_BYTES, { error: 'CSV file is too large' }),
   conflictStrategy: z.enum(['existing', 'csv'], { error: 'Conflict strategy is invalid' }).default('existing')
 })
 

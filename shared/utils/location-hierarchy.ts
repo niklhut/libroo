@@ -1,5 +1,7 @@
 import type { BookLocation, BookLocationWithCount } from '../types/book'
 
+export const LOCATION_MAX_DEPTH = 10
+
 export interface LocationHierarchyRecord {
   id: string
   name: string
