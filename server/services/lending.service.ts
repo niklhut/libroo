@@ -89,7 +89,9 @@ export const LendingServiceLive = Layer.effect(
           return yield* Effect.fail(new LoanUnavailableError({ message: 'This loan has no invitation email.' }))
         }
         if (!getEmailCapabilities().inviteEmailEnabled) {
-          yield* lendingRepo.updateInviteEmailDelivery(loanId, ownerUserId, 'pending', null)
+          yield* lendingRepo.updateInviteEmailDelivery(loanId, ownerUserId, 'pending', null).pipe(
+            Effect.catchAll(statusError => Effect.logError(`Could not persist pending loan invitation delivery: ${statusError.message}`))
+          )
           return 'unavailable' as const
         }
         const absoluteUrl = yield* buildLoanInviteUrl(token)

@@ -1,6 +1,7 @@
 import { Effect, Layer } from 'effect'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { EmailService } from '../../../../server/services/email.service'
+import { EmailDeliveryError } from '../../../../server/runtime/email.core'
 import { LendingService, LendingServiceLive } from '../../../../server/services/lending.service'
 import { LendingRepository, type LendingRepositoryInterface } from '../../../../server/repositories/lending.repository'
 
@@ -32,9 +33,9 @@ describe('LendingService invitation delivery', () => {
     return Effect.runPromise(Effect.flatMap(LendingService, service => service.createLoan('book-1', 'owner-1', { borrowerDisplayName: 'Grace', borrowerEmail: email })).pipe(
       Effect.provide(LendingServiceLive),
       Effect.provide(Layer.succeed(LendingRepository, repository)),
-      Effect.provide(Layer.succeed(EmailService, { sendEmail: () => Effect.sync(() => {
+      Effect.provide(Layer.succeed(EmailService, { sendEmail: () => Effect.gen(function* () {
         state.sends++
-        if (fails) throw new Error('provider failure')
+        if (fails) return yield* Effect.fail(new EmailDeliveryError({ message: 'provider failure' }))
       }) }))
     ))
   }
@@ -53,5 +54,10 @@ describe('LendingService invitation delivery', () => {
     capabilities.getEmailCapabilities.mockReturnValue({ inviteEmailEnabled: false })
     await expect(run('grace@example.com')).resolves.toMatchObject({ deliveryStatus: 'unavailable' })
     expect(state).toMatchObject({ creates: 1, sends: 0 })
+  })
+
+  it('records failed delivery when the email provider fails', async () => {
+    await expect(run('grace@example.com', true)).resolves.toMatchObject({ deliveryStatus: 'failed' })
+    expect(state).toMatchObject({ creates: 1, sends: 1, updates: ['failed'] })
   })
 })
