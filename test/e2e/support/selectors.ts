@@ -88,7 +88,7 @@ export function lendingModal(page: Page) {
     borrowerEmail: dialog.getByLabel('Email (optional)'),
     dueDate: dialog.getByLabel('Due date'),
     save: dialog.getByRole('button', { name: 'Save loan' }),
-    inviteAlert: dialog.getByText(/Invite URL:/)
+    inviteUrl: dialog.getByTestId('loan-invite-url')
   }
 }
 
@@ -102,8 +102,8 @@ export function adminTables(page: Page) {
 }
 
 export async function readInviteUrlFromLoanSuccess(page: Page) {
-  const alertText = await lendingModal(page).inviteAlert.textContent()
-  const match = alertText?.match(/https?:\/\/\S+\/i\/[A-Za-z0-9_-]+/)
+  const inviteUrl = (await lendingModal(page).inviteUrl.textContent())?.trim()
+  const match = inviteUrl?.match(/^https?:\/\/\S+\/i\/[A-Za-z0-9_-]+$/)
   if (!match) {
     throw new Error('Could not find invite URL in lending success alert')
   }

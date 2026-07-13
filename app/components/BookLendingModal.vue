@@ -210,7 +210,10 @@ async function copyInvite(options: { showToast?: boolean } = {}) {
                 class="block w-full min-w-0 text-left"
                 @click="() => { void copyInvite() }"
               >
-                <code class="block break-all text-xs leading-relaxed">{{ inviteUrl }}</code>
+                <code
+                  data-testid="loan-invite-url"
+                  class="block break-all text-xs leading-relaxed"
+                >{{ inviteUrl }}</code>
               </button>
             </div>
           </template>
