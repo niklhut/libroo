@@ -28,6 +28,18 @@ export interface LoanCreateInput {
   borrowerEmail: string | null
   dueAt: Date | null
   acceptTokenHash: string
+  inviteEmailStatus: 'pending' | 'sent' | 'failed' | null
+}
+
+export interface OwnerActiveLoanInvite {
+  id: string
+  acceptTokenHash: string | null
+  borrowerEmail: string | null
+  borrowerDisplayName: string
+  dueAt: Date | null
+  snapshotBookTitle: string
+  snapshotBookAuthor: string
+  snapshotOwnerName: string
 }
 
 export interface LoanCreateResult {
@@ -44,6 +56,8 @@ interface LoanSnapshotSource {
 
 export interface LendingRepositoryInterface {
   createLoan: (input: LoanCreateInput) => Effect.Effect<OwnerLoan, BookNotFoundError | BookNotOwnedError | ActiveLoanExistsError | DatabaseError, DbService>
+  getActiveLoanInviteForOwner: (loanId: string, ownerUserId: string) => Effect.Effect<OwnerActiveLoanInvite, LoanNotFoundError | DatabaseError, DbService>
+  updateInviteEmailDelivery: (loanId: string, ownerUserId: string, status: 'pending' | 'sent' | 'failed' | null, lastAttemptAt: Date | null) => Effect.Effect<OwnerLoan, LoanNotFoundError | DatabaseError, DbService>
   getActiveLoanForBook: (userBookId: string, ownerUserId: string) => Effect.Effect<OwnerLoan | null, DatabaseError, DbService>
   returnLoan: (loanId: string, ownerUserId: string) => Effect.Effect<OwnerLoan, LoanNotFoundError | DatabaseError, DbService>
   cancelLoan: (loanId: string, ownerUserId: string) => Effect.Effect<OwnerLoan, LoanNotFoundError | DatabaseError, DbService>
@@ -121,6 +135,7 @@ export const LendingRepositoryLive = Layer.effect(
     const toOwnerLoan = (row: typeof loans.$inferSelect & { acceptedByName?: string | null }): OwnerLoan => ({
       id: row.id,
       userBookId: row.userBookId,
+      ownerDisplayName: row.snapshotOwnerName,
       borrowerDisplayName: row.borrowerDisplayName,
       acceptedByName: row.acceptedByName ?? null,
       status: row.status,
@@ -129,6 +144,7 @@ export const LendingRepositoryLive = Layer.effect(
       returnedAt: row.returnedAt ?? null,
       canceledAt: row.canceledAt ?? null,
       acceptedAt: row.acceptedAt ?? null,
+      deliveryStatus: row.inviteEmailStatus === 'sent' ? 'sent' : row.inviteEmailStatus === 'failed' ? 'failed' : row.inviteEmailStatus === 'pending' ? 'unavailable' : 'not_requested',
       book: {
         title: row.snapshotBookTitle,
         author: row.snapshotBookAuthor,
@@ -179,6 +195,8 @@ export const LendingRepositoryLive = Layer.effect(
             borrowerUserId: null,
             borrowerDisplayName: input.borrowerDisplayName,
             borrowerEmail: input.borrowerEmail,
+            inviteEmailStatus: input.inviteEmailStatus,
+            inviteEmailLastAttemptAt: null,
             status: 'active',
             loanedAt: now,
             dueAt: input.dueAt,
@@ -205,6 +223,40 @@ export const LendingRepositoryLive = Layer.effect(
           })
 
           return toOwnerLoan(inserted[0]!)
+        }),
+
+      getActiveLoanInviteForOwner: (loanId, ownerUserId) =>
+        Effect.gen(function* () {
+          const rows = yield* Effect.tryPromise({
+            try: () => dbService.db.select({
+              id: loans.id,
+              acceptTokenHash: loans.acceptTokenHash,
+              borrowerEmail: loans.borrowerEmail,
+              borrowerDisplayName: loans.borrowerDisplayName,
+              dueAt: loans.dueAt,
+              snapshotBookTitle: loans.snapshotBookTitle,
+              snapshotBookAuthor: loans.snapshotBookAuthor,
+              snapshotOwnerName: loans.snapshotOwnerName
+            }).from(loans).where(and(eq(loans.id, loanId), eq(loans.ownerUserId, ownerUserId), eq(loans.status, 'active'))).limit(1),
+            catch: error => new DatabaseError({ message: `Failed to load loan invite: ${error}`, operation: 'getActiveLoanInviteForOwner' })
+          })
+          if (!rows[0]) return yield* Effect.fail(new LoanNotFoundError({ loanId }))
+          return rows[0]
+        }),
+
+      updateInviteEmailDelivery: (loanId, ownerUserId, status, lastAttemptAt) =>
+        Effect.gen(function* () {
+          const now = new Date()
+          const rows = yield* Effect.tryPromise({
+            try: () => dbService.db.update(loans).set({
+              inviteEmailStatus: status,
+              inviteEmailLastAttemptAt: lastAttemptAt,
+              updatedAt: now
+            }).where(and(eq(loans.id, loanId), eq(loans.ownerUserId, ownerUserId), eq(loans.status, 'active'))).returning(),
+            catch: error => new DatabaseError({ message: `Failed to update loan invite delivery: ${error}`, operation: 'updateInviteEmailDelivery' })
+          })
+          if (!rows[0]) return yield* Effect.fail(new LoanNotFoundError({ loanId }))
+          return toOwnerLoan(rows[0])
         }),
 
       getActiveLoanForBook: (userBookId, ownerUserId) =>
@@ -289,6 +341,8 @@ export const LendingRepositoryLive = Layer.effect(
                 borrowerUserId: loans.borrowerUserId,
                 borrowerDisplayName: loans.borrowerDisplayName,
                 borrowerEmail: loans.borrowerEmail,
+                inviteEmailStatus: loans.inviteEmailStatus,
+                inviteEmailLastAttemptAt: loans.inviteEmailLastAttemptAt,
                 status: loans.status,
                 loanedAt: loans.loanedAt,
                 dueAt: loans.dueAt,
@@ -479,6 +533,12 @@ export const returnLoan = (loanId: string, ownerUserId: string) =>
 
 export const cancelLoan = (loanId: string, ownerUserId: string) =>
   Effect.flatMap(LendingRepository, repo => repo.cancelLoan(loanId, ownerUserId))
+
+export const getActiveLoanInviteForOwner = (loanId: string, ownerUserId: string) =>
+  Effect.flatMap(LendingRepository, repo => repo.getActiveLoanInviteForOwner(loanId, ownerUserId))
+
+export const updateInviteEmailDelivery = (loanId: string, ownerUserId: string, status: 'pending' | 'sent' | 'failed' | null, lastAttemptAt: Date | null) =>
+  Effect.flatMap(LendingRepository, repo => repo.updateInviteEmailDelivery(loanId, ownerUserId, status, lastAttemptAt))
 
 export const listOwnerLoans = (ownerUserId: string) =>
   Effect.flatMap(LendingRepository, repo => repo.listOwnerLoans(ownerUserId))

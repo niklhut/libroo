@@ -130,6 +130,8 @@ const errorStatusCodes: Record<string, number> = {
   SignupInviteForbiddenError: 403,
   InvalidSignupInviteError: 400,
   SignupInviteDeliveryError: 503,
+  LoanInviteDeliveryError: 503,
+  LoanInviteUrlConfigError: 500,
   DatabaseError: 500,
   StorageError: 500,
   HealthCheckError: 503,
@@ -161,7 +163,9 @@ const errorMessageFormatters: Record<string, (error: unknown) => string> = {
     return 'This book is already lent out.'
   },
   LocationUpdateError: () => 'The location could not be updated. Please try again.',
-  LocationDeleteError: () => 'The location could not be deleted. Please try again.'
+  LocationDeleteError: () => 'The location could not be deleted. Please try again.',
+  LoanInviteDeliveryError: () => 'Loan invitation email delivery is temporarily unavailable. Please try again later.',
+  LoanInviteUrlConfigError: () => 'Loan invitation links are not configured correctly.'
 }
 
 /**
