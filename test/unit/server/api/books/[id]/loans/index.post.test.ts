@@ -32,10 +32,13 @@ describe('server/api/books/[id]/loans/index.post', () => {
         returnedAt: null,
         canceledAt: null,
         acceptedAt: null,
+        ownerDisplayName: 'Ada',
         book: { title: 'Example', author: 'Author', coverPath: null },
-        inviteUrl: '/i/token'
+        inviteUrl: '/i/token',
+        deliveryStatus: 'sent'
       },
-      inviteUrl: '/i/token'
+      inviteUrl: '/i/token',
+      deliveryStatus: 'sent'
     }
     serviceMocks.createLoanForBook.mockReturnValueOnce(Effect.succeed(result))
     const handler = await importRoute(route)

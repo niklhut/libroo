@@ -550,6 +550,12 @@ export const createLoanSchema = z.object({
 
 export type CreateLoanSchema = z.infer<typeof createLoanSchema>
 
+export const resendLoanInviteSchema = z.object({
+  token: z.string({ error: 'Invite token is required' }).trim().min(1, { error: 'Invite token is required' })
+})
+
+export type ResendLoanInviteSchema = z.infer<typeof resendLoanInviteSchema>
+
 export const removeBookSchema = z.object({
   confirmActiveLoan: z.boolean().default(false).optional()
 })

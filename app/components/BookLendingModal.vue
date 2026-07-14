@@ -13,6 +13,7 @@ const emit = defineEmits<{
 }>()
 
 const toast = useToast()
+const { data: emailCapabilities } = await useEmailCapabilities()
 
 const borrowerDisplayName = ref('')
 const borrowerEmail = ref('')
@@ -20,6 +21,10 @@ const dueAt = ref('')
 const isSaving = ref(false)
 const inviteUrl = ref('')
 const copiedAutomatically = ref(false)
+const loanId = ref('')
+const deliveryStatus = ref<LoanInviteDeliveryStatus | null>(null)
+const isResending = ref(false)
+const canEmailInvite = computed(() => Boolean(emailCapabilities.value?.inviteEmailEnabled && borrowerEmail.value.trim()))
 
 const tomorrowDate = computed(() => {
   const date = new Date()
@@ -48,6 +53,8 @@ watch(
     dueAt.value = ''
     inviteUrl.value = ''
     copiedAutomatically.value = false
+    loanId.value = ''
+    deliveryStatus.value = null
   }
 )
 
@@ -56,7 +63,7 @@ async function lendBook() {
 
   isSaving.value = true
   try {
-    const result = await $fetch<{ loan: OwnerLoan, inviteUrl: string }>(`/api/books/${props.userBookId}/loans`, {
+    const result = await $fetch<{ loan: OwnerLoan, inviteUrl: string, deliveryStatus: LoanInviteDeliveryStatus }>(`/api/books/${props.userBookId}/loans`, {
       method: 'POST',
       body: {
         borrowerDisplayName: borrowerDisplayName.value,
@@ -66,14 +73,18 @@ async function lendBook() {
     })
 
     inviteUrl.value = `${window.location.origin}${result.inviteUrl}`
+    loanId.value = result.loan.id
+    deliveryStatus.value = result.deliveryStatus
     copiedAutomatically.value = await copyInvite({ showToast: false })
     emit('saved', { ...result.loan, inviteUrl: result.inviteUrl })
     toast.add({
       title: 'Book marked as lent out',
-      description: copiedAutomatically.value
-        ? 'The share link was copied to your clipboard.'
-        : 'The share link is ready below.',
-      color: 'success'
+      description: result.deliveryStatus === 'sent'
+        ? 'An invitation email was sent. The share link is also ready below.'
+        : result.deliveryStatus === 'failed'
+          ? 'The email could not be sent. The share link is ready below.'
+          : copiedAutomatically.value ? 'The share link was copied to your clipboard.' : 'The share link is ready below.',
+      color: result.deliveryStatus === 'failed' ? 'warning' : 'success'
     })
   } catch (err: unknown) {
     const message = (err as { data?: { message?: string } })?.data?.message
@@ -85,6 +96,21 @@ async function lendBook() {
     })
   } finally {
     isSaving.value = false
+  }
+}
+
+async function resendEmail() {
+  const token = inviteUrl.value ? new URL(inviteUrl.value).pathname.split('/').pop() : null
+  if (!loanId.value || !token) return
+  isResending.value = true
+  try {
+    const result = await $fetch<{ deliveryStatus: LoanInviteDeliveryStatus }>(`/api/loans/${loanId.value}/invite-email`, { method: 'POST', body: { token } })
+    deliveryStatus.value = result.deliveryStatus
+    toast.add({ title: result.deliveryStatus === 'sent' ? 'Invitation email sent' : 'Email is unavailable', color: result.deliveryStatus === 'sent' ? 'success' : 'warning' })
+  } catch {
+    toast.add({ title: 'Could not resend email', description: 'Your share link remains available below.', color: 'error' })
+  } finally {
+    isResending.value = false
   }
 }
 
@@ -128,7 +154,7 @@ async function copyInvite(options: { showToast?: boolean } = {}) {
           variant="subtle"
           icon="i-lucide-link"
           title="A share link will be created"
-          description="Email is optional. After you save, Libroo copies a private link you can send however you like."
+          :description="canEmailInvite ? 'An invitation will be emailed after you save. A private copyable link will also be created.' : 'Email is optional. After you save, Libroo copies a private link you can send however you like.'"
         />
 
         <UFormField
@@ -145,8 +171,8 @@ async function copyInvite(options: { showToast?: boolean } = {}) {
         </UFormField>
 
         <UFormField
-          label="Email (optional)"
-          help="Only for your private reference."
+          :label="canEmailInvite ? 'Email (invitation will be sent)' : 'Email (optional)'"
+          :help="canEmailInvite ? 'Libroo will email this borrower an invitation link.' : 'Only for your private reference.'"
         >
           <UInput
             v-model="borrowerEmail"
@@ -175,8 +201,22 @@ async function copyInvite(options: { showToast?: boolean } = {}) {
           variant="subtle"
           icon="i-lucide-link"
           title="Share link copied"
-          :description="`Invite URL: ${inviteUrl}`"
         >
+          <template #description>
+            <div class="min-w-0 space-y-1">
+              <p>Invite URL:</p>
+              <button
+                type="button"
+                class="block w-full min-w-0 text-left"
+                @click="() => { void copyInvite() }"
+              >
+                <code
+                  data-testid="loan-invite-url"
+                  class="block break-all text-xs leading-relaxed"
+                >{{ inviteUrl }}</code>
+              </button>
+            </div>
+          </template>
           <template #actions>
             <UButton
               color="neutral"
@@ -185,6 +225,16 @@ async function copyInvite(options: { showToast?: boolean } = {}) {
               @click="() => { void copyInvite() }"
             >
               Copy link
+            </UButton>
+            <UButton
+              v-if="deliveryStatus === 'failed'"
+              color="warning"
+              variant="outline"
+              icon="i-lucide-send"
+              :loading="isResending"
+              @click="() => { void resendEmail() }"
+            >
+              Resend email
             </UButton>
           </template>
         </UAlert>

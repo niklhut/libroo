@@ -9,6 +9,7 @@ import termsMigration from '../../../../server/db/migrations/sqlite/0001_add_ter
 import locationRestrictMigration from '../../../../server/db/migrations/sqlite/0002_prevent_location_delete_cascade.sql?raw'
 import libraryStateMigration from '../../../../server/db/migrations/sqlite/0003_add_library_state.sql?raw'
 import previouslyOwnedMigration from '../../../../server/db/migrations/sqlite/0006_huge_tiger_shark.sql?raw'
+import inviteEmailMigration from '../../../../server/db/migrations/sqlite/0008_brave_saracen.sql?raw'
 import { account, session, signupInvites, user } from '../../../../server/db/schema'
 import { hashInviteToken, SignupInviteRepository, SignupInviteRepositoryLive } from '../../../../server/repositories/signup-invite.repository'
 import { DbService, type DbServiceInterface } from '../../../../server/services/db.service'
@@ -118,7 +119,7 @@ describe('SignupInviteRepository on D1', () => {
 })
 
 async function applyMigrations(database: D1Database) {
-  for (const migration of [initialMigration, termsMigration, locationRestrictMigration, libraryStateMigration, previouslyOwnedMigration]) {
+  for (const migration of [initialMigration, termsMigration, locationRestrictMigration, libraryStateMigration, previouslyOwnedMigration, inviteEmailMigration]) {
     for (const statement of migration.split('--> statement-breakpoint')) {
       const migrationStatement = statement.trim()
       if (migrationStatement) await database.prepare(migrationStatement).run()

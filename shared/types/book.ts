@@ -109,6 +109,7 @@ export interface BookDetails {
 }
 
 export type LoanStatus = 'active' | 'returned' | 'canceled'
+export type LoanInviteDeliveryStatus = 'not_requested' | 'unavailable' | 'sent' | 'failed'
 
 export interface ActiveLoanSummary {
   id: string
@@ -121,6 +122,7 @@ export interface ActiveLoanSummary {
 
 export interface OwnerLoan extends ActiveLoanSummary {
   userBookId: string
+  ownerDisplayName: string
   status: LoanStatus
   returnedAt: Date | string | null
   canceledAt: Date | string | null
@@ -130,6 +132,7 @@ export interface OwnerLoan extends ActiveLoanSummary {
     coverPath: string | null
   }
   inviteUrl: string | null
+  deliveryStatus: LoanInviteDeliveryStatus
 }
 
 export interface BorrowedBook {

@@ -32,7 +32,7 @@ describe.each<AtomicMode>(['d1-batch', 'selfhost-transaction'])('LendingReposito
     db = drizzle(client)
     await client.execute('PRAGMA foreign_keys = ON')
 
-    for (const migrationFile of ['0000_initial_beta.sql', '0001_add_terms_acceptance.sql', '0002_prevent_location_delete_cascade.sql', '0003_add_library_state.sql', '0006_huge_tiger_shark.sql']) {
+    for (const migrationFile of ['0000_initial_beta.sql', '0001_add_terms_acceptance.sql', '0002_prevent_location_delete_cascade.sql', '0003_add_library_state.sql', '0006_huge_tiger_shark.sql', '0008_brave_saracen.sql']) {
       const migrationPath = fileURLToPath(
         new URL(`../../../../server/db/migrations/sqlite/${migrationFile}`, import.meta.url)
       )
@@ -70,6 +70,22 @@ describe.each<AtomicMode>(['d1-batch', 'selfhost-transaction'])('LendingReposito
     expect(stored.status).toBe('returned')
     expect(stored.returnedAt).toBeInstanceOf(Date)
     expect(stored.acceptTokenHash).toBeNull()
+  })
+
+  it('updates invite delivery only for the active loan owner', async () => {
+    await seedUserBook(db, 'ub-delivery', 'owner-1', 'book-1')
+    await seedLoan(db, { id: 'loan-delivery', userBookId: 'ub-delivery', ownerUserId: 'owner-1', status: 'active', borrowerEmail: 'borrower@example.com' })
+
+    const updated = await runRepository(db, mode, Effect.flatMap(LendingRepository, repository =>
+      repository.updateInviteEmailDelivery('loan-delivery', 'owner-1', 'sent', new Date('2026-06-25T10:00:00.000Z'))
+    ))
+    const invite = await runRepository(db, mode, Effect.flatMap(LendingRepository, repository =>
+      repository.getActiveLoanInviteForOwner('loan-delivery', 'owner-1')
+    ))
+
+    expect(updated.deliveryStatus).toBe('sent')
+    expect(invite.borrowerEmail).toBe('borrower@example.com')
+    expect(invite.acceptTokenHash).toBe('token-loan-delivery')
   })
 
   it.each([
