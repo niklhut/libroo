@@ -219,7 +219,7 @@ export default defineNuxtConfig({
         ...nitroConfig.tasks,
         'audit:cleanup': {
           handler: './tasks/audit/cleanup.ts',
-          description: 'Delete expired admin and auth audit log entries.'
+          description: 'Delete expired audit entries and rate-limit counters.'
         },
         'books:repair-covers': {
           handler: './tasks/books/repair-covers.ts',

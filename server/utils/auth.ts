@@ -258,7 +258,8 @@ export const auth = betterAuth({
     : undefined,
   trustedOrigins: [getAuthUrl()],
   rateLimit: {
-    enabled: authRateLimitEnabled
+    enabled: authRateLimitEnabled,
+    storage: 'database'
   },
   advanced: {
     ipAddress: {

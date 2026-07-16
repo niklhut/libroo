@@ -172,7 +172,11 @@ Private self-hosted deployments may intentionally opt out by leaving `NUXT_PUBLI
 
 ### Client IP Handling And Rate Limiting
 
-Libroo uses the request client IP for Better Auth rate limiting. The default is safe: no self-hosted forwarding header is trusted unless the operator explicitly configures `NUXT_TRUSTED_IP_HEADERS`.
+Libroo uses the request client IP for Better Auth and ISBN rate limiting. Better Auth stores its counters in the shared database. ISBN lookup/add requests use one atomic database-backed fixed-window limiter on both Cloudflare and self-hosted runtimes; Cloudflare D1 coordinates across isolates.
+
+For a single self-host process, the local SQLite file needs no additional infrastructure. Multiple self-host instances must set `NUXT_DATABASE_URL` to the same shared/remote libSQL database (for example Turso) so limiter decisions coordinate. A separate local SQLite file per instance cannot provide a global limit.
+
+The default is safe: no self-hosted forwarding header is trusted unless the operator explicitly configures `NUXT_TRUSTED_IP_HEADERS`. If Libroo cannot resolve an ISBN caller IP, it uses a shared `unknown` bucket; it deliberately does not trust a caller-supplied `x-libroo-client-ip` header, since doing so would permit rate-limit evasion.
 
 Use the setting that matches the runtime topology:
 

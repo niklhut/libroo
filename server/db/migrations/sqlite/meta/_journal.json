@@ -64,6 +64,13 @@
       "when": 1783891569214,
       "tag": "0008_brave_saracen",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1784236372291,
+      "tag": "0009_redundant_black_bolt",
+      "breakpoints": true
     }
   ]
 }
