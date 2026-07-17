@@ -4,6 +4,11 @@ import { addBookTabs } from './selectors'
 
 export const fixtureIsbn = '9780385533225'
 export const fixtureIsbnTitle = 'Fixture Driven Development'
+export const bulkFixtureIsbns = [
+  '9780000000019', '9780000000026', '9780000000033', '9780000000040',
+  '9780000000057', '9780000000064', '9780000000071', '9780000000088',
+  '9780000000095', '9780000000101', '9780000000118', '9780000000125'
+]
 const manualCoverPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEklEQVQImWNwtjjlbHGKAUIBACF+BRVveqO2AAAAAElFTkSuQmCC', 'base64')
 
 export async function addFixtureIsbnBook(page: Page) {
@@ -31,6 +36,12 @@ export async function addManualBook(page: Page, title: string) {
   await expect(page).toHaveURL(/\/library\/[^/]+$/)
   await expect(page.getByRole('heading', { name: title })).toBeVisible()
   await expect(page.getByAltText(title)).toBeVisible()
+}
+
+export async function pasteBulkIsbns(page: Page, isbns: string[]) {
+  await addBookTabs(page).gotoBulk()
+  await page.getByLabel('Enter ISBNs').fill(isbns.join('\n'))
+  await page.getByRole('button', { name: 'Look Up All' }).click()
 }
 
 export async function currentDetailCoverPath(page: Page, title: string) {

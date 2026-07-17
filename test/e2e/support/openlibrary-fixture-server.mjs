@@ -2,6 +2,11 @@ import { createServer } from 'node:http'
 
 const port = Number(process.env.LIBROO_OPENLIBRARY_FIXTURE_PORT || 3011)
 const fixtureIsbn = '9780385533225'
+const bulkFixtureIsbns = [
+  '9780000000019', '9780000000026', '9780000000033', '9780000000040',
+  '9780000000057', '9780000000064', '9780000000071', '9780000000088',
+  '9780000000095', '9780000000101', '9780000000118', '9780000000125'
+]
 const cover = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600" viewBox="0 0 400 600">
 <rect width="400" height="600" fill="#0f766e"/>
 <rect x="34" y="34" width="332" height="532" fill="#f8fafc"/>
@@ -13,22 +18,20 @@ const cover = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="400" h
 <desc>${'deterministic cover fixture '.repeat(80)}</desc>
 </svg>`)
 
-const books = {
-  [fixtureIsbn]: {
-    title: 'Fixture Driven Development',
-    authors: [{ name: 'Ada Example' }],
-    publishers: [{ name: 'Libroo Test Press' }],
-    publish_date: '2026',
-    number_of_pages: 321,
-    cover: {
-      small: `/b/isbn/${fixtureIsbn}-S.jpg?default=false`,
-      medium: `/b/isbn/${fixtureIsbn}-M.jpg?default=false`,
-      large: `/b/isbn/${fixtureIsbn}-L.jpg?default=false`
-    },
-    key: '/books/OL-E2E-1M',
-    subjects: [{ name: 'Testing' }, { name: 'Libraries' }]
-  }
-}
+const books = Object.fromEntries([fixtureIsbn, ...bulkFixtureIsbns].map((isbn, index) => [isbn, {
+  title: index === 0 ? 'Fixture Driven Development' : `Bulk Fixture Book ${index}`,
+  authors: [{ name: 'Ada Example' }],
+  publishers: [{ name: 'Libroo Test Press' }],
+  publish_date: '2026',
+  number_of_pages: 321,
+  cover: {
+    small: `/b/isbn/${fixtureIsbn}-S.jpg?default=false`,
+    medium: `/b/isbn/${fixtureIsbn}-M.jpg?default=false`,
+    large: `/b/isbn/${fixtureIsbn}-L.jpg?default=false`
+  },
+  key: `/books/OL-E2E-${index + 1}M`,
+  subjects: [{ name: 'Testing' }, { name: 'Libraries' }]
+}]))
 
 const server = createServer((request, response) => {
   const url = new URL(request.url || '/', `http://${request.headers.host || '127.0.0.1'}`)
@@ -49,12 +52,14 @@ const server = createServer((request, response) => {
     return
   }
 
-  if (url.pathname === '/books/OL-E2E-1M.json') {
-    sendJson(response, { works: [{ key: '/works/OL-E2E-1W' }] })
+  const editionMatch = url.pathname.match(/^\/books\/OL-E2E-(\d+)M\.json$/)
+  if (editionMatch) {
+    sendJson(response, { works: [{ key: `/works/OL-E2E-${editionMatch[1]}W` }] })
     return
   }
 
-  if (url.pathname === '/works/OL-E2E-1W.json') {
+  const workMatch = url.pathname.match(/^\/works\/OL-E2E-(\d+)W\.json$/)
+  if (workMatch) {
     sendJson(response, {
       key: '/works/OL-E2E-1W',
       title: 'Fixture Driven Development',
@@ -64,11 +69,11 @@ const server = createServer((request, response) => {
     return
   }
 
-  const allowedCoverPaths = new Set([
-    `/b/isbn/${fixtureIsbn}-S.jpg`,
-    `/b/isbn/${fixtureIsbn}-M.jpg`,
-    `/b/isbn/${fixtureIsbn}-L.jpg`
-  ])
+  const allowedCoverPaths = new Set(Object.keys(books).flatMap(isbn => [
+    `/b/isbn/${isbn}-S.jpg`,
+    `/b/isbn/${isbn}-M.jpg`,
+    `/b/isbn/${isbn}-L.jpg`
+  ]))
   if (allowedCoverPaths.has(url.pathname)) {
     response.writeHead(200, {
       'content-type': 'image/svg+xml',

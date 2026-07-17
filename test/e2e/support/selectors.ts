@@ -14,6 +14,11 @@ export function addBookTabs(page: Page) {
       await page.goto('/library/add?tab=manual')
       await expect(page).toHaveURL(/\/library\/add\?tab=manual/)
       await expect(page.getByText('Manual Entry')).toBeVisible()
+    },
+    async gotoBulk() {
+      await page.goto('/library/add?tab=bulk')
+      await expect(page).toHaveURL(/\/library\/add\?tab=bulk/)
+      await expect(page.getByText('Bulk Import')).toBeVisible()
     }
   }
 }
