@@ -16,6 +16,7 @@ const liveLayerNames = [
   'SignupInviteRepositoryLive',
   'HealthRepositoryLive',
   'LegalRepositoryLive',
+  'RateLimitRepositoryLive',
   'BookServiceLive',
   'LendingServiceLive',
   'AdminServiceLive',
@@ -28,11 +29,20 @@ const liveLayerNames = [
   'AuthRequestServiceLive',
   'EmailCapabilityServiceLive',
   'HealthServiceLive',
-  'LegalServiceLive'
+  'LegalServiceLive',
+  'RateLimitServiceLive'
 ] as const
 
 vi.mock('../../../../server/runtime/active', () => ({
   RuntimeInfrastructureLive: Layer.empty
+}))
+
+vi.mock('../../../../server/repositories/rate-limit.repository', () => ({
+  RateLimitRepositoryLive: Layer.empty
+}))
+
+vi.mock('../../../../server/services/rate-limit.service', () => ({
+  RateLimitServiceLive: Layer.empty
 }))
 
 describe('handleError', () => {

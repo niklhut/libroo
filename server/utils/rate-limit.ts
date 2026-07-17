@@ -1,3 +1,12 @@
+/**
+ * An authoritative rate-limit decision. `consume` MUST be atomic: implementations
+ * must never decompose a decision into separate read and write calls.
+ */
+export interface RateLimiter {
+  consume(key: string, maxRequests: number, windowSeconds: number): Promise<RateLimitResult>
+}
+
+/** @deprecated Pure-logic test scaffolding only; never use for request enforcement. */
 export interface RateLimitStore {
   increment(key: string, windowMs: number, now: number): { count: number, resetAt: number }
 }
@@ -7,7 +16,7 @@ interface Counter {
   resetAt: number
 }
 
-/** Best-effort, process-local fixed-window counter. */
+/** @deprecated Best-effort test scaffolding only; never use for request enforcement. */
 export class InMemoryFixedWindowRateLimitStore implements RateLimitStore {
   private readonly counters = new Map<string, Counter>()
 

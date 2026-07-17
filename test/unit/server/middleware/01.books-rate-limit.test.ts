@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
+  runEffect: vi.fn(),
   config: { enabled: true, maxRequests: 2, windowSeconds: 60 }
 }))
 
@@ -14,8 +15,21 @@ vi.mock('h3', () => ({
 
 vi.mock('../../../../server/utils/auth', () => ({
   LIBROO_CLIENT_IP_HEADER: 'x-libroo-client-ip',
-  getTrustedIpHeaders: () => ['x-libroo-client-ip'],
+  getTrustedIpHeaders: () => ['x-real-ip', 'x-libroo-client-ip'],
   auth: { api: { getSession: mocks.getSession } }
+}))
+
+vi.mock('../../../../server/utils/effect', () => ({
+  runEffect: mocks.runEffect
+}))
+
+vi.mock('../../../../server/services/db.service', () => ({ DbService: Symbol('DbService') }))
+
+vi.mock('../../../../server/utils/database-rate-limiter', () => ({
+  DatabaseRateLimiter: class {
+    consume() { return mocks.runEffect() }
+  },
+  redactKey: (key: string) => key
 }))
 
 vi.mock('../../../../server/utils/books-config', () => ({
@@ -26,6 +40,8 @@ describe('server/middleware/01.books-rate-limit', () => {
   beforeEach(() => {
     mocks.getSession.mockReset()
     mocks.getSession.mockResolvedValue(null)
+    mocks.runEffect.mockReset()
+    mocks.runEffect.mockResolvedValue({ allowed: true, retryAfterSeconds: 60 })
     mocks.config = { enabled: true, maxRequests: 2, windowSeconds: 60 }
   })
 
@@ -42,6 +58,10 @@ describe('server/middleware/01.books-rate-limit', () => {
     const middleware = await import('../../../../server/middleware/01.books-rate-limit')
     const event = makeEvent('/api/books/lookup', 'POST', 'over-limit')
 
+    mocks.runEffect
+      .mockResolvedValueOnce({ allowed: true, retryAfterSeconds: 60 })
+      .mockResolvedValueOnce({ allowed: true, retryAfterSeconds: 60 })
+      .mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 60 })
     await expect(middleware.default(event as never)).resolves.toBeUndefined()
     await expect(middleware.default(event as never)).resolves.toBeUndefined()
     await expect(middleware.default(event as never)).rejects.toMatchObject({
@@ -71,9 +91,10 @@ describe('server/middleware/01.books-rate-limit', () => {
     const middleware = await import('../../../../server/middleware/01.books-rate-limit')
     const event = makeEvent('/api/books/lookup', 'POST', 'shared-ip')
 
-    await expect(middleware.default(event as never)).resolves.toBeUndefined()
-    await expect(middleware.default(event as never)).resolves.toBeUndefined()
-    await expect(middleware.default(event as never)).rejects.toMatchObject({ statusCode: 429 })
+    await middleware.default(event as never)
+    await middleware.default(event as never)
+    await middleware.default(event as never)
+    expect(mocks.runEffect).toHaveBeenCalledTimes(3)
   })
 
   it('falls back to the client IP when session lookup fails', async () => {
@@ -82,12 +103,27 @@ describe('server/middleware/01.books-rate-limit', () => {
     const middleware = await import('../../../../server/middleware/01.books-rate-limit')
     const event = makeEvent('/api/books/lookup', 'POST', 'session-fallback')
 
-    await expect(middleware.default(event as never)).resolves.toBeUndefined()
-    await expect(middleware.default(event as never)).rejects.toMatchObject({ statusCode: 429 })
+    await middleware.default(event as never)
+    await middleware.default(event as never)
+    expect(mocks.runEffect).toHaveBeenCalledTimes(2)
+  })
+
+  it('uses trusted headers but never trusts x-libroo-client-ip directly', async () => {
+    const middleware = await import('../../../../server/middleware/01.books-rate-limit')
+    const event = makeEvent('/api/books', 'POST', '127.0.0.1')
+    event.headers.set('x-real-ip', '198.51.100.4')
+    expect(middleware.getBooksRateLimitKey(event as never)).toBe('ip:198.51.100.4')
+
+    event.headers.delete('x-real-ip')
+    expect(middleware.getBooksRateLimitKey(event as never)).toBe('ip:127.0.0.1')
+
+    const unknownEvent = makeEvent('/api/books', 'POST', '')
+    unknownEvent.headers.set('x-libroo-client-ip', '203.0.113.9')
+    expect(middleware.getBooksRateLimitKey(unknownEvent as never)).toBe('ip:unknown')
   })
 })
 
-function makeEvent(path: string, method = 'POST', ip = '127.0.0.1') {
+function makeEvent(path: string, method = 'POST', ip: string | undefined = '127.0.0.1') {
   return {
     path,
     method,

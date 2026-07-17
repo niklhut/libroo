@@ -15,7 +15,8 @@ const {
   scannedBooks,
   targetLibraryState,
   isAddingBooks,
-  counts
+  counts,
+  bulkLookupProgress
 } = storeToRefs(scannerStore)
 
 const {
@@ -222,6 +223,7 @@ defineExpose({ reset })
         :scanned-books="scannedBooks"
         :is-adding-books="isAddingBooks"
         :counts="counts"
+        :lookup-progress="bulkLookupProgress"
         :target-library-state="targetLibraryState"
         @remove="removeIsbn"
         @retry="retryIsbn"

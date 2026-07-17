@@ -57,6 +57,15 @@ export const verification = sqliteTable('verification', {
   updatedAt: integer('updated_at', { mode: 'timestamp' })
 })
 
+// Better Auth's database-backed rate limiter.
+export const rateLimit = sqliteTable('rateLimit', {
+  id: text('id').primaryKey(),
+  key: text('key').notNull(),
+  count: integer('count').notNull(),
+  // Better Auth stores this as an epoch-millisecond number, not a Date.
+  lastRequest: integer('lastRequest', { mode: 'number' }).notNull()
+})
+
 export const signupInvites = sqliteTable('signup_invites', {
   id: text('id').primaryKey(),
   tokenHash: text('token_hash').notNull(),

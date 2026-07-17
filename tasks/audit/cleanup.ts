@@ -1,22 +1,30 @@
 import { Effect } from 'effect'
 import { cleanupExpiredAuditEntries } from '../../server/services/audit.service'
+import { cleanupExpiredRateLimitCounters } from '../../server/services/rate-limit.service'
+import { getBooksRateLimitConfig } from '../../server/utils/books-config'
 import { runEffect } from '../../server/utils/effect'
 
 export default defineTask({
   meta: {
     name: 'audit:cleanup',
-    description: 'Delete expired admin and auth audit log entries.'
+    description: 'Delete expired audit entries and rate-limit counters.'
   },
   run: async () => {
     const config = useRuntimeConfig()
+    const booksRateLimit = getBooksRateLimitConfig()
     const result = await runEffect(Effect.gen(function* () {
-      return yield* cleanupExpiredAuditEntries({
+      const audit = yield* cleanupExpiredAuditEntries({
         authRetentionDays: config.authAuditRetentionDays,
         adminRetentionDays: config.adminAuditRetentionDays
       })
+      const rateLimits = yield* cleanupExpiredRateLimitCounters({
+        windowSeconds: booksRateLimit.windowSeconds
+      })
+
+      return { audit, rateLimits }
     }))
 
-    console.info('Audit cleanup completed', result)
+    console.info('Expired data cleanup completed', result)
     return { result }
   }
 })

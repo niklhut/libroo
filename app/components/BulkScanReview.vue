@@ -13,6 +13,13 @@ defineProps<{
     alreadyOwned: number
     errors: number
   }
+  lookupProgress: {
+    active: boolean
+    total: number
+    completed: number
+    inProgress: number
+    queued: number
+  }
   targetLibraryState?: 'owned' | 'wishlisted'
 }>()
 
@@ -69,6 +76,36 @@ function getStatusText(status: ScannedBook['status']) {
 
 <template>
   <div class="bulk-scan-review">
+    <div
+      v-if="lookupProgress.total > 0"
+      class="rounded-lg border border-primary/20 bg-primary/5 p-3 mb-4 space-y-2"
+      role="status"
+      aria-live="polite"
+    >
+      <div class="flex items-center gap-2 text-sm">
+        <UIcon
+          :name="lookupProgress.active ? 'i-lucide-loader-2' : 'i-lucide-check-circle-2'"
+          :class="lookupProgress.active ? 'animate-spin text-primary' : 'text-success'"
+        />
+        <span class="font-medium">
+          {{ lookupProgress.active ? 'Looking up' : 'Looked up' }} {{ lookupProgress.completed }} of {{ lookupProgress.total }} ISBNs
+        </span>
+      </div>
+      <UProgress
+        :model-value="lookupProgress.completed"
+        :max="lookupProgress.total"
+        color="primary"
+      />
+      <p class="text-sm text-muted">
+        <template v-if="lookupProgress.active">
+          {{ lookupProgress.inProgress }} in progress · {{ lookupProgress.queued }} queued
+        </template>
+        <template v-else>
+          All ISBNs looked up
+        </template>
+      </p>
+    </div>
+
     <!-- Header with stats and actions -->
     <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
       <div class="flex items-center gap-2 flex-wrap">
