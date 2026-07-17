@@ -415,14 +415,6 @@ function getStatusText(status: ScannedBook['status']) {
       <p>No books scanned yet</p>
     </div>
 
-    <!-- Reserves exactly one compact action-row so the final result can scroll above it. -->
-    <div
-      v-if="action.visible"
-      aria-hidden="true"
-      class="h-[4.5rem]"
-      :style="{ height: 'calc(4.5rem + env(safe-area-inset-bottom))' }"
-    />
-
     <nav
       v-if="action.visible"
       aria-label="Add selected books"
