@@ -14,6 +14,7 @@ defineProps<{
     errors: number
   }
   lookupProgress: {
+    active: boolean
     total: number
     completed: number
     inProgress: number
@@ -76,7 +77,7 @@ function getStatusText(status: ScannedBook['status']) {
 <template>
   <div class="bulk-scan-review">
     <div
-      v-if="lookupProgress.total > 0"
+      v-if="lookupProgress.active"
       class="rounded-lg border border-primary/20 bg-primary/5 p-3 mb-4 space-y-2"
       role="status"
       aria-live="polite"

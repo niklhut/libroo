@@ -149,6 +149,7 @@ describe('useIsbnScannerStore', () => {
     await nextTick()
 
     expect(store.bulkLookupProgress).toEqual({
+      active: true,
       total: BULK_LOOKUP_CONCURRENCY + 3,
       completed: 0,
       inProgress: BULK_LOOKUP_CONCURRENCY,
@@ -162,7 +163,7 @@ describe('useIsbnScannerStore', () => {
     await bulkLookup
 
     expect(maxInFlight).toBe(BULK_LOOKUP_CONCURRENCY)
-    expect(store.bulkLookupProgress).toEqual({ total: BULK_LOOKUP_CONCURRENCY + 3, completed: BULK_LOOKUP_CONCURRENCY + 3, inProgress: 0, queued: 0 })
+    expect(store.bulkLookupProgress).toEqual({ active: false, total: BULK_LOOKUP_CONCURRENCY + 3, completed: BULK_LOOKUP_CONCURRENCY + 3, inProgress: 0, queued: 0 })
   })
 
   it('does not add queued bulk ISBNs after scanner state is cleared', async () => {

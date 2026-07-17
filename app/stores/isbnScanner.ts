@@ -282,6 +282,7 @@ export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
   }))
 
   const bulkLookupProgress = computed(() => ({
+    active: isBulkLookingUp.value,
     total: bulkLookupTotal.value,
     completed: bulkLookupCompleted.value,
     inProgress: bulkLookupStarted.value - bulkLookupCompleted.value,
