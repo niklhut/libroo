@@ -26,6 +26,9 @@ export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
 
   const scannedBooks = ref<ScannedBook[]>([])
   const isBulkLookingUp = ref(false)
+  const bulkLookupTotal = ref(0)
+  const bulkLookupStarted = ref(0)
+  const bulkLookupCompleted = ref(0)
   const targetLibraryState = ref<AddLibraryState>('owned')
   let resetVersion = 0
 
@@ -146,9 +149,17 @@ export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
 
     const requestVersion = resetVersion
     isBulkLookingUp.value = true
+    bulkLookupTotal.value = inputs.length
+    bulkLookupStarted.value = 0
+    bulkLookupCompleted.value = 0
 
     try {
-      await withBoundedConcurrency(inputs, BULK_LOOKUP_CONCURRENCY, isbn => addIsbn(isbn, requestVersion))
+      await withBoundedConcurrency(inputs, BULK_LOOKUP_CONCURRENCY, async (isbn) => {
+        if (requestVersion !== resetVersion) return
+        bulkLookupStarted.value += 1
+        await addIsbn(isbn, requestVersion)
+        if (requestVersion === resetVersion) bulkLookupCompleted.value += 1
+      })
     } finally {
       if (requestVersion === resetVersion) isBulkLookingUp.value = false
     }
@@ -253,6 +264,9 @@ export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
     resetVersion += 1
     scannedBooks.value = []
     isBulkLookingUp.value = false
+    bulkLookupTotal.value = 0
+    bulkLookupStarted.value = 0
+    bulkLookupCompleted.value = 0
     targetLibraryState.value = 'owned'
     isbnLookupStore.reset()
   }
@@ -267,10 +281,18 @@ export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
     errors: scannedBooks.value.filter(b => b.status === 'error').length
   }))
 
+  const bulkLookupProgress = computed(() => ({
+    total: bulkLookupTotal.value,
+    completed: bulkLookupCompleted.value,
+    inProgress: bulkLookupStarted.value - bulkLookupCompleted.value,
+    queued: bulkLookupTotal.value - bulkLookupStarted.value
+  }))
+
   return {
     scannedBooks,
     targetLibraryState,
     isBulkLookingUp,
+    bulkLookupProgress,
     isLookingUp,
     isAddingBooks,
     counts,

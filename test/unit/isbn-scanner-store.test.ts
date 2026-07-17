@@ -148,6 +148,13 @@ describe('useIsbnScannerStore', () => {
     const bulkLookup = store.addMultipleIsbns(Array.from({ length: BULK_LOOKUP_CONCURRENCY + 3 }, (_, index) => validIsbn13(index + 1)).join('\n'))
     await nextTick()
 
+    expect(store.bulkLookupProgress).toEqual({
+      total: BULK_LOOKUP_CONCURRENCY + 3,
+      completed: 0,
+      inProgress: BULK_LOOKUP_CONCURRENCY,
+      queued: 3
+    })
+
     while (store.isBulkLookingUp) {
       lookups.shift()?.resolve({ found: true, isbn: '', title: '', author: '' })
       await new Promise(resolve => setTimeout(resolve, 0))
@@ -155,6 +162,7 @@ describe('useIsbnScannerStore', () => {
     await bulkLookup
 
     expect(maxInFlight).toBe(BULK_LOOKUP_CONCURRENCY)
+    expect(store.bulkLookupProgress).toEqual({ total: BULK_LOOKUP_CONCURRENCY + 3, completed: BULK_LOOKUP_CONCURRENCY + 3, inProgress: 0, queued: 0 })
   })
 
   it('does not add queued bulk ISBNs after scanner state is cleared', async () => {
