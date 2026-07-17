@@ -77,17 +77,19 @@ function getStatusText(status: ScannedBook['status']) {
 <template>
   <div class="bulk-scan-review">
     <div
-      v-if="lookupProgress.active"
+      v-if="lookupProgress.total > 0"
       class="rounded-lg border border-primary/20 bg-primary/5 p-3 mb-4 space-y-2"
       role="status"
       aria-live="polite"
     >
       <div class="flex items-center gap-2 text-sm">
         <UIcon
-          name="i-lucide-loader-2"
-          class="animate-spin text-primary"
+          :name="lookupProgress.active ? 'i-lucide-loader-2' : 'i-lucide-check-circle-2'"
+          :class="lookupProgress.active ? 'animate-spin text-primary' : 'text-success'"
         />
-        <span class="font-medium">Looking up {{ lookupProgress.completed }} of {{ lookupProgress.total }} ISBNs</span>
+        <span class="font-medium">
+          {{ lookupProgress.active ? 'Looking up' : 'Looked up' }} {{ lookupProgress.completed }} of {{ lookupProgress.total }} ISBNs
+        </span>
       </div>
       <UProgress
         :model-value="lookupProgress.completed"
@@ -95,7 +97,12 @@ function getStatusText(status: ScannedBook['status']) {
         color="primary"
       />
       <p class="text-sm text-muted">
-        {{ lookupProgress.inProgress }} in progress · {{ lookupProgress.queued }} queued
+        <template v-if="lookupProgress.active">
+          {{ lookupProgress.inProgress }} in progress · {{ lookupProgress.queued }} queued
+        </template>
+        <template v-else>
+          All ISBNs looked up
+        </template>
       </p>
     </div>
 
