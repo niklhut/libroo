@@ -23,11 +23,15 @@ describe('getBulkScanReviewAction', () => {
     }).label).toBe('Add 3 Books to Wishlist')
   })
 
-  it('reflects pending lookups and additions without hiding a valid action', () => {
+  it('disables adding while lookups or an add request are in progress', () => {
     expect(getBulkScanReviewAction({ selected: 1, loading: 2, isAdding: true })).toMatchObject({
       visible: true,
       hasPendingLookups: true,
+      isDisabled: true,
+      buttonLabel: 'Looking up 2 Books…',
       isAdding: true
     })
+
+    expect(getBulkScanReviewAction({ selected: 1, loading: 0, isAdding: false }).isDisabled).toBe(false)
   })
 })

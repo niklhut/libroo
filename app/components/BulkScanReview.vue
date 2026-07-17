@@ -415,12 +415,12 @@ function getStatusText(status: ScannedBook['status']) {
       <p>No books scanned yet</p>
     </div>
 
-    <!-- Reserves room so the final result is never obscured by the fixed action bar. -->
+    <!-- Reserves exactly one compact action-row so the final result can scroll above it. -->
     <div
       v-if="action.visible"
       aria-hidden="true"
-      class="h-24"
-      :style="{ height: 'calc(6rem + env(safe-area-inset-bottom))' }"
+      class="h-[4.5rem]"
+      :style="{ height: 'calc(4.5rem + env(safe-area-inset-bottom))' }"
     />
 
     <nav
@@ -430,21 +430,22 @@ function getStatusText(status: ScannedBook['status']) {
       :style="{ paddingBottom: 'env(safe-area-inset-bottom)' }"
     >
       <div class="mx-auto w-full max-w-xl px-4 py-3 sm:px-6">
-        <p
+        <span
           role="status"
           aria-live="polite"
-          class="mb-2 text-sm text-muted"
+          class="sr-only"
         >
-          {{ action.label }}<span v-if="action.hasPendingLookups"> · More books are still being looked up</span>
-        </p>
+          {{ action.statusMessage }}
+        </span>
         <UButton
           block
           size="lg"
           :icon="action.isAdding ? undefined : 'i-lucide-plus'"
           :loading="action.isAdding"
+          :disabled="action.isDisabled"
           @click="$emit('addSelected')"
         >
-          {{ action.label }}
+          {{ action.buttonLabel }}
         </UButton>
       </div>
     </nav>
