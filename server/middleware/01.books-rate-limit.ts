@@ -15,9 +15,6 @@ export function shouldEnforceRateLimit(event: { method?: string, path?: string }
 export function getBooksRateLimitKey(event: Parameters<typeof getRequestIP>[0], userId?: string) {
   if (userId) return `user:${userId}`
 
-  const resolvedIp = getRequestIP(event)
-  if (resolvedIp) return `ip:${resolvedIp}`
-
   for (const header of getTrustedIpHeaders()) {
     // This header is an internal Better Auth hand-off, not a client-IP source.
     // Trusting it here would let a caller forge a distinct ISBN limit bucket.
@@ -25,6 +22,9 @@ export function getBooksRateLimitKey(event: Parameters<typeof getRequestIP>[0], 
     const value = event.headers.get(header)?.split(',')[0]?.trim()
     if (value) return `ip:${value}`
   }
+
+  const resolvedIp = getRequestIP(event)
+  if (resolvedIp) return `ip:${resolvedIp}`
 
   // Do not trust client-controlled headers when no runtime/trusted IP is known.
   // A shared unknown bucket fails safely rather than allowing easy evasion.

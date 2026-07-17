@@ -110,13 +110,16 @@ describe('server/middleware/01.books-rate-limit', () => {
 
   it('uses trusted headers but never trusts x-libroo-client-ip directly', async () => {
     const middleware = await import('../../../../server/middleware/01.books-rate-limit')
-    const event = makeEvent('/api/books', 'POST', '')
+    const event = makeEvent('/api/books', 'POST', '127.0.0.1')
     event.headers.set('x-real-ip', '198.51.100.4')
     expect(middleware.getBooksRateLimitKey(event as never)).toBe('ip:198.51.100.4')
 
     event.headers.delete('x-real-ip')
-    event.headers.set('x-libroo-client-ip', '203.0.113.9')
-    expect(middleware.getBooksRateLimitKey(event as never)).toBe('ip:unknown')
+    expect(middleware.getBooksRateLimitKey(event as never)).toBe('ip:127.0.0.1')
+
+    const unknownEvent = makeEvent('/api/books', 'POST', '')
+    unknownEvent.headers.set('x-libroo-client-ip', '203.0.113.9')
+    expect(middleware.getBooksRateLimitKey(unknownEvent as never)).toBe('ip:unknown')
   })
 })
 

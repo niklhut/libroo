@@ -1,6 +1,10 @@
 import { Cause, Effect, Exit, Layer, pipe } from 'effect'
 import type * as HttpClient from '@effect/platform/HttpClient'
 import { RuntimeInfrastructureLive } from '../runtime/active'
+import { RateLimitRepositoryLive } from '../repositories/rate-limit.repository'
+import type { RateLimitRepository } from '../repositories/rate-limit.repository'
+import { RateLimitServiceLive } from '../services/rate-limit.service'
+import type { RateLimitService } from '../services/rate-limit.service'
 import type { EmailService } from '../runtime/email.core'
 import { StructuredLoggerLive } from './logger'
 
