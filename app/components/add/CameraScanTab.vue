@@ -105,6 +105,8 @@ function reset() {
   clearAll()
 }
 
+onUnmounted(reset)
+
 defineExpose({ reset })
 </script>
 

@@ -19,6 +19,7 @@ useHead({
     { rel: 'manifest', href: '/site.webmanifest' }
   ],
   meta: [
+    { name: 'viewport', content: 'width=device-width, initial-scale=1, viewport-fit=cover' },
     { name: 'application-name', content: appName },
     { name: 'apple-mobile-web-app-title', content: appName },
     { name: 'theme-color', content: '#ffffff' }

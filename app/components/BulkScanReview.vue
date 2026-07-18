@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import type { ScannedBook } from '~/stores/isbnScanner'
+import { getBulkScanReviewAction } from '~/utils/bulkScanReviewAction'
 
-defineProps<{
+const props = defineProps<{
   scannedBooks: ScannedBook[]
   isAddingBooks: boolean
   counts: {
@@ -22,6 +23,13 @@ defineProps<{
   }
   targetLibraryState?: 'owned' | 'wishlisted'
 }>()
+
+const action = computed(() => getBulkScanReviewAction({
+  selected: props.counts.selected,
+  loading: props.counts.loading,
+  isAdding: props.isAddingBooks,
+  targetLibraryState: props.targetLibraryState
+}))
 
 defineEmits<{
   remove: [isbn: string]
@@ -407,20 +415,31 @@ function getStatusText(status: ScannedBook['status']) {
       <p>No books scanned yet</p>
     </div>
 
-    <!-- Add selected button -->
-    <div
-      v-if="counts.selected > 0"
-      class="mt-4 pt-4 border-t border-neutral-200 dark:border-neutral-800"
+    <nav
+      v-if="action.visible"
+      aria-label="Add selected books"
+      class="fixed inset-x-0 bottom-0 z-30 border-t border-default bg-default"
+      :style="{ paddingBottom: 'env(safe-area-inset-bottom)' }"
     >
-      <UButton
-        block
-        size="lg"
-        :icon="isAddingBooks ? undefined : 'i-lucide-plus'"
-        :loading="isAddingBooks"
-        @click="$emit('addSelected')"
-      >
-        Add {{ counts.selected }} Book{{ counts.selected > 1 ? 's' : '' }} to {{ targetLibraryState === 'wishlisted' ? 'Wishlist' : 'Library' }}
-      </UButton>
-    </div>
+      <div class="mx-auto w-full max-w-xl px-4 py-3 sm:px-6">
+        <span
+          role="status"
+          aria-live="polite"
+          class="sr-only"
+        >
+          {{ action.statusMessage }}
+        </span>
+        <UButton
+          block
+          size="lg"
+          :icon="action.isAdding ? undefined : 'i-lucide-plus'"
+          :loading="action.isAdding"
+          :disabled="action.isDisabled"
+          @click="$emit('addSelected')"
+        >
+          {{ action.buttonLabel }}
+        </UButton>
+      </div>
+    </nav>
   </div>
 </template>

@@ -1,9 +1,11 @@
 import type { Page } from '@playwright/test'
 import { expect } from '@playwright/test'
+import bulkFixtureIsbns from './fixtures/bulk-isbns.json' with { type: 'json' }
 import { addBookTabs } from './selectors'
 
 export const fixtureIsbn = '9780385533225'
 export const fixtureIsbnTitle = 'Fixture Driven Development'
+export { bulkFixtureIsbns }
 const manualCoverPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEklEQVQImWNwtjjlbHGKAUIBACF+BRVveqO2AAAAAElFTkSuQmCC', 'base64')
 
 export async function addFixtureIsbnBook(page: Page) {
@@ -31,6 +33,12 @@ export async function addManualBook(page: Page, title: string) {
   await expect(page).toHaveURL(/\/library\/[^/]+$/)
   await expect(page.getByRole('heading', { name: title })).toBeVisible()
   await expect(page.getByAltText(title)).toBeVisible()
+}
+
+export async function pasteBulkIsbns(page: Page, isbns: string[]) {
+  await addBookTabs(page).gotoBulk()
+  await page.getByLabel('Enter ISBNs').fill(isbns.join('\n'))
+  await page.getByRole('button', { name: 'Look Up All' }).click()
 }
 
 export async function currentDetailCoverPath(page: Page, title: string) {
