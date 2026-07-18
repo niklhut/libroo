@@ -3,6 +3,7 @@ import type { TableColumn, TableRow } from '@nuxt/ui/components/Table.vue'
 import type { SignupInvite, SignupInviteCreateResult, SignupInviteList } from '~~/shared/types/signup-invite'
 import { canShowInviteEmailInput } from '~~/shared/utils/email-capability-ui'
 import { booleanConfigValue } from '~~/shared/utils/runtime-config'
+import { formatAdminDateTime } from '~/utils/admin-date-format'
 
 usePageTitle('Admin Invites')
 
@@ -76,17 +77,6 @@ const columns: TableColumn<SignupInvite>[] = [
   { accessorKey: 'acceptedAt', header: 'Accepted' },
   { id: 'actions', header: '' }
 ]
-
-function formatDate(value: string | Date | null) {
-  if (!value) return 'Never'
-  return new Intl.DateTimeFormat(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit'
-  }).format(new Date(value))
-}
 
 function inviteStatusColor(inviteStatus: SignupInvite['status']) {
   if (inviteStatus === 'pending') return 'warning'
@@ -369,15 +359,15 @@ function pageQuery(page: number) {
           </template>
 
           <template #createdAt-cell="{ row }">
-            <span class="whitespace-nowrap">{{ formatDate(originalInvite(row).createdAt) }}</span>
+            <span class="whitespace-nowrap">{{ formatAdminDateTime(originalInvite(row).createdAt) }}</span>
           </template>
 
           <template #expiresAt-cell="{ row }">
-            <span class="whitespace-nowrap">{{ formatDate(originalInvite(row).expiresAt) }}</span>
+            <span class="whitespace-nowrap">{{ formatAdminDateTime(originalInvite(row).expiresAt) }}</span>
           </template>
 
           <template #acceptedAt-cell="{ row }">
-            <span class="whitespace-nowrap">{{ formatDate(originalInvite(row).acceptedAt) }}</span>
+            <span class="whitespace-nowrap">{{ formatAdminDateTime(originalInvite(row).acceptedAt) }}</span>
           </template>
 
           <template #actions-cell="{ row }">

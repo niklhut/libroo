@@ -86,10 +86,10 @@ export const AdminServiceLive = Layer.effect(
             catch: error => mapBetterAuthError(error)
           })
 
-          const lastActiveByUserId = yield* adminRepository.listLastActiveByUserIds(response.users.map(user => user.id))
+          const lastSessionActivityByUserId = yield* adminRepository.listLastSessionActivityByUserIds(response.users.map(user => user.id))
 
           return {
-            users: response.users.map(user => toAdminUser(user, lastActiveByUserId[user.id] ?? null)),
+            users: response.users.map(user => toAdminUser(user, lastSessionActivityByUserId[user.id] ?? null)),
             total: response.total,
             page,
             pageSize
@@ -142,7 +142,7 @@ function parsePositiveInteger(value: unknown, fallback: number) {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
 }
 
-function toAdminUser(user: BetterAuthAdminUser, lastActiveAt: Date | null): AdminUser {
+function toAdminUser(user: BetterAuthAdminUser, lastSessionActivityAt: Date | null): AdminUser {
   const isAdmin = roleIncludesAdmin(user.role)
 
   return {
@@ -151,7 +151,7 @@ function toAdminUser(user: BetterAuthAdminUser, lastActiveAt: Date | null): Admi
     email: user.email,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
-    lastActiveAt,
+    lastSessionActivityAt,
     role: isAdmin ? 'admin' : 'user',
     isAdmin,
     status: user.banned ? 'banned' : 'active',
