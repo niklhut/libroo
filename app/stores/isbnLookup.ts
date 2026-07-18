@@ -75,7 +75,9 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
       if (requestVersion === resetVersion) lookupError.value = message
       return { ok: false, message }
     } finally {
-      pendingLookups.value = Math.max(0, pendingLookups.value - 1)
+      if (requestVersion === resetVersion) {
+        pendingLookups.value = Math.max(0, pendingLookups.value - 1)
+      }
     }
   }
 
@@ -130,7 +132,9 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
 
       return requestVersion === resetVersion ? { items } : { items: [] }
     } finally {
-      pendingLookups.value = Math.max(0, pendingLookups.value - 1)
+      if (requestVersion === resetVersion) {
+        pendingLookups.value = Math.max(0, pendingLookups.value - 1)
+      }
     }
   }
 

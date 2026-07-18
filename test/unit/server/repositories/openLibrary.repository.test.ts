@@ -1,4 +1,4 @@
-import { Effect, Layer } from 'effect'
+import { Effect, Either, Layer } from 'effect'
 import * as HttpClient from '@effect/platform/HttpClient'
 import * as HttpClientResponse from '@effect/platform/HttpClientResponse'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -62,6 +62,35 @@ describe('OpenLibraryRepository details lookup', () => {
     expect(requestedUrls.every(url => url.includes('jscmd=details'))).toBe(true)
     expect(requestedUrls[1]).toContain('bibkeys=ISBN:9780306406157,ISBN:9780141439518')
     expect(requestedUrls.some(url => /\/books\/[^?]+\.json/.test(url))).toBe(false)
+  })
+
+  it('rejects non-success metadata responses before parsing their JSON body', async () => {
+    vi.stubGlobal('useRuntimeConfig', () => ({
+      openLibraryRequestTimeoutSeconds: 12,
+      openLibraryCoverTimeoutSeconds: 20,
+      openLibraryContactEmail: ''
+    }))
+    const httpClient = HttpClient.make(request => Effect.succeed(HttpClientResponse.fromWeb(
+      request,
+      new Response(JSON.stringify({ error: 'rate limited' }), { status: 429 })
+    )))
+
+    const result = await Effect.runPromise(Effect.flatMap(OpenLibraryRepository, repository =>
+      repository.lookupByISBNs(['9780306406157'])
+    ).pipe(
+      Effect.either,
+      Effect.provide(OpenLibraryRepositoryLive),
+      Effect.provide(Layer.succeed(DbService, { executeAtomic: vi.fn() } as never)),
+      Effect.provide(Layer.succeed(HttpClient.HttpClient, httpClient))
+    ))
+
+    expect(Either.isLeft(result)).toBe(true)
+    if (Either.isLeft(result)) {
+      expect(result.left).toMatchObject({
+        _tag: 'OpenLibraryApiError',
+        message: 'Open Library returned HTTP 429'
+      })
+    }
   })
 
   it('deduplicates work enrichment and merges its description and subjects', async () => {

@@ -166,7 +166,10 @@ export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
       if (requestVersion !== resetVersion) return true
 
       for (const item of response.items) {
-        const book = scannedBooks.value.find(candidate => candidate.isbn === item.normalizedIsbn)
+        const input = inputs[item.inputIndex]
+        const book = input === undefined
+          ? undefined
+          : scannedBooks.value.find(candidate => candidate.isbn === input)
         if (!book) continue
         if (item.status !== 'ok') {
           book.status = 'error'

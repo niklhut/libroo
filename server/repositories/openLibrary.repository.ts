@@ -144,7 +144,7 @@ function getOpenLibraryCoverTimeout() {
 
 function getOpenLibraryContactEmail() {
   const config = useRuntimeConfig()
-  const value = config.openLibraryContactEmail ?? process.env.NUXT_OPEN_LIBRARY_CONTACT_EMAIL
+  const value = config.openLibraryContactEmail || process.env.NUXT_OPEN_LIBRARY_CONTACT_EMAIL
   return typeof value === 'string' ? value.trim() : ''
 }
 
@@ -168,15 +168,26 @@ function extractOpenLibraryText(value: unknown): string | undefined {
 
 // Helper to make HTTP GET request with timeout and get JSON response
 const fetchJson = <T>(url: string, acquireSlot: Effect.Effect<void, OpenLibraryApiError>) =>
-  acquireSlot.pipe(
-    Effect.flatMap(() => HttpClient.get(url, { headers: getOpenLibraryHeaders() })),
-    Effect.timeout(getOpenLibraryTimeout()),
-    Effect.flatMap(response => response.json),
-    Effect.map(json => json as T),
-    Effect.mapError(error => new OpenLibraryApiError({
-      message: `HTTP request failed: ${HCError.isHttpClientError(error) ? error.message : String(error)}`
-    }))
-  )
+  Effect.gen(function* () {
+    yield* acquireSlot
+    const response = yield* HttpClient.get(url, { headers: getOpenLibraryHeaders() }).pipe(
+      Effect.timeout(getOpenLibraryTimeout()),
+      Effect.mapError(error => new OpenLibraryApiError({
+        message: `HTTP request failed: ${HCError.isHttpClientError(error) ? error.message : String(error)}`
+      }))
+    )
+    if (response.status < 200 || response.status >= 300) {
+      return yield* Effect.fail(new OpenLibraryApiError({
+        message: `Open Library returned HTTP ${response.status}`
+      }))
+    }
+    const json = yield* response.json.pipe(
+      Effect.mapError(error => new OpenLibraryApiError({
+        message: `HTTP request failed: ${HCError.isHttpClientError(error) ? error.message : String(error)}`
+      }))
+    )
+    return json as T
+  })
 
 // Live implementation
 export const OpenLibraryRepositoryLive = Layer.effect(
@@ -318,9 +329,14 @@ export const OpenLibraryRepositoryLive = Layer.effect(
           const coverUrl = `${getOpenLibraryCoversBase()}/b/isbn/${normalizedISBN}-${size}.jpg?default=false`
 
           // Fetch cover and read body in a single scoped operation
-          yield* acquireSlot.pipe(
-            Effect.catchAll(error => Effect.logWarning(error.message))
+          const acquired = yield* acquireSlot.pipe(
+            Effect.as(true),
+            Effect.catchAll(error =>
+              Effect.logWarning(error.message).pipe(Effect.as(false))
+            )
           )
+          if (!acquired) return null
+
           const imageBuffer = yield* HttpClient.get(coverUrl, { headers: getOpenLibraryHeaders() }).pipe(
             Effect.timeout(getOpenLibraryCoverTimeout()),
             Effect.flatMap((response) => {

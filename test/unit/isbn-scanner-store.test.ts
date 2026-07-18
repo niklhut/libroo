@@ -134,6 +134,35 @@ describe('useIsbnScannerStore', () => {
     expect(toastAdd).toHaveBeenCalledWith(expect.objectContaining({ title: 'Some ISBNs were skipped' }))
   })
 
+  it('maps a normalized bulk response to its original input index', async () => {
+    const input = '054792822x'
+    const normalizedIsbn = '054792822X'
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      items: [{
+        inputIndex: 0,
+        input,
+        normalizedIsbn,
+        status: 'ok',
+        result: { found: true, isbn: normalizedIsbn, title: 'The Hobbit', author: 'J.R.R. Tolkien' }
+      }]
+    })
+    ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
+
+    const store = useIsbnScannerStore()
+    const foundCount = computed(() => store.scannedBooks.filter(book => book.status === 'found').length)
+    expect(foundCount.value).toBe(0)
+    await store.addMultipleIsbns(input)
+
+    expect(foundCount.value).toBe(1)
+    expect(store.scannedBooks).toHaveLength(1)
+    expect(store.scannedBooks[0]).toMatchObject({
+      isbn: input,
+      status: 'found',
+      selected: true,
+      result: { isbn: normalizedIsbn, title: 'The Hobbit' }
+    })
+  })
+
   it('submits server-sized bulk lookups sequentially and reports batch progress', async () => {
     const lookups: Array<ReturnType<typeof deferred<{ items: Array<{ inputIndex: number, input: string, normalizedIsbn: string, status: 'ok', result: { found: true, isbn: string, title: string, author: string } }> }>>> = []
     let inFlight = 0
