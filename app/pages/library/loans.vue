@@ -11,6 +11,7 @@ const router = useRouter()
 const initialView = route.query.view === 'borrowed' ? 'borrowed' : 'loaned'
 const view = ref<LoansView>(initialView)
 const returningLoanId = ref<string | null>(null)
+const loanNoteRequestIds = new Map<string, number>()
 
 watch(
   () => route.query.view,
@@ -70,6 +71,23 @@ async function returnLoan(loan: OwnerLoan) {
     returningLoanId.value = null
   }
 }
+
+async function saveLoanNote(loan: OwnerLoan, note: string | null) {
+  const currentRequestId = (loanNoteRequestIds.get(loan.id) ?? 0) + 1
+  loanNoteRequestIds.set(loan.id, currentRequestId)
+  const previousNote = loan.note
+  loan.note = note
+  try {
+    await $fetch(`/api/loans/${loan.id}/note`, { method: 'PUT', body: { note } })
+    if (currentRequestId === loanNoteRequestIds.get(loan.id)) {
+      toast.add({ title: note ? 'Loan note saved' : 'Loan note removed', color: 'success' })
+    }
+  } catch (err: unknown) {
+    if (currentRequestId === loanNoteRequestIds.get(loan.id)) loan.note = previousNote
+    const message = (err as { data?: { message?: string } })?.data?.message ?? 'Unable to save loan note'
+    toast.add({ title: 'Could not save loan note', description: message, color: 'error' })
+  }
+}
 </script>
 
 <template>
@@ -127,6 +145,7 @@ async function returnLoan(loan: OwnerLoan) {
         :loans="ownerLoans"
         :returning-loan-id="returningLoanId"
         @return-loan="returnLoan"
+        @save-loan-note="saveLoanNote"
       />
 
       <BorrowedLoansSection

@@ -32,7 +32,7 @@ describe.each<AtomicMode>(['d1-batch', 'selfhost-transaction'])('LendingReposito
     db = drizzle(client)
     await client.execute('PRAGMA foreign_keys = ON')
 
-    for (const migrationFile of ['0000_initial_beta.sql', '0001_add_terms_acceptance.sql', '0002_prevent_location_delete_cascade.sql', '0003_add_library_state.sql', '0006_huge_tiger_shark.sql', '0008_brave_saracen.sql']) {
+    for (const migrationFile of ['0000_initial_beta.sql', '0001_add_terms_acceptance.sql', '0002_prevent_location_delete_cascade.sql', '0003_add_library_state.sql', '0006_huge_tiger_shark.sql', '0008_brave_saracen.sql', '0010_owner_private_loan_note.sql']) {
       const migrationPath = fileURLToPath(
         new URL(`../../../../server/db/migrations/sqlite/${migrationFile}`, import.meta.url)
       )
@@ -86,6 +86,33 @@ describe.each<AtomicMode>(['d1-batch', 'selfhost-transaction'])('LendingReposito
     expect(updated.deliveryStatus).toBe('sent')
     expect(invite.borrowerEmail).toBe('borrower@example.com')
     expect(invite.acceptTokenHash).toBe('token-loan-delivery')
+  })
+
+  it('updates an active owner loan note and keeps it out of borrowed results', async () => {
+    await seedUserBook(db, 'ub-note', 'owner-1', 'book-1')
+    await seedLoan(db, { id: 'loan-note', userBookId: 'ub-note', ownerUserId: 'owner-1', borrowerUserId: 'borrower-1', acceptedAt: baseTime, note: 'Initial private note' })
+
+    const updated = await runRepository(db, mode, Effect.flatMap(LendingRepository, repository =>
+      repository.updateLoanNote('loan-note', 'owner-1', 'Updated private note')
+    ))
+    const borrowed = await runRepository(db, mode, Effect.flatMap(LendingRepository, repository => repository.listBorrowedBooks('borrower-1')))
+
+    expect(updated.note).toBe('Updated private note')
+    expect((await getLoan(db, 'loan-note')).note).toBe('Updated private note')
+    expect(borrowed[0]).not.toHaveProperty('note')
+  })
+
+  it.each([
+    ['wrong owner', 'owner-2', 'active'],
+    ['non-active loan', 'owner-1', 'returned']
+  ] as const)('rejects updateLoanNote for %s', async (_label, ownerUserId, status) => {
+    await seedUserBook(db, `ub-note-${_label}`, 'owner-1', 'book-1')
+    await seedLoan(db, { id: `loan-note-${_label}`, userBookId: `ub-note-${_label}`, ownerUserId: 'owner-1', status })
+    const result = await runRepository(db, mode, Effect.either(Effect.flatMap(LendingRepository, repository =>
+      repository.updateLoanNote(`loan-note-${_label}`, ownerUserId, 'Private')
+    )))
+    expect(Either.isLeft(result)).toBe(true)
+    if (Either.isLeft(result)) expect(result.left).toBeInstanceOf(LoanNotFoundError)
   })
 
   it.each([
@@ -299,6 +326,7 @@ async function seedLoan(database: Database, input: Partial<typeof loans.$inferIn
     borrowerUserId: input.borrowerUserId ?? null,
     borrowerDisplayName: input.borrowerDisplayName ?? 'Borrower',
     borrowerEmail: input.borrowerEmail ?? 'borrower@example.com',
+    note: input.note ?? null,
     status: input.status ?? 'active',
     loanedAt: input.loanedAt ?? baseTime,
     dueAt: input.dueAt ?? null,

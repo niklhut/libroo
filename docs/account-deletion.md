@@ -46,7 +46,7 @@ Account deletion hard-deletes:
 - Better Auth user, account, and session records.
 - Pending verification records tied to the user's current or pending email address.
 - User-owned library records, including `user_books`, user book tags, notes, ratings, locations, reading state, and settings stored on the account.
-- Loans owned by the deleting user, including borrower names, borrower emails, invite tokens, and owner snapshots.
+- Loans owned by the deleting user, including borrower names, borrower emails, owner-private notes, invite tokens, and owner snapshots.
 - Borrowed-loan associations where the deleting user accepted another user's loan invite. The other user's loan can remain, but the deleting user's account link and accepted state are removed.
 - Signup invites created by the deleting user. Invites accepted by the deleting user are retained for the inviter only with the accepted-user reference cleared.
 - Manual book metadata rows created by the deleting user when no retained user library record still references the row.
@@ -67,7 +67,7 @@ The last active admin deletion guard is enforced in the repository using an atom
 
 When a lender deletes their account, Libroo deletes the lender's loan records. This removes borrower personal data supplied by that lender and avoids showing the deleted lender's identity to borrowers.
 
-When a borrower deletes their account, Libroo removes the account association from loans they accepted. The owner may retain their own lending record and borrower text they supplied, because that record belongs to the owner. The deleted borrower no longer sees borrowed books because their account and sessions are gone.
+When a borrower deletes their account, Libroo removes the account association from loans they accepted. The owner may retain their own lending record, including any owner-private loan note, and borrower text they supplied, because that record belongs to the owner. The deleted borrower no longer sees borrowed books because their account and sessions are gone.
 
 ## Manual Operator Requests
 

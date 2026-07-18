@@ -30,13 +30,14 @@ The `user_book_tags` table stores user-curated tags on a specific user library e
 
 ### Loans
 
-The `loans` table stores lending records for a user's physical copy. Each loan has a required owner user, required user-book record, nullable borrower user, required borrower display name, nullable borrower email, status, loan/due/return/cancel timestamps, book and owner snapshots, optional accept token hash, optional accepted timestamp, and creation/update timestamps.
+The `loans` table stores lending records for a user's physical copy. Each loan has a required owner user, required user-book record, nullable borrower user, required borrower display name, nullable borrower email, an optional owner-private note (up to 1,000 characters), status, loan/due/return/cancel timestamps, book and owner snapshots, optional accept token hash, optional accepted timestamp, and creation/update timestamps.
 
 Borrower privacy details:
 
 - `borrower_user_id` is nullable and uses `ON DELETE SET NULL`; it is set when a borrower accepts an invite with an account.
 - `borrower_display_name` is required and frozen as a snapshot at loan time. It may be an account user's display name or a third-party name supplied by the owner.
 - `borrower_email` is nullable. It is optional contact data supplied by the owner and is not included in library CSV export.
+- `note` is an owner-private note. It is never included in borrower, invitation-preview, or other public-facing loan responses.
 - `snapshot_book_title`, `snapshot_book_author`, `snapshot_cover_path`, and `snapshot_owner_name` preserve the lending context even if the live book/user data changes later.
 
 If a borrower deletes their account, Libroo anonymizes the borrowed-loan association by clearing `borrower_user_id` and `accepted_at`, while retaining the owner's loan row and owner-supplied borrower snapshot text. If an owner deletes their account, owned loan rows are deleted.

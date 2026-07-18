@@ -133,6 +133,7 @@ interface ApiRouteTestGlobals {
   removeBookFromLibrary: (...args: unknown[]) => unknown
   getBookDetails: (...args: unknown[]) => unknown
   updateNote: (...args: unknown[]) => unknown
+  updateLoanNote: (...args: unknown[]) => unknown
   updateLocation: (...args: unknown[]) => unknown
   updateRating: (...args: unknown[]) => unknown
   updateReadingProgress: (...args: unknown[]) => unknown
@@ -172,6 +173,7 @@ interface ApiRouteTestGlobals {
   bookBatchDeleteSchema: unknown
   bookTagAddSchema: unknown
   createLoanSchema: unknown
+  loanNoteSchema: unknown
   resendLoanInviteSchema: unknown
   manualBookCreateSchema: unknown
   locationCreateSchema: unknown
@@ -205,6 +207,7 @@ export const serviceMocks = {
   removeBookFromLibrary: vi.fn(),
   getBookDetails: vi.fn(),
   updateNote: vi.fn(),
+  updateLoanNote: vi.fn(),
   updateLocation: vi.fn(),
   updateRating: vi.fn(),
   updateReadingProgress: vi.fn(),
@@ -266,6 +269,7 @@ const originalGlobals = {
   removeBookFromLibrary: testGlobal.removeBookFromLibrary,
   getBookDetails: testGlobal.getBookDetails,
   updateNote: testGlobal.updateNote,
+  updateLoanNote: testGlobal.updateLoanNote,
   updateLocation: testGlobal.updateLocation,
   updateRating: testGlobal.updateRating,
   updateReadingProgress: testGlobal.updateReadingProgress,
@@ -305,6 +309,7 @@ const originalGlobals = {
   bookBatchDeleteSchema: testGlobal.bookBatchDeleteSchema,
   bookTagAddSchema: testGlobal.bookTagAddSchema,
   createLoanSchema: testGlobal.createLoanSchema,
+  loanNoteSchema: testGlobal.loanNoteSchema,
   resendLoanInviteSchema: testGlobal.resendLoanInviteSchema,
   manualBookCreateSchema: testGlobal.manualBookCreateSchema,
   locationCreateSchema: testGlobal.locationCreateSchema,
@@ -386,6 +391,7 @@ export async function setupApiRouteTest() {
   testGlobal.removeBookFromLibrary = (...args: unknown[]) => serviceMocks.removeBookFromLibrary(...args)
   testGlobal.getBookDetails = (...args: unknown[]) => serviceMocks.getBookDetails(...args)
   testGlobal.updateNote = (...args: unknown[]) => serviceMocks.updateNote(...args)
+  testGlobal.updateLoanNote = (...args: unknown[]) => serviceMocks.updateLoanNote(...args)
   testGlobal.updateLocation = (...args: unknown[]) => serviceMocks.updateLocation(...args)
   testGlobal.updateRating = (...args: unknown[]) => serviceMocks.updateRating(...args)
   testGlobal.updateReadingProgress = (...args: unknown[]) => serviceMocks.updateReadingProgress(...args)
@@ -427,6 +433,7 @@ export async function setupApiRouteTest() {
   testGlobal.bookBatchDeleteSchema = schemas.bookBatchDeleteSchema
   testGlobal.bookTagAddSchema = schemas.bookTagAddSchema
   testGlobal.createLoanSchema = schemas.createLoanSchema
+  testGlobal.loanNoteSchema = schemas.loanNoteSchema
   testGlobal.resendLoanInviteSchema = schemas.resendLoanInviteSchema
   testGlobal.manualBookCreateSchema = schemas.manualBookCreateSchema
   testGlobal.locationCreateSchema = schemas.locationCreateSchema

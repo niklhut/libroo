@@ -171,6 +171,7 @@ export const loans = sqliteTable('loans', {
   borrowerUserId: text('borrower_user_id').references(() => user.id, { onDelete: 'set null' }),
   borrowerDisplayName: text('borrower_display_name').notNull(),
   borrowerEmail: text('borrower_email'),
+  note: text('note'), // Private owner note
   inviteEmailStatus: text('invite_email_status', { enum: ['pending', 'sent', 'failed'] }),
   inviteEmailLastAttemptAt: integer('invite_email_last_attempt_at', { mode: 'timestamp' }),
   status: text('status', { enum: ['active', 'returned', 'canceled'] }).notNull().default('active'),

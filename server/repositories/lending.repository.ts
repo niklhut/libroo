@@ -26,6 +26,7 @@ export interface LoanCreateInput {
   ownerUserId: string
   borrowerDisplayName: string
   borrowerEmail: string | null
+  note: string | null
   dueAt: Date | null
   acceptTokenHash: string
   inviteEmailStatus: 'pending' | 'sent' | 'failed' | null
@@ -58,6 +59,7 @@ export interface LendingRepositoryInterface {
   createLoan: (input: LoanCreateInput) => Effect.Effect<OwnerLoan, BookNotFoundError | BookNotOwnedError | ActiveLoanExistsError | DatabaseError, DbService>
   getActiveLoanInviteForOwner: (loanId: string, ownerUserId: string) => Effect.Effect<OwnerActiveLoanInvite, LoanNotFoundError | DatabaseError, DbService>
   updateInviteEmailDelivery: (loanId: string, ownerUserId: string, status: 'pending' | 'sent' | 'failed' | null, lastAttemptAt: Date | null) => Effect.Effect<OwnerLoan, LoanNotFoundError | DatabaseError, DbService>
+  updateLoanNote: (loanId: string, ownerUserId: string, note: string | null) => Effect.Effect<OwnerLoan, LoanNotFoundError | DatabaseError, DbService>
   getActiveLoanForBook: (userBookId: string, ownerUserId: string) => Effect.Effect<OwnerLoan | null, DatabaseError, DbService>
   returnLoan: (loanId: string, ownerUserId: string) => Effect.Effect<OwnerLoan, LoanNotFoundError | DatabaseError, DbService>
   cancelLoan: (loanId: string, ownerUserId: string) => Effect.Effect<OwnerLoan, LoanNotFoundError | DatabaseError, DbService>
@@ -144,6 +146,7 @@ export const LendingRepositoryLive = Layer.effect(
       returnedAt: row.returnedAt ?? null,
       canceledAt: row.canceledAt ?? null,
       acceptedAt: row.acceptedAt ?? null,
+      note: row.note ?? null,
       deliveryStatus: row.inviteEmailStatus === 'sent' ? 'sent' : row.inviteEmailStatus === 'failed' ? 'failed' : row.inviteEmailStatus === 'pending' ? 'unavailable' : 'not_requested',
       book: {
         title: row.snapshotBookTitle,
@@ -153,7 +156,7 @@ export const LendingRepositoryLive = Layer.effect(
       inviteUrl: null
     })
 
-    const toBorrowedBook = (row: typeof loans.$inferSelect & { ownerRemoved: Date | null }): BorrowedBook => ({
+    const toBorrowedBook = (row: Pick<typeof loans.$inferSelect, 'id' | 'status' | 'snapshotBookTitle' | 'snapshotBookAuthor' | 'snapshotCoverPath' | 'snapshotOwnerName' | 'loanedAt' | 'dueAt' | 'returnedAt' | 'acceptedAt'> & { ownerRemoved: Date | null }): BorrowedBook => ({
       id: row.id,
       status: row.status,
       title: row.snapshotBookTitle,
@@ -195,6 +198,7 @@ export const LendingRepositoryLive = Layer.effect(
             borrowerUserId: null,
             borrowerDisplayName: input.borrowerDisplayName,
             borrowerEmail: input.borrowerEmail,
+            note: input.note,
             inviteEmailStatus: input.inviteEmailStatus,
             inviteEmailLastAttemptAt: null,
             status: 'active',
@@ -254,6 +258,17 @@ export const LendingRepositoryLive = Layer.effect(
               updatedAt: now
             }).where(and(eq(loans.id, loanId), eq(loans.ownerUserId, ownerUserId), eq(loans.status, 'active'))).returning(),
             catch: error => new DatabaseError({ message: `Failed to update loan invite delivery: ${error}`, operation: 'updateInviteEmailDelivery' })
+          })
+          if (!rows[0]) return yield* Effect.fail(new LoanNotFoundError({ loanId }))
+          return toOwnerLoan(rows[0])
+        }),
+
+      updateLoanNote: (loanId, ownerUserId, note) =>
+        Effect.gen(function* () {
+          const rows = yield* Effect.tryPromise({
+            try: () => dbService.db.update(loans).set({ note, updatedAt: new Date() })
+              .where(and(eq(loans.id, loanId), eq(loans.ownerUserId, ownerUserId), eq(loans.status, 'active'))).returning(),
+            catch: error => new DatabaseError({ message: `Failed to update loan note: ${error}`, operation: 'updateLoanNote' })
           })
           if (!rows[0]) return yield* Effect.fail(new LoanNotFoundError({ loanId }))
           return toOwnerLoan(rows[0])
@@ -341,6 +356,7 @@ export const LendingRepositoryLive = Layer.effect(
                 borrowerUserId: loans.borrowerUserId,
                 borrowerDisplayName: loans.borrowerDisplayName,
                 borrowerEmail: loans.borrowerEmail,
+                note: loans.note,
                 inviteEmailStatus: loans.inviteEmailStatus,
                 inviteEmailLastAttemptAt: loans.inviteEmailLastAttemptAt,
                 status: loans.status,
@@ -445,7 +461,15 @@ export const LendingRepositoryLive = Layer.effect(
           const rows = yield* Effect.tryPromise({
             try: () => dbService.db
               .select({
-                loan: loans,
+                ownerUserId: loans.ownerUserId,
+                status: loans.status,
+                borrowerUserId: loans.borrowerUserId,
+                acceptedAt: loans.acceptedAt,
+                snapshotBookTitle: loans.snapshotBookTitle,
+                snapshotBookAuthor: loans.snapshotBookAuthor,
+                snapshotCoverPath: loans.snapshotCoverPath,
+                snapshotOwnerName: loans.snapshotOwnerName,
+                dueAt: loans.dueAt,
                 ownerRemovedAt: userBooks.removedAt
               })
               .from(loans)
@@ -463,18 +487,17 @@ export const LendingRepositoryLive = Layer.effect(
             return yield* Effect.fail(new InvalidInviteError({ message: 'This invitation is no longer available.' }))
           }
 
-          const loan = row.loan
-          const isOwnInvite = Boolean(viewerUserId && viewerUserId === loan.ownerUserId)
-          const canAccept = loan.status === 'active' && !loan.borrowerUserId && !loan.acceptedAt && !isOwnInvite
+          const isOwnInvite = Boolean(viewerUserId && viewerUserId === row.ownerUserId)
+          const canAccept = row.status === 'active' && !row.borrowerUserId && !row.acceptedAt && !isOwnInvite
           return {
-            title: loan.snapshotBookTitle,
-            author: loan.snapshotBookAuthor,
-            coverPath: loan.snapshotCoverPath,
-            ownerName: loan.snapshotOwnerName,
-            dueAt: loan.dueAt ?? null,
+            title: row.snapshotBookTitle,
+            author: row.snapshotBookAuthor,
+            coverPath: row.snapshotCoverPath,
+            ownerName: row.snapshotOwnerName,
+            dueAt: row.dueAt ?? null,
             canAccept,
             isOwnInvite,
-            status: canAccept ? 'available' : loan.acceptedAt ? 'already_accepted' : 'unavailable'
+            status: canAccept ? 'available' : row.acceptedAt ? 'already_accepted' : 'unavailable'
           }
         }),
 
@@ -507,7 +530,18 @@ export const LendingRepositoryLive = Layer.effect(
                     ))
                 )
               ))
-              .returning(),
+              .returning({
+                id: loans.id,
+                status: loans.status,
+                snapshotBookTitle: loans.snapshotBookTitle,
+                snapshotBookAuthor: loans.snapshotBookAuthor,
+                snapshotCoverPath: loans.snapshotCoverPath,
+                snapshotOwnerName: loans.snapshotOwnerName,
+                loanedAt: loans.loanedAt,
+                dueAt: loans.dueAt,
+                returnedAt: loans.returnedAt,
+                acceptedAt: loans.acceptedAt
+              }),
             catch: error => new DatabaseError({
               message: `Failed to accept invite: ${error}`,
               operation: 'acceptInviteByHash'

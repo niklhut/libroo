@@ -1,0 +1,1 @@
+ALTER TABLE `loans` ADD `note` text;
