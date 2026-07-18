@@ -191,20 +191,33 @@ describe('useIsbnScannerStore', () => {
       inProgress: MAX_BULK_ISBN_COUNT,
       queued: 3
     })
+    expect(store.counts).toMatchObject({ found: 0, loading: MAX_BULK_ISBN_COUNT + 3 })
 
-    while (store.isBulkLookingUp) {
-      const lookup = lookups.shift()
-      const callIndex = fetchMock.mock.calls.length - 1
-      const batch = fetchMock.mock.calls[callIndex]?.[1].body.isbns ?? []
-      lookup?.resolve({ items: batch.map((isbn, inputIndex) => ({
-        inputIndex, input: isbn, normalizedIsbn: isbn, status: 'ok',
-        result: { found: true, isbn, title: 'Book', author: 'Author' }
-      })) })
-      await new Promise(resolve => setTimeout(resolve, 0))
-    }
+    const firstBatch = fetchMock.mock.calls[0]?.[1].body.isbns ?? []
+    lookups[0]?.resolve({ items: firstBatch.map((isbn, inputIndex) => ({
+      inputIndex, input: isbn, normalizedIsbn: isbn, status: 'ok',
+      result: { found: true, isbn, title: 'Book', author: 'Author' }
+    })) })
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+
+    expect(store.counts).toMatchObject({ found: MAX_BULK_ISBN_COUNT, loading: 3 })
+    expect(store.bulkLookupProgress).toEqual({
+      active: true,
+      total: MAX_BULK_ISBN_COUNT + 3,
+      completed: MAX_BULK_ISBN_COUNT,
+      inProgress: 3,
+      queued: 0
+    })
+
+    const secondBatch = fetchMock.mock.calls[1]?.[1].body.isbns ?? []
+    lookups[1]?.resolve({ items: secondBatch.map((isbn, inputIndex) => ({
+      inputIndex, input: isbn, normalizedIsbn: isbn, status: 'ok',
+      result: { found: true, isbn, title: 'Book', author: 'Author' }
+    })) })
     await bulkLookup
 
     expect(maxInFlight).toBe(1)
+    expect(store.counts).toMatchObject({ found: MAX_BULK_ISBN_COUNT + 3, loading: 0 })
     expect(store.bulkLookupProgress).toEqual({ active: false, total: MAX_BULK_ISBN_COUNT + 3, completed: MAX_BULK_ISBN_COUNT + 3, inProgress: 0, queued: 0 })
   })
 

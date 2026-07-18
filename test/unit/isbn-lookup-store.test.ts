@@ -153,11 +153,18 @@ describe('useIsbnLookupStore', () => {
     ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
 
     const store = useIsbnLookupStore()
-    const response = await store.bulkLookupIsbns(isbns)
+    const completedBatches: number[][] = []
+    const response = await store.bulkLookupIsbns(isbns, {
+      onBatchComplete: items => completedBatches.push(items.map(item => item.inputIndex))
+    })
 
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(maxInFlight).toBe(1)
     expect(response.items.map(item => item.inputIndex)).toEqual(isbns.map((_, index) => index))
+    expect(completedBatches).toEqual([
+      Array.from({ length: MAX_BULK_ISBN_COUNT }, (_, index) => index),
+      [MAX_BULK_ISBN_COUNT, MAX_BULK_ISBN_COUNT + 1]
+    ])
   })
 
   it('aborts an active bulk lookup when reset', async () => {

@@ -26,6 +26,11 @@ export interface AddIsbnsResult {
   failedIsbns: string[]
 }
 
+interface BulkLookupOptions {
+  onBatchStart?: (count: number) => void
+  onBatchComplete?: (items: BulkBookLookupItem[]) => void
+}
+
 export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
   const dashboardStore = useLibraryDashboardStore()
 
@@ -83,7 +88,7 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
 
   async function bulkLookupIsbns(
     isbns: string[],
-    options: { onBatchStart?: (count: number) => void, onItemsComplete?: (count: number) => void } = {}
+    options: BulkLookupOptions = {}
   ): Promise<BulkBookLookupResponse> {
     if (isbns.length === 0) return { items: [] }
 
@@ -99,6 +104,7 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
         const controller = new AbortController()
         activeLookupControllers.add(controller)
         options.onBatchStart?.(batch.length)
+        let batchItems: BulkBookLookupItem[] = []
 
         try {
           const response = await $fetch<BulkBookLookupResponse>('/api/books/bulk-lookup', {
@@ -107,26 +113,30 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
             signal: controller.signal
           })
           if (requestVersion !== resetVersion) break
-          items.push(...response.items.map(item => ({
+          batchItems = response.items.map(item => ({
             ...item,
             inputIndex: item.inputIndex + start,
             ...(item.duplicateOf === undefined ? {} : { duplicateOf: item.duplicateOf + start })
-          })))
+          }))
         } catch (err: unknown) {
           if (requestVersion !== resetVersion || controller.signal.aborted) break
           const message = getErrorMessage(err, 'Failed to look up books')
           lookupError.value = message
-          items.push(...batch.map((isbn, index): BulkBookLookupItem => ({
+          batchItems = batch.map((isbn, index): BulkBookLookupItem => ({
             inputIndex: start + index,
             input: isbn,
             normalizedIsbn: isbn,
             status: 'error',
             errorCode: 'upstream_failure',
             message
-          })))
+          }))
         } finally {
           activeLookupControllers.delete(controller)
-          if (requestVersion === resetVersion) options.onItemsComplete?.(batch.length)
+        }
+
+        if (requestVersion === resetVersion) {
+          items.push(...batchItems)
+          options.onBatchComplete?.(batchItems)
         }
       }
 

@@ -30,6 +30,7 @@ const action = computed(() => getBulkScanReviewAction({
   isAdding: props.isAddingBooks,
   targetLibraryState: props.targetLibraryState
 }))
+const activeLookupCount = computed(() => props.lookupProgress.completed + props.lookupProgress.inProgress)
 
 defineEmits<{
   remove: [isbn: string]
@@ -96,17 +97,17 @@ function getStatusText(status: ScannedBook['status']) {
           :class="lookupProgress.active ? 'animate-spin text-primary' : 'text-success'"
         />
         <span class="font-medium">
-          {{ lookupProgress.active ? 'Looking up' : 'Looked up' }} {{ lookupProgress.completed }} of {{ lookupProgress.total }} ISBNs
+          {{ lookupProgress.active ? 'Looking up' : 'Looked up' }} {{ activeLookupCount }} of {{ lookupProgress.total }} ISBNs
         </span>
       </div>
       <UProgress
-        :model-value="lookupProgress.completed"
+        :model-value="activeLookupCount"
         :max="lookupProgress.total"
         color="primary"
       />
       <p class="text-sm text-muted">
         <template v-if="lookupProgress.active">
-          {{ lookupProgress.inProgress }} in progress · {{ lookupProgress.queued }} queued
+          {{ lookupProgress.completed }} completed · {{ lookupProgress.inProgress }} in progress · {{ lookupProgress.queued }} queued
         </template>
         <template v-else>
           All ISBNs looked up
