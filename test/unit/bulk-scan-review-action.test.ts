@@ -28,7 +28,7 @@ describe('getBulkScanReviewAction', () => {
       visible: true,
       hasPendingLookups: true,
       isDisabled: true,
-      buttonLabel: 'Looking up 2 Books…',
+      buttonLabel: 'Finishing lookups…',
       isAdding: true
     })
 

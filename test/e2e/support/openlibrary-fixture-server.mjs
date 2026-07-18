@@ -1,12 +1,8 @@
 import { createServer } from 'node:http'
+import bulkFixtureIsbns from './fixtures/bulk-isbns.json' with { type: 'json' }
 
 const port = Number(process.env.LIBROO_OPENLIBRARY_FIXTURE_PORT || 3011)
 const fixtureIsbn = '9780385533225'
-const bulkFixtureIsbns = [
-  '9780000000019', '9780000000026', '9780000000033', '9780000000040',
-  '9780000000057', '9780000000064', '9780000000071', '9780000000088',
-  '9780000000095', '9780000000101', '9780000000118', '9780000000125'
-]
 const cover = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600" viewBox="0 0 400 600">
 <rect width="400" height="600" fill="#0f766e"/>
 <rect x="34" y="34" width="332" height="532" fill="#f8fafc"/>
@@ -25,9 +21,9 @@ const books = Object.fromEntries([fixtureIsbn, ...bulkFixtureIsbns].map((isbn, i
   publish_date: '2026',
   number_of_pages: 321,
   cover: {
-    small: `/b/isbn/${fixtureIsbn}-S.jpg?default=false`,
-    medium: `/b/isbn/${fixtureIsbn}-M.jpg?default=false`,
-    large: `/b/isbn/${fixtureIsbn}-L.jpg?default=false`
+    small: `/b/isbn/${isbn}-S.jpg?default=false`,
+    medium: `/b/isbn/${isbn}-M.jpg?default=false`,
+    large: `/b/isbn/${isbn}-L.jpg?default=false`
   },
   key: `/books/OL-E2E-${index + 1}M`,
   subjects: [{ name: 'Testing' }, { name: 'Libraries' }]
@@ -60,9 +56,10 @@ const server = createServer((request, response) => {
 
   const workMatch = url.pathname.match(/^\/works\/OL-E2E-(\d+)W\.json$/)
   if (workMatch) {
+    const workIndex = Number.parseInt(workMatch[1], 10)
     sendJson(response, {
-      key: '/works/OL-E2E-1W',
-      title: 'Fixture Driven Development',
+      key: `/works/OL-E2E-${workIndex}W`,
+      title: workIndex === 1 ? 'Fixture Driven Development' : `Bulk Fixture Book ${workIndex - 1}`,
       description: 'A deterministic OpenLibrary fixture used by Libroo end-to-end tests.',
       subjects: ['Testing', 'Libraries', 'Offline systems']
     })
