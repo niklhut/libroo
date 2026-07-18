@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { OwnerLoan } from '~~/shared/types/book'
+import { LOAN_NOTE_MAX_LENGTH } from '~~/shared/utils/loan'
 import { formatDate, returnedLabel } from '~/utils/loan-date-helpers'
 
 const props = defineProps<{
@@ -145,6 +146,9 @@ function openBook(loan: OwnerLoan) {
                   aria-label="Loan note"
                   data-testid="loan-note-field"
                   class="w-full"
+                  autofocus
+                  :maxlength="LOAN_NOTE_MAX_LENGTH"
+                  @keydown.ctrl.enter.prevent.stop="saveNote(loan)"
                   @keydown.meta.enter.prevent.stop="saveNote(loan)"
                 />
                 <p
