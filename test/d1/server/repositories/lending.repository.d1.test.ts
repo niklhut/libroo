@@ -11,6 +11,7 @@ import locationRestrictMigration from '../../../../server/db/migrations/sqlite/0
 import libraryStateMigration from '../../../../server/db/migrations/sqlite/0003_add_library_state.sql?raw'
 import previouslyOwnedMigration from '../../../../server/db/migrations/sqlite/0006_huge_tiger_shark.sql?raw'
 import inviteEmailMigration from '../../../../server/db/migrations/sqlite/0008_brave_saracen.sql?raw'
+import loanNoteMigration from '../../../../server/db/migrations/sqlite/0010_owner_private_loan_note.sql?raw'
 import { authors, bookAuthors, books, loans, user, userBooks } from '../../../../server/db/schema'
 import { BookNotOwnedError } from '../../../../server/repositories/book.repository'
 import {
@@ -53,6 +54,22 @@ describe('LendingRepository transitions on D1', () => {
     expect(stored.acceptTokenHash).toBeNull()
   })
 
+  it('updates notes only for the active owner loan', async () => {
+    await seedUserBook(db, 'ub-note', 'owner-1', 'book-1')
+    await seedLoan(db, { id: 'loan-note', userBookId: 'ub-note', ownerUserId: 'owner-1', note: 'Initial' })
+
+    const updated = await runRepository(db, Effect.flatMap(LendingRepository, repository =>
+      repository.updateLoanNote('loan-note', 'owner-1', 'Updated')
+    ))
+    const wrongOwner = await runRepository(db, Effect.either(Effect.flatMap(LendingRepository, repository =>
+      repository.updateLoanNote('loan-note', 'owner-2', 'Leaked')
+    )))
+
+    expect(updated.note).toBe('Updated')
+    expect((await getLoan(db, 'loan-note')).note).toBe('Updated')
+    expect(Either.isLeft(wrongOwner)).toBe(true)
+  })
+
   it.each(['wishlisted', 'previously_owned'] as const)('rejects loan creation for %s books', async (libraryState) => {
     const userBookId = `ub-${libraryState}`
     await seedUserBook(db, userBookId, 'owner-1', 'book-1', libraryState)
@@ -63,6 +80,7 @@ describe('LendingRepository transitions on D1', () => {
         ownerUserId: 'owner-1',
         borrowerDisplayName: 'Borrower',
         borrowerEmail: null,
+        note: null,
         dueAt: null,
         acceptTokenHash: `token-${libraryState}`
       })
@@ -113,7 +131,7 @@ describe('LendingRepository transitions on D1', () => {
 })
 
 async function applyMigrations(database: D1Database) {
-  for (const migration of [initialMigration, termsMigration, locationRestrictMigration, libraryStateMigration, previouslyOwnedMigration, inviteEmailMigration]) {
+  for (const migration of [initialMigration, termsMigration, locationRestrictMigration, libraryStateMigration, previouslyOwnedMigration, inviteEmailMigration, loanNoteMigration]) {
     for (const statement of migration.split('--> statement-breakpoint')) {
       const migrationStatement = statement.trim()
       if (migrationStatement) {
@@ -187,6 +205,7 @@ async function seedLoan(database: D1Db, input: Partial<typeof loans.$inferInsert
     borrowerUserId: input.borrowerUserId ?? null,
     borrowerDisplayName: input.borrowerDisplayName ?? 'Borrower',
     borrowerEmail: input.borrowerEmail ?? 'borrower@example.com',
+    note: input.note ?? null,
     status: input.status ?? 'active',
     loanedAt: input.loanedAt ?? baseTime,
     dueAt: input.dueAt ?? null,

@@ -18,6 +18,7 @@ const { data: emailCapabilities } = await useEmailCapabilities()
 const borrowerDisplayName = ref('')
 const borrowerEmail = ref('')
 const dueAt = ref('')
+const note = ref('')
 const isSaving = ref(false)
 const inviteUrl = ref('')
 const copiedAutomatically = ref(false)
@@ -51,6 +52,7 @@ watch(
     borrowerDisplayName.value = ''
     borrowerEmail.value = ''
     dueAt.value = ''
+    note.value = ''
     inviteUrl.value = ''
     copiedAutomatically.value = false
     loanId.value = ''
@@ -68,7 +70,8 @@ async function lendBook() {
       body: {
         borrowerDisplayName: borrowerDisplayName.value,
         borrowerEmail: borrowerEmail.value || null,
-        dueAt: dueAt.value || null
+        dueAt: dueAt.value || null,
+        note: note.value || null
       }
     })
 
@@ -147,7 +150,10 @@ async function copyInvite(options: { showToast?: boolean } = {}) {
     :ui="{ content: 'sm:max-w-xl', footer: 'justify-end gap-2' }"
   >
     <template #body>
-      <div class="space-y-4">
+      <div
+        class="space-y-4"
+        @keydown.meta.enter.prevent="lendBook"
+      >
         <UAlert
           v-if="!isSaved"
           color="neutral"
@@ -192,6 +198,18 @@ async function copyInvite(options: { showToast?: boolean } = {}) {
             :min="tomorrowDate"
             class="w-full"
             :disabled="isSaved"
+          />
+        </UFormField>
+
+        <UFormField
+          label="Private note"
+          help="Only you can see this note."
+        >
+          <UTextarea
+            v-model="note"
+            placeholder="Optional"
+            :disabled="isSaved"
+            class="w-full"
           />
         </UFormField>
 

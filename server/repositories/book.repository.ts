@@ -767,6 +767,7 @@ export const BookRepositoryLive = Layer.effect(
               userBookId: loans.userBookId,
               id: loans.id,
               borrowerDisplayName: loans.borrowerDisplayName,
+              note: loans.note,
               acceptedByName: user.name,
               loanedAt: loans.loanedAt,
               dueAt: loans.dueAt,
@@ -784,6 +785,7 @@ export const BookRepositoryLive = Layer.effect(
         return new Map(rows.map(row => [row.userBookId, {
           id: row.id,
           borrowerDisplayName: row.borrowerDisplayName,
+          note: row.note ?? null,
           acceptedByName: row.acceptedByName ?? null,
           loanedAt: row.loanedAt,
           dueAt: row.dueAt ?? null,

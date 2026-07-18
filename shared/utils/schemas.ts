@@ -15,6 +15,7 @@ import {
   normalizeBookLocationName,
   normalizeBookLocationPath
 } from './book-location'
+import { LOAN_NOTE_MAX_LENGTH } from './loan'
 
 /** Limits shared by the bulk ISBN client flow and server API. */
 export const MAX_BULK_ISBN_INPUT_BYTES = 8 * 1024
@@ -225,6 +226,23 @@ export const bookNoteSchema = z.object({
 })
 
 export type BookNoteSchema = z.infer<typeof bookNoteSchema>
+
+export const loanNoteSchema = z.object({
+  note: z.preprocess(
+    (val) => {
+      if (typeof val === 'string') {
+        const trimmed = val.trim()
+        return trimmed === '' ? null : trimmed
+      }
+      return val
+    },
+    z.string({ error: 'Note must be a string' })
+      .max(LOAN_NOTE_MAX_LENGTH, { error: 'Note is too long' })
+      .nullable()
+  )
+})
+
+export type LoanNoteSchema = z.infer<typeof loanNoteSchema>
 
 export const bookLocationSchema = z.object({
   locationId: z.string({ error: 'Location ID must be a string' }).nullable()
@@ -538,6 +556,16 @@ export const createLoanSchema = z.object({
       return trimmed === '' ? null : trimmed
     },
     z.email({ error: 'Borrower email must be valid' }).nullable().optional()
+  ),
+  note: z.preprocess(
+    (val) => {
+      if (typeof val !== 'string') return val
+      const trimmed = val.trim()
+      return trimmed === '' ? null : trimmed
+    },
+    z.string({ error: 'Note must be a string' })
+      .max(LOAN_NOTE_MAX_LENGTH, { error: 'Note is too long' })
+      .nullable().optional()
   ),
   dueAt: localNullableDateSchema
 }).refine((value) => {

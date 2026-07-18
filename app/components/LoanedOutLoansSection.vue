@@ -9,7 +9,30 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   returnLoan: [loan: OwnerLoan]
+  saveLoanNote: [loan: OwnerLoan, note: string | null]
 }>()
+
+const editingLoanId = ref<string | null>(null)
+const draftNote = ref('')
+
+function editNote(loan: OwnerLoan) {
+  editingLoanId.value = loan.id
+  draftNote.value = loan.note ?? ''
+}
+
+function cancelNoteEdit() {
+  editingLoanId.value = null
+  draftNote.value = ''
+}
+
+function saveNote(loan: OwnerLoan) {
+  emit('saveLoanNote', loan, draftNote.value.trim() || null)
+  cancelNoteEdit()
+}
+
+function clearNote() {
+  draftNote.value = ''
+}
 
 const activeLoans = computed(() => props.loans.filter(loan => loan.status === 'active'))
 const loanHistory = computed(() => props.loans.filter(loan => loan.status !== 'active'))
@@ -112,6 +135,61 @@ function openBook(loan: OwnerLoan) {
               >
                 Due {{ formatDate(loan.dueAt) }}
               </p>
+              <div
+                class="mt-2"
+                @click.stop
+              >
+                <UTextarea
+                  v-if="editingLoanId === loan.id"
+                  v-model="draftNote"
+                  aria-label="Loan note"
+                  data-testid="loan-note-field"
+                  class="w-full"
+                  @keydown.meta.enter.prevent.stop="saveNote(loan)"
+                />
+                <p
+                  v-else-if="loan.note"
+                  class="whitespace-pre-wrap text-sm text-muted"
+                >
+                  {{ loan.note }}
+                </p>
+                <div class="mt-1 flex gap-1">
+                  <template v-if="editingLoanId === loan.id">
+                    <UButton
+                      size="xs"
+                      @click="saveNote(loan)"
+                    >
+                      Save
+                    </UButton>
+                    <UButton
+                      size="xs"
+                      color="neutral"
+                      variant="ghost"
+                      @click="cancelNoteEdit"
+                    >
+                      Cancel
+                    </UButton>
+                    <UButton
+                      size="xs"
+                      color="neutral"
+                      variant="ghost"
+                      @click="clearNote"
+                    >
+                      Clear
+                    </UButton>
+                  </template>
+                  <UButton
+                    v-else
+                    size="xs"
+                    color="neutral"
+                    variant="ghost"
+                    icon="i-lucide-pencil"
+                    @click="editNote(loan)"
+                  >
+                    {{ loan.note ? 'Edit note' : 'Add note' }}
+                  </UButton>
+                </div>
+              </div>
               <UButton
                 class="mt-3"
                 color="neutral"
@@ -184,6 +262,12 @@ function openBook(loan: OwnerLoan) {
                 </p>
                 <p class="text-sm text-muted">
                   {{ loan.status === 'returned' ? returnedLabel(loan.returnedAt) : 'Canceled' }}
+                </p>
+                <p
+                  v-if="loan.note"
+                  class="whitespace-pre-wrap text-sm text-muted"
+                >
+                  {{ loan.note }}
                 </p>
               </div>
             </div>

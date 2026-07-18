@@ -118,6 +118,7 @@ export interface ActiveLoanSummary {
   loanedAt: Date | string
   dueAt: Date | string | null
   acceptedAt: Date | string | null
+  note: string | null
 }
 
 export interface OwnerLoan extends ActiveLoanSummary {

@@ -9,23 +9,30 @@ const capabilities = vi.hoisted(() => ({ getEmailCapabilities: vi.fn() }))
 vi.mock('../../../../server/utils/email-capabilities', () => capabilities)
 
 describe('LendingService invitation delivery', () => {
-  const state = { creates: 0, sends: 0, updates: [] as string[] }
+  const state = { creates: 0, sends: 0, updates: [] as string[], createInput: undefined as unknown, noteUpdates: [] as Array<[string, string, string | null]> }
   const repository = {
     createLoan: (input: { inviteEmailStatus: 'pending' | 'sent' | 'failed' | null }) => Effect.sync(() => {
       state.creates++
+      state.createInput = input
       return { id: 'loan-1', userBookId: 'book-1', ownerDisplayName: 'Ada', borrowerDisplayName: 'Grace', acceptedByName: null, status: 'active' as const, loanedAt: new Date(), dueAt: null, returnedAt: null, canceledAt: null, acceptedAt: null, book: { title: 'Book', author: 'Author', coverPath: null }, inviteUrl: null, deliveryStatus: input.inviteEmailStatus ? 'unavailable' as const : 'not_requested' as const }
     }),
     updateInviteEmailDelivery: (_id: string, _owner: string, status: string) => Effect.sync(() => {
       state.updates.push(status)
       return {}
     }),
-    getActiveLoanInviteForOwner: () => Effect.succeed({ id: 'loan-1', acceptTokenHash: null, borrowerEmail: null, borrowerDisplayName: 'Grace', dueAt: null, snapshotBookTitle: 'Book', snapshotBookAuthor: 'Author', snapshotOwnerName: 'Ada' })
+    getActiveLoanInviteForOwner: () => Effect.succeed({ id: 'loan-1', acceptTokenHash: null, borrowerEmail: null, borrowerDisplayName: 'Grace', dueAt: null, snapshotBookTitle: 'Book', snapshotBookAuthor: 'Author', snapshotOwnerName: 'Ada' }),
+    updateLoanNote: (loanId: string, ownerUserId: string, note: string | null) => Effect.sync(() => {
+      state.noteUpdates.push([loanId, ownerUserId, note])
+      return {}
+    })
   } as unknown as LendingRepositoryInterface
 
   beforeEach(() => {
     state.creates = 0
     state.sends = 0
     state.updates = []
+    state.createInput = undefined
+    state.noteUpdates = []
     capabilities.getEmailCapabilities.mockReturnValue({ inviteEmailEnabled: true })
   })
 
@@ -48,6 +55,21 @@ describe('LendingService invitation delivery', () => {
   it('does not send without a borrower email', async () => {
     await expect(run(null)).resolves.toMatchObject({ deliveryStatus: 'not_requested' })
     expect(state.sends).toBe(0)
+  })
+
+  it('passes a loan note through creation and delegates note updates', async () => {
+    await Effect.runPromise(Effect.flatMap(LendingService, service =>
+      Effect.zipRight(
+        service.createLoan('book-1', 'owner-1', { borrowerDisplayName: 'Grace', note: 'Private' }),
+        service.updateLoanNote('loan-1', 'owner-1', null)
+      )
+    ).pipe(
+      Effect.provide(LendingServiceLive),
+      Effect.provide(Layer.succeed(LendingRepository, repository)),
+      Effect.provide(Layer.succeed(EmailService, { sendEmail: () => Effect.void }))
+    ))
+    expect(state.createInput).toMatchObject({ note: 'Private' })
+    expect(state.noteUpdates).toEqual([['loan-1', 'owner-1', null]])
   })
 
   it('keeps the loan when delivery is unavailable', async () => {

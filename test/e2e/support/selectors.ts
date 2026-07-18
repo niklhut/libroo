@@ -92,6 +92,7 @@ export function lendingModal(page: Page) {
     borrowerName: dialog.getByLabel('Borrower name'),
     borrowerEmail: dialog.getByLabel('Email (optional)'),
     dueDate: dialog.getByLabel('Due date'),
+    noteField: dialog.getByLabel('Private note'),
     save: dialog.getByRole('button', { name: 'Save loan' }),
     inviteUrl: dialog.getByTestId('loan-invite-url')
   }

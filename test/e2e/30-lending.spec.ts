@@ -17,6 +17,7 @@ test('supports the owner and borrower lending lifecycle', async ({ browser }, te
     await modal.trigger.click()
     await expect(modal.dialog).toBeVisible()
     await modal.borrowerName.fill('Borrower Person')
+    await modal.noteField.fill('Initial private owner note')
     await modal.save.click()
     const inviteUrl = await readInviteUrlFromLoanSuccess(ownerPage)
 
@@ -36,15 +37,24 @@ test('supports the owner and borrower lending lifecycle', async ({ browser }, te
     const borrowedLoan = borrowedLoanCard(borrowerPage, title)
     await expect(borrowedLoan.getByText(title)).toBeVisible()
     await expect(borrowedLoan.getByText('With you')).toBeVisible()
+    await expect(borrowerPage.getByText('Initial private owner note')).toHaveCount(0)
 
     await ownerPage.goto('/library/loans')
     const ownerLoan = ownerPage.getByRole('link', { name: new RegExp(`Open ${escapeRegExp(title)}`) })
     await expect(ownerLoan).toBeVisible()
+    await expect(ownerLoan.getByText('Initial private owner note')).toBeVisible()
+    await ownerLoan.getByRole('button', { name: 'Edit note' }).click()
+    await ownerLoan.getByLabel('Loan note').fill('Updated private owner note')
+    await ownerLoan.getByRole('button', { name: 'Save' }).click()
+    await expect(ownerLoan.getByText('Updated private owner note')).toBeVisible()
     await ownerLoan.getByRole('button', { name: 'Mark returned' }).click()
-    await expect(ownerPage.getByRole('link', { name: new RegExp(`Open ${escapeRegExp(title)}`) }).getByText(/^Returned$/)).toBeVisible()
+    const returnedOwnerLoan = ownerPage.getByRole('link', { name: new RegExp(`Open ${escapeRegExp(title)}`) })
+    await expect(returnedOwnerLoan.getByText(/^Returned$/)).toBeVisible()
+    await expect(returnedOwnerLoan.getByText('Updated private owner note')).toBeVisible()
 
     await borrowerPage.reload()
     await expect(borrowedLoanCard(borrowerPage, title).getByText(/^Returned$/)).toBeVisible()
+    await expect(borrowerPage.getByText('Updated private owner note')).toHaveCount(0)
   } finally {
     await Promise.allSettled([
       borrowerContext?.close(),
