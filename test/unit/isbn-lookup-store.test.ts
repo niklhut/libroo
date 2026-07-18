@@ -131,6 +131,54 @@ describe('useIsbnLookupStore', () => {
     ])
   })
 
+  it('submits bulk lookups sequentially and remaps batch-local indexes', async () => {
+    const isbns = Array.from({ length: MAX_BULK_ISBN_COUNT + 2 }, (_, index) => `isbn-${index + 1}`)
+    let inFlight = 0
+    let maxInFlight = 0
+    const fetchMock = vi.fn(async (_url: string, options: { body: { isbns: string[] } }) => {
+      inFlight += 1
+      maxInFlight = Math.max(maxInFlight, inFlight)
+      await Promise.resolve()
+      inFlight -= 1
+      return {
+        items: options.body.isbns.map((isbn, inputIndex) => ({
+          inputIndex,
+          input: isbn,
+          normalizedIsbn: isbn,
+          status: 'ok',
+          result: { found: true, isbn }
+        }))
+      }
+    })
+    ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
+
+    const store = useIsbnLookupStore()
+    const response = await store.bulkLookupIsbns(isbns)
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(maxInFlight).toBe(1)
+    expect(response.items.map(item => item.inputIndex)).toEqual(isbns.map((_, index) => index))
+  })
+
+  it('aborts an active bulk lookup when reset', async () => {
+    let requestSignal: AbortSignal | undefined
+    const response = deferred<{ items: [] }>()
+    const fetchMock = vi.fn((_url: string, options: { signal: AbortSignal }) => {
+      requestSignal = options.signal
+      return response.promise
+    })
+    ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
+
+    const store = useIsbnLookupStore()
+    const lookup = store.bulkLookupIsbns(['9780306406157'])
+    store.reset()
+
+    expect(requestSignal?.aborted).toBe(true)
+    response.resolve({ items: [] })
+    await expect(lookup).resolves.toEqual({ items: [] })
+    expect(store.pendingLookups).toBe(0)
+  })
+
   it('resets pending state and lookup errors', () => {
     const store = useIsbnLookupStore()
     store.pendingLookups = 1

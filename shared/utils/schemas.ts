@@ -135,6 +135,14 @@ export const bookIsbnSchema = z.object({
     )
 })
 
+export const bulkBookLookupSchema = z.object({
+  isbns: z.array(z.string({ error: 'ISBN must be a string' }))
+    .min(1, { error: 'At least one ISBN is required' })
+    .max(MAX_BULK_ISBN_COUNT, { error: `No more than ${MAX_BULK_ISBN_COUNT} ISBNs are allowed` })
+})
+
+export type BulkBookLookupSchema = z.infer<typeof bulkBookLookupSchema>
+
 export type BookIsbnSchema = z.infer<typeof bookIsbnSchema>
 
 export const libraryStateSchema = z.enum(['owned', 'wishlisted', 'previously_owned'], { error: 'Library state is invalid' })

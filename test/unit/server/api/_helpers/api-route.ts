@@ -97,6 +97,7 @@ export interface TestEvent {
   query?: Record<string, string | undefined>
   context?: Record<string, unknown>
   body?: unknown
+  rawBody?: string
   responseHeaders: Record<string, string>
 }
 
@@ -119,12 +120,14 @@ interface ApiRouteTestGlobals {
   getRouterParam: (event: TestEvent, key: string) => string | undefined
   getQuery: (event: TestEvent) => Record<string, string | undefined>
   readBody: (event: TestEvent) => Promise<unknown>
+  readRawBody: (event: TestEvent) => Promise<string | undefined>
   readValidatedBody: (event: TestEvent, parse: (body: unknown) => unknown) => Promise<unknown>
   setHeader: (event: TestEvent, key: string, value: string) => void
   effectHandler: unknown
   InvalidSignupInviteError: new (input: { message: string }) => Error & { _tag: 'InvalidSignupInviteError' }
   addBookToLibrary: (...args: unknown[]) => unknown
   bulkAddBooks: (...args: unknown[]) => unknown
+  bulkLookupBooks: (...args: unknown[]) => unknown
   createManualBook: (...args: unknown[]) => unknown
   getUserLibrary: (...args: unknown[]) => unknown
   getAuthorLibrary: (...args: unknown[]) => unknown
@@ -168,6 +171,8 @@ interface ApiRouteTestGlobals {
   listAdminUsers: (...args: unknown[]) => unknown
   bookIsbnSchema: unknown
   bookIsbnAddSchema: unknown
+  bulkBookLookupSchema: unknown
+  MAX_BULK_ISBN_INPUT_BYTES: number
   bookLibraryStateSchema: unknown
   bookBatchDeleteSchema: unknown
   bookTagAddSchema: unknown
@@ -197,6 +202,7 @@ export const testAdminUser = {
 export const serviceMocks = {
   addBookToLibrary: vi.fn(),
   bulkAddBooks: vi.fn(),
+  bulkLookupBooks: vi.fn(),
   createManualBook: vi.fn(),
   getUserLibrary: vi.fn(),
   getAuthorLibrary: vi.fn(),
@@ -252,12 +258,14 @@ const originalGlobals = {
   getRouterParam: testGlobal.getRouterParam,
   getQuery: testGlobal.getQuery,
   readBody: testGlobal.readBody,
+  readRawBody: testGlobal.readRawBody,
   readValidatedBody: testGlobal.readValidatedBody,
   setHeader: testGlobal.setHeader,
   effectHandler: testGlobal.effectHandler,
   InvalidSignupInviteError: testGlobal.InvalidSignupInviteError,
   addBookToLibrary: testGlobal.addBookToLibrary,
   bulkAddBooks: testGlobal.bulkAddBooks,
+  bulkLookupBooks: testGlobal.bulkLookupBooks,
   createManualBook: testGlobal.createManualBook,
   getUserLibrary: testGlobal.getUserLibrary,
   getAuthorLibrary: testGlobal.getAuthorLibrary,
@@ -301,6 +309,8 @@ const originalGlobals = {
   listAdminUsers: testGlobal.listAdminUsers,
   bookIsbnSchema: testGlobal.bookIsbnSchema,
   bookIsbnAddSchema: testGlobal.bookIsbnAddSchema,
+  bulkBookLookupSchema: testGlobal.bulkBookLookupSchema,
+  MAX_BULK_ISBN_INPUT_BYTES: testGlobal.MAX_BULK_ISBN_INPUT_BYTES,
   bookLibraryStateSchema: testGlobal.bookLibraryStateSchema,
   bookBatchDeleteSchema: testGlobal.bookBatchDeleteSchema,
   bookTagAddSchema: testGlobal.bookTagAddSchema,
@@ -360,6 +370,7 @@ export async function setupApiRouteTest() {
   testGlobal.getRouterParam = (event: TestEvent, key: string) => event.params?.[key]
   testGlobal.getQuery = (event: TestEvent) => event.query ?? {}
   testGlobal.readBody = async (event: TestEvent) => event.body
+  testGlobal.readRawBody = async (event: TestEvent) => event.rawBody ?? (event.body === undefined ? undefined : JSON.stringify(event.body))
   testGlobal.readValidatedBody = async (event: TestEvent, parse: (body: unknown) => unknown) => parse(event.body)
   testGlobal.setHeader = (event: TestEvent, key: string, value: string) => {
     event.responseHeaders[key] = value
@@ -378,6 +389,7 @@ export async function setupApiRouteTest() {
 
   testGlobal.addBookToLibrary = (...args: unknown[]) => serviceMocks.addBookToLibrary(...args)
   testGlobal.bulkAddBooks = (...args: unknown[]) => serviceMocks.bulkAddBooks(...args)
+  testGlobal.bulkLookupBooks = (...args: unknown[]) => serviceMocks.bulkLookupBooks(...args)
   testGlobal.createManualBook = (...args: unknown[]) => serviceMocks.createManualBook(...args)
   testGlobal.getUserLibrary = (...args: unknown[]) => serviceMocks.getUserLibrary(...args)
   testGlobal.getAuthorLibrary = (...args: unknown[]) => serviceMocks.getAuthorLibrary(...args)
@@ -423,6 +435,8 @@ export async function setupApiRouteTest() {
   const schemas = await import('../../../../../shared/utils/schemas')
   testGlobal.bookIsbnSchema = schemas.bookIsbnSchema
   testGlobal.bookIsbnAddSchema = schemas.bookIsbnAddSchema
+  testGlobal.bulkBookLookupSchema = schemas.bulkBookLookupSchema
+  testGlobal.MAX_BULK_ISBN_INPUT_BYTES = schemas.MAX_BULK_ISBN_INPUT_BYTES
   testGlobal.bookLibraryStateSchema = schemas.bookLibraryStateSchema
   testGlobal.bookBatchDeleteSchema = schemas.bookBatchDeleteSchema
   testGlobal.bookTagAddSchema = schemas.bookTagAddSchema

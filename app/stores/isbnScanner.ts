@@ -1,6 +1,5 @@
 import type { LibraryState } from '~~/shared/types/book'
 import {
-  BULK_LOOKUP_CONCURRENCY,
   extractIsbn,
   isValidIsbnChecksum,
   MAX_BULK_ISBN_INPUT_BYTES
@@ -8,7 +7,6 @@ import {
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { useIsbnLookupStore } from './isbnLookup'
-import { withBoundedConcurrency } from '../utils/boundedConcurrency'
 
 export interface ScannedBook {
   isbn: string
@@ -154,12 +152,40 @@ export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
     bulkLookupCompleted.value = 0
 
     try {
-      await withBoundedConcurrency(inputs, BULK_LOOKUP_CONCURRENCY, async (isbn) => {
-        if (requestVersion !== resetVersion) return
-        bulkLookupStarted.value += 1
-        await addIsbn(isbn, requestVersion)
-        if (requestVersion === resetVersion) bulkLookupCompleted.value += 1
+      const newBooks = inputs.map((isbn): ScannedBook => ({
+        isbn,
+        status: 'loading',
+        selected: true
+      }))
+      scannedBooks.value.unshift(...newBooks)
+
+      const response = await isbnLookupStore.bulkLookupIsbns(inputs, {
+        onBatchStart: (count) => { if (requestVersion === resetVersion) bulkLookupStarted.value += count },
+        onItemsComplete: (count) => { if (requestVersion === resetVersion) bulkLookupCompleted.value += count }
       })
+      if (requestVersion !== resetVersion) return true
+
+      for (const item of response.items) {
+        const book = scannedBooks.value.find(candidate => candidate.isbn === item.normalizedIsbn)
+        if (!book) continue
+        if (item.status !== 'ok') {
+          book.status = 'error'
+          book.selected = false
+          book.errorMessage = lookupUnavailableMessage
+          continue
+        }
+        book.result = item.result
+        if (!item.result.found) {
+          book.status = 'not_found'
+          book.selected = false
+        } else if (item.result.existsLocally) {
+          book.status = 'already_owned'
+          book.selected = false
+        } else {
+          book.status = 'found'
+          book.selected = true
+        }
+      }
     } finally {
       if (requestVersion === resetVersion) isBulkLookingUp.value = false
     }

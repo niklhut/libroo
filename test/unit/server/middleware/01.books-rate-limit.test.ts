@@ -33,7 +33,8 @@ vi.mock('../../../../server/utils/database-rate-limiter', () => ({
 }))
 
 vi.mock('../../../../server/utils/books-config', () => ({
-  getBooksRateLimitConfig: () => mocks.config
+  getBooksRateLimitConfig: () => mocks.config,
+  getBulkLookupRateLimitConfig: () => ({ ...mocks.config, maxRequests: 1 })
 }))
 
 describe('server/middleware/01.books-rate-limit', () => {
@@ -50,8 +51,17 @@ describe('server/middleware/01.books-rate-limit', () => {
 
     expect(middleware.shouldEnforceRateLimit(makeEvent('/api/books/lookup'))).toBe(true)
     expect(middleware.shouldEnforceRateLimit(makeEvent('/api/books'))).toBe(true)
+    expect(middleware.shouldEnforceRateLimit(makeEvent('/api/books/bulk-lookup'))).toBe(true)
     expect(middleware.shouldEnforceRateLimit(makeEvent('/api/books/bulk-add'))).toBe(false)
     expect(middleware.shouldEnforceRateLimit(makeEvent('/api/books/lookup', 'GET'))).toBe(false)
+  })
+
+  it('uses the dedicated bulk lookup limit', async () => {
+    const middleware = await import('../../../../server/middleware/01.books-rate-limit')
+    const event = makeEvent('/api/books/bulk-lookup')
+
+    await middleware.default(event as never)
+    expect(mocks.runEffect).toHaveBeenCalledOnce()
   })
 
   it('rejects requests over the limit with a user-facing 429', async () => {

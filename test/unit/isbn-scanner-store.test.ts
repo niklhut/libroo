@@ -6,7 +6,6 @@ import { useIsbnLookupStore } from '../../app/stores/isbnLookup'
 import { useLibraryDashboardStore } from '../../app/stores/libraryDashboard'
 import { defaultContinuousMode } from '../../app/utils/cameraScanDefaults'
 import {
-  BULK_LOOKUP_CONCURRENCY,
   MAX_BULK_ISBN_COUNT,
   MAX_BULK_ISBN_INPUT_BYTES
 } from '../../shared/utils/schemas'
@@ -92,18 +91,25 @@ describe('useIsbnScannerStore', () => {
 
   it('looks up every valid ISBN beyond the server bulk-add cap', async () => {
     const validIsbns = Array.from({ length: MAX_BULK_ISBN_COUNT + 1 }, (_, index) => validIsbn13(index + 1))
-    const fetchMock = vi.fn(async (_url: string, options: { body: { isbn: string } }) => ({
-      found: true,
-      isbn: options.body.isbn,
-      title: 'Book',
-      author: 'Author'
+    const fetchMock = vi.fn(async (_url: string, options: { body: { isbns: string[] } }) => ({
+      items: options.body.isbns.map((isbn, inputIndex) => ({
+        inputIndex,
+        input: isbn,
+        normalizedIsbn: isbn,
+        status: 'ok',
+        result: { found: true, isbn, title: 'Book', author: 'Author' }
+      }))
     }))
     ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
 
     const store = useIsbnScannerStore()
     await store.addMultipleIsbns(validIsbns.join('\n'))
 
-    expect(fetchMock).toHaveBeenCalledTimes(MAX_BULK_ISBN_COUNT + 1)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock.mock.calls.map(([, options]) => options.body.isbns)).toEqual([
+      validIsbns.slice(0, MAX_BULK_ISBN_COUNT),
+      validIsbns.slice(MAX_BULK_ISBN_COUNT)
+    ])
     expect(store.scannedBooks).toHaveLength(MAX_BULK_ISBN_COUNT + 1)
     expect(toastAdd).not.toHaveBeenCalledWith(expect.objectContaining({ title: 'Some ISBNs were skipped' }))
   })
@@ -128,63 +134,70 @@ describe('useIsbnScannerStore', () => {
     expect(toastAdd).toHaveBeenCalledWith(expect.objectContaining({ title: 'Some ISBNs were skipped' }))
   })
 
-  it('bounds concurrent bulk lookups', async () => {
-    const lookups: Array<ReturnType<typeof deferred<{ found: true, isbn: string, title: string, author: string }>>> = []
+  it('submits server-sized bulk lookups sequentially and reports batch progress', async () => {
+    const lookups: Array<ReturnType<typeof deferred<{ items: Array<{ inputIndex: number, input: string, normalizedIsbn: string, status: 'ok', result: { found: true, isbn: string, title: string, author: string } }> }>>> = []
     let inFlight = 0
     let maxInFlight = 0
-    const fetchMock = vi.fn((_url: string, options: { body: { isbn: string } }) => {
-      const lookup = deferred<{ found: true, isbn: string, title: string, author: string }>()
+    const fetchMock = vi.fn((_url: string, _options: { body: { isbns: string[] } }) => {
+      const lookup = deferred<{ items: Array<{ inputIndex: number, input: string, normalizedIsbn: string, status: 'ok', result: { found: true, isbn: string, title: string, author: string } }> }>()
       lookups.push(lookup)
       inFlight += 1
       maxInFlight = Math.max(maxInFlight, inFlight)
-      return lookup.promise.then(() => {
+      return lookup.promise.then((response) => {
         inFlight -= 1
-        return { found: true, isbn: options.body.isbn, title: 'Book', author: 'Author' }
+        return response
       })
     })
     ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
 
     const store = useIsbnScannerStore()
-    const bulkLookup = store.addMultipleIsbns(Array.from({ length: BULK_LOOKUP_CONCURRENCY + 3 }, (_, index) => validIsbn13(index + 1)).join('\n'))
+    const isbns = Array.from({ length: MAX_BULK_ISBN_COUNT + 3 }, (_, index) => validIsbn13(index + 1))
+    const bulkLookup = store.addMultipleIsbns(isbns.join('\n'))
     await nextTick()
 
     expect(store.bulkLookupProgress).toEqual({
       active: true,
-      total: BULK_LOOKUP_CONCURRENCY + 3,
+      total: MAX_BULK_ISBN_COUNT + 3,
       completed: 0,
-      inProgress: BULK_LOOKUP_CONCURRENCY,
+      inProgress: MAX_BULK_ISBN_COUNT,
       queued: 3
     })
 
     while (store.isBulkLookingUp) {
-      lookups.shift()?.resolve({ found: true, isbn: '', title: '', author: '' })
+      const lookup = lookups.shift()
+      const callIndex = fetchMock.mock.calls.length - 1
+      const batch = fetchMock.mock.calls[callIndex]?.[1].body.isbns ?? []
+      lookup?.resolve({ items: batch.map((isbn, inputIndex) => ({
+        inputIndex, input: isbn, normalizedIsbn: isbn, status: 'ok',
+        result: { found: true, isbn, title: 'Book', author: 'Author' }
+      })) })
       await new Promise(resolve => setTimeout(resolve, 0))
     }
     await bulkLookup
 
-    expect(maxInFlight).toBe(BULK_LOOKUP_CONCURRENCY)
-    expect(store.bulkLookupProgress).toEqual({ active: false, total: BULK_LOOKUP_CONCURRENCY + 3, completed: BULK_LOOKUP_CONCURRENCY + 3, inProgress: 0, queued: 0 })
+    expect(maxInFlight).toBe(1)
+    expect(store.bulkLookupProgress).toEqual({ active: false, total: MAX_BULK_ISBN_COUNT + 3, completed: MAX_BULK_ISBN_COUNT + 3, inProgress: 0, queued: 0 })
   })
 
   it('does not add queued bulk ISBNs after scanner state is cleared', async () => {
-    const lookups: Array<ReturnType<typeof deferred<{ found: true, isbn: string, title: string, author: string }>>> = []
+    const lookups: Array<ReturnType<typeof deferred<{ items: [] }>>> = []
     const fetchMock = vi.fn(() => {
-      const lookup = deferred<{ found: true, isbn: string, title: string, author: string }>()
+      const lookup = deferred<{ items: [] }>()
       lookups.push(lookup)
       return lookup.promise
     })
     ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
 
     const store = useIsbnScannerStore()
-    const bulkLookup = store.addMultipleIsbns(Array.from({ length: BULK_LOOKUP_CONCURRENCY + 1 }, (_, index) => validIsbn13(index + 1)).join('\n'))
+    const bulkLookup = store.addMultipleIsbns(Array.from({ length: MAX_BULK_ISBN_COUNT + 1 }, (_, index) => validIsbn13(index + 1)).join('\n'))
     await nextTick()
-    expect(fetchMock).toHaveBeenCalledTimes(BULK_LOOKUP_CONCURRENCY)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
 
     store.clearAll()
-    lookups.forEach(lookup => lookup.resolve({ found: true, isbn: '', title: '', author: '' }))
+    lookups.forEach(lookup => lookup.resolve({ items: [] }))
     await bulkLookup
 
-    expect(fetchMock).toHaveBeenCalledTimes(BULK_LOOKUP_CONCURRENCY)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(store.scannedBooks).toEqual([])
   })
 

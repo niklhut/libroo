@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Data } from 'effect'
+import { Context, Effect, Layer, Data, Duration } from 'effect'
 import type * as HttpClient from '@effect/platform/HttpClient'
 import { eq, and, count, desc, asc, inArray, or, sql, notInArray, exists, isNull, not } from 'drizzle-orm'
 import { books, authors, bookAuthors, userBooks, tags, bookSystemTags, userBookTags, loans, user, locations } from 'hub:db:schema'
@@ -9,7 +9,7 @@ import { DbService } from '../services/db.service'
 import type { AtomicDbStatement, AtomicDbStatements } from '../services/db.service'
 import { getBlob, type StorageService } from '../services/storage.service'
 import { downloadCover, lookupByISBN } from './openLibrary.repository'
-import type { OpenLibraryApiError, OpenLibraryBookNotFoundError, OpenLibraryRepository } from './openLibrary.repository'
+import type { OpenLibraryApiError, OpenLibraryBookData, OpenLibraryBookNotFoundError, OpenLibraryRepository } from './openLibrary.repository'
 import type { LibraryState, TagWithCount } from '../../shared/types/book'
 
 // Error types
@@ -126,7 +126,8 @@ export interface BookLibraryFilters extends LibraryQueryFilters {
 // Service interface
 export interface BookRepositoryInterface {
   ensureOpenLibraryBook: (
-    isbn: string
+    isbn: string,
+    prefetchedData?: OpenLibraryBookData
   ) => Effect.Effect<
     Book,
     BookCreateError | OpenLibraryBookNotFoundError | OpenLibraryApiError | DatabaseError,
@@ -191,6 +192,15 @@ export interface BookRepositoryInterface {
   findByIsbn: (
     isbn: string
   ) => Effect.Effect<Book | null, DatabaseError, DbService>
+
+  findByIsbns: (
+    isbns: string[]
+  ) => Effect.Effect<Map<string, Book>, DatabaseError, DbService>
+
+  findUserLibraryByIsbns: (
+    userId: string,
+    isbns: string[]
+  ) => Effect.Effect<Map<string, { userBookId: string, libraryState: LibraryState }>, DatabaseError, DbService>
 
   getSystemTagsByBookId: (
     bookId: string
@@ -791,17 +801,17 @@ export const BookRepositoryLive = Layer.effect(
         }]))
       })
 
-    const ensureOpenLibraryBook = (isbn: string) =>
+    const ensureOpenLibraryBook = (isbn: string, prefetchedData?: OpenLibraryBookData) =>
       Effect.gen(function* () {
         const normalizedISBN = normalizeISBN(isbn)
         const existingBook = yield* loadOpenLibraryBookByIsbn(normalizedISBN, 'ensureOpenLibraryBook.findExisting')
 
         if (!existingBook) {
-          const openLibraryData = yield* withDebugTiming(
+          const openLibraryData = prefetchedData ?? (yield* withDebugTiming(
             'ensureOpenLibraryBook.openLibraryMetadataFetch',
             normalizedISBN,
             lookupByISBN(normalizedISBN)
-          )
+          ))
 
           const coverPath = yield* withDebugTiming(
             'ensureOpenLibraryBook.coverResolution',
@@ -830,9 +840,7 @@ export const BookRepositoryLive = Layer.effect(
             createdAt: now
           }
 
-          yield* withDebugTiming(
-            'ensureOpenLibraryBook.bookInsert',
-            normalizedISBN,
+          const insertOpenLibraryBook = (attempt = 0): Effect.Effect<unknown, BookCreateError> => Effect.suspend(() =>
             Effect.tryPromise({
               try: () => dbService.db.run(sql`
                 INSERT INTO ${books} (
@@ -870,7 +878,22 @@ export const BookRepositoryLive = Layer.effect(
                 DO NOTHING
               `),
               catch: error => new BookCreateError({ message: `Failed to insert book: ${error}` })
-            })
+            }).pipe(
+              Effect.catchAll(error => (
+                (error.message.includes('SQLITE_BUSY') || error.message.includes('database is locked'))
+                && attempt < 6
+              )
+                ? Effect.sleep(Duration.millis(50 * 2 ** attempt)).pipe(
+                    Effect.flatMap(() => insertOpenLibraryBook(attempt + 1))
+                  )
+                : Effect.fail(error))
+            )
+          )
+
+          yield* withDebugTiming(
+            'ensureOpenLibraryBook.bookInsert',
+            normalizedISBN,
+            insertOpenLibraryBook()
           )
 
           const book = yield* loadOpenLibraryBookByIsbn(normalizedISBN, 'ensureOpenLibraryBook.reselect')
@@ -1661,6 +1684,58 @@ export const BookRepositoryLive = Layer.effect(
 
           const authorMap = yield* hydrateAuthorsForBookIds([book.id])
           return toBookModel(book, authorMap.get(book.id) || [])
+        }),
+
+      findByIsbns: isbns =>
+        Effect.gen(function* () {
+          if (isbns.length === 0) return new Map<string, Book>()
+          const rows = yield* Effect.tryPromise({
+            try: () => dbService.db
+              .select()
+              .from(books)
+              .where(and(inArray(books.isbn, isbns), eq(books.source, 'open_library'))),
+            catch: error => new DatabaseError({
+              message: `Failed to find books by ISBN: ${error}`,
+              operation: 'findByIsbns'
+            })
+          })
+          const authorMap = yield* hydrateAuthorsForBookIds(rows.map(book => book.id))
+          return new Map(rows.flatMap((book) => {
+            if (!book.isbn) return []
+            return [[book.isbn, toBookModel(book, authorMap.get(book.id) || [])] as const]
+          }))
+        }),
+
+      findUserLibraryByIsbns: (userId, isbns) =>
+        Effect.gen(function* () {
+          if (isbns.length === 0) return new Map<string, { userBookId: string, libraryState: LibraryState }>()
+          const rows = yield* Effect.tryPromise({
+            try: () => dbService.db
+              .select({
+                isbn: books.isbn,
+                userBookId: userBooks.id,
+                libraryState: userBooks.libraryState
+              })
+              .from(userBooks)
+              .innerJoin(books, eq(userBooks.bookId, books.id))
+              .where(and(
+                eq(userBooks.userId, userId),
+                inArray(books.isbn, isbns),
+                eq(books.source, 'open_library'),
+                isNull(userBooks.removedAt)
+              )),
+            catch: error => new DatabaseError({
+              message: `Failed to find user books by ISBN: ${error}`,
+              operation: 'findUserLibraryByIsbns'
+            })
+          })
+          return new Map(rows.flatMap((row) => {
+            if (!row.isbn) return []
+            return [[row.isbn, {
+              userBookId: row.userBookId,
+              libraryState: row.libraryState as LibraryState
+            }] as const]
+          }))
         }),
 
       getSystemTagsByBookId: bookId =>

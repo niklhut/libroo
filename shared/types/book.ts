@@ -77,6 +77,35 @@ export interface BookLookupResult {
   message?: string
 }
 
+interface BulkBookLookupItemBase {
+  inputIndex: number
+  input: string
+  normalizedIsbn: string | null
+  duplicateOf?: number
+}
+
+export type BulkBookLookupItem
+  = | BulkBookLookupItemBase & {
+    status: 'ok'
+    normalizedIsbn: string
+    result: BookLookupResult
+  }
+  | BulkBookLookupItemBase & {
+    status: 'invalid'
+    normalizedIsbn: null
+    message: string
+  }
+  | BulkBookLookupItemBase & {
+    status: 'error'
+    normalizedIsbn: string
+    errorCode: 'upstream_failure' | 'persistence_failure'
+    message: string
+  }
+
+export interface BulkBookLookupResponse {
+  items: BulkBookLookupItem[]
+}
+
 export interface BatchDeleteResult {
   removedIds: string[]
   failedIds: string[]
