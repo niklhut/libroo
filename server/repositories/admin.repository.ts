@@ -4,7 +4,7 @@ import { session } from 'hub:db:schema'
 import { DatabaseError } from './book.repository'
 
 export interface AdminRepositoryInterface {
-  listLastActiveByUserIds: (userIds: string[]) => Effect.Effect<Record<string, Date | null>, DatabaseError, DbService>
+  listLastSessionActivityByUserIds: (userIds: string[]) => Effect.Effect<Record<string, Date | null>, DatabaseError, DbService>
 }
 
 export class AdminRepository extends Context.Tag('AdminRepository')<AdminRepository, AdminRepositoryInterface>() { }
@@ -15,7 +15,7 @@ export const AdminRepositoryLive = Layer.effect(
     const dbService = yield* DbService
 
     return {
-      listLastActiveByUserIds: userIds =>
+      listLastSessionActivityByUserIds: userIds =>
         Effect.gen(function* () {
           if (userIds.length === 0) return {}
 
@@ -23,20 +23,20 @@ export const AdminRepositoryLive = Layer.effect(
             try: () => dbService.db
               .select({
                 userId: session.userId,
-                lastActiveAt: sql<Date | number | string | null>`max(${session.updatedAt})`.as('last_active_at')
+                lastSessionActivityAt: sql<Date | number | string | null>`max(${session.updatedAt})`.as('last_session_activity_at')
               })
               .from(session)
               .where(inArray(session.userId, userIds))
               .groupBy(session.userId),
             catch: error => new DatabaseError({
               message: `Failed to load user activity: ${error}`,
-              operation: 'admin.listLastActiveByUserIds'
+              operation: 'admin.listLastSessionActivityByUserIds'
             })
           })
 
           return Object.fromEntries([
             ...userIds.map(userId => [userId, null] as const),
-            ...rows.map(row => [row.userId, normalizeTimestamp(row.lastActiveAt)] as const)
+            ...rows.map(row => [row.userId, normalizeTimestamp(row.lastSessionActivityAt)] as const)
           ])
         })
     }

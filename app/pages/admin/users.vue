@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { TableColumn, TableRow } from '@nuxt/ui/components/Table.vue'
 import type { AdminUser, AdminUsersPage } from '~~/shared/types/admin'
+import { formatAdminDateTime } from '~/utils/admin-date-format'
 
 usePageTitle('Admin Users')
 
@@ -56,22 +57,11 @@ const columns: TableColumn<AdminUser>[] = [
   { accessorKey: 'name', header: 'Name' },
   { accessorKey: 'email', header: 'Email' },
   { accessorKey: 'createdAt', header: 'Created' },
-  { accessorKey: 'lastActiveAt', header: 'Last active' },
+  { accessorKey: 'lastSessionActivityAt', header: 'Last session update' },
   { accessorKey: 'role', header: 'Role' },
   { accessorKey: 'status', header: 'Status' },
   { id: 'actions', header: '' }
 ]
-
-function formatDate(value: string | Date | null) {
-  if (!value) return 'Never'
-  return new Intl.DateTimeFormat(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit'
-  }).format(new Date(value))
-}
 
 function roleColor(role: AdminUser['role']) {
   return role === 'admin' ? 'primary' : 'neutral'
@@ -292,12 +282,18 @@ async function unwrapAuthResponse<T>(promise: Promise<{ data: T | null, error: {
           :data="users"
           :columns="columns"
         >
-          <template #createdAt-cell="{ row }">
-            <span class="whitespace-nowrap">{{ formatDate(originalUser(row).createdAt) }}</span>
+          <template #lastSessionActivityAt-header>
+            <UTooltip text="Most recent Better Auth session update or refresh, not per-request activity.">
+              <span>Last session update</span>
+            </UTooltip>
           </template>
 
-          <template #lastActiveAt-cell="{ row }">
-            <span class="whitespace-nowrap">{{ formatDate(originalUser(row).lastActiveAt) }}</span>
+          <template #createdAt-cell="{ row }">
+            <span class="whitespace-nowrap">{{ formatAdminDateTime(originalUser(row).createdAt) }}</span>
+          </template>
+
+          <template #lastSessionActivityAt-cell="{ row }">
+            <span class="whitespace-nowrap">{{ formatAdminDateTime(originalUser(row).lastSessionActivityAt) }}</span>
           </template>
 
           <template #role-cell="{ row }">

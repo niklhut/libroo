@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { TableColumn, TableRow } from '@nuxt/ui/components/Table.vue'
 import type { AdminAuditCategory, AdminAuditEntry, AdminAuditLogPage } from '~~/shared/types/admin-audit'
+import { formatAdminDateTime } from '~/utils/admin-date-format'
 
 usePageTitle('Admin Audit')
 
@@ -84,16 +85,6 @@ function originalEntry(row: TableRow<AdminAuditEntry>) {
   return row.original
 }
 
-function formatDate(value: string | Date) {
-  return new Intl.DateTimeFormat(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit'
-  }).format(new Date(value))
-}
-
 function formatAction(action: AdminAuditEntry['action']) {
   return action
     .split('.')
@@ -149,9 +140,9 @@ function formatMetadataKey(key: string) {
 }
 
 function formatMetadataValue(value: unknown) {
-  if (value instanceof Date) return formatDate(value)
+  if (value instanceof Date) return formatAdminDateTime(value)
   if (typeof value === 'boolean') return value ? 'yes' : 'no'
-  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value)) return formatDate(value)
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value)) return formatAdminDateTime(value)
   return String(value)
 }
 
@@ -248,7 +239,7 @@ function pageQuery(page: number) {
             class="min-w-7xl"
           >
             <template #createdAt-cell="{ row }">
-              <span class="whitespace-nowrap">{{ formatDate(originalEntry(row).createdAt) }}</span>
+              <span class="whitespace-nowrap">{{ formatAdminDateTime(originalEntry(row).createdAt) }}</span>
             </template>
 
             <template #category-cell="{ row }">

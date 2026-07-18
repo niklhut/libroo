@@ -23,30 +23,30 @@ describe('AdminService', () => {
   })
 
   it('maps Better Auth authorization failures', async () => {
-    const listLastActiveByUserIds = vi.fn()
+    const listLastSessionActivityByUserIds = vi.fn()
     authMock.listUsers.mockRejectedValueOnce({ statusCode: 403 })
 
     const result = await runAdminService(
       Effect.either(Effect.flatMap(AdminService, service =>
         service.listUsers({ headers: new Headers(), page: 1, pageSize: 25 })
       )),
-      listLastActiveByUserIds
+      listLastSessionActivityByUserIds
     )
 
     expect(result._tag).toBe('Left')
     expect(result.left).toBeInstanceOf(AdminForbiddenError)
-    expect(listLastActiveByUserIds).not.toHaveBeenCalled()
+    expect(listLastSessionActivityByUserIds).not.toHaveBeenCalled()
   })
 
   it('maps Better Auth server failures as server-side errors', async () => {
-    const listLastActiveByUserIds = vi.fn()
+    const listLastSessionActivityByUserIds = vi.fn()
     authMock.listUsers.mockRejectedValueOnce({ statusCode: 500, message: 'upstream unavailable' })
 
     const result = await runAdminService(
       Effect.either(Effect.flatMap(AdminService, service =>
         service.listUsers({ headers: new Headers(), page: 1, pageSize: 25 })
       )),
-      listLastActiveByUserIds
+      listLastSessionActivityByUserIds
     )
 
     expect(result._tag).toBe('Left')
@@ -55,12 +55,12 @@ describe('AdminService', () => {
       operation: 'admin.listUsers',
       message: 'upstream unavailable'
     })
-    expect(listLastActiveByUserIds).not.toHaveBeenCalled()
+    expect(listLastSessionActivityByUserIds).not.toHaveBeenCalled()
   })
 
-  it('loads one Better Auth page and enriches it with last active dates', async () => {
-    const lastActive = new Date('2026-06-04T12:00:00.000Z')
-    const listLastActiveByUserIds = vi.fn(() => Effect.succeed({ 'user-1': lastActive, 'user-2': null }))
+  it('loads one Better Auth page and enriches it with last session update dates', async () => {
+    const lastSessionActivity = new Date('2026-06-04T12:00:00.000Z')
+    const listLastSessionActivityByUserIds = vi.fn(() => Effect.succeed({ 'user-1': lastSessionActivity, 'user-2': null }))
 
     authMock.listUsers.mockResolvedValueOnce({
       users: [
@@ -96,7 +96,7 @@ describe('AdminService', () => {
       Effect.flatMap(AdminService, service =>
         service.listUsers({ headers: new Headers(), page: 2, pageSize: 250 })
       ),
-      listLastActiveByUserIds
+      listLastSessionActivityByUserIds
     )
 
     expect(result).toMatchObject({
@@ -109,7 +109,7 @@ describe('AdminService', () => {
           role: 'admin',
           isAdmin: true,
           status: 'active',
-          lastActiveAt: lastActive
+          lastSessionActivityAt: lastSessionActivity
         },
         {
           id: 'user-2',
@@ -117,7 +117,7 @@ describe('AdminService', () => {
           isAdmin: false,
           status: 'banned',
           banReason: 'test',
-          lastActiveAt: null
+          lastSessionActivityAt: null
         }
       ]
     })
@@ -127,7 +127,7 @@ describe('AdminService', () => {
       'email',
       'createdAt',
       'updatedAt',
-      'lastActiveAt',
+      'lastSessionActivityAt',
       'role',
       'isAdmin',
       'status',
@@ -147,7 +147,7 @@ describe('AdminService', () => {
         sortDirection: 'desc'
       }
     })
-    expect(listLastActiveByUserIds).toHaveBeenCalledWith(['user-1', 'user-2'])
+    expect(listLastSessionActivityByUserIds).toHaveBeenCalledWith(['user-1', 'user-2'])
   })
 
   it('rejects audit reads for non-admin users', async () => {
@@ -192,7 +192,7 @@ describe('AdminService', () => {
 
 function runAdminService<A, E>(
   effect: Effect.Effect<A, E, AdminService>,
-  listLastActiveByUserIds: ReturnType<typeof vi.fn>,
+  listLastSessionActivityByUserIds: ReturnType<typeof vi.fn>,
   createAudit: ReturnType<typeof vi.fn> = vi.fn(entry => Effect.succeed({
     id: 'audit-1',
     createdAt: new Date(),
@@ -203,7 +203,7 @@ function runAdminService<A, E>(
   return Effect.runPromise(effect.pipe(
     Effect.provide(AdminServiceLive),
     Effect.provide(Layer.succeed(AdminRepository, {
-      listLastActiveByUserIds
+      listLastSessionActivityByUserIds
     })),
     Effect.provide(Layer.succeed(AuditRepository, {
       create: createAudit,

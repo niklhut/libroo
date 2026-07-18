@@ -7,7 +7,7 @@ export interface AdminUser {
   email: string
   createdAt: string | Date
   updatedAt: string | Date
-  lastActiveAt: string | Date | null
+  lastSessionActivityAt: string | Date | null
   role: AdminUserRole
   isAdmin: boolean
   status: AdminUserStatus

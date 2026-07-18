@@ -10,6 +10,8 @@ The `user` table stores the Better Auth user record: `id`, required `name`, uniq
 
 The `session` table stores active session records: token, expiry, creation/update timestamps, nullable IP address, nullable user agent, nullable `impersonated_by`, and the owning user. Sessions cascade-delete with the user. `impersonated_by` remains in the schema because Better Auth supports it, but Libroo blocks impersonation permanently at middleware level.
 
+The admin users screen labels the latest `session.updated_at` value as **Last session update**. It is derived from Better Auth session refreshes and is not per-request activity; no additional session column or activity-tracking mechanism has been added.
+
 The `account` table stores authentication account records: provider identifiers, the owning user, optional provider tokens, password hash, token expiry timestamps, scope, and creation/update timestamps. Accounts cascade-delete with the user.
 
 The `verification` table stores Better Auth verification state: identifier, value, expiry, and optional creation/update timestamps. It is used for email verification, email-change verification, and password-reset style verification records.

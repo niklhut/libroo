@@ -97,6 +97,7 @@ providers, or exploratory release judgment:
 Complete this section when admin user management has shipped.
 
 - [ ] As admin, visit `/admin/users`; verify the user list loads.
+- [ ] Verify **Last session update** reflects the most recent Better Auth session refresh (subject to its default `updateAge` throttling), not per-request activity. Admin timestamps use a fixed-locale UTC 24-hour clock.
 - [ ] As non-admin, visit `/admin/users`; verify access is rejected or redirected.
 - [ ] As non-admin, visit `/admin/invites`; verify access is rejected or redirected.
 - [ ] As non-admin, visit `/admin/audit`; verify access is rejected or redirected.

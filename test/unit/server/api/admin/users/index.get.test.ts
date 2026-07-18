@@ -67,7 +67,7 @@ describe('server/api/admin/users/index.get', () => {
       email: 'grace@example.com',
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-06-30T00:00:00.000Z',
-      lastActiveAt: null,
+      lastSessionActivityAt: null,
       role: 'admin',
       isAdmin: true,
       status: 'active',
@@ -93,13 +93,14 @@ describe('server/api/admin/users/index.get', () => {
       'email',
       'createdAt',
       'updatedAt',
-      'lastActiveAt',
+      'lastSessionActivityAt',
       'role',
       'isAdmin',
       'status',
       'banReason',
       'banExpires'
     ]))
+    expect((response as typeof page).users[0]).toHaveProperty('lastSessionActivityAt', null)
     expect((response as typeof page).users[0]).not.toHaveProperty('password')
     expect((response as typeof page).users[0]).not.toHaveProperty('passwordHash')
     expect((response as typeof page).users[0]).not.toHaveProperty('hash')
