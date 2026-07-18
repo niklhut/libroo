@@ -44,7 +44,8 @@ export const e2eRuntimeEnv = {
   NUXT_PUBLIC_REGISTRATION_ENABLED: 'true',
   LIBROO_OPENLIBRARY_FIXTURE_PORT: fixturePort,
   LIBROO_OPENLIBRARY_API_BASE: `http://127.0.0.1:${fixturePort}`,
-  LIBROO_OPENLIBRARY_COVERS_BASE: `http://127.0.0.1:${fixturePort}`
+  LIBROO_OPENLIBRARY_COVERS_BASE: `http://127.0.0.1:${fixturePort}`,
+  NUXT_OPEN_LIBRARY_CONTACT_EMAIL: 'e2e@libroo.test'
 }
 
 export const e2eEmailRuntimePaths = {

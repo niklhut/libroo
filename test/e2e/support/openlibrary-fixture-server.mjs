@@ -17,16 +17,13 @@ const cover = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="400" h
 const books = Object.fromEntries([fixtureIsbn, ...bulkFixtureIsbns].map((isbn, index) => [isbn, {
   title: index === 0 ? 'Fixture Driven Development' : `Bulk Fixture Book ${index}`,
   authors: [{ name: 'Ada Example' }],
-  publishers: [{ name: 'Libroo Test Press' }],
+  publishers: ['Libroo Test Press'],
   publish_date: '2026',
   number_of_pages: 321,
-  cover: {
-    small: `/b/isbn/${isbn}-S.jpg?default=false`,
-    medium: `/b/isbn/${isbn}-M.jpg?default=false`,
-    large: `/b/isbn/${isbn}-L.jpg?default=false`
-  },
+  covers: [index + 1],
   key: `/books/OL-E2E-${index + 1}M`,
-  subjects: [{ name: 'Testing' }, { name: 'Libraries' }]
+  works: [{ key: `/works/OL-E2E-${index + 1}W` }],
+  subjects: ['Testing', 'Libraries']
 }]))
 
 const server = createServer((request, response) => {
@@ -38,19 +35,18 @@ const server = createServer((request, response) => {
   }
 
   if (url.pathname === '/api/books') {
+    if (url.searchParams.get('jscmd') !== 'details') {
+      response.writeHead(400, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({ error: 'The fixture only supports jscmd=details' }))
+      return
+    }
     const bibkeys = (url.searchParams.get('bibkeys') || '').split(',')
     const body = Object.fromEntries(bibkeys.flatMap((bibkey) => {
       const isbn = bibkey.replace(/^ISBN:/, '')
       const book = books[isbn]
-      return book ? [[bibkey, book]] : []
+      return book ? [[bibkey, { details: book }]] : []
     }))
     sendJson(response, body)
-    return
-  }
-
-  const editionMatch = url.pathname.match(/^\/books\/OL-E2E-(\d+)M\.json$/)
-  if (editionMatch) {
-    sendJson(response, { works: [{ key: `/works/OL-E2E-${editionMatch[1]}W` }] })
     return
   }
 
