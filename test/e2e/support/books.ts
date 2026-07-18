@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
 import { expect } from '@playwright/test'
-import bulkFixtureIsbns from './fixtures/bulk-isbns.json'
+import bulkFixtureIsbns from './fixtures/bulk-isbns.json' with { type: 'json' }
 import { addBookTabs } from './selectors'
 
 export const fixtureIsbn = '9780385533225'
