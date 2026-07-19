@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { BorrowedBook, OwnerLoan } from '~~/shared/types/book'
+import type { Ref } from 'vue'
 
 type LoansView = 'loaned' | 'borrowed'
 
@@ -48,82 +49,66 @@ const { data: borrowedBooks, status: borrowedStatus } = await useFetch<BorrowedB
 
 const isPending = computed(() => view.value === 'loaned' ? ownerStatus.value === 'pending' : borrowedStatus.value === 'pending')
 
-async function returnLoan(loan: OwnerLoan) {
-  if (returningLoanId.value) return
+interface LoanActionOptions {
+  endpoint: string
+  requestOptions: { method: 'POST' | 'DELETE' }
+  successTitle: string
+  failureTitle: string
+  fallbackErrorMessage: string
+}
 
-  returningLoanId.value = loan.id
+async function runLoanAction(loan: OwnerLoan, inFlightLoanId: Ref<string | null>, options: LoanActionOptions) {
+  if (inFlightLoanId.value) return
+
+  inFlightLoanId.value = loan.id
   try {
-    await $fetch(`/api/loans/${loan.id}/return`, {
-      method: 'POST'
-    })
+    await $fetch(options.endpoint, options.requestOptions)
     await refreshOwnerLoans()
     toast.add({
-      title: 'Book marked as returned',
+      title: options.successTitle,
       color: 'success'
     })
   } catch (err: unknown) {
     const message = (err as { data?: { message?: string } })?.data?.message
-      ?? (err instanceof Error ? err.message : 'Unable to mark returned')
+      ?? (err instanceof Error ? err.message : options.fallbackErrorMessage)
     toast.add({
-      title: 'Could not update loan',
+      title: options.failureTitle,
       description: message,
       color: 'error'
     })
   } finally {
-    returningLoanId.value = null
+    inFlightLoanId.value = null
   }
+}
+
+async function returnLoan(loan: OwnerLoan) {
+  await runLoanAction(loan, returningLoanId, {
+    endpoint: `/api/loans/${loan.id}/return`,
+    requestOptions: { method: 'POST' },
+    successTitle: 'Book marked as returned',
+    failureTitle: 'Could not update loan',
+    fallbackErrorMessage: 'Unable to mark returned'
+  })
 }
 
 async function cancelLoan(loan: OwnerLoan) {
-  if (cancellingLoanId.value) return
-
-  cancellingLoanId.value = loan.id
-  try {
-    await $fetch(`/api/loans/${loan.id}/cancel`, {
-      method: 'POST'
-    })
-    await refreshOwnerLoans()
-    toast.add({
-      title: 'Loan canceled',
-      color: 'success'
-    })
-  } catch (err: unknown) {
-    const message = (err as { data?: { message?: string } })?.data?.message
-      ?? (err instanceof Error ? err.message : 'Unable to cancel loan')
-    toast.add({
-      title: 'Could not cancel loan',
-      description: message,
-      color: 'error'
-    })
-  } finally {
-    cancellingLoanId.value = null
-  }
+  await runLoanAction(loan, cancellingLoanId, {
+    endpoint: `/api/loans/${loan.id}/cancel`,
+    requestOptions: { method: 'POST' },
+    successTitle: 'Loan canceled',
+    failureTitle: 'Could not cancel loan',
+    fallbackErrorMessage: 'Unable to cancel loan'
+  })
 }
 
 async function deleteLoan(loan: OwnerLoan) {
-  if (deletingLoanId.value) return
-
-  deletingLoanId.value = loan.id
-  try {
-    await $fetch(`/api/loans/${loan.id}`, {
-      method: 'DELETE'
-    })
-    await refreshOwnerLoans()
-    toast.add({
-      title: 'Loan record deleted',
-      color: 'success'
-    })
-  } catch (err: unknown) {
-    const message = (err as { data?: { message?: string } })?.data?.message
-      ?? (err instanceof Error ? err.message : 'Unable to delete loan record')
-    toast.add({
-      title: 'Could not delete loan record',
-      description: message,
-      color: 'error'
-    })
-  } finally {
-    deletingLoanId.value = null
-  }
+  await runLoanAction(loan, deletingLoanId, {
+    endpoint: `/api/loans/${loan.id}`,
+    requestOptions: { method: 'DELETE' },
+    successTitle: 'Loan record deleted',
+    failureTitle: 'Could not delete loan record',
+    fallbackErrorMessage: 'Unable to delete loan record'
+  })
 }
 
 async function saveLoanNote(loan: OwnerLoan, note: string | null) {

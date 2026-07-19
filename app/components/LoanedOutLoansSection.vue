@@ -59,7 +59,7 @@ function confirmDeleteLoan() {
 
 const deleteLoanDescription = computed(() => {
   if (!deleteLoanTarget.value) return ''
-  return deleteLoanTarget.value.acceptedAt || deleteLoanTarget.value.status === 'returned'
+  return deleteLoanTarget.value.acceptedAt
     ? 'This loan record will be permanently removed. It will also disappear from the borrower’s history.'
     : 'This loan record will be permanently removed.'
 })

@@ -38,10 +38,7 @@ describe('server/api/loans/[id]/index.delete', () => {
     expect(serviceMocks.deleteLoanForOwner).toHaveBeenCalledWith('loan-1', 'user-1')
   })
 
-  it.each([
-    ['wrong owner'],
-    ['not found']
-  ])('surfaces LoanNotFoundError as 404 for %s', async () => {
+  it('surfaces LoanNotFoundError as 404', async () => {
     mockLoggedInUser()
     serviceMocks.deleteLoanForOwner.mockReturnValueOnce(Effect.fail({
       _tag: 'LoanNotFoundError',
