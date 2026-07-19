@@ -107,7 +107,7 @@ const DEFAULT_OPEN_LIBRARY_COVER_TIMEOUT_SECONDS = 20
 const DEFAULT_OPEN_LIBRARY_API_BASE = 'https://openlibrary.org'
 const DEFAULT_OPEN_LIBRARY_COVERS_BASE = 'https://covers.openlibrary.org'
 const OPEN_LIBRARY_HTTP_CONCURRENCY = 16
-const OPEN_LIBRARY_COVER_STORAGE_CONCURRENCY = 4
+export const OPEN_LIBRARY_COVER_STORAGE_CONCURRENCY = 4
 const MIN_ENRICHED_SUBJECT_COUNT = 5
 
 function normalizeBaseUrl(value: string | undefined, fallback: string) {

@@ -3,6 +3,7 @@ import * as HttpClient from '@effect/platform/HttpClient'
 import * as HttpClientResponse from '@effect/platform/HttpClientResponse'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  OPEN_LIBRARY_COVER_STORAGE_CONCURRENCY,
   OpenLibraryRepository,
   OpenLibraryRepositoryLive
 } from '../../../../server/repositories/openLibrary.repository'
@@ -278,7 +279,7 @@ describe('OpenLibraryRepository details lookup', () => {
     const result = await covers
 
     expect(result.size).toBe(isbns.length)
-    expect(maxActiveStorage).toBe(4)
+    expect(maxActiveStorage).toBe(OPEN_LIBRARY_COVER_STORAGE_CONCURRENCY)
   })
 
   it('normalizes object-shaped edition notes and work descriptions to text', async () => {
