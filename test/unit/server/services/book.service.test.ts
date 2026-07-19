@@ -208,4 +208,52 @@ describe('bulk ISBN lookup', () => {
     expect(ensureOpenLibraryBook).toHaveBeenCalledTimes(2)
     expect(maxActive).toBe(1)
   })
+
+  it('prepares remote covers once and passes their paths into serial persistence', async () => {
+    const isbns = ['9780306406157', '9780141439518']
+    const remoteData = new Map(isbns.map(isbn => [isbn, {
+      title: isbn,
+      authors: ['Author'],
+      isbn,
+      openLibraryKey: '/books/OL1M',
+      workKey: null,
+      coverUrl: `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`
+    }]))
+    const ensureOpenLibraryBook = vi.fn((isbn: string, _data: unknown, coverPath: string | null) => Effect.succeed({
+      id: `book-${isbn}`,
+      isbn,
+      title: isbn,
+      author: 'Author',
+      authors: [],
+      coverPath,
+      openLibraryKey: '/books/OL1M',
+      createdAt: new Date(),
+      source: 'open_library' as const,
+      createdByUserId: null
+    }))
+    const bookRepository = {
+      findByIsbns: () => Effect.succeed(new Map()),
+      findUserLibraryByIsbns: () => Effect.succeed(new Map()),
+      findStoredOpenLibraryCover: vi.fn(() => Effect.succeed(null)),
+      ensureOpenLibraryBook,
+      getSystemTagsByBookId: () => Effect.succeed([])
+    } as unknown as BookRepositoryInterface
+    const downloadCovers = vi.fn(() => Effect.succeed(new Map(isbns.map(isbn => [isbn, `covers/${isbn}.webp`]))))
+    const openLibraryRepository = {
+      lookupByISBNs: () => Effect.succeed(remoteData),
+      downloadCovers
+    } as unknown as OpenLibraryRepositoryInterface
+
+    const result = await Effect.runPromise(bulkLookupBooks('user-1', isbns).pipe(
+      Effect.provide(BookServiceLive),
+      Effect.provide(Layer.succeed(BookRepository, bookRepository)),
+      Effect.provide(Layer.succeed(OpenLibraryRepository, openLibraryRepository)),
+      Effect.provide(Layer.succeed(LocationRepository, {} as LocationRepositoryInterface))
+    ))
+
+    expect(result.items.every(item => item.status === 'ok')).toBe(true)
+    expect(downloadCovers).toHaveBeenCalledWith(isbns, 'L')
+    expect(ensureOpenLibraryBook).toHaveBeenNthCalledWith(1, isbns[0], remoteData.get(isbns[0]), `covers/${isbns[0]}.webp`)
+    expect(ensureOpenLibraryBook).toHaveBeenNthCalledWith(2, isbns[1], remoteData.get(isbns[1]), `covers/${isbns[1]}.webp`)
+  })
 })

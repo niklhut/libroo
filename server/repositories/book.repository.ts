@@ -127,7 +127,8 @@ export interface BookLibraryFilters extends LibraryQueryFilters {
 export interface BookRepositoryInterface {
   ensureOpenLibraryBook: (
     isbn: string,
-    prefetchedData?: OpenLibraryBookData
+    prefetchedData?: OpenLibraryBookData,
+    prefetchedCoverPath?: string | null
   ) => Effect.Effect<
     Book,
     BookCreateError | OpenLibraryBookNotFoundError | OpenLibraryApiError | DatabaseError,
@@ -201,6 +202,10 @@ export interface BookRepositoryInterface {
     userId: string,
     isbns: string[]
   ) => Effect.Effect<Map<string, { userBookId: string, libraryState: LibraryState }>, DatabaseError, DbService>
+
+  findStoredOpenLibraryCover: (
+    isbn: string
+  ) => Effect.Effect<string | null, never, StorageService>
 
   getSystemTagsByBookId: (
     bookId: string
@@ -801,7 +806,11 @@ export const BookRepositoryLive = Layer.effect(
         }]))
       })
 
-    const ensureOpenLibraryBook = (isbn: string, prefetchedData?: OpenLibraryBookData) =>
+    const ensureOpenLibraryBook = (
+      isbn: string,
+      prefetchedData?: OpenLibraryBookData,
+      prefetchedCoverPath?: string | null
+    ) =>
       Effect.gen(function* () {
         const normalizedISBN = normalizeISBN(isbn)
         const existingBook = yield* loadOpenLibraryBookByIsbn(normalizedISBN, 'ensureOpenLibraryBook.findExisting')
@@ -813,14 +822,16 @@ export const BookRepositoryLive = Layer.effect(
             lookupByISBN(normalizedISBN)
           ))
 
-          const coverPath = yield* withDebugTiming(
-            'ensureOpenLibraryBook.coverResolution',
-            normalizedISBN,
-            Effect.gen(function* () {
-              return (yield* findStoredOpenLibraryCover(normalizedISBN))
-                ?? (yield* downloadCover(normalizedISBN, 'L'))
-            })
-          )
+          const coverPath = prefetchedCoverPath !== undefined
+            ? prefetchedCoverPath
+            : yield* withDebugTiming(
+              'ensureOpenLibraryBook.coverResolution',
+              normalizedISBN,
+              Effect.gen(function* () {
+                return (yield* findStoredOpenLibraryCover(normalizedISBN))
+                  ?? (yield* downloadCover(normalizedISBN, 'L'))
+              })
+            )
 
           const newBookId = generateId()
           const now = new Date()
@@ -964,6 +975,7 @@ export const BookRepositoryLive = Layer.effect(
 
     return {
       ensureOpenLibraryBook,
+      findStoredOpenLibraryCover,
 
       addBookByISBN: (userId, isbn, libraryState = 'owned') =>
         Effect.gen(function* () {

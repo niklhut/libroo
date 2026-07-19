@@ -15,6 +15,8 @@ import { detectImageContentType, UNKNOWN_IMAGE_CONTENT_TYPE } from '../../shared
 import type { BulkBookLookupItem, BulkBookLookupResponse, BookLookupResult, LibraryState, TagWithCount } from '../../shared/types/book'
 import type { Book } from '../repositories/book.repository'
 
+const BULK_COVER_LOOKUP_CONCURRENCY = 16
+
 interface UserBookViewModel {
   id: string
   bookId: string
@@ -641,6 +643,29 @@ export const BookServiceLive = Layer.effect(
                   })
                 }
               } else {
+                const coverPreparationStartedAt = Date.now()
+                const coverCandidates = unresolved.filter(isbn => Boolean(remoteLookup.right.get(isbn)?.coverUrl))
+                const storedCoverEntries = yield* Effect.forEach(
+                  coverCandidates,
+                  isbn => bookRepo.findStoredOpenLibraryCover(isbn).pipe(
+                    Effect.map(coverPath => [isbn, coverPath] as const)
+                  ),
+                  { concurrency: BULK_COVER_LOOKUP_CONCURRENCY }
+                )
+                const coverPaths = new Map(storedCoverEntries)
+                const missingCovers = coverCandidates.filter(isbn => !coverPaths.get(isbn))
+                if (missingCovers.length > 0) {
+                  const downloadedCovers = yield* openLibraryRepo.downloadCovers(missingCovers, 'L')
+                  for (const [isbn, coverPath] of downloadedCovers) coverPaths.set(isbn, coverPath)
+                }
+                yield* Effect.logDebug('Bulk Open Library cover preparation completed').pipe(
+                  Effect.annotateLogs({
+                    candidateCount: coverCandidates.length,
+                    downloadedCount: missingCovers.length,
+                    durationMs: Date.now() - coverPreparationStartedAt
+                  })
+                )
+
                 const persistLookup = (isbn: string): Effect.Effect<
                   readonly [string, UniqueOutcome],
                   never,
@@ -654,7 +679,7 @@ export const BookServiceLive = Layer.effect(
                     }] as const
                   }
                   const result = yield* Effect.either(
-                    bookRepo.ensureOpenLibraryBook(isbn, data).pipe(
+                    bookRepo.ensureOpenLibraryBook(isbn, data, coverPaths.get(isbn) ?? null).pipe(
                       Effect.flatMap(book => bookRepo.getSystemTagsByBookId(book.id).pipe(
                         Effect.map(tags => toLookupResult(book, isbn, ownership.get(isbn) ?? null, tags.map(tag => tag.name)))
                       ))
@@ -676,10 +701,9 @@ export const BookServiceLive = Layer.effect(
                 const persisted = yield* Effect.forEach(
                   unresolved,
                   persistLookup,
-                  // SQLite only supports one writer at a time. Each lookup may
-                  // download a cover and then insert/hydrate several rows, so
-                  // concurrent persistence contends with both sibling inserts
-                  // and the shared rate-limit counter.
+                  // Cover preparation is complete before this phase. SQLite
+                  // persistence remains serial because each book still inserts
+                  // and hydrates several related rows.
                   { concurrency: 1 }
                 )
                 for (const [isbn, outcome] of persisted) outcomes.set(isbn, outcome)

@@ -2,8 +2,9 @@ import { Context, Effect, Layer, Data, Duration } from 'effect'
 import * as HttpClient from '@effect/platform/HttpClient'
 import * as HCError from '@effect/platform/HttpClientError'
 import type * as HttpClientType from '@effect/platform/HttpClient'
-import { BULK_LOOKUP_CONCURRENCY, MAX_BULK_ISBN_COUNT } from '../../shared/utils/schemas'
+import { MAX_BULK_ISBN_COUNT } from '../../shared/utils/schemas'
 import { DbService } from '../services/db.service'
+import { putCoverImage, type StorageService } from '../services/storage.service'
 import { DatabaseRateLimiter } from '../utils/database-rate-limiter'
 import { runtimeProfile } from '../runtime/profile.active'
 
@@ -87,6 +88,7 @@ export interface OpenLibraryRepositoryInterface {
   lookupByISBN: (isbn: string) => Effect.Effect<OpenLibraryBookData, OpenLibraryBookNotFoundError | OpenLibraryApiError, HttpClientType.HttpClient>
   lookupByISBNs: (isbns: string[]) => Effect.Effect<Map<string, OpenLibraryBookData>, OpenLibraryApiError, HttpClientType.HttpClient>
   downloadCover: (isbn: string, size?: 'S' | 'M' | 'L') => Effect.Effect<string | null, never, HttpClientType.HttpClient | StorageService>
+  downloadCovers: (isbns: string[], size?: 'S' | 'M' | 'L') => Effect.Effect<Map<string, string | null>, never, HttpClientType.HttpClient | StorageService>
 }
 
 // Service tag
@@ -104,6 +106,9 @@ const DEFAULT_OPEN_LIBRARY_TIMEOUT_SECONDS = 12
 const DEFAULT_OPEN_LIBRARY_COVER_TIMEOUT_SECONDS = 20
 const DEFAULT_OPEN_LIBRARY_API_BASE = 'https://openlibrary.org'
 const DEFAULT_OPEN_LIBRARY_COVERS_BASE = 'https://covers.openlibrary.org'
+const OPEN_LIBRARY_HTTP_CONCURRENCY = 16
+const OPEN_LIBRARY_COVER_STORAGE_CONCURRENCY = 4
+const MIN_ENRICHED_SUBJECT_COUNT = 5
 
 function normalizeBaseUrl(value: string | undefined, fallback: string) {
   const trimmed = value?.trim()
@@ -167,9 +172,18 @@ function extractOpenLibraryText(value: unknown): string | undefined {
 }
 
 // Helper to make HTTP GET request with timeout and get JSON response
-const fetchJson = <T>(url: string, acquireSlot: Effect.Effect<void, OpenLibraryApiError>) =>
+const fetchJson = <T>(
+  url: string,
+  acquireSlot: Effect.Effect<void, OpenLibraryApiError>,
+  operation: 'metadata' | 'work'
+) =>
   Effect.gen(function* () {
+    const slotStartedAt = Date.now()
     yield* acquireSlot
+    yield* Effect.logDebug('Open Library outbound slot acquired').pipe(
+      Effect.annotateLogs({ operation, waitDurationMs: Date.now() - slotStartedAt })
+    )
+    const requestStartedAt = Date.now()
     const response = yield* HttpClient.get(url, { headers: getOpenLibraryHeaders() }).pipe(
       Effect.timeout(getOpenLibraryTimeout()),
       Effect.mapError(error => new OpenLibraryApiError({
@@ -185,6 +199,9 @@ const fetchJson = <T>(url: string, acquireSlot: Effect.Effect<void, OpenLibraryA
       Effect.mapError(error => new OpenLibraryApiError({
         message: `HTTP request failed: ${HCError.isHttpClientError(error) ? error.message : String(error)}`
       }))
+    )
+    yield* Effect.logDebug('Open Library request completed').pipe(
+      Effect.annotateLogs({ operation, requestDurationMs: Date.now() - requestStartedAt })
     )
     return json as T
   })
@@ -248,7 +265,8 @@ export const OpenLibraryRepositoryLive = Layer.effect(
           const bibkeys = chunk.map(isbn => `ISBN:${isbn}`).join(',')
           const response = yield* fetchJson<OpenLibraryBooksApiResponse>(
             `${apiBase}/api/books?bibkeys=${bibkeys}&jscmd=details&format=json`,
-            acquireSlot
+            acquireSlot,
+            'metadata'
           )
 
           for (const isbn of chunk) {
@@ -282,16 +300,20 @@ export const OpenLibraryRepositoryLive = Layer.effect(
           }
         }
 
-        const workKeys = [...new Set([...booksByIsbn.values()].map(book => book.workKey).filter((key): key is string => Boolean(key)))]
+        const booksNeedingWork = [...booksByIsbn.values()].filter(book =>
+          Boolean(book.workKey)
+          && (!book.description || (book.subjects?.length ?? 0) < MIN_ENRICHED_SUBJECT_COUNT)
+        )
+        const workKeys = [...new Set(booksNeedingWork.map(book => book.workKey).filter((key): key is string => Boolean(key)))]
         const workResults = yield* Effect.forEach(
           workKeys,
-          key => fetchJson<OpenLibraryWorksApiResponse>(`${apiBase}${key}.json`, acquireSlot).pipe(
+          key => fetchJson<OpenLibraryWorksApiResponse>(`${apiBase}${key}.json`, acquireSlot, 'work').pipe(
             Effect.map(data => [key, data] as const),
             Effect.catchAll(error => Effect.logDebug(`[OpenLibrary] Error fetching work ${key}: ${String(error)}`).pipe(
               Effect.as([key, null] as const)
             ))
           ),
-          { concurrency: BULK_LOOKUP_CONCURRENCY }
+          { concurrency: OPEN_LIBRARY_HTTP_CONCURRENCY }
         )
         const worksByKey = new Map(workResults)
 
@@ -299,14 +321,92 @@ export const OpenLibraryRepositoryLive = Layer.effect(
           if (!book.workKey) continue
           const work = worksByKey.get(book.workKey)
           if (!work) continue
-          const description = extractOpenLibraryText(work.description)
-          const subjects = book.subjects && book.subjects.length >= 5
+          const description = book.description || extractOpenLibraryText(work.description)
+          const subjects = book.subjects && book.subjects.length >= MIN_ENRICHED_SUBJECT_COUNT
             ? book.subjects
             : [...new Set([...(book.subjects || []), ...(work.subjects || []).filter(subject => !subject.startsWith('nyt:'))])].slice(0, 20)
-          booksByIsbn.set(isbn, { ...book, description: description || book.description, subjects })
+          booksByIsbn.set(isbn, { ...book, description, subjects })
         }
 
         return booksByIsbn
+      })
+
+    const fetchCoverImage = (isbn: string, size: 'S' | 'M' | 'L') =>
+      Effect.gen(function* () {
+        const normalizedISBN = normalizeISBN(isbn)
+        const coverUrl = `${getOpenLibraryCoversBase()}/b/isbn/${normalizedISBN}-${size}.jpg?default=false`
+        const slotStartedAt = Date.now()
+        const acquired = yield* acquireSlot.pipe(
+          Effect.as(true),
+          Effect.catchAll(error =>
+            Effect.logWarning(error.message).pipe(Effect.as(false))
+          )
+        )
+        if (!acquired) return null
+        yield* Effect.logDebug('Open Library outbound slot acquired').pipe(
+          Effect.annotateLogs({ operation: 'cover', waitDurationMs: Date.now() - slotStartedAt })
+        )
+
+        const requestStartedAt = Date.now()
+        const image = yield* HttpClient.get(coverUrl, { headers: getOpenLibraryHeaders() }).pipe(
+          Effect.timeout(getOpenLibraryCoverTimeout()),
+          Effect.flatMap((response) => {
+            if (response.status < 200 || response.status >= 300) {
+              return Effect.succeed(null as ArrayBuffer | null)
+            }
+
+            const contentLength = response.headers['content-length']
+            if (contentLength && parseInt(contentLength) < 1000) {
+              return Effect.succeed(null as ArrayBuffer | null)
+            }
+
+            return response.arrayBuffer
+          }),
+          Effect.mapError(error => new OpenLibraryCoverError({
+            message: `Failed to fetch cover: ${HCError.isHttpClientError(error) ? error.message : String(error)}`,
+            isbn: normalizedISBN
+          })),
+          Effect.catchAll(error =>
+            Effect.logWarning(`Cover download failed for ISBN ${error.isbn}: ${error.message}`).pipe(
+              Effect.as(null as ArrayBuffer | null)
+            )
+          )
+        )
+        yield* Effect.logDebug('Open Library request completed').pipe(
+          Effect.annotateLogs({ operation: 'cover', requestDurationMs: Date.now() - requestStartedAt })
+        )
+        return image
+      })
+
+    const downloadCovers = (isbns: string[], size: 'S' | 'M' | 'L' = 'L') =>
+      Effect.gen(function* () {
+        const normalized = [...new Set(isbns.map(normalizeISBN))]
+        const storageSemaphore = yield* Effect.makeSemaphore(OPEN_LIBRARY_COVER_STORAGE_CONCURRENCY)
+        const results = yield* Effect.forEach(
+          normalized,
+          isbn => Effect.gen(function* () {
+            const imageBuffer = yield* fetchCoverImage(isbn, size)
+            if (!imageBuffer) {
+              yield* Effect.log(`[OpenLibrary] No cover found for ISBN ${isbn}`)
+              return [isbn, null] as const
+            }
+
+            const pathname = `covers/${isbn}.webp`
+            const coverPath = yield* storageSemaphore.withPermits(1)(
+              putCoverImage(pathname, imageBuffer).pipe(
+                Effect.map(blobMetadata => blobMetadata.pathname),
+                Effect.catchAll(error =>
+                  Effect.logWarning(`Failed to store cover in blob storage: ${error}`).pipe(
+                    Effect.as(null)
+                  )
+                )
+              )
+            )
+            return [isbn, coverPath] as const
+          }),
+          { concurrency: OPEN_LIBRARY_HTTP_CONCURRENCY }
+        )
+        return new Map(results)
       })
 
     return {
@@ -323,67 +423,10 @@ export const OpenLibraryRepositoryLive = Layer.effect(
           }))
         }),
 
+      downloadCovers,
       downloadCover: (isbn, size = 'L') =>
-        Effect.gen(function* () {
-          const normalizedISBN = normalizeISBN(isbn)
-          const coverUrl = `${getOpenLibraryCoversBase()}/b/isbn/${normalizedISBN}-${size}.jpg?default=false`
-
-          // Fetch cover and read body in a single scoped operation
-          const acquired = yield* acquireSlot.pipe(
-            Effect.as(true),
-            Effect.catchAll(error =>
-              Effect.logWarning(error.message).pipe(Effect.as(false))
-            )
-          )
-          if (!acquired) return null
-
-          const imageBuffer = yield* HttpClient.get(coverUrl, { headers: getOpenLibraryHeaders() }).pipe(
-            Effect.timeout(getOpenLibraryCoverTimeout()),
-            Effect.flatMap((response) => {
-              if (response.status < 200 || response.status >= 300) {
-                // No cover available, return null (not an error)
-                return Effect.succeed(null as ArrayBuffer | null)
-              }
-
-              // Check if we got a valid image (OpenLibrary returns a 1x1 transparent pixel for missing covers)
-              const contentLength = response.headers['content-length']
-              if (contentLength && parseInt(contentLength) < 1000) {
-                // Too small, probably the placeholder image
-                return Effect.succeed(null as ArrayBuffer | null)
-              }
-
-              // Read the body within the same scope as the request
-              return response.arrayBuffer
-            }),
-            Effect.mapError(error => new OpenLibraryCoverError({
-              message: `Failed to fetch cover: ${HCError.isHttpClientError(error) ? error.message : String(error)}`,
-              isbn: normalizedISBN
-            }))
-          )
-
-          if (!imageBuffer) {
-            yield* Effect.log(`[OpenLibrary] No cover found for ISBN ${normalizedISBN}`)
-            return null
-          }
-
-          const pathname = `covers/${normalizedISBN}.webp`
-
-          // Store in blob storage, return null if storage fails
-          return yield* putCoverImage(pathname, imageBuffer).pipe(
-            Effect.map(blobMetadata => blobMetadata.pathname),
-            Effect.catchAll(error =>
-              Effect.logWarning(`Failed to store cover in blob storage: ${error}`).pipe(
-                Effect.map(() => null)
-              )
-            )
-          )
-        }).pipe(
-          // If cover download fails, just return null instead of failing the whole operation
-          Effect.catchTag('OpenLibraryCoverError', error =>
-            Effect.logWarning(`Cover download failed for ISBN ${error.isbn}: ${error.message}`).pipe(
-              Effect.map(() => null)
-            )
-          )
+        downloadCovers([isbn], size).pipe(
+          Effect.map(covers => covers.get(normalizeISBN(isbn)) ?? null)
         )
     }
   })
@@ -398,3 +441,6 @@ export const lookupByISBNs = (isbns: string[]) =>
 
 export const downloadCover = (isbn: string, size?: 'S' | 'M' | 'L') =>
   Effect.flatMap(OpenLibraryRepository, repo => repo.downloadCover(isbn, size))
+
+export const downloadCovers = (isbns: string[], size?: 'S' | 'M' | 'L') =>
+  Effect.flatMap(OpenLibraryRepository, repo => repo.downloadCovers(isbns, size))
