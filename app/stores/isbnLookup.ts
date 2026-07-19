@@ -1,4 +1,4 @@
-import type { BookLookupResult, LibraryState } from '~~/shared/types/book'
+import type { BookLookupResult, BulkBookLookupItem, BulkBookLookupResponse, LibraryState } from '~~/shared/types/book'
 import { getApiErrorMessage } from '~~/shared/utils/api-error'
 import { MAX_BULK_ISBN_COUNT } from '~~/shared/utils/schemas'
 import { defineStore } from 'pinia'
@@ -26,6 +26,11 @@ export interface AddIsbnsResult {
   failedIsbns: string[]
 }
 
+interface BulkLookupOptions {
+  onBatchStart?: (count: number) => void
+  onBatchComplete?: (items: BulkBookLookupItem[]) => void
+}
+
 export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
   const dashboardStore = useLibraryDashboardStore()
 
@@ -34,12 +39,15 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
   const lookupError = ref<string | null>(null)
   const addError = ref<string | null>(null)
   let resetVersion = 0
+  const activeLookupControllers = new Set<AbortController>()
 
   const isLookingUp = computed(() => pendingLookups.value > 0)
   const isAdding = computed(() => pendingAdds.value > 0)
 
   function reset() {
     resetVersion += 1
+    for (const controller of activeLookupControllers) controller.abort()
+    activeLookupControllers.clear()
     pendingLookups.value = 0
     pendingAdds.value = 0
     lookupError.value = null
@@ -72,7 +80,71 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
       if (requestVersion === resetVersion) lookupError.value = message
       return { ok: false, message }
     } finally {
-      pendingLookups.value = Math.max(0, pendingLookups.value - 1)
+      if (requestVersion === resetVersion) {
+        pendingLookups.value = Math.max(0, pendingLookups.value - 1)
+      }
+    }
+  }
+
+  async function bulkLookupIsbns(
+    isbns: string[],
+    options: BulkLookupOptions = {}
+  ): Promise<BulkBookLookupResponse> {
+    if (isbns.length === 0) return { items: [] }
+
+    const requestVersion = resetVersion
+    pendingLookups.value += 1
+    lookupError.value = null
+    const items: BulkBookLookupItem[] = []
+
+    try {
+      for (let start = 0; start < isbns.length; start += MAX_BULK_ISBN_COUNT) {
+        if (requestVersion !== resetVersion) break
+        const batch = isbns.slice(start, start + MAX_BULK_ISBN_COUNT)
+        const controller = new AbortController()
+        activeLookupControllers.add(controller)
+        options.onBatchStart?.(batch.length)
+        let batchItems: BulkBookLookupItem[] = []
+
+        try {
+          const response = await $fetch<BulkBookLookupResponse>('/api/books/bulk-lookup', {
+            method: 'POST',
+            body: { isbns: batch },
+            signal: controller.signal
+          })
+          if (requestVersion !== resetVersion) break
+          batchItems = response.items.map(item => ({
+            ...item,
+            inputIndex: item.inputIndex + start,
+            ...(item.duplicateOf === undefined ? {} : { duplicateOf: item.duplicateOf + start })
+          }))
+        } catch (err: unknown) {
+          if (requestVersion !== resetVersion || controller.signal.aborted) break
+          const message = getErrorMessage(err, 'Failed to look up books')
+          lookupError.value = message
+          batchItems = batch.map((isbn, index): BulkBookLookupItem => ({
+            inputIndex: start + index,
+            input: isbn,
+            normalizedIsbn: isbn,
+            status: 'error',
+            errorCode: 'upstream_failure',
+            message
+          }))
+        } finally {
+          activeLookupControllers.delete(controller)
+        }
+
+        if (requestVersion === resetVersion) {
+          items.push(...batchItems)
+          options.onBatchComplete?.(batchItems)
+        }
+      }
+
+      return requestVersion === resetVersion ? { items } : { items: [] }
+    } finally {
+      if (requestVersion === resetVersion) {
+        pendingLookups.value = Math.max(0, pendingLookups.value - 1)
+      }
     }
   }
 
@@ -131,6 +203,7 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
     addError,
     getErrorMessage,
     lookupIsbn,
+    bulkLookupIsbns,
     addIsbnsToLibrary,
     reset
   }

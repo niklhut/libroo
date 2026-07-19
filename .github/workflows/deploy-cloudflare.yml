@@ -41,6 +41,7 @@ jobs:
       NUXT_LEGAL_IMPRINT_MARKDOWN_URL: ${{ vars.NUXT_LEGAL_IMPRINT_MARKDOWN_URL }}
       NUXT_LEGAL_TERMS_MARKDOWN_URL: ${{ vars.NUXT_LEGAL_TERMS_MARKDOWN_URL }}
       NUXT_LEGAL_MARKDOWN_FETCH_TIMEOUT_SECONDS: ${{ vars.NUXT_LEGAL_MARKDOWN_FETCH_TIMEOUT_SECONDS || '5' }}
+      NUXT_OPEN_LIBRARY_CONTACT_EMAIL: ${{ secrets.NUXT_OPEN_LIBRARY_CONTACT_EMAIL }}
       NUXT_OPEN_LIBRARY_COVER_TIMEOUT_SECONDS: ${{ vars.NUXT_OPEN_LIBRARY_COVER_TIMEOUT_SECONDS || '20' }}
       NUXT_OPEN_LIBRARY_REQUEST_TIMEOUT_SECONDS: ${{ vars.NUXT_OPEN_LIBRARY_REQUEST_TIMEOUT_SECONDS || '12' }}
       NUXT_PLUNK_SEND_TIMEOUT_SECONDS: ${{ vars.NUXT_PLUNK_SEND_TIMEOUT_SECONDS || '5' }}
@@ -100,6 +101,10 @@ jobs:
               echo "NUXT_TURNSTILE_SECRET_KEY is required when NUXT_PUBLIC_TURNSTILE_ENABLED=true."
               exit 1
             fi
+          fi
+          if [[ -z "${NUXT_OPEN_LIBRARY_CONTACT_EMAIL}" ]]; then
+            echo "NUXT_OPEN_LIBRARY_CONTACT_EMAIL is required for identified Open Library requests."
+            exit 1
           fi
 
       - name: Validate Cloudflare route permissions
@@ -198,7 +203,8 @@ jobs:
           node <<'NODE' | pnpm exec wrangler secret bulk --config .output/server/wrangler.json
           const secretNames = [
             'NUXT_BETTER_AUTH_SECRET',
-            'NUXT_PLUNK_API_KEY'
+            'NUXT_PLUNK_API_KEY',
+            'NUXT_OPEN_LIBRARY_CONTACT_EMAIL'
           ]
           if (process.env.NUXT_PUBLIC_TURNSTILE_ENABLED === 'true') {
             secretNames.push('NUXT_TURNSTILE_SECRET_KEY')

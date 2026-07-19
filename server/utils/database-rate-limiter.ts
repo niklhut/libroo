@@ -10,7 +10,8 @@ import type { RateLimitResult, RateLimiter } from './rate-limit'
 export class DatabaseRateLimiter implements RateLimiter {
   constructor(
     private readonly dbService: DbServiceInterface,
-    private readonly now: () => number = Date.now
+    private readonly now: () => number = Date.now,
+    private readonly logFailures = true
   ) {}
 
   async consume(key: string, maxRequests: number, windowSeconds: number): Promise<RateLimitResult> {
@@ -43,10 +44,12 @@ export class DatabaseRateLimiter implements RateLimiter {
       })
       return result
     } catch (error) {
-      console.error('database-rate-limit failure', {
-        component: 'database-rate-limit', severity: 'error', operation: 'consume', key: redactKey(key),
-        error: error instanceof Error ? error.message : String(error)
-      })
+      if (this.logFailures) {
+        console.error('database-rate-limit failure', {
+          component: 'database-rate-limit', severity: 'error', operation: 'consume', key: redactKey(key),
+          error: error instanceof Error ? error.message : String(error)
+        })
+      }
       throw error
     }
   }

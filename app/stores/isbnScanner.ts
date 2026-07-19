@@ -1,6 +1,5 @@
-import type { LibraryState } from '~~/shared/types/book'
+import type { BulkBookLookupItem, LibraryState } from '~~/shared/types/book'
 import {
-  BULK_LOOKUP_CONCURRENCY,
   extractIsbn,
   isValidIsbnChecksum,
   MAX_BULK_ISBN_INPUT_BYTES
@@ -8,7 +7,6 @@ import {
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { useIsbnLookupStore } from './isbnLookup'
-import { withBoundedConcurrency } from '../utils/boundedConcurrency'
 
 export interface ScannedBook {
   isbn: string
@@ -104,6 +102,33 @@ export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
     await lookupScannedBook(book)
   }
 
+  function applyBulkLookupItems(items: BulkBookLookupItem[], inputs: string[]) {
+    for (const item of items) {
+      const input = inputs[item.inputIndex]
+      const book = input === undefined
+        ? undefined
+        : scannedBooks.value.find(candidate => candidate.isbn === input)
+      if (!book) continue
+      if (item.status !== 'ok') {
+        book.status = 'error'
+        book.selected = false
+        book.errorMessage = lookupUnavailableMessage
+        continue
+      }
+      book.result = item.result
+      if (!item.result.found) {
+        book.status = 'not_found'
+        book.selected = false
+      } else if (item.result.existsLocally) {
+        book.status = 'already_owned'
+        book.selected = false
+      } else {
+        book.status = 'found'
+        book.selected = true
+      }
+    }
+  }
+
   async function addMultipleIsbns(text: string): Promise<boolean> {
     if (new TextEncoder().encode(text).byteLength > MAX_BULK_ISBN_INPUT_BYTES) {
       toast.add({
@@ -154,11 +179,20 @@ export const useIsbnScannerStore = defineStore('isbn-scanner', () => {
     bulkLookupCompleted.value = 0
 
     try {
-      await withBoundedConcurrency(inputs, BULK_LOOKUP_CONCURRENCY, async (isbn) => {
-        if (requestVersion !== resetVersion) return
-        bulkLookupStarted.value += 1
-        await addIsbn(isbn, requestVersion)
-        if (requestVersion === resetVersion) bulkLookupCompleted.value += 1
+      const newBooks = inputs.map((isbn): ScannedBook => ({
+        isbn,
+        status: 'loading',
+        selected: true
+      }))
+      scannedBooks.value.unshift(...newBooks)
+
+      await isbnLookupStore.bulkLookupIsbns(inputs, {
+        onBatchStart: (count) => { if (requestVersion === resetVersion) bulkLookupStarted.value += count },
+        onBatchComplete: (items) => {
+          if (requestVersion !== resetVersion) return
+          applyBulkLookupItems(items, inputs)
+          bulkLookupCompleted.value += items.length
+        }
       })
     } finally {
       if (requestVersion === resetVersion) isBulkLookingUp.value = false

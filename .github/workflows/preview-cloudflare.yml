@@ -25,6 +25,7 @@ jobs:
       CLOUDFLARE_ACCESS_IDP_ID: ${{ vars.CLOUDFLARE_ACCESS_IDP_ID }}
       CLOUDFLARE_ACCESS_POLICY_ID: ${{ vars.CLOUDFLARE_ACCESS_POLICY_ID }}
       NUXT_BETTER_AUTH_SECRET: ${{ secrets.NUXT_BETTER_AUTH_SECRET }}
+      NUXT_OPEN_LIBRARY_CONTACT_EMAIL: ${{ secrets.NUXT_OPEN_LIBRARY_CONTACT_EMAIL }}
       NUXT_CLOUDFLARE_ACCESS_TEAM_DOMAIN: ${{ vars.CLOUDFLARE_ACCESS_TEAM_DOMAIN }}
       PREVIEW_CONCURRENT_LIMIT: ${{ vars.PREVIEW_CONCURRENT_LIMIT || '10' }}
       PREVIEW_SEED_ENABLED: ${{ vars.PREVIEW_SEED_ENABLED || 'false' }}
@@ -62,6 +63,7 @@ jobs:
             CLOUDFLARE_ACCESS_IDP_ID \
             CLOUDFLARE_ACCESS_POLICY_ID \
             NUXT_BETTER_AUTH_SECRET \
+            NUXT_OPEN_LIBRARY_CONTACT_EMAIL \
             NUXT_CLOUDFLARE_ACCESS_TEAM_DOMAIN; do
             [[ -n "${!name:-}" ]] || missing+=("${name}")
           done
@@ -291,8 +293,13 @@ jobs:
             console.error('Missing preview NUXT_BETTER_AUTH_SECRET.')
             process.exit(1)
           }
+          if (!process.env.NUXT_OPEN_LIBRARY_CONTACT_EMAIL) {
+            console.error('Missing preview NUXT_OPEN_LIBRARY_CONTACT_EMAIL.')
+            process.exit(1)
+          }
           process.stdout.write(JSON.stringify({
-            NUXT_BETTER_AUTH_SECRET: process.env.NUXT_BETTER_AUTH_SECRET
+            NUXT_BETTER_AUTH_SECRET: process.env.NUXT_BETTER_AUTH_SECRET,
+            NUXT_OPEN_LIBRARY_CONTACT_EMAIL: process.env.NUXT_OPEN_LIBRARY_CONTACT_EMAIL
           }))
           NODE
 

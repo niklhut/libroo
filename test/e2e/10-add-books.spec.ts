@@ -25,7 +25,7 @@ test('keeps the bulk review action visible while reviewing a long list @mobile',
   const page = await context.newPage()
 
   await pasteBulkIsbns(page, bulkFixtureIsbns)
-  await expect(page.getByText('12 found')).toBeVisible()
+  await expect(page.getByText('12 found')).toBeVisible({ timeout: 30_000 })
   await page.evaluate(() => window.scrollTo(0, 0))
 
   const actionBar = page.getByRole('navigation', { name: 'Add selected books' })

@@ -98,6 +98,8 @@ Optional email and registration settings:
 | `NUXT_PUBLIC_OPEN_LIBRARY_LINKS_ENABLED` | `false` in production, `true` in development | Shows outbound Open Library edition/work links on book detail pages. Keep disabled for the hosted/product experience; enable intentionally for self-hosted source visibility or metadata debugging. |
 | `NUXT_OPEN_LIBRARY_REQUEST_TIMEOUT_SECONDS` | `12` | Timeout for Open Library metadata and cover existence requests. Increase if the upstream API is slow in your deployment region. |
 | `NUXT_OPEN_LIBRARY_COVER_TIMEOUT_SECONDS` | `20` | Timeout for downloading and repairing cover images from Open Library. |
+| `NUXT_OPEN_LIBRARY_CONTACT_EMAIL` | empty | Contact included in the Open Library `User-Agent`. When configured, the shared outbound limiter permits three requests per second; otherwise it permits one. |
+| `NUXT_BOOKS_BULK_LOOKUP_RATE_LIMIT_WINDOW_SECONDS` / `NUXT_BOOKS_BULK_LOOKUP_RATE_LIMIT_MAX_REQUESTS` | `60` / `10` | Dedicated database-backed inbound limit for authenticated bulk ISBN lookup requests. |
 | `NUXT_LEGAL_MARKDOWN_FETCH_TIMEOUT_SECONDS` | `5` | Timeout for fetching configured legal Markdown source documents. |
 | `NUXT_PLUNK_SEND_TIMEOUT_SECONDS` | `5` | Timeout for Plunk email delivery requests. |
 | `NUXT_EMAIL_PROVIDER` | `smtp` | Self-host supports `smtp` or `plunk`. |
@@ -498,6 +500,7 @@ Repository or environment secrets:
 | `NUXT_HUB_CLOUDFLARE_BUCKET_NAME` | R2 bucket name used during the Cloudflare build. |
 | `NUXT_BETTER_AUTH_SECRET` | Hosted auth secret. |
 | `NUXT_PLUNK_API_KEY` | Hosted email delivery. |
+| `NUXT_OPEN_LIBRARY_CONTACT_EMAIL` | Contact address sent in Open Library requests so hosted Workers are identified and receive the documented identified-client limit. Configure this separately in both the `production` and `preview` GitHub Environments. |
 | `NUXT_TURNSTILE_SECRET_KEY` | Hosted Turnstile server-side verification secret. |
 
 Create a GitHub Environment named `production`, mirroring the general shape of
@@ -515,6 +518,7 @@ Move these secrets from repository scope to the `production` Environment:
 - `NUXT_HUB_CLOUDFLARE_BUCKET_NAME`
 - `NUXT_BETTER_AUTH_SECRET`
 - `NUXT_PLUNK_API_KEY`
+- `NUXT_OPEN_LIBRARY_CONTACT_EMAIL`
 - `NUXT_TURNSTILE_SECRET_KEY`
 
 Move all production runtime settings, including
@@ -539,14 +543,17 @@ proves zone-level Workers Routes Write access without changing the production
 hostname.
 
 Separately, retain the `preview` GitHub Environment with preview-scoped
-`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, and
-`NUXT_BETTER_AUTH_SECRET`, plus the `CLOUDFLARE_ACCESS_IDP_ID`,
+`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`,
+`NUXT_BETTER_AUTH_SECRET`, and `NUXT_OPEN_LIBRARY_CONTACT_EMAIL`, plus the `CLOUDFLARE_ACCESS_IDP_ID`,
 `CLOUDFLARE_ACCESS_POLICY_ID`, and `CLOUDFLARE_ACCESS_TEAM_DOMAIN` variables
 documented above. Do not put `NUXT_PLUNK_API_KEY`, the production Better Auth
 secret, or production resource IDs in the preview Environment. No preview
 workflow may reference the `production` Environment.
 
-The Cloudflare deploy workflow syncs `NUXT_BETTER_AUTH_SECRET`, `NUXT_PLUNK_API_KEY`, and, when Turnstile is enabled, `NUXT_TURNSTILE_SECRET_KEY` with `wrangler secret bulk`. Do not configure the Turnstile secret as a plain GitHub variable or Wrangler var.
+The Cloudflare deploy workflow syncs `NUXT_BETTER_AUTH_SECRET`, `NUXT_PLUNK_API_KEY`,
+`NUXT_OPEN_LIBRARY_CONTACT_EMAIL`, and, when Turnstile is enabled,
+`NUXT_TURNSTILE_SECRET_KEY` with `wrangler secret bulk`. Do not configure these
+values as plain GitHub variables or Wrangler vars.
 
 Repository or environment variables:
 
@@ -564,6 +571,7 @@ Repository or environment variables:
 | `NUXT_PUBLIC_OPEN_LIBRARY_LINKS_ENABLED` | `false` unless the hosted operator intentionally wants third-party source links visible. |
 | `NUXT_OPEN_LIBRARY_REQUEST_TIMEOUT_SECONDS` | `12` |
 | `NUXT_OPEN_LIBRARY_COVER_TIMEOUT_SECONDS` | `20` |
+| `NUXT_BOOKS_BULK_LOOKUP_RATE_LIMIT_WINDOW_SECONDS` / `NUXT_BOOKS_BULK_LOOKUP_RATE_LIMIT_MAX_REQUESTS` | `60` / `10` |
 | `NUXT_LEGAL_MARKDOWN_FETCH_TIMEOUT_SECONDS` | `5` |
 | `NUXT_PLUNK_SEND_TIMEOUT_SECONDS` | `5` |
 | `NUXT_PUBLIC_LEGAL_PRIVACY_POLICY_URL` / `NUXT_PUBLIC_LEGAL_IMPRINT_URL` / `NUXT_PUBLIC_LEGAL_TERMS_URL` | Optional canonical hosted legal page URLs. |

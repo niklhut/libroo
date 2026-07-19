@@ -5,6 +5,8 @@ type BooksRuntimeConfig = {
   booksRateLimitEnabled?: unknown
   booksRateLimitWindowSeconds?: unknown
   booksRateLimitMaxRequests?: unknown
+  booksBulkLookupRateLimitWindowSeconds?: unknown
+  booksBulkLookupRateLimitMaxRequests?: unknown
 }
 
 function runtimeValue(key: keyof BooksRuntimeConfig): unknown {
@@ -39,5 +41,20 @@ export function getBooksRateLimitConfig() {
     enabled: enabled === true || enabled === 'true',
     windowSeconds,
     maxRequests
+  }
+}
+
+export function getBulkLookupRateLimitConfig() {
+  const base = getBooksRateLimitConfig()
+  return {
+    enabled: base.enabled,
+    windowSeconds: positiveInteger(
+      runtimeValue('booksBulkLookupRateLimitWindowSeconds') ?? process.env.NUXT_BOOKS_BULK_LOOKUP_RATE_LIMIT_WINDOW_SECONDS,
+      60
+    ),
+    maxRequests: positiveInteger(
+      runtimeValue('booksBulkLookupRateLimitMaxRequests') ?? process.env.NUXT_BOOKS_BULK_LOOKUP_RATE_LIMIT_MAX_REQUESTS,
+      10
+    )
   }
 }

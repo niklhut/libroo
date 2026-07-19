@@ -2,6 +2,9 @@ import { Context, Effect, Layer, Either, Data } from 'effect'
 import type * as HttpClient from '@effect/platform/HttpClient'
 import { normalizeReadingProgress } from '../../shared/utils/reading-progress'
 import {
+  BULK_LOOKUP_CONCURRENCY,
+  extractIsbn,
+  isValidIsbnChecksum,
   isCanonicalBase64,
   isManualCoverDataWithinLimit,
   MANUAL_COVER_MAX_BYTES,
@@ -9,7 +12,10 @@ import {
 } from '../../shared/utils/schemas'
 import type { LibraryQueryFilters } from '../../shared/utils/library-query'
 import { detectImageContentType, UNKNOWN_IMAGE_CONTENT_TYPE } from '../../shared/utils/image-content-type'
-import type { LibraryState, TagWithCount } from '../../shared/types/book'
+import type { BulkBookLookupItem, BulkBookLookupResponse, BookLookupResult, LibraryState, TagWithCount } from '../../shared/types/book'
+import type { Book } from '../repositories/book.repository'
+
+const BULK_COVER_LOOKUP_CONCURRENCY = 16
 
 interface UserBookViewModel {
   id: string
@@ -200,6 +206,15 @@ export interface BookServiceInterface {
     DbService | StorageService | OpenLibraryRepository | HttpClient.HttpClient
   >
 
+  bulkLookupBooks: (
+    userId: string,
+    isbns: string[]
+  ) => Effect.Effect<
+    BulkBookLookupResponse,
+    never,
+    DbService | StorageService | OpenLibraryRepository | HttpClient.HttpClient
+  >
+
   updateRating: (
     userBookId: string,
     userId: string,
@@ -241,6 +256,7 @@ export const BookServiceLive = Layer.effect(
   BookService,
   Effect.gen(function* () {
     const bookRepo = yield* BookRepository
+    const openLibraryRepo = yield* OpenLibraryRepository
     const locationRepo = yield* LocationRepository
 
     const normalizeISBN = (isbn: string) => isbn.replace(/[-\s]/g, '')
@@ -273,6 +289,28 @@ export const BookServiceLive = Layer.effect(
           message: error instanceof Error ? error.message : 'Invalid reading progress'
         })
       })
+
+    const toLookupResult = (
+      book: Book,
+      normalizedISBN: string,
+      ownership: { userBookId: string, libraryState: LibraryState } | null,
+      subjects: string[]
+    ): BookLookupResult => ({
+      found: true,
+      isbn: book.isbn || normalizedISBN,
+      title: book.title,
+      author: book.author,
+      authors: book.authors.map(author => author.name),
+      coverUrl: book.coverPath ? `/api/blob/${book.coverPath}` : null,
+      description: book.description ?? undefined,
+      subjects,
+      publishDate: book.publishDate ?? undefined,
+      publishers: book.publishers ? book.publishers.split(', ') : null,
+      numberOfPages: book.numberOfPages ?? undefined,
+      existsLocally: Boolean(ownership),
+      existingUserBookId: ownership?.userBookId ?? null,
+      existingState: ownership?.libraryState ?? null
+    })
 
     return {
       listTags: userId => bookRepo.listTags(userId),
@@ -544,6 +582,157 @@ export const BookServiceLive = Layer.effect(
           return yield* lookupEffect
         }),
 
+      bulkLookupBooks: (userId, inputs) =>
+        Effect.gen(function* () {
+          type UniqueOutcome
+            = | { status: 'ok', result: BookLookupResult }
+              | { status: 'error', errorCode: 'upstream_failure' | 'persistence_failure', message: string }
+
+          const firstIndexByIsbn = new Map<string, number>()
+          const analyzed = inputs.map((input, inputIndex) => {
+            const normalizedIsbn = extractIsbn(input)
+            if (!normalizedIsbn || !isValidIsbnChecksum(normalizedIsbn)) {
+              return { input, inputIndex, normalizedIsbn: null }
+            }
+            if (!firstIndexByIsbn.has(normalizedIsbn)) firstIndexByIsbn.set(normalizedIsbn, inputIndex)
+            return { input, inputIndex, normalizedIsbn }
+          })
+          const uniqueIsbns = [...firstIndexByIsbn.keys()]
+          const outcomes = new Map<string, UniqueOutcome>()
+
+          const localLookup = yield* Effect.either(Effect.all({
+            books: bookRepo.findByIsbns(uniqueIsbns),
+            ownership: bookRepo.findUserLibraryByIsbns(userId, uniqueIsbns)
+          }))
+
+          if (Either.isLeft(localLookup)) {
+            yield* Effect.logError(localLookup.left)
+            for (const isbn of uniqueIsbns) {
+              outcomes.set(isbn, {
+                status: 'error',
+                errorCode: 'persistence_failure',
+                message: 'We could not look up this ISBN right now. Try again in a moment.'
+              })
+            }
+          } else {
+            const { books: localBooks, ownership } = localLookup.right
+            const localResults = yield* Effect.forEach(
+              [...localBooks.entries()],
+              ([isbn, book]) => Effect.either(
+                bookRepo.getSystemTagsByBookId(book.id).pipe(
+                  Effect.map(tags => [isbn, toLookupResult(book, isbn, ownership.get(isbn) ?? null, tags.map(tag => tag.name))] as const)
+                )
+              ),
+              { concurrency: BULK_LOOKUP_CONCURRENCY }
+            )
+            for (const result of localResults) {
+              if (Either.isRight(result)) outcomes.set(result.right[0], { status: 'ok', result: result.right[1] })
+              else yield* Effect.logError(result.left)
+            }
+
+            const unresolved = uniqueIsbns.filter(isbn => !localBooks.has(isbn))
+            if (unresolved.length > 0) {
+              const remoteLookup = yield* Effect.either(openLibraryRepo.lookupByISBNs(unresolved))
+              if (Either.isLeft(remoteLookup)) {
+                yield* Effect.logError(remoteLookup.left)
+                for (const isbn of unresolved) {
+                  outcomes.set(isbn, {
+                    status: 'error',
+                    errorCode: 'upstream_failure',
+                    message: 'Open Library is temporarily unavailable. Try again in a moment.'
+                  })
+                }
+              } else {
+                const coverPreparationStartedAt = Date.now()
+                const coverCandidates = unresolved.filter(isbn => Boolean(remoteLookup.right.get(isbn)?.coverUrl))
+                const storedCoverEntries = yield* Effect.forEach(
+                  coverCandidates,
+                  isbn => bookRepo.findStoredOpenLibraryCover(isbn).pipe(
+                    Effect.map(coverPath => [isbn, coverPath] as const)
+                  ),
+                  { concurrency: BULK_COVER_LOOKUP_CONCURRENCY }
+                )
+                const coverPaths = new Map(storedCoverEntries)
+                const missingCovers = coverCandidates.filter(isbn => !coverPaths.get(isbn))
+                if (missingCovers.length > 0) {
+                  const downloadedCovers = yield* openLibraryRepo.downloadCovers(missingCovers, 'L')
+                  for (const [isbn, coverPath] of downloadedCovers) coverPaths.set(isbn, coverPath)
+                }
+                yield* Effect.logDebug('Bulk Open Library cover preparation completed').pipe(
+                  Effect.annotateLogs({
+                    candidateCount: coverCandidates.length,
+                    downloadedCount: missingCovers.length,
+                    durationMs: Date.now() - coverPreparationStartedAt
+                  })
+                )
+
+                const persistLookup = (isbn: string): Effect.Effect<
+                  readonly [string, UniqueOutcome],
+                  never,
+                  DbService | StorageService | OpenLibraryRepository | HttpClient.HttpClient
+                > => Effect.gen(function* () {
+                  const data = remoteLookup.right.get(isbn)
+                  if (!data) {
+                    return [isbn, {
+                      status: 'ok',
+                      result: { found: false, isbn, message: 'Book not found on OpenLibrary' }
+                    }] as const
+                  }
+                  const result = yield* Effect.either(
+                    bookRepo.ensureOpenLibraryBook(isbn, data, coverPaths.get(isbn) ?? null).pipe(
+                      Effect.flatMap(book => bookRepo.getSystemTagsByBookId(book.id).pipe(
+                        Effect.map(tags => toLookupResult(book, isbn, ownership.get(isbn) ?? null, tags.map(tag => tag.name)))
+                      ))
+                    )
+                  )
+                  let outcome: UniqueOutcome
+                  if (Either.isRight(result)) {
+                    outcome = { status: 'ok', result: result.right }
+                  } else {
+                    yield* Effect.logError(result.left)
+                    outcome = {
+                      status: 'error',
+                      errorCode: result.left._tag === 'OpenLibraryApiError' ? 'upstream_failure' : 'persistence_failure',
+                      message: 'We could not save this lookup right now. Try again in a moment.'
+                    }
+                  }
+                  return [isbn, outcome] as const
+                })
+                const persisted = yield* Effect.forEach(
+                  unresolved,
+                  persistLookup,
+                  // Cover preparation is complete before this phase. SQLite
+                  // persistence remains serial because each book still inserts
+                  // and hydrates several related rows.
+                  { concurrency: 1 }
+                )
+                for (const [isbn, outcome] of persisted) outcomes.set(isbn, outcome)
+              }
+            }
+          }
+
+          const items: BulkBookLookupItem[] = analyzed.map(({ input, inputIndex, normalizedIsbn }) => {
+            if (!normalizedIsbn) {
+              return { input, inputIndex, normalizedIsbn: null, status: 'invalid', message: 'ISBN is invalid' }
+            }
+            const outcome = outcomes.get(normalizedIsbn) ?? {
+              status: 'error' as const,
+              errorCode: 'persistence_failure' as const,
+              message: 'We could not look up this ISBN right now. Try again in a moment.'
+            }
+            const firstIndex = firstIndexByIsbn.get(normalizedIsbn)!
+            return {
+              input,
+              inputIndex,
+              normalizedIsbn,
+              ...(inputIndex === firstIndex ? {} : { duplicateOf: firstIndex }),
+              ...outcome
+            }
+          })
+
+          return { items }
+        }),
+
       promoteSuggestedTag: (userBookId, userId, tagId) =>
         bookRepo.promoteSuggestedTag(userBookId, userId, tagId),
 
@@ -629,6 +818,9 @@ export const getBookDetails = (userBookId: string, userId: string) =>
 
 export const lookupBook = (userId: string, isbn: string) =>
   Effect.flatMap(BookService, service => service.lookupBook(userId, isbn))
+
+export const bulkLookupBooks = (userId: string, isbns: string[]) =>
+  Effect.flatMap(BookService, service => service.bulkLookupBooks(userId, isbns))
 
 export const promoteSuggestedTag = (userBookId: string, userId: string, tagId: string) =>
   Effect.flatMap(BookService, service => service.promoteSuggestedTag(userBookId, userId, tagId))

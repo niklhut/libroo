@@ -131,6 +131,86 @@ describe('useIsbnLookupStore', () => {
     ])
   })
 
+  it('submits bulk lookups sequentially and remaps batch-local indexes', async () => {
+    const isbns = Array.from({ length: MAX_BULK_ISBN_COUNT + 2 }, (_, index) => `isbn-${index + 1}`)
+    let inFlight = 0
+    let maxInFlight = 0
+    const fetchMock = vi.fn(async (_url: string, options: { body: { isbns: string[] } }) => {
+      inFlight += 1
+      maxInFlight = Math.max(maxInFlight, inFlight)
+      await Promise.resolve()
+      inFlight -= 1
+      return {
+        items: options.body.isbns.map((isbn, inputIndex) => ({
+          inputIndex,
+          input: isbn,
+          normalizedIsbn: isbn,
+          status: 'ok',
+          result: { found: true, isbn }
+        }))
+      }
+    })
+    ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
+
+    const store = useIsbnLookupStore()
+    const completedBatches: number[][] = []
+    const response = await store.bulkLookupIsbns(isbns, {
+      onBatchComplete: items => completedBatches.push(items.map(item => item.inputIndex))
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(maxInFlight).toBe(1)
+    expect(response.items.map(item => item.inputIndex)).toEqual(isbns.map((_, index) => index))
+    expect(completedBatches).toEqual([
+      Array.from({ length: MAX_BULK_ISBN_COUNT }, (_, index) => index),
+      [MAX_BULK_ISBN_COUNT, MAX_BULK_ISBN_COUNT + 1]
+    ])
+  })
+
+  it('aborts an active bulk lookup when reset', async () => {
+    let requestSignal: AbortSignal | undefined
+    const response = deferred<{ items: [] }>()
+    const fetchMock = vi.fn((_url: string, options: { signal: AbortSignal }) => {
+      requestSignal = options.signal
+      return response.promise
+    })
+    ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
+
+    const store = useIsbnLookupStore()
+    const lookup = store.bulkLookupIsbns(['9780306406157'])
+    store.reset()
+
+    expect(requestSignal?.aborted).toBe(true)
+    response.resolve({ items: [] })
+    await expect(lookup).resolves.toEqual({ items: [] })
+    expect(store.pendingLookups).toBe(0)
+  })
+
+  it('does not let a stale bulk lookup decrement a newer lookup counter', async () => {
+    const staleResponse = deferred<{ items: [] }>()
+    const currentResponse = deferred<{ items: [] }>()
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(() => staleResponse.promise)
+      .mockImplementationOnce(() => currentResponse.promise)
+    ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
+
+    const store = useIsbnLookupStore()
+    const staleLookup = store.bulkLookupIsbns(['9780306406157'])
+    store.reset()
+    const currentLookup = store.bulkLookupIsbns(['9780141439518'])
+
+    expect(store.pendingLookups).toBe(1)
+    staleResponse.resolve({ items: [] })
+    await staleLookup
+    expect(store.pendingLookups).toBe(1)
+    expect(store.isLookingUp).toBe(true)
+
+    currentResponse.resolve({ items: [] })
+    await currentLookup
+    expect(store.pendingLookups).toBe(0)
+    expect(store.isLookingUp).toBe(false)
+  })
+
   it('resets pending state and lookup errors', () => {
     const store = useIsbnLookupStore()
     store.pendingLookups = 1
