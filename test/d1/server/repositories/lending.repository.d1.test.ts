@@ -17,7 +17,8 @@ import { BookNotOwnedError } from '../../../../server/repositories/book.reposito
 import {
   LendingRepository,
   LendingRepositoryLive,
-  LoanNotFoundError
+  LoanNotFoundError,
+  LoanUnavailableError
 } from '../../../../server/repositories/lending.repository'
 import { DbService, type DbServiceInterface } from '../../../../server/services/db.service'
 
@@ -127,6 +128,51 @@ describe('LendingRepository transitions on D1', () => {
     if (Either.isLeft(result)) {
       expect(result.left).toBeInstanceOf(LoanNotFoundError)
     }
+  })
+
+  it.each(['returned', 'canceled'] as const)('hard-deletes a %s loan for its owner', async (status) => {
+    const loanId = `loan-delete-${status}`
+    const userBookId = `ub-delete-${status}`
+    await seedUserBook(db, userBookId, 'owner-1', 'book-1')
+    await seedLoan(db, {
+      id: loanId,
+      userBookId,
+      ownerUserId: 'owner-1',
+      status,
+      returnedAt: status === 'returned' ? baseTime : null,
+      canceledAt: status === 'canceled' ? baseTime : null
+    })
+
+    await runRepository(db, Effect.flatMap(LendingRepository, repository => repository.deleteLoan(loanId, 'owner-1')))
+
+    const rows = await db.select({ id: loans.id }).from(loans).where(eq(loans.id, loanId))
+    expect(rows).toEqual([])
+  })
+
+  it('rejects deleting an active loan and leaves it unchanged', async () => {
+    await seedUserBook(db, 'ub-delete-active', 'owner-1', 'book-1')
+    await seedLoan(db, { id: 'loan-delete-active', userBookId: 'ub-delete-active', ownerUserId: 'owner-1', status: 'active' })
+
+    const result = await runRepository(db, Effect.either(Effect.flatMap(LendingRepository, repository =>
+      repository.deleteLoan('loan-delete-active', 'owner-1')
+    )))
+
+    expect(Either.isLeft(result)).toBe(true)
+    if (Either.isLeft(result)) expect(result.left).toBeInstanceOf(LoanUnavailableError)
+    expect((await getLoan(db, 'loan-delete-active')).status).toBe('active')
+  })
+
+  it('rejects deleting a loan for the wrong owner and leaves it unchanged', async () => {
+    await seedUserBook(db, 'ub-delete-wrong-owner', 'owner-1', 'book-1')
+    await seedLoan(db, { id: 'loan-delete-wrong-owner', userBookId: 'ub-delete-wrong-owner', ownerUserId: 'owner-1', status: 'returned', returnedAt: baseTime })
+
+    const result = await runRepository(db, Effect.either(Effect.flatMap(LendingRepository, repository =>
+      repository.deleteLoan('loan-delete-wrong-owner', 'owner-2')
+    )))
+
+    expect(Either.isLeft(result)).toBe(true)
+    if (Either.isLeft(result)) expect(result.left).toBeInstanceOf(LoanNotFoundError)
+    expect((await getLoan(db, 'loan-delete-wrong-owner')).status).toBe('returned')
   })
 })
 

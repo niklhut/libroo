@@ -6,15 +6,21 @@ import { formatDate, returnedLabel } from '~/utils/loan-date-helpers'
 const props = defineProps<{
   loans: OwnerLoan[]
   returningLoanId: string | null
+  cancellingLoanId: string | null
+  deletingLoanId: string | null
 }>()
 
 const emit = defineEmits<{
   returnLoan: [loan: OwnerLoan]
+  cancelLoan: [loan: OwnerLoan]
+  deleteLoan: [loan: OwnerLoan]
   saveLoanNote: [loan: OwnerLoan, note: string | null]
 }>()
 
 const editingLoanId = ref<string | null>(null)
 const draftNote = ref('')
+const isDeleteLoanModalOpen = ref(false)
+const deleteLoanTarget = ref<OwnerLoan | null>(null)
 
 function editNote(loan: OwnerLoan) {
   editingLoanId.value = loan.id
@@ -34,6 +40,29 @@ function saveNote(loan: OwnerLoan) {
 function clearNote() {
   draftNote.value = ''
 }
+
+function openDeleteLoanModal(loan: OwnerLoan) {
+  deleteLoanTarget.value = loan
+  isDeleteLoanModalOpen.value = true
+}
+
+function cancelDeleteLoan() {
+  isDeleteLoanModalOpen.value = false
+  deleteLoanTarget.value = null
+}
+
+function confirmDeleteLoan() {
+  if (!deleteLoanTarget.value) return
+  emit('deleteLoan', deleteLoanTarget.value)
+  isDeleteLoanModalOpen.value = false
+}
+
+const deleteLoanDescription = computed(() => {
+  if (!deleteLoanTarget.value) return ''
+  return deleteLoanTarget.value.acceptedAt || deleteLoanTarget.value.status === 'returned'
+    ? 'This loan record will be permanently removed. It will also disappear from the borrower’s history.'
+    : 'This loan record will be permanently removed.'
+})
 
 const activeLoans = computed(() => props.loans.filter(loan => loan.status === 'active'))
 const loanHistory = computed(() => props.loans.filter(loan => loan.status !== 'active'))
@@ -157,55 +186,78 @@ function openBook(loan: OwnerLoan) {
                 >
                   {{ loan.note }}
                 </p>
-                <div class="mt-1 flex gap-1">
-                  <template v-if="editingLoanId === loan.id">
-                    <UButton
-                      size="xs"
-                      @click="saveNote(loan)"
-                    >
-                      Save
-                    </UButton>
-                    <UButton
-                      size="xs"
-                      color="neutral"
-                      variant="ghost"
-                      @click="cancelNoteEdit"
-                    >
-                      Cancel
-                    </UButton>
-                    <UButton
-                      size="xs"
-                      color="neutral"
-                      variant="ghost"
-                      @click="clearNote"
-                    >
-                      Clear
-                    </UButton>
-                  </template>
-                  <UButton
-                    v-else
-                    size="xs"
-                    color="neutral"
-                    variant="ghost"
-                    icon="i-lucide-pencil"
-                    @click="editNote(loan)"
-                  >
-                    {{ loan.note ? 'Edit note' : 'Add note' }}
-                  </UButton>
-                </div>
               </div>
-              <UButton
-                class="mt-3"
-                color="neutral"
-                variant="outline"
-                size="sm"
-                icon="i-lucide-undo-2"
-                :loading="returningLoanId === loan.id"
-                :disabled="Boolean(returningLoanId)"
-                @click.stop="emit('returnLoan', loan)"
+              <div
+                class="mt-3 flex flex-wrap items-center gap-2"
+                @click.stop
               >
-                Mark returned
-              </UButton>
+                <template v-if="editingLoanId === loan.id">
+                  <UButton
+                    size="sm"
+                    @click="saveNote(loan)"
+                  >
+                    Save note
+                  </UButton>
+                  <UButton
+                    size="sm"
+                    color="neutral"
+                    variant="soft"
+                    @click="cancelNoteEdit"
+                  >
+                    Cancel
+                  </UButton>
+                  <UButton
+                    size="sm"
+                    color="neutral"
+                    variant="soft"
+                    @click="clearNote"
+                  >
+                    Clear
+                  </UButton>
+                </template>
+                <UButton
+                  v-else
+                  size="sm"
+                  color="neutral"
+                  variant="outline"
+                  icon="i-lucide-pencil"
+                  @click="editNote(loan)"
+                >
+                  {{ loan.note ? 'Edit note' : 'Add note' }}
+                </UButton>
+                <UFieldGroup>
+                  <UButton
+                    color="neutral"
+                    variant="outline"
+                    size="sm"
+                    icon="i-lucide-undo-2"
+                    :loading="returningLoanId === loan.id"
+                    :disabled="Boolean(returningLoanId || cancellingLoanId)"
+                    @click="emit('returnLoan', loan)"
+                  >
+                    Mark returned
+                  </UButton>
+                  <UDropdownMenu
+                    v-if="!loan.acceptedAt"
+                    :items="[{
+                      label: 'Cancel loan',
+                      icon: 'i-lucide-ban',
+                      color: 'error',
+                      onSelect: () => emit('cancelLoan', loan)
+                    }]"
+                  >
+                    <UButton
+                      color="neutral"
+                      variant="outline"
+                      size="sm"
+                      icon="i-lucide-chevron-down"
+                      aria-label="More loan actions"
+                      :loading="cancellingLoanId === loan.id"
+                      :disabled="Boolean(returningLoanId || cancellingLoanId)"
+                    />
+                  </UDropdownMenu>
+                </UFieldGroup>
+              </div>
             </div>
           </div>
         </UCard>
@@ -275,12 +327,29 @@ function openBook(loan: OwnerLoan) {
                 </p>
               </div>
             </div>
-            <UBadge
-              :color="loan.status === 'returned' ? 'neutral' : 'warning'"
-              variant="subtle"
-            >
-              {{ loan.status === 'returned' ? 'Returned' : 'Canceled' }}
-            </UBadge>
+            <div class="flex shrink-0 items-center gap-2">
+              <UBadge
+                v-if="loan.status === 'canceled'"
+                color="warning"
+                variant="soft"
+                size="md"
+                class="min-h-7 px-2.5"
+              >
+                Canceled
+              </UBadge>
+              <UButton
+                color="error"
+                variant="subtle"
+                size="sm"
+                icon="i-lucide-trash-2"
+                aria-label="Delete loan record"
+                :loading="deletingLoanId === loan.id"
+                :disabled="Boolean(deletingLoanId)"
+                @click.stop="openDeleteLoanModal(loan)"
+              >
+                Delete
+              </UButton>
+            </div>
           </div>
         </UCard>
       </div>
@@ -292,4 +361,34 @@ function openBook(loan: OwnerLoan) {
       </p>
     </section>
   </div>
+
+  <UModal
+    v-if="deleteLoanTarget"
+    v-model:open="isDeleteLoanModalOpen"
+    title="Delete loan record?"
+    :description="deleteLoanDescription"
+    :close="false"
+    :ui="{ content: 'max-w-md', footer: 'justify-end gap-2 p-5' }"
+  >
+    <template #footer>
+      <UButton
+        color="neutral"
+        variant="soft"
+        :disabled="Boolean(deletingLoanId)"
+        @click="cancelDeleteLoan"
+      >
+        Cancel
+      </UButton>
+      <UButton
+        color="error"
+        variant="subtle"
+        icon="i-lucide-trash-2"
+        :loading="deletingLoanId === deleteLoanTarget.id"
+        :disabled="Boolean(deletingLoanId)"
+        @click="confirmDeleteLoan"
+      >
+        Delete permanently
+      </UButton>
+    </template>
+  </UModal>
 </template>

@@ -11,6 +11,8 @@ const router = useRouter()
 const initialView = route.query.view === 'borrowed' ? 'borrowed' : 'loaned'
 const view = ref<LoansView>(initialView)
 const returningLoanId = ref<string | null>(null)
+const cancellingLoanId = ref<string | null>(null)
+const deletingLoanId = ref<string | null>(null)
 const loanNoteRequestIds = new Map<string, number>()
 
 watch(
@@ -69,6 +71,58 @@ async function returnLoan(loan: OwnerLoan) {
     })
   } finally {
     returningLoanId.value = null
+  }
+}
+
+async function cancelLoan(loan: OwnerLoan) {
+  if (cancellingLoanId.value) return
+
+  cancellingLoanId.value = loan.id
+  try {
+    await $fetch(`/api/loans/${loan.id}/cancel`, {
+      method: 'POST'
+    })
+    await refreshOwnerLoans()
+    toast.add({
+      title: 'Loan canceled',
+      color: 'success'
+    })
+  } catch (err: unknown) {
+    const message = (err as { data?: { message?: string } })?.data?.message
+      ?? (err instanceof Error ? err.message : 'Unable to cancel loan')
+    toast.add({
+      title: 'Could not cancel loan',
+      description: message,
+      color: 'error'
+    })
+  } finally {
+    cancellingLoanId.value = null
+  }
+}
+
+async function deleteLoan(loan: OwnerLoan) {
+  if (deletingLoanId.value) return
+
+  deletingLoanId.value = loan.id
+  try {
+    await $fetch(`/api/loans/${loan.id}`, {
+      method: 'DELETE'
+    })
+    await refreshOwnerLoans()
+    toast.add({
+      title: 'Loan record deleted',
+      color: 'success'
+    })
+  } catch (err: unknown) {
+    const message = (err as { data?: { message?: string } })?.data?.message
+      ?? (err instanceof Error ? err.message : 'Unable to delete loan record')
+    toast.add({
+      title: 'Could not delete loan record',
+      description: message,
+      color: 'error'
+    })
+  } finally {
+    deletingLoanId.value = null
   }
 }
 
@@ -144,7 +198,11 @@ async function saveLoanNote(loan: OwnerLoan, note: string | null) {
         v-else-if="view === 'loaned'"
         :loans="ownerLoans"
         :returning-loan-id="returningLoanId"
+        :cancelling-loan-id="cancellingLoanId"
+        :deleting-loan-id="deletingLoanId"
         @return-loan="returnLoan"
+        @cancel-loan="cancelLoan"
+        @delete-loan="deleteLoan"
         @save-loan-note="saveLoanNote"
       />
 
