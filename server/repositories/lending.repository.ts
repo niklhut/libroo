@@ -63,6 +63,7 @@ export interface LendingRepositoryInterface {
   getActiveLoanForBook: (userBookId: string, ownerUserId: string) => Effect.Effect<OwnerLoan | null, DatabaseError, DbService>
   returnLoan: (loanId: string, ownerUserId: string) => Effect.Effect<OwnerLoan, LoanNotFoundError | DatabaseError, DbService>
   cancelLoan: (loanId: string, ownerUserId: string) => Effect.Effect<OwnerLoan, LoanNotFoundError | DatabaseError, DbService>
+  deleteLoan: (loanId: string, ownerUserId: string) => Effect.Effect<OwnerLoan, LoanNotFoundError | LoanUnavailableError | DatabaseError, DbService>
   listOwnerLoans: (ownerUserId: string) => Effect.Effect<OwnerLoan[], DatabaseError, DbService>
   listBorrowedBooks: (borrowerUserId: string) => Effect.Effect<BorrowedBook[], DatabaseError, DbService>
   userHasLoanCoverAccess: (userId: string, pathname: string) => Effect.Effect<boolean, DatabaseError, DbService>
@@ -345,6 +346,40 @@ export const LendingRepositoryLive = Layer.effect(
           return toOwnerLoan(rows[0])
         }),
 
+      deleteLoan: (loanId, ownerUserId) =>
+        Effect.gen(function* () {
+          const rows = yield* Effect.tryPromise({
+            try: () => dbService.db
+              .delete(loans)
+              .where(and(eq(loans.id, loanId), eq(loans.ownerUserId, ownerUserId), not(eq(loans.status, 'active'))))
+              .returning(),
+            catch: error => new DatabaseError({
+              message: `Failed to delete loan: ${error}`,
+              operation: 'deleteLoan'
+            })
+          })
+
+          if (rows[0]) return toOwnerLoan(rows[0])
+
+          const existing = yield* Effect.tryPromise({
+            try: () => dbService.db
+              .select({ status: loans.status })
+              .from(loans)
+              .where(and(eq(loans.id, loanId), eq(loans.ownerUserId, ownerUserId)))
+              .limit(1),
+            catch: error => new DatabaseError({
+              message: `Failed to check loan before deletion: ${error}`,
+              operation: 'deleteLoan.checkExisting'
+            })
+          })
+
+          if (existing[0]?.status === 'active') {
+            return yield* Effect.fail(new LoanUnavailableError({ message: 'Active loans cannot be deleted.' }))
+          }
+
+          return yield* Effect.fail(new LoanNotFoundError({ loanId }))
+        }),
+
       listOwnerLoans: ownerUserId =>
         Effect.gen(function* () {
           const rows = yield* Effect.tryPromise({
@@ -567,6 +602,9 @@ export const returnLoan = (loanId: string, ownerUserId: string) =>
 
 export const cancelLoan = (loanId: string, ownerUserId: string) =>
   Effect.flatMap(LendingRepository, repo => repo.cancelLoan(loanId, ownerUserId))
+
+export const deleteLoan = (loanId: string, ownerUserId: string) =>
+  Effect.flatMap(LendingRepository, repo => repo.deleteLoan(loanId, ownerUserId))
 
 export const getActiveLoanInviteForOwner = (loanId: string, ownerUserId: string) =>
   Effect.flatMap(LendingRepository, repo => repo.getActiveLoanInviteForOwner(loanId, ownerUserId))

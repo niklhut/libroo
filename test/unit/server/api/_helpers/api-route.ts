@@ -155,6 +155,7 @@ interface ApiRouteTestGlobals {
   resendLoanInviteForOwner: (...args: unknown[]) => unknown
   returnLoanForOwner: (...args: unknown[]) => unknown
   cancelLoanForOwner: (...args: unknown[]) => unknown
+  deleteLoanForOwner: (...args: unknown[]) => unknown
   listLoansForOwner: (...args: unknown[]) => unknown
   listBooksLentToUser: (...args: unknown[]) => unknown
   getOptionalCurrentUserId: (...args: unknown[]) => unknown
@@ -232,6 +233,7 @@ export const serviceMocks = {
   resendLoanInviteForOwner: vi.fn(),
   returnLoanForOwner: vi.fn(),
   cancelLoanForOwner: vi.fn(),
+  deleteLoanForOwner: vi.fn(),
   listLoansForOwner: vi.fn(),
   listBooksLentToUser: vi.fn(),
   getOptionalCurrentUserId: vi.fn(),
@@ -296,6 +298,7 @@ const originalGlobals = {
   resendLoanInviteForOwner: testGlobal.resendLoanInviteForOwner,
   returnLoanForOwner: testGlobal.returnLoanForOwner,
   cancelLoanForOwner: testGlobal.cancelLoanForOwner,
+  deleteLoanForOwner: testGlobal.deleteLoanForOwner,
   listLoansForOwner: testGlobal.listLoansForOwner,
   listBooksLentToUser: testGlobal.listBooksLentToUser,
   getOptionalCurrentUserId: testGlobal.getOptionalCurrentUserId,
@@ -422,6 +425,7 @@ export async function setupApiRouteTest() {
   testGlobal.resendLoanInviteForOwner = (...args: unknown[]) => serviceMocks.resendLoanInviteForOwner(...args)
   testGlobal.returnLoanForOwner = (...args: unknown[]) => serviceMocks.returnLoanForOwner(...args)
   testGlobal.cancelLoanForOwner = (...args: unknown[]) => serviceMocks.cancelLoanForOwner(...args)
+  testGlobal.deleteLoanForOwner = (...args: unknown[]) => serviceMocks.deleteLoanForOwner(...args)
   testGlobal.listLoansForOwner = (...args: unknown[]) => serviceMocks.listLoansForOwner(...args)
   testGlobal.listBooksLentToUser = (...args: unknown[]) => serviceMocks.listBooksLentToUser(...args)
   testGlobal.getOptionalCurrentUserId = (...args: unknown[]) => serviceMocks.getOptionalCurrentUserId(...args)
