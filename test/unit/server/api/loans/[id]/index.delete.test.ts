@@ -50,6 +50,19 @@ describe('server/api/loans/[id]/index.delete', () => {
     await expect(handler(makeEvent({ params: { id: 'loan-1' } }))).rejects.toMatchObject({ statusCode: 404 })
   })
 
+  it('surfaces LoanNotFoundError as 404 for a wrong owner', async () => {
+    mockLoggedInUser()
+    serviceMocks.deleteLoanForOwner.mockReturnValueOnce(Effect.fail({
+      _tag: 'LoanNotFoundError',
+      loanId: 'another-owners-loan',
+      message: 'Loan not found'
+    }))
+    const handler = await importRoute(route)
+
+    await expect(handler(makeEvent({ params: { id: 'another-owners-loan' } }))).rejects.toMatchObject({ statusCode: 404 })
+    expect(serviceMocks.deleteLoanForOwner).toHaveBeenCalledWith('another-owners-loan', 'user-1')
+  })
+
   it('surfaces LoanUnavailableError as 409 for active loans', async () => {
     mockLoggedInUser()
     serviceMocks.deleteLoanForOwner.mockReturnValueOnce(Effect.fail({
