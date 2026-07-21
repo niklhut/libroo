@@ -100,6 +100,42 @@ test('lets an owner cancel an unaccepted loan from the loan actions menu', async
   }
 })
 
+test('prefills and allows overriding a previous borrower suggestion', async ({ browser }, testInfo) => {
+  const ownerContext = await browser.newContext({ storageState: await storageState(browser, 'user') })
+
+  try {
+    const ownerPage = await ownerContext.newPage()
+    const firstTitle = `Borrower Suggestion Source ${testInfo.retry}-${Date.now()}`
+    await addManualBook(ownerPage, firstTitle)
+
+    let modal = lendingModal(ownerPage)
+    await modal.trigger.click()
+    await modal.borrowerName.fill('History Borrower')
+    await modal.borrowerEmail.fill('history@example.com')
+    await modal.save.click()
+    await expect(modal.inviteUrl).toBeVisible()
+    await modal.dialog.getByText('Close', { exact: true }).click()
+
+    const secondTitle = `Borrower Suggestion Target ${testInfo.retry}-${Date.now()}`
+    await addManualBook(ownerPage, secondTitle)
+    modal = lendingModal(ownerPage)
+    await modal.trigger.click()
+    await modal.borrowerName.fill('Hist')
+    const suggestion = ownerPage.getByRole('option', { name: /History Borrower.*history@example\.com/ })
+    await expect(suggestion).toBeVisible()
+    await suggestion.click()
+
+    await expect(modal.borrowerName).toHaveValue('History Borrower')
+    await expect(modal.borrowerEmail).toHaveValue('history@example.com')
+    await modal.borrowerName.fill('Overridden Borrower')
+    await modal.borrowerEmail.fill('override@example.com')
+    await modal.save.click()
+    await expect(modal.inviteUrl).toBeVisible()
+  } finally {
+    await ownerContext.close()
+  }
+})
+
 function borrowedLoanCard(page: Page, title: string) {
   return page.getByRole('article').filter({ hasText: title }).or(
     page.locator('[data-slot="root"]').filter({ hasText: title })

@@ -12,6 +12,7 @@ import libraryStateMigration from '../../../../server/db/migrations/sqlite/0003_
 import previouslyOwnedMigration from '../../../../server/db/migrations/sqlite/0006_huge_tiger_shark.sql?raw'
 import inviteEmailMigration from '../../../../server/db/migrations/sqlite/0008_brave_saracen.sql?raw'
 import loanNoteMigration from '../../../../server/db/migrations/sqlite/0010_owner_private_loan_note.sql?raw'
+import borrowerSuggestionsMigration from '../../../../server/db/migrations/sqlite/0011_borrower_suggestions.sql?raw'
 import { authors, bookAuthors, books, loans, user, userBooks } from '../../../../server/db/schema'
 import { BookNotOwnedError } from '../../../../server/repositories/book.repository'
 import {
@@ -21,6 +22,7 @@ import {
   LoanUnavailableError
 } from '../../../../server/repositories/lending.repository'
 import { DbService, type DbServiceInterface } from '../../../../server/services/db.service'
+import { normalizeBorrowerEmail, normalizeBorrowerName } from '../../../../shared/utils/borrower'
 
 type D1Db = ReturnType<typeof drizzle>
 
@@ -80,7 +82,9 @@ describe('LendingRepository transitions on D1', () => {
         userBookId,
         ownerUserId: 'owner-1',
         borrowerDisplayName: 'Borrower',
+        borrowerNameNormalized: 'borrower',
         borrowerEmail: null,
+        borrowerEmailNormalized: null,
         note: null,
         dueAt: null,
         acceptTokenHash: `token-${libraryState}`
@@ -174,10 +178,27 @@ describe('LendingRepository transitions on D1', () => {
     if (Either.isLeft(result)) expect(result.left).toBeInstanceOf(LoanNotFoundError)
     expect((await getLoan(db, 'loan-delete-wrong-owner')).status).toBe('returned')
   })
+
+  it('deduplicates borrower suggestions and isolates them by owner on D1', async () => {
+    await seedUserBook(db, 'ub-suggestion-old', 'owner-1', 'book-1', 'owned', new Date('2026-06-20T11:00:00.000Z'))
+    await seedUserBook(db, 'ub-suggestion-new', 'owner-1', 'book-1')
+    await seedUserBook(db, 'ub-suggestion-private', 'owner-2', 'book-1')
+    await seedLoan(db, { id: 'loan-suggestion-old', userBookId: 'ub-suggestion-old', ownerUserId: 'owner-1', status: 'returned', borrowerDisplayName: 'grace', borrowerEmail: 'GRACE@example.com', loanedAt: new Date('2026-06-20T10:00:00.000Z') })
+    await seedLoan(db, { id: 'loan-suggestion-new', userBookId: 'ub-suggestion-new', ownerUserId: 'owner-1', status: 'returned', borrowerDisplayName: 'Grace', borrowerEmail: 'grace@example.com', loanedAt: new Date('2026-06-24T10:00:00.000Z') })
+    await seedLoan(db, { id: 'loan-suggestion-private', userBookId: 'ub-suggestion-private', ownerUserId: 'owner-2', status: 'returned', borrowerDisplayName: 'Grace Private', borrowerEmail: 'private@example.com', loanedAt: new Date('2026-06-25T10:00:00.000Z') })
+
+    const suggestions = await runRepository(db, Effect.flatMap(LendingRepository, repository =>
+      repository.listBorrowerSuggestions('owner-1', 'gr', 8)
+    ))
+
+    expect(suggestions).toEqual([
+      { displayName: 'Grace', email: 'grace@example.com', lastUsedAt: new Date('2026-06-24T10:00:00.000Z') }
+    ])
+  })
 })
 
 async function applyMigrations(database: D1Database) {
-  for (const migration of [initialMigration, termsMigration, locationRestrictMigration, libraryStateMigration, previouslyOwnedMigration, inviteEmailMigration, loanNoteMigration]) {
+  for (const migration of [initialMigration, termsMigration, locationRestrictMigration, libraryStateMigration, previouslyOwnedMigration, inviteEmailMigration, loanNoteMigration, borrowerSuggestionsMigration]) {
     for (const statement of migration.split('--> statement-breakpoint')) {
       const migrationStatement = statement.trim()
       if (migrationStatement) {
@@ -229,13 +250,14 @@ async function seedBase(database: D1Db) {
   })
 }
 
-async function seedUserBook(database: D1Db, id: string, userId: string, bookId: string, libraryState: 'owned' | 'wishlisted' | 'previously_owned' = 'owned') {
+async function seedUserBook(database: D1Db, id: string, userId: string, bookId: string, libraryState: 'owned' | 'wishlisted' | 'previously_owned' = 'owned', removedAt: Date | null = null) {
   await database.insert(userBooks).values({
     id,
     userId,
     bookId,
     libraryState,
-    addedAt: baseTime
+    addedAt: baseTime,
+    removedAt
   })
 }
 
@@ -244,13 +266,17 @@ async function seedLoan(database: D1Db, input: Partial<typeof loans.$inferInsert
   userBookId: string
   ownerUserId: string
 }) {
+  const borrowerDisplayName = input.borrowerDisplayName ?? 'Borrower'
+  const borrowerEmail = input.borrowerEmail === undefined ? 'borrower@example.com' : input.borrowerEmail
   await database.insert(loans).values({
     id: input.id,
     ownerUserId: input.ownerUserId,
     userBookId: input.userBookId,
     borrowerUserId: input.borrowerUserId ?? null,
-    borrowerDisplayName: input.borrowerDisplayName ?? 'Borrower',
-    borrowerEmail: input.borrowerEmail ?? 'borrower@example.com',
+    borrowerDisplayName,
+    borrowerNameNormalized: input.borrowerNameNormalized ?? normalizeBorrowerName(borrowerDisplayName),
+    borrowerEmail,
+    borrowerEmailNormalized: input.borrowerEmailNormalized ?? normalizeBorrowerEmail(borrowerEmail),
     note: input.note ?? null,
     status: input.status ?? 'active',
     loanedAt: input.loanedAt ?? baseTime,

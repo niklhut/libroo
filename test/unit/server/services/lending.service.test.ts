@@ -9,7 +9,7 @@ const capabilities = vi.hoisted(() => ({ getEmailCapabilities: vi.fn() }))
 vi.mock('../../../../server/utils/email-capabilities', () => capabilities)
 
 describe('LendingService invitation delivery', () => {
-  const state = { creates: 0, sends: 0, updates: [] as string[], createInput: undefined as unknown, noteUpdates: [] as Array<[string, string, string | null]> }
+  const state = { creates: 0, sends: 0, updates: [] as string[], createInput: undefined as unknown, noteUpdates: [] as Array<[string, string, string | null]>, suggestionLookups: [] as Array<[string, string, number]> }
   const repository = {
     createLoan: (input: { inviteEmailStatus: 'pending' | 'sent' | 'failed' | null }) => Effect.sync(() => {
       state.creates++
@@ -24,6 +24,10 @@ describe('LendingService invitation delivery', () => {
     updateLoanNote: (loanId: string, ownerUserId: string, note: string | null) => Effect.sync(() => {
       state.noteUpdates.push([loanId, ownerUserId, note])
       return {}
+    }),
+    listBorrowerSuggestions: (ownerUserId: string, normalizedPrefix: string, limit: number) => Effect.sync(() => {
+      state.suggestionLookups.push([ownerUserId, normalizedPrefix, limit])
+      return [{ displayName: 'Grace', email: null, lastUsedAt: new Date('2026-06-24T10:00:00.000Z') }]
     })
   } as unknown as LendingRepositoryInterface
 
@@ -33,6 +37,7 @@ describe('LendingService invitation delivery', () => {
     state.updates = []
     state.createInput = undefined
     state.noteUpdates = []
+    state.suggestionLookups = []
     capabilities.getEmailCapabilities.mockReturnValue({ inviteEmailEnabled: true })
   })
 
@@ -69,7 +74,27 @@ describe('LendingService invitation delivery', () => {
       Effect.provide(Layer.succeed(EmailService, { sendEmail: () => Effect.void }))
     ))
     expect(state.createInput).toMatchObject({ note: 'Private' })
+    expect(state.createInput).toMatchObject({
+      borrowerNameNormalized: 'grace',
+      borrowerEmailNormalized: null
+    })
     expect(state.noteUpdates).toEqual([['loan-1', 'owner-1', null]])
+  })
+
+  it('normalizes suggestion searches and skips queries that are too short', async () => {
+    const result = await Effect.runPromise(Effect.flatMap(LendingService, service =>
+      Effect.all([
+        service.listBorrowerSuggestions('owner-1', '  GR  '),
+        service.listBorrowerSuggestions('owner-1', 'g')
+      ])
+    ).pipe(
+      Effect.provide(LendingServiceLive),
+      Effect.provide(Layer.succeed(LendingRepository, repository))
+    ))
+
+    expect(result[0]).toHaveLength(1)
+    expect(result[1]).toEqual([])
+    expect(state.suggestionLookups).toEqual([['owner-1', 'gr', 8]])
   })
 
   it('keeps the loan when delivery is unavailable', async () => {

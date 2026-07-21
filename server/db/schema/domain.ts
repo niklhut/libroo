@@ -170,7 +170,9 @@ export const loans = sqliteTable('loans', {
   userBookId: text('user_book_id').notNull().references(() => userBooks.id, { onDelete: 'cascade' }),
   borrowerUserId: text('borrower_user_id').references(() => user.id, { onDelete: 'set null' }),
   borrowerDisplayName: text('borrower_display_name').notNull(),
+  borrowerNameNormalized: text('borrower_name_normalized').notNull().default(''),
   borrowerEmail: text('borrower_email'),
+  borrowerEmailNormalized: text('borrower_email_normalized'),
   note: text('note'), // Private owner note
   inviteEmailStatus: text('invite_email_status', { enum: ['pending', 'sent', 'failed'] }),
   inviteEmailLastAttemptAt: integer('invite_email_last_attempt_at', { mode: 'timestamp' }),
@@ -190,6 +192,7 @@ export const loans = sqliteTable('loans', {
 }, table => [
   check('loans_status_check', sql`${table.status} IN ('active', 'returned', 'canceled')`),
   index('loans_owner_user_id_idx').on(table.ownerUserId),
+  index('loans_owner_borrower_name_loaned_idx').on(table.ownerUserId, table.borrowerNameNormalized, table.loanedAt),
   index('loans_user_book_id_idx').on(table.userBookId),
   index('loans_borrower_user_id_idx').on(table.borrowerUserId),
   uniqueIndex('loans_active_user_book_unique').on(table.userBookId).where(sql`${table.status} = 'active'`),

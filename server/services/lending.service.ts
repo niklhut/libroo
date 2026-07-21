@@ -10,7 +10,13 @@ import { getEmailCapabilities } from '../utils/email-capabilities'
 import { escapeHtml } from '../utils/html-escape'
 import type { LoanInviteUrlConfigError } from '../utils/loan-invite-url'
 import { buildLoanInviteUrl } from '../utils/loan-invite-url'
-import type { LoanInviteDeliveryStatus, OwnerLoan } from '../../shared/types/book'
+import type { LoanInviteDeliveryStatus, OwnerLoan, BorrowerSuggestion } from '../../shared/types/book'
+import {
+  BORROWER_SUGGESTION_LIMIT,
+  BORROWER_SUGGESTION_MIN_QUERY_LENGTH,
+  normalizeBorrowerEmail,
+  normalizeBorrowerName
+} from '../../shared/utils/borrower'
 
 interface CreateLoanInput {
   borrowerDisplayName: string
@@ -35,6 +41,7 @@ export interface LendingServiceInterface {
   returnLoan: (loanId: string, ownerUserId: string) => Effect.Effect<OwnerLoan, LoanNotFoundError | DatabaseError, DbService>
   cancelLoan: (loanId: string, ownerUserId: string) => Effect.Effect<OwnerLoan, LoanNotFoundError | DatabaseError, DbService>
   deleteLoan: (loanId: string, ownerUserId: string) => Effect.Effect<OwnerLoan, LoanNotFoundError | LoanUnavailableError | DatabaseError, DbService>
+  listBorrowerSuggestions: (ownerUserId: string, query: string) => Effect.Effect<BorrowerSuggestion[], DatabaseError, DbService>
   updateLoanNote: (loanId: string, ownerUserId: string, note: string | null) => Effect.Effect<OwnerLoan, LoanNotFoundError | DatabaseError, DbService>
   listOwnerLoans: (ownerUserId: string) => Effect.Effect<OwnerLoan[], DatabaseError, DbService>
   listBorrowedBooks: (borrowerUserId: string) => Effect.Effect<BorrowedBook[], DatabaseError, DbService>
@@ -126,9 +133,11 @@ export const LendingServiceLive = Layer.effect(
           const token = createAcceptToken()
           const acceptTokenHash = yield* hashToken(token)
           const borrowerEmail = input.borrowerEmail ?? null
+          const borrowerNameNormalized = normalizeBorrowerName(input.borrowerDisplayName)
+          const borrowerEmailNormalized = normalizeBorrowerEmail(borrowerEmail)
           const emailEnabled = getEmailCapabilities().inviteEmailEnabled
           const loan = yield* lendingRepo.createLoan({
-            userBookId, ownerUserId, borrowerDisplayName: input.borrowerDisplayName, borrowerEmail,
+            userBookId, ownerUserId, borrowerDisplayName: input.borrowerDisplayName, borrowerNameNormalized, borrowerEmail, borrowerEmailNormalized,
             dueAt: input.dueAt ?? null, note: input.note ?? null, acceptTokenHash,
             inviteEmailStatus: borrowerEmail ? 'pending' : null
           })
@@ -155,6 +164,12 @@ export const LendingServiceLive = Layer.effect(
       returnLoan: (loanId, ownerUserId) => lendingRepo.returnLoan(loanId, ownerUserId),
       cancelLoan: (loanId, ownerUserId) => lendingRepo.cancelLoan(loanId, ownerUserId),
       deleteLoan: (loanId, ownerUserId) => lendingRepo.deleteLoan(loanId, ownerUserId),
+      listBorrowerSuggestions: (ownerUserId, query) => {
+        const normalizedPrefix = normalizeBorrowerName(query)
+        return normalizedPrefix.length < BORROWER_SUGGESTION_MIN_QUERY_LENGTH
+          ? Effect.succeed([])
+          : lendingRepo.listBorrowerSuggestions(ownerUserId, normalizedPrefix, BORROWER_SUGGESTION_LIMIT)
+      },
       updateLoanNote: (loanId, ownerUserId, note) => lendingRepo.updateLoanNote(loanId, ownerUserId, note),
       listOwnerLoans: ownerUserId => lendingRepo.listOwnerLoans(ownerUserId),
       listBorrowedBooks: borrowerUserId => lendingRepo.listBorrowedBooks(borrowerUserId),
@@ -169,6 +184,7 @@ export const resendLoanInviteForOwner = (loanId: string, ownerUserId: string, to
 export const returnLoanForOwner = (loanId: string, ownerUserId: string) => Effect.flatMap(LendingService, service => service.returnLoan(loanId, ownerUserId))
 export const cancelLoanForOwner = (loanId: string, ownerUserId: string) => Effect.flatMap(LendingService, service => service.cancelLoan(loanId, ownerUserId))
 export const deleteLoanForOwner = (loanId: string, ownerUserId: string) => Effect.flatMap(LendingService, service => service.deleteLoan(loanId, ownerUserId))
+export const listBorrowerSuggestionsForOwner = (ownerUserId: string, query: string) => Effect.flatMap(LendingService, service => service.listBorrowerSuggestions(ownerUserId, query))
 export const updateLoanNote = (loanId: string, ownerUserId: string, note: string | null) => Effect.flatMap(LendingService, service => service.updateLoanNote(loanId, ownerUserId, note))
 export const listLoansForOwner = (ownerUserId: string) => Effect.flatMap(LendingService, service => service.listOwnerLoans(ownerUserId))
 export const listBooksLentToUser = (borrowerUserId: string) => Effect.flatMap(LendingService, service => service.listBorrowedBooks(borrowerUserId))
