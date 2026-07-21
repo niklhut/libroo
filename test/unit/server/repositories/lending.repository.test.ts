@@ -263,14 +263,16 @@ describe.each<AtomicMode>(['d1-batch', 'selfhost-transaction'])('LendingReposito
       ['ub-grace-old', 'owner-1', 'book-1', null],
       ['ub-grace-new', 'owner-1', 'book-2', null],
       ['ub-grace-stale-email', 'owner-1', 'book-3', null],
+      ['ub-grace-newer-email', 'owner-1', 'book-2', new Date('2026-06-25T11:00:00.000Z')],
       ['ub-grace-no-email', 'owner-1', 'book-1', new Date('2026-06-25T11:00:00.000Z')],
       ['ub-other-owner', 'owner-2', 'book-2', null]
     ] as const) {
       await seedUserBook(db, id, ownerUserId, bookId, removedAt)
     }
     await seedLoan(db, { id: 'loan-grace-old', userBookId: 'ub-grace-old', ownerUserId: 'owner-1', status: 'returned', borrowerDisplayName: 'grace hopper', borrowerEmail: 'GRACE@example.com', loanedAt: new Date('2026-06-20T10:00:00.000Z') })
-    await seedLoan(db, { id: 'loan-grace-new', userBookId: 'ub-grace-new', ownerUserId: 'owner-1', status: 'returned', borrowerDisplayName: 'Grace Hopper', borrowerEmail: 'grace@example.com', loanedAt: new Date('2026-06-24T10:00:00.000Z') })
-    await seedLoan(db, { id: 'loan-grace-stale-email', userBookId: 'ub-grace-stale-email', ownerUserId: 'owner-1', status: 'returned', borrowerDisplayName: 'Grace Hopper', borrowerEmail: 'old@example.com', loanedAt: new Date('2026-06-22T10:00:00.000Z') })
+    await seedLoan(db, { id: 'loan-grace-new', userBookId: 'ub-grace-new', ownerUserId: 'owner-1', status: 'returned', borrowerDisplayName: 'Grace Hopper', borrowerEmail: 'grace@example.com', loanedAt: new Date('2026-06-24T10:00:00.000Z'), createdAt: new Date('2026-06-24T09:00:00.000Z') })
+    await seedLoan(db, { id: 'loan-grace-stale-email', userBookId: 'ub-grace-stale-email', ownerUserId: 'owner-1', status: 'returned', borrowerDisplayName: 'Grace Hopper', borrowerEmail: 'old@example.com', loanedAt: new Date('2026-06-24T10:00:00.000Z'), createdAt: new Date('2026-06-24T09:00:00.000Z') })
+    await seedLoan(db, { id: 'loan-grace-newer-email', userBookId: 'ub-grace-newer-email', ownerUserId: 'owner-1', status: 'returned', borrowerDisplayName: 'Grace Hopper', borrowerEmail: 'newer@example.com', loanedAt: new Date('2026-06-24T10:00:00.000Z'), createdAt: new Date('2026-06-24T09:30:00.000Z') })
     await seedLoan(db, { id: 'loan-grace-no-email', userBookId: 'ub-grace-no-email', ownerUserId: 'owner-1', status: 'returned', borrowerDisplayName: 'Grace Lee', borrowerEmail: null, loanedAt: new Date('2026-06-25T10:00:00.000Z') })
     await seedLoan(db, { id: 'loan-other-owner', userBookId: 'ub-other-owner', ownerUserId: 'owner-2', status: 'returned', borrowerDisplayName: 'Grace Private', borrowerEmail: 'private@example.com', loanedAt: new Date('2026-06-26T10:00:00.000Z') })
 
@@ -280,8 +282,9 @@ describe.each<AtomicMode>(['d1-batch', 'selfhost-transaction'])('LendingReposito
 
     expect(suggestions).toEqual([
       { displayName: 'Grace Lee', email: null, lastUsedAt: new Date('2026-06-25T10:00:00.000Z') },
-      { displayName: 'Grace Hopper', email: 'grace@example.com', lastUsedAt: new Date('2026-06-24T10:00:00.000Z') },
-      { displayName: 'Grace Hopper', email: 'old@example.com', lastUsedAt: new Date('2026-06-22T10:00:00.000Z') }
+      { displayName: 'Grace Hopper', email: 'newer@example.com', lastUsedAt: new Date('2026-06-24T10:00:00.000Z') },
+      { displayName: 'Grace Hopper', email: 'old@example.com', lastUsedAt: new Date('2026-06-24T10:00:00.000Z') },
+      { displayName: 'Grace Hopper', email: 'grace@example.com', lastUsedAt: new Date('2026-06-24T10:00:00.000Z') }
     ])
   })
 

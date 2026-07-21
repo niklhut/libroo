@@ -396,6 +396,8 @@ export const LendingRepositoryLive = Layer.effect(
               displayName: loans.borrowerDisplayName,
               email: loans.borrowerEmail,
               lastUsedAt: loans.loanedAt,
+              createdAt: loans.createdAt,
+              id: loans.id,
               rank: sql<number>`row_number() over (
                 partition by ${loans.borrowerNameNormalized}, coalesce(${loans.borrowerEmailNormalized}, '')
                 order by ${loans.loanedAt} desc, ${loans.createdAt} desc, ${loans.id} desc
@@ -417,7 +419,11 @@ export const LendingRepositoryLive = Layer.effect(
               })
               .from(rankedBorrowers)
               .where(eq(rankedBorrowers.rank, 1))
-              .orderBy(desc(rankedBorrowers.lastUsedAt))
+              .orderBy(
+                desc(rankedBorrowers.lastUsedAt),
+                desc(rankedBorrowers.createdAt),
+                desc(rankedBorrowers.id)
+              )
               .limit(limit),
             catch: error => new DatabaseError({
               message: `Failed to list borrower suggestions: ${error}`,
