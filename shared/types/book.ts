@@ -140,6 +140,12 @@ export interface BookDetails {
 export type LoanStatus = 'active' | 'returned' | 'canceled'
 export type LoanInviteDeliveryStatus = 'not_requested' | 'unavailable' | 'sent' | 'failed'
 
+export interface BorrowerSuggestion {
+  displayName: string
+  email: string | null
+  lastUsedAt: Date | string
+}
+
 export interface ActiveLoanSummary {
   id: string
   borrowerDisplayName: string

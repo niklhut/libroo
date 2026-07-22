@@ -157,6 +157,7 @@ interface ApiRouteTestGlobals {
   cancelLoanForOwner: (...args: unknown[]) => unknown
   deleteLoanForOwner: (...args: unknown[]) => unknown
   listLoansForOwner: (...args: unknown[]) => unknown
+  listBorrowerSuggestionsForOwner: (...args: unknown[]) => unknown
   listBooksLentToUser: (...args: unknown[]) => unknown
   getOptionalCurrentUserId: (...args: unknown[]) => unknown
   handleAuthRequest: (...args: unknown[]) => unknown
@@ -179,6 +180,7 @@ interface ApiRouteTestGlobals {
   bookBatchDeleteSchema: unknown
   bookTagAddSchema: unknown
   createLoanSchema: unknown
+  borrowerSuggestionQuerySchema: unknown
   loanNoteSchema: unknown
   resendLoanInviteSchema: unknown
   manualBookCreateSchema: unknown
@@ -235,6 +237,7 @@ export const serviceMocks = {
   cancelLoanForOwner: vi.fn(),
   deleteLoanForOwner: vi.fn(),
   listLoansForOwner: vi.fn(),
+  listBorrowerSuggestionsForOwner: vi.fn(),
   listBooksLentToUser: vi.fn(),
   getOptionalCurrentUserId: vi.fn(),
   handleAuthRequest: vi.fn(),
@@ -300,6 +303,7 @@ const originalGlobals = {
   cancelLoanForOwner: testGlobal.cancelLoanForOwner,
   deleteLoanForOwner: testGlobal.deleteLoanForOwner,
   listLoansForOwner: testGlobal.listLoansForOwner,
+  listBorrowerSuggestionsForOwner: testGlobal.listBorrowerSuggestionsForOwner,
   listBooksLentToUser: testGlobal.listBooksLentToUser,
   getOptionalCurrentUserId: testGlobal.getOptionalCurrentUserId,
   handleAuthRequest: testGlobal.handleAuthRequest,
@@ -322,6 +326,7 @@ const originalGlobals = {
   bookBatchDeleteSchema: testGlobal.bookBatchDeleteSchema,
   bookTagAddSchema: testGlobal.bookTagAddSchema,
   createLoanSchema: testGlobal.createLoanSchema,
+  borrowerSuggestionQuerySchema: testGlobal.borrowerSuggestionQuerySchema,
   loanNoteSchema: testGlobal.loanNoteSchema,
   resendLoanInviteSchema: testGlobal.resendLoanInviteSchema,
   manualBookCreateSchema: testGlobal.manualBookCreateSchema,
@@ -427,6 +432,7 @@ export async function setupApiRouteTest() {
   testGlobal.cancelLoanForOwner = (...args: unknown[]) => serviceMocks.cancelLoanForOwner(...args)
   testGlobal.deleteLoanForOwner = (...args: unknown[]) => serviceMocks.deleteLoanForOwner(...args)
   testGlobal.listLoansForOwner = (...args: unknown[]) => serviceMocks.listLoansForOwner(...args)
+  testGlobal.listBorrowerSuggestionsForOwner = (...args: unknown[]) => serviceMocks.listBorrowerSuggestionsForOwner(...args)
   testGlobal.listBooksLentToUser = (...args: unknown[]) => serviceMocks.listBooksLentToUser(...args)
   testGlobal.getOptionalCurrentUserId = (...args: unknown[]) => serviceMocks.getOptionalCurrentUserId(...args)
   testGlobal.handleAuthRequest = (...args: unknown[]) => serviceMocks.handleAuthRequest(...args)
@@ -451,6 +457,7 @@ export async function setupApiRouteTest() {
   testGlobal.bookBatchDeleteSchema = schemas.bookBatchDeleteSchema
   testGlobal.bookTagAddSchema = schemas.bookTagAddSchema
   testGlobal.createLoanSchema = schemas.createLoanSchema
+  testGlobal.borrowerSuggestionQuerySchema = schemas.borrowerSuggestionQuerySchema
   testGlobal.loanNoteSchema = schemas.loanNoteSchema
   testGlobal.resendLoanInviteSchema = schemas.resendLoanInviteSchema
   testGlobal.manualBookCreateSchema = schemas.manualBookCreateSchema

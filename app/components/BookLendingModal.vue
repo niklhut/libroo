@@ -17,6 +17,8 @@ const { data: emailCapabilities } = await useEmailCapabilities()
 
 const borrowerDisplayName = ref('')
 const borrowerEmail = ref('')
+const borrowerSuggestions = ref<BorrowerSuggestion[]>([])
+const suggestionsLoading = ref(false)
 const dueAt = ref('')
 const note = ref('')
 const isSaving = ref(false)
@@ -25,7 +27,17 @@ const copiedAutomatically = ref(false)
 const loanId = ref('')
 const deliveryStatus = ref<LoanInviteDeliveryStatus | null>(null)
 const isResending = ref(false)
+let suggestionTimer: ReturnType<typeof setTimeout> | undefined
+let suggestionRequestId = 0
+let skipNextSuggestionLookup = false
 const canEmailInvite = computed(() => Boolean(emailCapabilities.value?.inviteEmailEnabled && borrowerEmail.value.trim()))
+
+const borrowerSuggestionItems = computed(() => borrowerSuggestions.value.map(suggestion => ({
+  label: suggestion.displayName,
+  description: suggestion.email ?? 'No email saved',
+  email: suggestion.email,
+  onSelect: () => selectBorrowerSuggestion(suggestion)
+})))
 
 const tomorrowDate = computed(() => {
   const date = new Date()
@@ -51,6 +63,7 @@ watch(
     if (!open) return
     borrowerDisplayName.value = ''
     borrowerEmail.value = ''
+    resetBorrowerSuggestions()
     dueAt.value = ''
     note.value = ''
     inviteUrl.value = ''
@@ -59,6 +72,56 @@ watch(
     deliveryStatus.value = null
   }
 )
+
+watch(borrowerDisplayName, (query) => {
+  if (skipNextSuggestionLookup) {
+    skipNextSuggestionLookup = false
+    return
+  }
+  if (suggestionTimer) clearTimeout(suggestionTimer)
+  borrowerSuggestions.value = []
+  const trimmedQuery = query.trim()
+  if (!props.open || isSaved.value || trimmedQuery.length < 2) {
+    suggestionRequestId++
+    suggestionsLoading.value = false
+    return
+  }
+
+  const requestId = ++suggestionRequestId
+  suggestionTimer = setTimeout(async () => {
+    suggestionsLoading.value = true
+    try {
+      const suggestions = await $fetch<BorrowerSuggestion[]>('/api/loans/borrower-suggestions', {
+        query: { query: trimmedQuery }
+      })
+      if (requestId === suggestionRequestId) borrowerSuggestions.value = suggestions
+    } catch {
+      if (requestId === suggestionRequestId) borrowerSuggestions.value = []
+    } finally {
+      if (requestId === suggestionRequestId) suggestionsLoading.value = false
+    }
+  }, 250)
+})
+
+onBeforeUnmount(resetBorrowerSuggestions)
+
+function resetBorrowerSuggestions() {
+  if (suggestionTimer) clearTimeout(suggestionTimer)
+  suggestionTimer = undefined
+  suggestionRequestId++
+  borrowerSuggestions.value = []
+  suggestionsLoading.value = false
+}
+
+function selectBorrowerSuggestion(suggestion: BorrowerSuggestion) {
+  skipNextSuggestionLookup = true
+  borrowerDisplayName.value = suggestion.displayName
+  void nextTick(() => {
+    skipNextSuggestionLookup = false
+  })
+  borrowerEmail.value = suggestion.email ?? ''
+  resetBorrowerSuggestions()
+}
 
 async function lendBook() {
   if (!canSave.value) return
@@ -167,13 +230,24 @@ async function copyInvite(options: { showToast?: boolean } = {}) {
           label="Borrower name"
           required
         >
-          <UInput
+          <UInputMenu
             v-model="borrowerDisplayName"
+            mode="autocomplete"
+            :items="borrowerSuggestionItems"
+            value-key="label"
+            ignore-filter
+            :loading="suggestionsLoading"
             placeholder="Who has the book?"
             icon="i-lucide-user"
             class="w-full"
             :disabled="isSaved"
-          />
+          >
+            <template #empty>
+              <span v-if="!suggestionsLoading && borrowerDisplayName.trim().length >= 2">
+                No previous borrowers found.
+              </span>
+            </template>
+          </UInputMenu>
         </UFormField>
 
         <UFormField

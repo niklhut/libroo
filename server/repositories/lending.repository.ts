@@ -3,7 +3,7 @@ import { and, desc, eq, exists, isNotNull, isNull, not, or, sql } from 'drizzle-
 import { authors, bookAuthors, books, loans, user, userBooks } from 'hub:db:schema'
 import { DbService } from '../services/db.service'
 import { BookNotFoundError, BookNotOwnedError, DatabaseError } from './book.repository'
-import type { LibraryState } from '../../shared/types/book'
+import type { BorrowerSuggestion, LibraryState } from '../../shared/types/book'
 
 export class LoanNotFoundError extends Data.TaggedError('LoanNotFoundError')<{
   loanId?: string
@@ -25,7 +25,9 @@ export interface LoanCreateInput {
   userBookId: string
   ownerUserId: string
   borrowerDisplayName: string
+  borrowerNameNormalized: string
   borrowerEmail: string | null
+  borrowerEmailNormalized: string | null
   note: string | null
   dueAt: Date | null
   acceptTokenHash: string
@@ -64,6 +66,7 @@ export interface LendingRepositoryInterface {
   returnLoan: (loanId: string, ownerUserId: string) => Effect.Effect<OwnerLoan, LoanNotFoundError | DatabaseError, DbService>
   cancelLoan: (loanId: string, ownerUserId: string) => Effect.Effect<OwnerLoan, LoanNotFoundError | DatabaseError, DbService>
   deleteLoan: (loanId: string, ownerUserId: string) => Effect.Effect<OwnerLoan, LoanNotFoundError | LoanUnavailableError | DatabaseError, DbService>
+  listBorrowerSuggestions: (ownerUserId: string, normalizedPrefix: string, limit: number) => Effect.Effect<BorrowerSuggestion[], DatabaseError, DbService>
   listOwnerLoans: (ownerUserId: string) => Effect.Effect<OwnerLoan[], DatabaseError, DbService>
   listBorrowedBooks: (borrowerUserId: string) => Effect.Effect<BorrowedBook[], DatabaseError, DbService>
   userHasLoanCoverAccess: (userId: string, pathname: string) => Effect.Effect<boolean, DatabaseError, DbService>
@@ -83,6 +86,10 @@ function isUniqueConstraintError(error: unknown): boolean {
     || message.includes('UNIQUE constraint failed')
     || message.includes('loans_active_user_book_unique')
     || message.includes('loans_accept_token_hash_unique')
+}
+
+function escapeLikePrefix(value: string): string {
+  return value.replaceAll('!', '!!').replaceAll('%', '!%').replaceAll('_', '!_')
 }
 
 export const LendingRepositoryLive = Layer.effect(
@@ -198,7 +205,9 @@ export const LendingRepositoryLive = Layer.effect(
             userBookId: input.userBookId,
             borrowerUserId: null,
             borrowerDisplayName: input.borrowerDisplayName,
+            borrowerNameNormalized: input.borrowerNameNormalized,
             borrowerEmail: input.borrowerEmail,
+            borrowerEmailNormalized: input.borrowerEmailNormalized,
             note: input.note,
             inviteEmailStatus: input.inviteEmailStatus,
             inviteEmailLastAttemptAt: null,
@@ -380,6 +389,49 @@ export const LendingRepositoryLive = Layer.effect(
           return yield* Effect.fail(new LoanNotFoundError({ loanId }))
         }),
 
+      listBorrowerSuggestions: (ownerUserId, normalizedPrefix, limit) =>
+        Effect.gen(function* () {
+          const rankedBorrowers = dbService.db
+            .select({
+              displayName: loans.borrowerDisplayName,
+              email: loans.borrowerEmail,
+              lastUsedAt: loans.loanedAt,
+              createdAt: loans.createdAt,
+              id: loans.id,
+              rank: sql<number>`row_number() over (
+                partition by ${loans.borrowerNameNormalized}, coalesce(${loans.borrowerEmailNormalized}, '')
+                order by ${loans.loanedAt} desc, ${loans.createdAt} desc, ${loans.id} desc
+              )`.as('borrower_rank')
+            })
+            .from(loans)
+            .where(and(
+              eq(loans.ownerUserId, ownerUserId),
+              sql`${loans.borrowerNameNormalized} LIKE ${`${escapeLikePrefix(normalizedPrefix)}%`} ESCAPE '!'`
+            ))
+            .as('ranked_borrowers')
+
+          return yield* Effect.tryPromise({
+            try: () => dbService.db
+              .select({
+                displayName: rankedBorrowers.displayName,
+                email: rankedBorrowers.email,
+                lastUsedAt: rankedBorrowers.lastUsedAt
+              })
+              .from(rankedBorrowers)
+              .where(eq(rankedBorrowers.rank, 1))
+              .orderBy(
+                desc(rankedBorrowers.lastUsedAt),
+                desc(rankedBorrowers.createdAt),
+                desc(rankedBorrowers.id)
+              )
+              .limit(limit),
+            catch: error => new DatabaseError({
+              message: `Failed to list borrower suggestions: ${error}`,
+              operation: 'listBorrowerSuggestions'
+            })
+          })
+        }),
+
       listOwnerLoans: ownerUserId =>
         Effect.gen(function* () {
           const rows = yield* Effect.tryPromise({
@@ -390,7 +442,9 @@ export const LendingRepositoryLive = Layer.effect(
                 userBookId: loans.userBookId,
                 borrowerUserId: loans.borrowerUserId,
                 borrowerDisplayName: loans.borrowerDisplayName,
+                borrowerNameNormalized: loans.borrowerNameNormalized,
                 borrowerEmail: loans.borrowerEmail,
+                borrowerEmailNormalized: loans.borrowerEmailNormalized,
                 note: loans.note,
                 inviteEmailStatus: loans.inviteEmailStatus,
                 inviteEmailLastAttemptAt: loans.inviteEmailLastAttemptAt,
@@ -614,6 +668,9 @@ export const updateInviteEmailDelivery = (loanId: string, ownerUserId: string, s
 
 export const listOwnerLoans = (ownerUserId: string) =>
   Effect.flatMap(LendingRepository, repo => repo.listOwnerLoans(ownerUserId))
+
+export const listBorrowerSuggestions = (ownerUserId: string, normalizedPrefix: string, limit: number) =>
+  Effect.flatMap(LendingRepository, repo => repo.listBorrowerSuggestions(ownerUserId, normalizedPrefix, limit))
 
 export const listBorrowedBooks = (borrowerUserId: string) =>
   Effect.flatMap(LendingRepository, repo => repo.listBorrowedBooks(borrowerUserId))

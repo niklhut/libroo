@@ -71,6 +71,8 @@ When a borrower deletes their account, Libroo removes the account association fr
 
 Owners may also permanently delete their own closed (returned or canceled) loan records from History. This hard-deletes borrower-supplied personal data, owner notes, and the loan snapshots; for accepted loans, it also removes the record from the borrower’s history and revokes access to its cover. Active loans cannot be deleted this way and must first be returned or canceled.
 
+The lending form's borrower suggestions are an indexed view of the owner's retained loan history, not separate contact records. Deleting a closed loan removes that loan as a suggestion source; deleting the lender account removes every suggestion with the owned loans. If another retained loan has the same normalized borrower name and email, that remaining history can still produce the suggestion.
+
 ## Manual Operator Requests
 
 Operators should prefer asking users to delete their own account from Settings because it verifies the user's current password and runs the same storage cleanup path.

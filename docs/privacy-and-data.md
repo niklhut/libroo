@@ -37,10 +37,13 @@ Borrower privacy details:
 - `borrower_user_id` is nullable and uses `ON DELETE SET NULL`; it is set when a borrower accepts an invite with an account.
 - `borrower_display_name` is required and frozen as a snapshot at loan time. It may be an account user's display name or a third-party name supplied by the owner.
 - `borrower_email` is nullable. It is optional contact data supplied by the owner and is not included in library CSV export.
+- `borrower_name_normalized` and `borrower_email_normalized` are owner-scoped lookup keys derived from those snapshot fields. They support borrower suggestions in the lending form and are not exposed to clients.
 - `note` is an owner-private note. It is never included in borrower, invitation-preview, or other public-facing loan responses.
 - `snapshot_book_title`, `snapshot_book_author`, `snapshot_cover_path`, and `snapshot_owner_name` preserve the lending context even if the live book/user data changes later.
 
 If a borrower deletes their account, Libroo anonymizes the borrowed-loan association by clearing `borrower_user_id` and `accepted_at`, while retaining the owner's loan row and owner-supplied borrower snapshot text. If an owner deletes their account, owned loan rows are deleted.
+
+Borrower suggestions are derived from an authenticated owner's own loan rows; Libroo does not maintain a shared people or contacts directory. Results are filtered by owner in the database, deduplicated by normalized name and email, and ordered by most recent loan usage. Permanently deleting a closed loan immediately removes that row as a suggestion source, although another retained matching loan may still produce the same suggestion. Deleting the owner account removes all owned loans and therefore all of its borrower suggestions. Deleting a borrower's account does not remove owner-supplied snapshot text under the retention behavior above, so that retained history may continue to produce a suggestion for its owner.
 
 ### Signup Invites And Email Verification State
 

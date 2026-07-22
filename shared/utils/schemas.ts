@@ -586,6 +586,15 @@ export const createLoanSchema = z.object({
 
 export type CreateLoanSchema = z.infer<typeof createLoanSchema>
 
+export const borrowerSuggestionQuerySchema = z.object({
+  query: z.string()
+    .trim()
+    .max(120, { error: 'Borrower search is too long' })
+    .default('')
+})
+
+export type BorrowerSuggestionQuerySchema = z.infer<typeof borrowerSuggestionQuerySchema>
+
 export const resendLoanInviteSchema = z.object({
   token: z.string({ error: 'Invite token is required' }).trim().min(1, { error: 'Invite token is required' })
 })
