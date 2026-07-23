@@ -151,11 +151,39 @@ After the beta release, add new Drizzle migrations linearly. Do not rewrite exis
 
 ## Self-Hosted Docker
 
+Before building for deployment, prepare a secret for Libroo:
+
 ```bash
 cp .env.example .env
 openssl rand -base64 32
+
 # Put the generated value in NUXT_BETTER_AUTH_SECRET.
+```
+
+### Building the Image
+
+There are two options for building Libroo for Docker.
+
+#### **Option 1: Latest Image**
+
+Change the target of `image` in [/docker-compose.yml](https://github.com/niklhut/libroo/blob/main/docker-compose.yml) to the latest package.
+
+
+```yml
+    image: ghcr.io/niklhut/libroo:latest
+```
+
+Optionally, see [packages](https://github.com/niklhut/libroo/pkgs/container/libroo) to select a version of your choosing.
+
+#### **Option 2: Local Build**
+
+```bash
 docker build -t libroo:local .
+```
+
+### Deploy
+
+```bash
 docker compose up
 ```
 
