@@ -27,28 +27,15 @@ Database migrations live under `server/db/migrations/sqlite`.
 - Optional SMTP or Plunk email delivery for verification, password reset, invites, and security notifications.
 - Self-hosted Docker deployment and hosted Cloudflare/NuxtHub deployment.
 
-## Requirements
+## Run with Self-Hosted Docker
 
-- Node.js 22 or newer.
-- pnpm 11.8.0, or Corepack configured for the package manager in `package.json`.
-- Docker, only for self-hosted container runs.
-- Wrangler and Cloudflare credentials, only for hosted Cloudflare deploys.
+Run Libroo on your own machine or server with Docker and Docker Compose. Your
+library, uploads, and cover images are kept in a persistent Docker volume.
 
-## Self-Hosted Docker
+### First install
 
-The checked-in [docker-compose.yml](docker-compose.yml) uses the published
-`ghcr.io/niklhut/libroo:latest` image by default. `latest` advances only when a
-version tag is published, not for every push to `main`. For a repeatable
-production deployment, pin `LIBROO_IMAGE` in `.env` to a full release tag such
-as `0.5.0`, or to a GHCR digest for the strongest immutability. The Docker
-workflow publishes `latest` for version tags, plus `main`, full release, minor
-release, and SHA tags.
-
-### First install (published image)
-
-Clone the repository, then initialise `.env` once. This command creates a
-fresh secret and writes it into the new `.env`; it leaves an existing `.env`
-unchanged.
+Clone the repository and create `.env`. The following creates a new auth secret
+only when `.env` does not already exist, so it is safe to run again.
 
 ```bash
 git clone https://github.com/niklhut/libroo.git
@@ -64,18 +51,33 @@ else
 fi
 ```
 
-Set `NUXT_BETTER_AUTH_URL` in `.env` to its public origin before starting.
-For production, also set `LIBROO_IMAGE` to the release tag or digest you
-selected; do not edit the tracked Compose file. See [.env.example](.env.example)
-for the remaining configuration options.
+If people will access Libroo through a domain or reverse proxy, set
+`NUXT_BETTER_AUTH_URL` in `.env` to that public address before starting. The
+default `http://localhost:3000` is suitable when running it on your own machine.
 
 ```bash
 docker compose up -d
 ```
 
-### Local build
+Open `http://localhost:3000/register` and create the first account. It becomes
+the administrator for the new library.
 
-To run an image built from your checkout without changing committed files:
+### Keep a fixed version (optional)
+
+Normal installs follow the newest published release. If you prefer to choose
+when to upgrade, set `LIBROO_IMAGE` in your untracked `.env` to a full release
+tag, such as:
+
+```bash
+LIBROO_IMAGE=ghcr.io/niklhut/libroo:0.5.0
+```
+
+Use an image digest instead when you need to run one exact image. See
+[.env.example](.env.example) for the other available settings.
+
+### Build it yourself
+
+If you are changing Libroo or want to run an image built from this checkout:
 
 ```bash
 docker build -t libroo:local .
@@ -83,32 +85,26 @@ LIBROO_IMAGE=libroo:local docker compose up -d
 ```
 
 You can instead set `LIBROO_IMAGE=libroo:local` in your untracked `.env` while
-developing.
+developing. Do not change the repository's Compose file.
 
-The Compose file exposes `http://localhost:3000`, mounts a persistent `libroo-data` volume at `/data`, and stores:
+### Updates and backups
 
-- `/data/db/sqlite.db` for the database.
-- `/data/blob` for uploaded assets and generated WebP covers.
+Back up before upgrading. The `libroo-data` Docker volume contains the database
+at `/data/db/sqlite.db` and uploads at `/data/blob`.
 
-### Upgrades
-
-Back up the whole `/data` volume before upgrading. Keep the existing `.env`:
-do not copy `.env.example` over it. In particular, preserve
-`NUXT_BETTER_AUTH_SECRET`; changing it invalidates active sessions. Update only
-the values you intend to change, such as a pinned `LIBROO_IMAGE` release tag.
-
-For the moving `latest` tag, pull before startup so Compose sees the newest
-released image:
+Keep your existing `.env`; do not replace it with `.env.example`. In particular,
+keep `NUXT_BETTER_AUTH_SECRET` unchanged because changing it signs everyone out.
+To update to the newest published release:
 
 ```bash
 docker compose pull --policy always
 docker compose up -d
 ```
 
-The Docker image runs migrations automatically before starting Nuxt. SQLite
-migrations are forward-only unless a release explicitly ships a rollback plan.
+Libroo applies database migrations as it starts. Migrations move forward only
+unless a release provides a rollback plan.
 
-Scripted self-hosted backup and restore tooling is available:
+You can also use the included backup and restore commands:
 
 ```bash
 pnpm backup:selfhost -- --output-dir /backups/libroo
@@ -178,6 +174,9 @@ After the beta release, add new Drizzle migrations linearly. Do not rewrite exis
 
 ## Local Development
 
+For local development, install Node.js 22 or newer and pnpm 11.8.0, or enable
+Corepack for the package manager version in `package.json`.
+
 ```bash
 git clone https://github.com/niklhut/libroo
 cd libroo
@@ -234,7 +233,8 @@ The full first-release manual QA pass lives in [docs/first-release-qa.md](docs/f
 
 ## Hosted Cloudflare/NuxtHub
 
-The hosted profile uses NuxtHub with Cloudflare D1 and R2-compatible blob storage:
+The hosted profile uses NuxtHub with Cloudflare D1 and R2-compatible blob
+storage. It requires Wrangler and Cloudflare credentials.
 
 ```bash
 NUXT_LIBROO_RUNTIME_PROFILE=cloudflare pnpm build:cloudflare
