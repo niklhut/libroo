@@ -151,20 +151,75 @@ After the beta release, add new Drizzle migrations linearly. Do not rewrite exis
 
 ## Self-Hosted Docker
 
+The checked-in [docker-compose.yml](docker-compose.yml) uses the published
+`ghcr.io/niklhut/libroo:latest` image by default. `latest` advances only when a
+version tag is published, not for every push to `main`. For a repeatable
+production deployment, pin `LIBROO_IMAGE` in `.env` to a full release tag such
+as `0.5.0`, or to a GHCR digest for the strongest immutability. The Docker
+workflow publishes `latest` for version tags, plus `main`, full release, minor
+release, and SHA tags.
+
+### First install (published image)
+
+Clone the repository, then initialise `.env` once. This command creates a
+fresh secret and writes it into the new `.env`; it leaves an existing `.env`
+unchanged.
+
 ```bash
-cp .env.example .env
-openssl rand -base64 32
-# Put the generated value in NUXT_BETTER_AUTH_SECRET.
-docker build -t libroo:local .
-docker compose up
+git clone https://github.com/niklhut/libroo.git
+cd libroo
+
+if [ -e .env ] || [ -L .env ]; then
+  echo '.env already exists; leaving it unchanged.'
+else
+  umask 077
+  secret="$(openssl rand -hex 32)"
+  sed '/^NUXT_BETTER_AUTH_SECRET=/d' .env.example > .env
+  printf '\nNUXT_BETTER_AUTH_SECRET=%s\n' "$secret" >> .env
+fi
+
+docker compose up -d
 ```
+
+Before exposing Libroo beyond localhost, set `NUXT_BETTER_AUTH_URL` in `.env`
+to its public origin. See [.env.example](.env.example) for the remaining
+configuration options. For production, also change `LIBROO_IMAGE` in `.env` to
+the release tag or digest you selected; do not edit the tracked Compose file.
+
+### Local build
+
+To run an image built from your checkout without changing committed files:
+
+```bash
+docker build -t libroo:local .
+LIBROO_IMAGE=libroo:local docker compose up -d
+```
+
+You can instead set `LIBROO_IMAGE=libroo:local` in your untracked `.env` while
+developing.
 
 The Compose file exposes `http://localhost:3000`, mounts a persistent `libroo-data` volume at `/data`, and stores:
 
 - `/data/db/sqlite.db` for the database.
 - `/data/blob` for uploaded assets and generated WebP covers.
 
-Back up the whole `/data` volume before upgrades. SQLite migrations are treated as forward-only unless a release explicitly ships a rollback plan.
+### Upgrades
+
+Back up the whole `/data` volume before upgrading. Keep the existing `.env`:
+do not copy `.env.example` over it. In particular, preserve
+`NUXT_BETTER_AUTH_SECRET`; changing it invalidates active sessions. Update only
+the values you intend to change, such as a pinned `LIBROO_IMAGE` release tag.
+
+For the moving `latest` tag, pull before startup so Compose sees the newest
+released image:
+
+```bash
+docker compose pull --policy always
+docker compose up -d
+```
+
+The Docker image runs migrations automatically before starting Nuxt. SQLite
+migrations are forward-only unless a release explicitly ships a rollback plan.
 
 Scripted self-hosted backup and restore tooling is available:
 
