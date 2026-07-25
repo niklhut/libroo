@@ -34,121 +34,6 @@ Database migrations live under `server/db/migrations/sqlite`.
 - Docker, only for self-hosted container runs.
 - Wrangler and Cloudflare credentials, only for hosted Cloudflare deploys.
 
-## Local Development
-
-```bash
-git clone https://github.com/niklhut/libroo
-cd libroo
-pnpm install
-cp .env.example .env
-openssl rand -base64 32
-```
-
-Put the generated secret in `.env`:
-
-```bash
-NUXT_BETTER_AUTH_SECRET=<output from openssl rand -base64 32>
-NUXT_BETTER_AUTH_URL=http://localhost:3000
-NUXT_LIBROO_RUNTIME_PROFILE=selfhost
-NUXT_DATABASE_URL=file:.data/db/sqlite.db
-NUXT_LOCAL_STORAGE_DIR=.data/blob
-```
-
-Apply the SQLite baseline migration, then start Nuxt:
-
-```bash
-pnpm exec node scripts/migrate-selfhost.mjs
-pnpm dev
-```
-
-Open `http://localhost:3000/register` and create the first account. The Better Auth policy plugin in `server/utils/libroo-admin-auth-plugin.ts` promotes the first created user in an empty database to `admin`.
-
-Useful checks before shipping changes:
-
-```bash
-pnpm lint:fix
-pnpm typecheck
-pnpm test
-pnpm test:unit
-pnpm test:d1
-pnpm test:integration
-pnpm test:scripts
-pnpm test:e2e
-```
-
-- `pnpm test` runs all Vitest projects.
-- `pnpm test:unit` runs pure logic tests.
-- `pnpm test:d1` runs Cloudflare D1/Miniflare-bound tests.
-- `pnpm test:integration` runs cross-service and booted-server flows.
-- `pnpm test:scripts` runs backup, restore, and migration script tests.
-- `pnpm test:e2e` runs Playwright browser flows and builds the self-host runtime first.
-
-CI runs these same Vitest projects through a per-project matrix, so a passing
-`pnpm test` locally mirrors CI coverage. E2E runs separately because it depends
-on its own Playwright build/runtime; CI still reports each Vitest project's
-status individually.
-
-The full first-release manual QA pass lives in [docs/first-release-qa.md](docs/first-release-qa.md).
-
-## Environment Configuration
-
-Better Auth documentation refers to `BETTER_AUTH_SECRET` and `BETTER_AUTH_URL`. In this Nuxt app, set them with the Nuxt runtime-config prefix:
-
-| Variable | Required | Notes |
-| --- | --- | --- |
-| `NUXT_BETTER_AUTH_SECRET` | Production yes | Stable secret used to sign Better Auth sessions. Generate with `openssl rand -base64 32` and keep it unchanged across restarts. |
-| `NUXT_BETTER_AUTH_URL` | Production yes | Public origin of the app, for example `https://libroo.example.com` or `http://localhost:3000`. |
-| `NUXT_LIBROO_RUNTIME_PROFILE` | Optional | `selfhost` by default. Use `cloudflare` for NuxtHub/D1/R2 builds. |
-| `NUXT_DATABASE_URL` | Self-host | libSQL/SQLite URL. Local default is `file:.data/db/sqlite.db`; Docker uses `file:/data/db/sqlite.db`. |
-| `NUXT_LOCAL_STORAGE_DIR` | Self-host | Local blob directory. Local default is `.data/blob`; Docker uses `/data/blob`. |
-| `NUXT_PUBLIC_REGISTRATION_ENABLED` | Optional | `true` by default. Set `false` after the first admin exists to make registration invite-only. |
-| `NUXT_PUBLIC_OPEN_LIBRARY_LINKS_ENABLED` | Optional | `true` in development and `false` in production unless explicitly set. |
-
-Email is optional, but password reset, invite emails, security notifications, and verification emails require a provider.
-
-SMTP is available in the self-hosted profile:
-
-```bash
-NUXT_EMAIL_PROVIDER=smtp
-NUXT_EMAIL_FROM="Libroo <no-reply@your-libroo.example.com>"
-NUXT_SMTP_HOST=smtp.example.com
-NUXT_SMTP_PORT=587
-NUXT_SMTP_SECURE=false
-NUXT_SMTP_USER=your-smtp-user
-NUXT_SMTP_PASSWORD=your-smtp-password
-```
-
-Plunk is available in both profiles and is the hosted Cloudflare profile's email provider:
-
-```bash
-NUXT_EMAIL_PROVIDER=plunk
-NUXT_EMAIL_FROM=no-reply@your-libroo.example.com
-NUXT_EMAIL_REPLY_TO=support@your-libroo.example.com
-NUXT_PLUNK_API_KEY=sk_your_secret_key
-NUXT_PLUNK_BASE_URL=https://next-api.useplunk.com
-```
-
-Set `NUXT_EMAIL_VERIFICATION_ENABLED=true` when users should verify email ownership before normal app access. When it is `false` or unset, registration and sign-in work without verification; email changes apply after current-password confirmation.
-
-## Database Migrations
-
-The current baseline migration is `server/db/migrations/sqlite/0000_initial_beta.sql`. Fresh local and self-hosted installs should apply migrations to an empty SQLite database with:
-
-```bash
-pnpm exec node scripts/migrate-selfhost.mjs
-```
-
-The Docker image runs that script automatically before starting Nuxt. It creates the database directory, checks writable space, and applies migrations from `server/db/migrations/sqlite`.
-
-Hosted Cloudflare deployments apply the same SQLite migration files to D1 after `pnpm build:cloudflare`:
-
-```bash
-pnpm build:cloudflare
-pnpm exec wrangler d1 migrations apply DB --remote --config .output/server/wrangler.json
-```
-
-After the beta release, add new Drizzle migrations linearly. Do not rewrite existing migration history for installations with live data.
-
 ## Self-Hosted Docker
 
 The checked-in [docker-compose.yml](docker-compose.yml) uses the published
@@ -231,6 +116,121 @@ pnpm restore:selfhost -- /backups/libroo/libroo-selfhost-backup-YYYY-MM-DDTHH-MM
 ```
 
 See [docs/backup-restore.md](docs/backup-restore.md) for self-hosted archives, hosted D1/R2 exports, manifests, verification, and retention guidance. The hosted-service backup retention target is 30 days before public launch.
+
+## Environment Configuration
+
+Better Auth documentation refers to `BETTER_AUTH_SECRET` and `BETTER_AUTH_URL`. In this Nuxt app, set them with the Nuxt runtime-config prefix:
+
+| Variable | Required | Notes |
+| --- | --- | --- |
+| `NUXT_BETTER_AUTH_SECRET` | Production yes | Stable secret used to sign Better Auth sessions. Generate with `openssl rand -base64 32` and keep it unchanged across restarts. |
+| `NUXT_BETTER_AUTH_URL` | Production yes | Public origin of the app, for example `https://libroo.example.com` or `http://localhost:3000`. |
+| `NUXT_LIBROO_RUNTIME_PROFILE` | Optional | `selfhost` by default. Use `cloudflare` for NuxtHub/D1/R2 builds. |
+| `NUXT_DATABASE_URL` | Self-host | libSQL/SQLite URL. Local default is `file:.data/db/sqlite.db`; Docker uses `file:/data/db/sqlite.db`. |
+| `NUXT_LOCAL_STORAGE_DIR` | Self-host | Local blob directory. Local default is `.data/blob`; Docker uses `/data/blob`. |
+| `NUXT_PUBLIC_REGISTRATION_ENABLED` | Optional | `true` by default. Set `false` after the first admin exists to make registration invite-only. |
+| `NUXT_PUBLIC_OPEN_LIBRARY_LINKS_ENABLED` | Optional | `true` in development and `false` in production unless explicitly set. |
+
+Email is optional, but password reset, invite emails, security notifications, and verification emails require a provider.
+
+SMTP is available in the self-hosted profile:
+
+```bash
+NUXT_EMAIL_PROVIDER=smtp
+NUXT_EMAIL_FROM="Libroo <no-reply@your-libroo.example.com>"
+NUXT_SMTP_HOST=smtp.example.com
+NUXT_SMTP_PORT=587
+NUXT_SMTP_SECURE=false
+NUXT_SMTP_USER=your-smtp-user
+NUXT_SMTP_PASSWORD=your-smtp-password
+```
+
+Plunk is available in both profiles and is the hosted Cloudflare profile's email provider:
+
+```bash
+NUXT_EMAIL_PROVIDER=plunk
+NUXT_EMAIL_FROM=no-reply@your-libroo.example.com
+NUXT_EMAIL_REPLY_TO=support@your-libroo.example.com
+NUXT_PLUNK_API_KEY=sk_your_secret_key
+NUXT_PLUNK_BASE_URL=https://next-api.useplunk.com
+```
+
+Set `NUXT_EMAIL_VERIFICATION_ENABLED=true` when users should verify email ownership before normal app access. When it is `false` or unset, registration and sign-in work without verification; email changes apply after current-password confirmation.
+
+## Database Migrations
+
+The current baseline migration is `server/db/migrations/sqlite/0000_initial_beta.sql`. Fresh local and self-hosted installs should apply migrations to an empty SQLite database with:
+
+```bash
+pnpm exec node scripts/migrate-selfhost.mjs
+```
+
+The Docker image runs that script automatically before starting Nuxt. It creates the database directory, checks writable space, and applies migrations from `server/db/migrations/sqlite`.
+
+Hosted Cloudflare deployments apply the same SQLite migration files to D1 after `pnpm build:cloudflare`:
+
+```bash
+pnpm build:cloudflare
+pnpm exec wrangler d1 migrations apply DB --remote --config .output/server/wrangler.json
+```
+
+After the beta release, add new Drizzle migrations linearly. Do not rewrite existing migration history for installations with live data.
+
+## Local Development
+
+```bash
+git clone https://github.com/niklhut/libroo
+cd libroo
+pnpm install
+cp .env.example .env
+openssl rand -base64 32
+```
+
+Put the generated secret in `.env`:
+
+```bash
+NUXT_BETTER_AUTH_SECRET=<output from openssl rand -base64 32>
+NUXT_BETTER_AUTH_URL=http://localhost:3000
+NUXT_LIBROO_RUNTIME_PROFILE=selfhost
+NUXT_DATABASE_URL=file:.data/db/sqlite.db
+NUXT_LOCAL_STORAGE_DIR=.data/blob
+```
+
+Apply the SQLite baseline migration, then start Nuxt:
+
+```bash
+pnpm exec node scripts/migrate-selfhost.mjs
+pnpm dev
+```
+
+Open `http://localhost:3000/register` and create the first account. The Better Auth policy plugin in `server/utils/libroo-admin-auth-plugin.ts` promotes the first created user in an empty database to `admin`.
+
+Useful checks before shipping changes:
+
+```bash
+pnpm lint:fix
+pnpm typecheck
+pnpm test
+pnpm test:unit
+pnpm test:d1
+pnpm test:integration
+pnpm test:scripts
+pnpm test:e2e
+```
+
+- `pnpm test` runs all Vitest projects.
+- `pnpm test:unit` runs pure logic tests.
+- `pnpm test:d1` runs Cloudflare D1/Miniflare-bound tests.
+- `pnpm test:integration` runs cross-service and booted-server flows.
+- `pnpm test:scripts` runs backup, restore, and migration script tests.
+- `pnpm test:e2e` runs Playwright browser flows and builds the self-host runtime first.
+
+CI runs these same Vitest projects through a per-project matrix, so a passing
+`pnpm test` locally mirrors CI coverage. E2E runs separately because it depends
+on its own Playwright build/runtime; CI still reports each Vitest project's
+status individually.
+
+The full first-release manual QA pass lives in [docs/first-release-qa.md](docs/first-release-qa.md).
 
 ## Hosted Cloudflare/NuxtHub
 
