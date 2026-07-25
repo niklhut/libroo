@@ -177,14 +177,16 @@ else
   sed '/^NUXT_BETTER_AUTH_SECRET=/d' .env.example > .env
   printf '\nNUXT_BETTER_AUTH_SECRET=%s\n' "$secret" >> .env
 fi
-
-docker compose up -d
 ```
 
-Before exposing Libroo beyond localhost, set `NUXT_BETTER_AUTH_URL` in `.env`
-to its public origin. See [.env.example](.env.example) for the remaining
-configuration options. For production, also change `LIBROO_IMAGE` in `.env` to
-the release tag or digest you selected; do not edit the tracked Compose file.
+Set `NUXT_BETTER_AUTH_URL` in `.env` to its public origin before starting.
+For production, also set `LIBROO_IMAGE` to the release tag or digest you
+selected; do not edit the tracked Compose file. See [.env.example](.env.example)
+for the remaining configuration options.
+
+```bash
+docker compose up -d
+```
 
 ### Local build
 
