@@ -1,6 +1,6 @@
 services:
   libroo:
-    image: libroo:local
+    image: ${LIBROO_IMAGE:-ghcr.io/niklhut/libroo:latest}
     ports:
       - "3000:3000"
     environment:
