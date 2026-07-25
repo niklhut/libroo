@@ -80,8 +80,10 @@ const importConflictItems = [
   { label: 'Use CSV data', value: 'csv' }
 ]
 
-watch(user, (nextUser) => {
-  if (nextUser?.email && !isChangingEmail.value) {
+watch(user, (nextUser, previousUser) => {
+  // A session refresh can complete after a user starts editing this form. Only
+  // mirror the store when the input still reflects the previously known email.
+  if (nextUser?.email && !isChangingEmail.value && emailState.email === (previousUser?.email ?? '')) {
     emailState.email = nextUser.email
   }
 
