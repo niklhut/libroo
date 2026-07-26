@@ -13,7 +13,8 @@ import previouslyOwnedMigration from '../../../../server/db/migrations/sqlite/00
 import inviteEmailMigration from '../../../../server/db/migrations/sqlite/0008_brave_saracen.sql?raw'
 import loanNoteMigration from '../../../../server/db/migrations/sqlite/0010_owner_private_loan_note.sql?raw'
 import borrowerSuggestionsMigration from '../../../../server/db/migrations/sqlite/0011_borrower_suggestions.sql?raw'
-import { authors, bookAuthors, books, loans, locations, tags, user, userBooks, userBookTags } from '../../../../server/db/schema'
+import enrichmentMigration from '../../../../server/db/migrations/sqlite/0012_imported_book_enrichment.sql?raw'
+import { authors, bookAuthors, bookEnrichmentJobs, books, loans, locations, tags, user, userBooks, userBookTags } from '../../../../server/db/schema'
 import { LibraryTransferRepository, LibraryTransferRepositoryLive } from '../../../../server/repositories/library-transfer.repository'
 import { DbService, type DbServiceInterface } from '../../../../server/services/db.service'
 import type { LibraryImportBookInput, LibraryImportConflictStrategy } from '../../../../shared/types/library-transfer'
@@ -31,6 +32,8 @@ describe('LibraryTransferRepository.importRecords on D1', () => {
   beforeEach(async () => {
     for (const table of [
       'loans',
+      'book_enrichment_jobs',
+      'book_enrichment_locks',
       'user_book_tags',
       'book_authors',
       'tags',
@@ -193,21 +196,29 @@ describe('LibraryTransferRepository.importRecords on D1', () => {
     await expect(db.select().from(userBooks)).resolves.toHaveLength(2)
   })
 
-  it('preserves shared Open Library authors when reusing an ISBN match', async () => {
+  it('reuses a shared Open Library record only when export provenance matches', async () => {
     const now = new Date('2026-06-26T10:00:00.000Z')
     await db.insert(authors).values({ id: 'author-open-library', name: 'Catalog Author', normalizedName: 'catalog author', createdAt: now, updatedAt: now })
     await db.insert(books).values({
       id: 'open-library-book',
       isbn: '9783333333333',
       title: 'Shared Catalog Book',
+      openLibraryKey: '/books/OL333M',
       source: 'open_library',
       createdAt: now
     })
     await db.insert(bookAuthors).values({ bookId: 'open-library-book', authorId: 'author-open-library', sortOrder: 0, createdAt: now })
 
     const result = await importRecords([
-      importRecord({ title: 'Shared Catalog Book', authors: ['CSV Author'], isbn: '9783333333333' })
-    ], 'csv')
+      importRecord({
+        title: 'Renamed in CSV',
+        authors: ['CSV Author'],
+        isbn: '9783333333333',
+        source: 'open_library',
+        openLibraryKey: '/books/OL333M',
+        formatVersion: 2
+      })
+    ], 'csv', true)
 
     expect(result).toMatchObject({ created: 1, updated: 0, skipped: 0, failed: [] })
     const authorRows = await db
@@ -216,11 +227,173 @@ describe('LibraryTransferRepository.importRecords on D1', () => {
       .innerJoin(authors, eq(bookAuthors.authorId, authors.id))
       .where(eq(bookAuthors.bookId, 'open-library-book'))
     expect(authorRows).toEqual([{ name: 'Catalog Author' }])
+    const links = await db.select({ bookId: userBooks.bookId }).from(userBooks)
+    expect(links).toEqual([{ bookId: 'open-library-book' }])
+    await expect(db.select().from(bookEnrichmentJobs)).resolves.toHaveLength(0)
+  })
+
+  it('creates a private imported record when a shared ISBN match is ambiguous', async () => {
+    const now = new Date('2026-06-26T10:00:00.000Z')
+    await db.insert(authors).values({ id: 'author-catalog', name: 'Catalog Author', normalizedName: 'catalog author', createdAt: now, updatedAt: now })
+    await db.insert(books).values({
+      id: 'open-library-book',
+      isbn: '9780441172719',
+      title: 'Dune',
+      openLibraryKey: '/books/OL1M',
+      source: 'open_library',
+      createdAt: now
+    })
+    await db.insert(bookAuthors).values({ bookId: 'open-library-book', authorId: 'author-catalog', sortOrder: 0, createdAt: now })
+
+    const result = await importRecords([
+      importRecord({
+        title: 'My corrected edition',
+        authors: ['Different Author'],
+        isbn: '9780441172719',
+        source: 'manual',
+        formatVersion: 2
+      })
+    ], 'csv', true)
+
+    expect(result).toMatchObject({
+      created: 1,
+      enrichmentQueued: 1,
+      enrichmentBatchId: 'batch-1'
+    })
+    const imported = await db
+      .select({
+        id: books.id,
+        source: books.source,
+        entrySource: books.entrySource
+      })
+      .from(books)
+      .where(eq(books.createdByUserId, 'user-1'))
+    expect(imported).toHaveLength(1)
+    expect(imported[0]).toMatchObject({ source: 'manual', entrySource: 'csv_import' })
+    await expect(db.select().from(bookEnrichmentJobs)).resolves.toMatchObject([{
+      bookId: imported[0]!.id,
+      isbn: '9780441172719',
+      status: 'pending',
+      attempts: 0
+    }])
+  })
+
+  it('does not make imported manual records reusable by another user', async () => {
+    const now = new Date('2026-06-26T10:00:00.000Z')
+    await db.insert(user).values({
+      id: 'user-2',
+      name: 'Second Reader',
+      email: 'second@example.com',
+      emailVerified: true,
+      role: 'user',
+      banned: false,
+      createdAt: now,
+      updatedAt: now
+    })
+    const record = importRecord({
+      title: 'Private Import',
+      authors: ['Frank Herbert'],
+      isbn: '9780441172719'
+    })
+
+    await importRecords([record], 'csv')
+    await runRepository(db, Effect.flatMap(LibraryTransferRepository, repository =>
+      repository.importRecords('user-2', [record], 'csv', {
+        enqueueEnrichment: false,
+        batchId: 'batch-2',
+        maxAttempts: 5
+      })
+    ))
+
+    const importedBooks = await db
+      .select({ source: books.source, createdByUserId: books.createdByUserId })
+      .from(books)
+      .where(eq(books.isbn, '9780441172719'))
+    expect(importedBooks).toHaveLength(2)
+    expect(importedBooks).toEqual(expect.arrayContaining([
+      { source: 'manual', createdByUserId: 'user-1' },
+      { source: 'manual', createdByUserId: 'user-2' }
+    ]))
+  })
+
+  it('preserves a manual cover and invalidates provider metadata when the exported record changes ISBN', async () => {
+    const now = new Date('2026-06-26T10:00:00.000Z')
+    await db.insert(books).values({
+      id: 'imported-book',
+      isbn: '9780441172719',
+      title: 'Imported book',
+      coverPath: 'covers/manual/user-1/imported.webp',
+      openLibraryKey: '/books/OLD',
+      description: 'Old provider description',
+      source: 'manual',
+      entrySource: 'csv_import',
+      metadataProviderIsbn: '9780441172719',
+      createdByUserId: 'user-1',
+      createdAt: now
+    })
+    await db.insert(userBooks).values({
+      id: 'source-user-book',
+      userId: 'user-1',
+      bookId: 'imported-book',
+      addedAt: now
+    })
+
+    const result = await importRecords([
+      importRecord({
+        sourceUserBookId: 'source-user-book',
+        title: 'Corrected ISBN',
+        authors: ['Author'],
+        isbn: '9780141439518'
+      })
+    ], 'csv', true)
+
+    expect(result).toMatchObject({ updated: 1, enrichmentQueued: 1 })
+    const rows = await db.select({
+      isbn: books.isbn,
+      coverPath: books.coverPath,
+      openLibraryKey: books.openLibraryKey,
+      description: books.description,
+      metadataProviderIsbn: books.metadataProviderIsbn
+    }).from(books).where(eq(books.id, 'imported-book'))
+    expect(rows).toEqual([{
+      isbn: '9780141439518',
+      coverPath: 'covers/manual/user-1/imported.webp',
+      openLibraryKey: null,
+      description: null,
+      metadataProviderIsbn: null
+    }])
+    await expect(db.select().from(bookEnrichmentJobs)).resolves.toMatchObject([{
+      bookId: 'imported-book',
+      isbn: '9780141439518',
+      status: 'pending'
+    }])
+  })
+
+  it('cancels a queued job when enrichment is disabled on a later import', async () => {
+    const record = importRecord({
+      sourceUserBookId: 'source-user-book',
+      title: 'Dune',
+      authors: ['Frank Herbert'],
+      isbn: '9780441172719'
+    })
+    const first = await importRecords([{ ...record, sourceUserBookId: null }], 'csv', true)
+    const [createdUserBook] = await db.select({ id: userBooks.id }).from(userBooks)
+
+    expect(first.enrichmentQueued).toBe(1)
+    await importRecords([{ ...record, sourceUserBookId: createdUserBook!.id }], 'csv', false)
+
+    await expect(db.select({
+      status: bookEnrichmentJobs.status,
+      lastError: bookEnrichmentJobs.lastError
+    }).from(bookEnrichmentJobs)).resolves.toEqual([{
+      status: 'cancelled',
+      lastError: 'Enrichment was disabled by the user'
+    }])
   })
 })
 
 async function applyMigrations(database: D1Database) {
-  for (const migration of [initialMigration, termsMigration, locationRestrictMigration, libraryStateMigration, previouslyOwnedMigration, inviteEmailMigration, loanNoteMigration, borrowerSuggestionsMigration]) {
+  for (const migration of [initialMigration, termsMigration, locationRestrictMigration, libraryStateMigration, previouslyOwnedMigration, inviteEmailMigration, loanNoteMigration, borrowerSuggestionsMigration, enrichmentMigration]) {
     for (const statement of migration.split('--> statement-breakpoint')) {
       const migrationStatement = statement.trim()
       if (migrationStatement) {
@@ -230,9 +403,17 @@ async function applyMigrations(database: D1Database) {
   }
 }
 
-function importRecords(records: LibraryImportBookInput[], strategy: LibraryImportConflictStrategy) {
+function importRecords(
+  records: LibraryImportBookInput[],
+  strategy: LibraryImportConflictStrategy,
+  enqueueEnrichment = false
+) {
   return runRepository(db, Effect.flatMap(LibraryTransferRepository, repository =>
-    repository.importRecords('user-1', records, strategy)
+    repository.importRecords('user-1', records, strategy, {
+      enqueueEnrichment,
+      batchId: 'batch-1',
+      maxAttempts: 5
+    })
   ))
 }
 
@@ -296,6 +477,7 @@ async function locationPaths(database: D1Db) {
 
 function importRecord(overrides: Partial<LibraryImportBookInput>): LibraryImportBookInput {
   return {
+    sourceUserBookId: null,
     title: 'Imported Book',
     authors: ['Ada Lovelace'],
     isbn: null,
@@ -308,6 +490,9 @@ function importRecord(overrides: Partial<LibraryImportBookInput>): LibraryImport
     rating: null,
     note: null,
     addedAt: null,
+    source: null,
+    openLibraryKey: null,
+    formatVersion: null,
     ...overrides
   }
 }

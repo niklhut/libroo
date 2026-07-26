@@ -167,6 +167,8 @@ interface ApiRouteTestGlobals {
   getAuthorizedCover: (...args: unknown[]) => unknown
   exportLibraryCsv: (...args: unknown[]) => unknown
   importLibraryCsv: (...args: unknown[]) => unknown
+  dispatchBookEnrichment: (...args: unknown[]) => unknown
+  getBookEnrichmentUpdates: (...args: unknown[]) => unknown
   listAdminAuditEntries: (...args: unknown[]) => unknown
   listSignupInvites: (...args: unknown[]) => unknown
   createSignupInvite: (...args: unknown[]) => unknown
@@ -189,6 +191,7 @@ interface ApiRouteTestGlobals {
   locationMoveSchema: unknown
   locationDeleteSchema: unknown
   libraryImportSchema: unknown
+  bookEnrichmentUpdatesSchema: unknown
 }
 
 const testGlobal = globalThis as typeof globalThis & Partial<ApiRouteTestGlobals>
@@ -247,6 +250,8 @@ export const serviceMocks = {
   getAuthorizedCover: vi.fn(),
   exportLibraryCsv: vi.fn(),
   importLibraryCsv: vi.fn(),
+  dispatchBookEnrichment: vi.fn(),
+  getBookEnrichmentUpdates: vi.fn(),
   listAdminAuditEntries: vi.fn(),
   listSignupInvites: vi.fn(),
   createSignupInvite: vi.fn(),
@@ -313,6 +318,8 @@ const originalGlobals = {
   getAuthorizedCover: testGlobal.getAuthorizedCover,
   exportLibraryCsv: testGlobal.exportLibraryCsv,
   importLibraryCsv: testGlobal.importLibraryCsv,
+  dispatchBookEnrichment: testGlobal.dispatchBookEnrichment,
+  getBookEnrichmentUpdates: testGlobal.getBookEnrichmentUpdates,
   listAdminAuditEntries: testGlobal.listAdminAuditEntries,
   listSignupInvites: testGlobal.listSignupInvites,
   createSignupInvite: testGlobal.createSignupInvite,
@@ -334,7 +341,8 @@ const originalGlobals = {
   locationRenameSchema: testGlobal.locationRenameSchema,
   locationMoveSchema: testGlobal.locationMoveSchema,
   locationDeleteSchema: testGlobal.locationDeleteSchema,
-  libraryImportSchema: testGlobal.libraryImportSchema
+  libraryImportSchema: testGlobal.libraryImportSchema,
+  bookEnrichmentUpdatesSchema: testGlobal.bookEnrichmentUpdatesSchema
 }
 
 const createHttpError: HttpErrorFactory = (input) => {
@@ -442,6 +450,8 @@ export async function setupApiRouteTest() {
   testGlobal.getAuthorizedCover = (...args: unknown[]) => serviceMocks.getAuthorizedCover(...args)
   testGlobal.exportLibraryCsv = (...args: unknown[]) => serviceMocks.exportLibraryCsv(...args)
   testGlobal.importLibraryCsv = (...args: unknown[]) => serviceMocks.importLibraryCsv(...args)
+  testGlobal.dispatchBookEnrichment = (...args: unknown[]) => serviceMocks.dispatchBookEnrichment(...args)
+  testGlobal.getBookEnrichmentUpdates = (...args: unknown[]) => serviceMocks.getBookEnrichmentUpdates(...args)
   testGlobal.listAdminAuditEntries = (...args: unknown[]) => serviceMocks.listAdminAuditEntries(...args)
   testGlobal.listSignupInvites = (...args: unknown[]) => serviceMocks.listSignupInvites(...args)
   testGlobal.createSignupInvite = (...args: unknown[]) => serviceMocks.createSignupInvite(...args)
@@ -466,6 +476,7 @@ export async function setupApiRouteTest() {
   testGlobal.locationMoveSchema = schemas.locationMoveSchema
   testGlobal.locationDeleteSchema = schemas.locationDeleteSchema
   testGlobal.libraryImportSchema = schemas.libraryImportSchema
+  testGlobal.bookEnrichmentUpdatesSchema = schemas.bookEnrichmentUpdatesSchema
 
   for (const mock of Object.values(serviceMocks)) {
     mock.mockReset()

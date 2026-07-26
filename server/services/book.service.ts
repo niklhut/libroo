@@ -12,8 +12,10 @@ import {
 } from '../../shared/utils/schemas'
 import type { LibraryQueryFilters } from '../../shared/utils/library-query'
 import { detectImageContentType, UNKNOWN_IMAGE_CONTENT_TYPE } from '../../shared/utils/image-content-type'
-import type { BulkBookLookupItem, BulkBookLookupResponse, BookLookupResult, LibraryState, TagWithCount } from '../../shared/types/book'
+import type { BookEnrichmentUiStatus, BulkBookLookupItem, BulkBookLookupResponse, BookLookupResult, LibraryState, TagWithCount } from '../../shared/types/book'
 import type { Book } from '../repositories/book.repository'
+import { normalizeIsbnIdentity } from '../../shared/utils/isbn'
+import { BookEnrichmentRepository, type BookEnrichmentStatus } from '../repositories/book-enrichment.repository'
 
 const BULK_COVER_LOOKUP_CONCURRENCY = 16
 
@@ -88,7 +90,18 @@ export interface BulkAddBooksResult {
   failed: Array<{ isbn: string, error: string }>
 }
 
-export const toLibraryBook = (userBook: UserBookViewModel): LibraryBook => ({
+function toUiEnrichmentStatus(status: BookEnrichmentStatus | undefined): BookEnrichmentUiStatus | null {
+  if (status === 'pending') return 'queued'
+  if (status === 'processing') return 'preparing'
+  if (status === 'retrying') return 'retrying'
+  if (status === 'no_cover' || status === 'not_found' || status === 'failed') return status
+  return null
+}
+
+export const toLibraryBook = (
+  userBook: UserBookViewModel,
+  enrichmentStatus?: BookEnrichmentStatus
+): LibraryBook => ({
   id: userBook.id,
   bookId: userBook.bookId,
   libraryState: userBook.libraryState,
@@ -101,7 +114,8 @@ export const toLibraryBook = (userBook: UserBookViewModel): LibraryBook => ({
   location: userBook.location,
   lastKnownLocation: userBook.lastKnownLocation,
   addedAt: userBook.addedAt,
-  activeLoan: userBook.activeLoan
+  activeLoan: userBook.activeLoan,
+  enrichmentStatus: toUiEnrichmentStatus(enrichmentStatus)
 })
 
 // ===== Service Interface =====
@@ -256,10 +270,11 @@ export const BookServiceLive = Layer.effect(
   BookService,
   Effect.gen(function* () {
     const bookRepo = yield* BookRepository
+    const enrichmentRepo = yield* BookEnrichmentRepository
     const openLibraryRepo = yield* OpenLibraryRepository
     const locationRepo = yield* LocationRepository
 
-    const normalizeISBN = (isbn: string) => isbn.replace(/[-\s]/g, '')
+    const normalizeISBN = normalizeIsbnIdentity
     const withDebugTiming = <A, E, R>(
       operation: string,
       isbn: string,
@@ -323,9 +338,13 @@ export const BookServiceLive = Layer.effect(
             ...pagination,
             locationPath: selectedLocation?.path
           })
+          const statuses = yield* enrichmentRepo.getStatusesForUserBooks(
+            userId,
+            result.items.map(item => item.bookId)
+          )
 
           return {
-            items: result.items.map(toLibraryBook),
+            items: result.items.map(item => toLibraryBook(item, statuses.get(item.bookId))),
             pagination: result.pagination
           }
         }),
@@ -466,10 +485,14 @@ export const BookServiceLive = Layer.effect(
       getAuthorLibrary: (userId, authorId, pagination) =>
         Effect.gen(function* () {
           const result = yield* bookRepo.getLibraryByAuthor(userId, authorId, pagination)
+          const statuses = yield* enrichmentRepo.getStatusesForUserBooks(
+            userId,
+            result.items.map(item => item.bookId)
+          )
 
           return {
             author: result.author,
-            items: result.items.map(toLibraryBook),
+            items: result.items.map(item => toLibraryBook(item, statuses.get(item.bookId))),
             pagination: result.pagination
           }
         }),
@@ -507,7 +530,14 @@ export const BookServiceLive = Layer.effect(
         }),
 
       getBookDetails: (userBookId, userId) =>
-        bookRepo.getUserBookWithDetails(userBookId, userId),
+        Effect.gen(function* () {
+          const details = yield* bookRepo.getUserBookWithDetails(userBookId, userId)
+          const statuses = yield* enrichmentRepo.getStatusesForUserBooks(userId, [details.bookId])
+          return {
+            ...details,
+            enrichmentStatus: toUiEnrichmentStatus(statuses.get(details.bookId))
+          }
+        }),
 
       lookupBook: (userId, isbn) =>
         Effect.gen(function* () {

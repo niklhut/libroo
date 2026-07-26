@@ -4,8 +4,10 @@ import { accountDeletionSchema } from '~~/shared/utils/account-settings'
 import { deleteAccountData } from '../repositories/account-deletion.repository'
 import type { AccountDeletionRepository, AccountDeletionResult, LastAdminAccountDeletionError } from '../repositories/account-deletion.repository'
 import type { DatabaseError } from '../repositories/book.repository'
+import { BookEnrichmentRepository } from '../repositories/book-enrichment.repository'
 import { deleteBlob } from './storage.service'
 import type { StorageService } from './storage.service'
+import type { DbService } from './db.service'
 import { auth } from '../utils/auth'
 import { UnauthorizedError } from './auth.service'
 
@@ -23,7 +25,7 @@ export interface AccountDeletionServiceInterface {
     event: H3Event,
     userId: string,
     input: AccountDeletionInput
-  ) => Effect.Effect<AccountDeletionResult, InvalidAccountDeletionConfirmationError | LastAdminAccountDeletionError | UnauthorizedError | DatabaseError, AccountDeletionRepository | StorageService>
+  ) => Effect.Effect<AccountDeletionResult, InvalidAccountDeletionConfirmationError | LastAdminAccountDeletionError | UnauthorizedError | DatabaseError, AccountDeletionRepository | BookEnrichmentRepository | DbService | StorageService>
 }
 
 export class AccountDeletionService extends Context.Tag('AccountDeletionService')<AccountDeletionService, AccountDeletionServiceInterface>() { }
@@ -55,6 +57,23 @@ export const AccountDeletionServiceLive = Layer.succeed(AccountDeletionService, 
         yield* deleteBlob(blobPath).pipe(
           Effect.catchAll(error =>
             Effect.logWarning(`Failed to delete account blob ${blobPath}: ${String(error)}`)
+          )
+        )
+      }
+
+      const enrichmentRepo = yield* BookEnrichmentRepository
+      for (const sharedCoverPath of result.sharedCoverPaths) {
+        const referenced = yield* enrichmentRepo.isCoverReferenced(sharedCoverPath).pipe(
+          Effect.catchAll(error =>
+            Effect.logWarning(`Failed to check shared account cover ${sharedCoverPath}: ${String(error)}`).pipe(
+              Effect.as(true)
+            )
+          )
+        )
+        if (referenced) continue
+        yield* deleteBlob(sharedCoverPath).pipe(
+          Effect.catchAll(error =>
+            Effect.logWarning(`Failed to delete unreferenced account cover ${sharedCoverPath}: ${String(error)}`)
           )
         )
       }

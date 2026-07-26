@@ -100,6 +100,9 @@ Optional email and registration settings:
 | `NUXT_OPEN_LIBRARY_COVER_TIMEOUT_SECONDS` | `20` | Timeout for downloading and repairing cover images from Open Library. |
 | `NUXT_OPEN_LIBRARY_CONTACT_EMAIL` | empty | Contact included in the Open Library `User-Agent`. When configured, the shared outbound limiter permits three requests per second; otherwise it permits one. |
 | `NUXT_BOOKS_BULK_LOOKUP_RATE_LIMIT_WINDOW_SECONDS` / `NUXT_BOOKS_BULK_LOOKUP_RATE_LIMIT_MAX_REQUESTS` | `60` / `10` | Dedicated database-backed inbound limit for authenticated bulk ISBN lookup requests. |
+| `NUXT_BOOKS_ENRICHMENT_BATCH_SIZE` / `NUXT_BOOKS_ENRICHMENT_CONCURRENCY` | `100` / `4` | Bounds each opted-in CSV import enrichment sweep and its parallel cover/storage checks. |
+| `NUXT_BOOKS_ENRICHMENT_LEASE_SECONDS` | `900` | Claim and per-ISBN lock duration. Expired work can be safely reclaimed; stale workers cannot complete another worker's claim. |
+| `NUXT_BOOKS_ENRICHMENT_MAX_ATTEMPTS` / `NUXT_BOOKS_ENRICHMENT_BACKOFF_SECONDS` | `5` / `60` | Maximum attempts and exponential-backoff base for transient Open Library failures. |
 | `NUXT_LEGAL_MARKDOWN_FETCH_TIMEOUT_SECONDS` | `5` | Timeout for fetching configured legal Markdown source documents. |
 | `NUXT_PLUNK_SEND_TIMEOUT_SECONDS` | `5` | Timeout for Plunk email delivery requests. |
 | `NUXT_EMAIL_PROVIDER` | `smtp` | Self-host supports `smtp` or `plunk`. |
@@ -245,7 +248,7 @@ Secrets should be injected through the orchestrator, an env file outside source 
 
 ### Scheduled Tasks
 
-Libroo runs a daily audit cleanup task at 03:00 and a daily Open Library cover repair task at 03:30. The cover repair task checks a small random batch of Open Library books that were saved without a generated cover image, retries the cover download, and fills `cover_path` only when a cover is successfully stored.
+Libroo runs an opted-in CSV import enrichment sweep every five minutes, a daily audit cleanup task at 03:00, and a daily Open Library cover repair task at 03:30. A supported request runtime also dispatches the import's batch immediately through `waitUntil`; the sweep recovers deferred, retried, or interrupted work. Enrichment jobs use expiring claims and per-ISBN locks, apply provider fields additively, and stop when their imported record changes or is removed. The cover repair task checks a small random batch of Open Library books that were saved without a generated cover image, retries the cover download, and fills `cover_path` only when a cover is successfully stored.
 
 ### Account Deletion Operations
 
@@ -572,6 +575,9 @@ Repository or environment variables:
 | `NUXT_OPEN_LIBRARY_REQUEST_TIMEOUT_SECONDS` | `12` |
 | `NUXT_OPEN_LIBRARY_COVER_TIMEOUT_SECONDS` | `20` |
 | `NUXT_BOOKS_BULK_LOOKUP_RATE_LIMIT_WINDOW_SECONDS` / `NUXT_BOOKS_BULK_LOOKUP_RATE_LIMIT_MAX_REQUESTS` | `60` / `10` |
+| `NUXT_BOOKS_ENRICHMENT_BATCH_SIZE` / `NUXT_BOOKS_ENRICHMENT_CONCURRENCY` | `100` / `4` |
+| `NUXT_BOOKS_ENRICHMENT_LEASE_SECONDS` | `900` |
+| `NUXT_BOOKS_ENRICHMENT_MAX_ATTEMPTS` / `NUXT_BOOKS_ENRICHMENT_BACKOFF_SECONDS` | `5` / `60` |
 | `NUXT_LEGAL_MARKDOWN_FETCH_TIMEOUT_SECONDS` | `5` |
 | `NUXT_PLUNK_SEND_TIMEOUT_SECONDS` | `5` |
 | `NUXT_PUBLIC_LEGAL_PRIVACY_POLICY_URL` / `NUXT_PUBLIC_LEGAL_IMPRINT_URL` / `NUXT_PUBLIC_LEGAL_TERMS_URL` | Optional canonical hosted legal page URLs. |
@@ -600,7 +606,7 @@ Before migration, the workflow registers a non-transient production deployment
 through the GitHub Deployments API and publishes an `in_progress` status with
 the production Environment URL. The validator fails closed unless the generated
 config targets `libroo-production`, the configured production custom domain,
-both scheduled tasks, and exactly the configured production D1 and R2
+all three scheduled tasks, and exactly the configured production D1 and R2
 bindings. Migration and deploy cannot run if validation fails. A final
 always-running step publishes `success` or `failure` against the captured
 deployment ID; if registration failed before returning an ID, the status call

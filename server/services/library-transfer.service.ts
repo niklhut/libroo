@@ -14,9 +14,13 @@ import type {
   LibraryImportResult
 } from '../../shared/types/library-transfer'
 import type { LibraryState, ReadingStatus } from '../../shared/types/book'
+import { isValidIsbn, normalizeIsbnIdentity, normalizeIsbnText } from '../../shared/utils/isbn'
+import { getBooksEnrichmentConfig } from '../utils/books-config'
 import type { DatabaseError } from '../repositories/book.repository'
+import { BookEnrichmentRepository } from '../repositories/book-enrichment.repository'
 import { LibraryTransferRepository } from '../repositories/library-transfer.repository'
 import type { DbService } from './db.service'
+import { deleteBlob, type StorageService } from './storage.service'
 
 export class InvalidLibraryCsvError extends Data.TaggedError('InvalidLibraryCsvError')<{
   message: string
@@ -27,8 +31,9 @@ export interface LibraryTransferServiceInterface {
   importLibraryCsv: (
     userId: string,
     csv: string,
-    conflictStrategy: LibraryImportConflictStrategy
-  ) => Effect.Effect<LibraryImportResult, InvalidLibraryCsvError | DatabaseError, DbService>
+    conflictStrategy: LibraryImportConflictStrategy,
+    enrich: boolean
+  ) => Effect.Effect<LibraryImportResult, InvalidLibraryCsvError | DatabaseError, BookEnrichmentRepository | DbService | StorageService>
 }
 
 export class LibraryTransferService extends Context.Tag('LibraryTransferService')<
@@ -93,10 +98,27 @@ function toImportRecord(row: LibraryCsvRow): LibraryImportBookInput {
     }
   }
 
+  const rawIsbn = row.isbn.trim()
+  const normalizedIsbn = rawIsbn ? normalizeIsbnText(rawIsbn) : null
+  const rawSource = row.source.trim()
+  if (rawSource && rawSource !== 'manual' && rawSource !== 'open_library') {
+    throw new Error('source must be manual or open_library')
+  }
+  const source: 'manual' | 'open_library' | null
+    = rawSource === 'manual' || rawSource === 'open_library' ? rawSource : null
+  const rawFormatVersion = row.format_version.trim()
+  const formatVersion = rawFormatVersion ? Number.parseInt(rawFormatVersion, 10) : null
+  if (rawFormatVersion && (!Number.isInteger(formatVersion) || formatVersion! < 1)) {
+    throw new Error('format_version must be a positive integer')
+  }
+
   return {
+    sourceUserBookId: row.libroo_user_book_id.trim() || null,
     title,
     authors: parseList(row.authors, 'authors'),
-    isbn: row.isbn.trim() || null,
+    isbn: normalizedIsbn
+      ? (isValidIsbn(normalizedIsbn) ? normalizeIsbnIdentity(normalizedIsbn) : normalizedIsbn)
+      : null,
     tags: parseList(row.tags, 'tags'),
     locationPath,
     libraryState: parseLibraryState(row.library_state),
@@ -105,7 +127,10 @@ function toImportRecord(row: LibraryCsvRow): LibraryImportBookInput {
     progressPercent: parseNullableInteger(row.progress_percent, 'progress_percent', 0, 100),
     rating: parseNullableInteger(row.rating, 'rating', 1, 5),
     note: row.note.trim() || null,
-    addedAt: parseNullableDate(row.added_date, 'added_date')
+    addedAt: parseNullableDate(row.added_date, 'added_date'),
+    source,
+    openLibraryKey: row.open_library_key.trim() || null,
+    formatVersion
   }
 }
 
@@ -134,11 +159,15 @@ export const LibraryTransferServiceLive = Layer.effect(
             active_loan_status: record.activeLoan?.status ?? '',
             active_loan_borrower: record.activeLoan?.borrowerDisplayName ?? '',
             active_loan_loaned_at: serializeDate(record.activeLoan?.loanedAt),
-            active_loan_due_at: serializeDate(record.activeLoan?.dueAt)
+            active_loan_due_at: serializeDate(record.activeLoan?.dueAt),
+            format_version: '2',
+            source: record.source,
+            open_library_key: record.openLibraryKey ?? '',
+            libroo_user_book_id: record.userBookId
           })))
         }),
 
-      importLibraryCsv: (userId, csv, conflictStrategy) =>
+      importLibraryCsv: (userId, csv, conflictStrategy, enrich) =>
         Effect.gen(function* () {
           const rows = yield* Effect.try({
             try: () => {
@@ -153,7 +182,30 @@ export const LibraryTransferServiceLive = Layer.effect(
             })
           })
 
-          return yield* transferRepo.importRecords(userId, rows, conflictStrategy)
+          const imported = yield* transferRepo.importRecords(userId, rows, conflictStrategy, {
+            enqueueEnrichment: enrich,
+            batchId: crypto.randomUUID(),
+            maxAttempts: getBooksEnrichmentConfig().maxAttempts
+          })
+          const enrichmentRepo = yield* BookEnrichmentRepository
+          for (const pathname of new Set(imported.orphanedSharedCoverPaths)) {
+            const referenced = yield* enrichmentRepo.isCoverReferenced(pathname).pipe(
+              Effect.catchAll(error =>
+                Effect.logWarning(`Failed to check replaced import cover ${pathname}: ${String(error)}`).pipe(
+                  Effect.as(true)
+                )
+              )
+            )
+            if (referenced) continue
+            yield* deleteBlob(pathname).pipe(
+              Effect.catchAll(error =>
+                Effect.logWarning(`Failed to delete replaced import cover ${pathname}: ${String(error)}`)
+              )
+            )
+          }
+
+          const { orphanedSharedCoverPaths: _, ...result } = imported
+          return result
         })
     }
   })
@@ -165,6 +217,7 @@ export const exportLibraryCsv = (userId: string) =>
 export const importLibraryCsv = (
   userId: string,
   csv: string,
-  conflictStrategy: LibraryImportConflictStrategy
+  conflictStrategy: LibraryImportConflictStrategy,
+  enrich = false
 ) =>
-  Effect.flatMap(LibraryTransferService, service => service.importLibraryCsv(userId, csv, conflictStrategy))
+  Effect.flatMap(LibraryTransferService, service => service.importLibraryCsv(userId, csv, conflictStrategy, enrich))

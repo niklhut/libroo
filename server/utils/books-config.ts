@@ -7,6 +7,11 @@ type BooksRuntimeConfig = {
   booksRateLimitMaxRequests?: unknown
   booksBulkLookupRateLimitWindowSeconds?: unknown
   booksBulkLookupRateLimitMaxRequests?: unknown
+  booksEnrichmentBatchSize?: unknown
+  booksEnrichmentConcurrency?: unknown
+  booksEnrichmentLeaseSeconds?: unknown
+  booksEnrichmentMaxAttempts?: unknown
+  booksEnrichmentBackoffSeconds?: unknown
 }
 
 function runtimeValue(key: keyof BooksRuntimeConfig): unknown {
@@ -55,6 +60,31 @@ export function getBulkLookupRateLimitConfig() {
     maxRequests: positiveInteger(
       runtimeValue('booksBulkLookupRateLimitMaxRequests') ?? process.env.NUXT_BOOKS_BULK_LOOKUP_RATE_LIMIT_MAX_REQUESTS,
       10
+    )
+  }
+}
+
+export function getBooksEnrichmentConfig() {
+  return {
+    batchSize: positiveInteger(
+      runtimeValue('booksEnrichmentBatchSize') ?? process.env.NUXT_BOOKS_ENRICHMENT_BATCH_SIZE,
+      100
+    ),
+    concurrency: positiveInteger(
+      runtimeValue('booksEnrichmentConcurrency') ?? process.env.NUXT_BOOKS_ENRICHMENT_CONCURRENCY,
+      4
+    ),
+    leaseSeconds: positiveInteger(
+      runtimeValue('booksEnrichmentLeaseSeconds') ?? process.env.NUXT_BOOKS_ENRICHMENT_LEASE_SECONDS,
+      900
+    ),
+    maxAttempts: positiveInteger(
+      runtimeValue('booksEnrichmentMaxAttempts') ?? process.env.NUXT_BOOKS_ENRICHMENT_MAX_ATTEMPTS,
+      5
+    ),
+    backoffSeconds: positiveInteger(
+      runtimeValue('booksEnrichmentBackoffSeconds') ?? process.env.NUXT_BOOKS_ENRICHMENT_BACKOFF_SECONDS,
+      60
     )
   }
 }

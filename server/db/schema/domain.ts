@@ -21,6 +21,8 @@ export const books = sqliteTable('books', {
   publishers: text('publishers'),
   numberOfPages: integer('number_of_pages'),
   source: text('source', { enum: ['open_library', 'manual'] }).notNull().default('open_library'),
+  entrySource: text('entry_source', { enum: ['csv_import', 'manual_entry', 'isbn_lookup'] }),
+  metadataProviderIsbn: text('metadata_provider_isbn'),
   createdByUserId: text('created_by_user_id').references(() => user.id, { onDelete: 'set null' }),
 
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull()
@@ -28,7 +30,8 @@ export const books = sqliteTable('books', {
   index('books_isbn_idx').on(table.isbn),
   uniqueIndex('books_open_library_isbn_unique')
     .on(table.isbn)
-    .where(sql`${table.source} = 'open_library' AND ${table.isbn} IS NOT NULL`)
+    .where(sql`${table.source} = 'open_library' AND ${table.isbn} IS NOT NULL`),
+  check('books_entry_source_check', sql`${table.entrySource} IS NULL OR ${table.entrySource} IN ('csv_import', 'manual_entry', 'isbn_lookup')`)
 ])
 
 // Global author dictionary. Books link to authors through book_authors.
@@ -118,6 +121,42 @@ export const userBooks = sqliteTable('user_books', {
   check('user_books_current_page_check', sql`${table.currentPage} IS NULL OR ${table.currentPage} >= 0`),
   check('user_books_progress_percent_check', sql`${table.progressPercent} IS NULL OR ${table.progressPercent} BETWEEN 0 AND 100`)
 ])
+
+export const bookEnrichmentJobs = sqliteTable('book_enrichment_jobs', {
+  id: text('id').primaryKey(),
+  batchId: text('batch_id').notNull(),
+  userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  bookId: text('book_id').notNull().references(() => books.id, { onDelete: 'cascade' }),
+  isbn: text('isbn').notNull(),
+  status: text('status', {
+    enum: ['pending', 'processing', 'retrying', 'completed', 'no_cover', 'not_found', 'failed', 'cancelled']
+  }).notNull().default('pending'),
+  attempts: integer('attempts').notNull().default(0),
+  maxAttempts: integer('max_attempts').notNull().default(5),
+  claimToken: text('claim_token'),
+  leaseExpiresAt: integer('lease_expires_at', { mode: 'timestamp' }),
+  nextAttemptAt: integer('next_attempt_at', { mode: 'timestamp' }),
+  lastError: text('last_error'),
+  outcome: text('outcome'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+  completedAt: integer('completed_at', { mode: 'timestamp' })
+}, table => [
+  uniqueIndex('book_enrichment_jobs_book_id_unique').on(table.bookId),
+  index('book_enrichment_jobs_claim_idx').on(table.status, table.nextAttemptAt, table.createdAt),
+  index('book_enrichment_jobs_user_status_idx').on(table.userId, table.status, table.createdAt),
+  index('book_enrichment_jobs_batch_idx').on(table.batchId),
+  index('book_enrichment_jobs_isbn_status_idx').on(table.isbn, table.status),
+  check('book_enrichment_jobs_status_check', sql`${table.status} IN ('pending', 'processing', 'retrying', 'completed', 'no_cover', 'not_found', 'failed', 'cancelled')`),
+  check('book_enrichment_jobs_attempts_check', sql`${table.attempts} >= 0 AND ${table.maxAttempts} > 0`)
+])
+
+export const bookEnrichmentLocks = sqliteTable('book_enrichment_locks', {
+  isbn: text('isbn').primaryKey(),
+  claimToken: text('claim_token').notNull(),
+  leaseExpiresAt: integer('lease_expires_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
+})
 
 export const userPreferences = sqliteTable('user_preferences', {
   userId: text('user_id').primaryKey().references(() => user.id, { onDelete: 'cascade' }),

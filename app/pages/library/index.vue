@@ -26,6 +26,12 @@ interface PreferencesResponse {
   defaultLibraryStateFilter: LibraryState[]
 }
 
+interface EnrichmentUpdate {
+  userBookId: string
+  coverPath: string | null
+  status: LibraryBook['enrichmentStatus']
+}
+
 usePageTitle('Library')
 
 const toast = useToast()
@@ -105,6 +111,7 @@ const isLoadingMore = ref(false)
 const isApplyingFilters = ref(false)
 const filterRefreshTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 const preferenceSaveTimer = ref<ReturnType<typeof setTimeout> | null>(null)
+const enrichmentPollTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 const shouldPersistLibraryStatePreference = ref(false)
 const suppressFilterWatcher = ref(false)
 const ALL_LOCATIONS_VALUE = '__all_locations__'
@@ -174,6 +181,58 @@ watch(data, (response) => {
   cacheResultsAction(activeResultCacheKey.value)
 }, { immediate: true })
 
+const hasPendingEnrichment = computed(() =>
+  allBooks.value.some(book =>
+    book.enrichmentStatus === 'queued'
+    || book.enrichmentStatus === 'preparing'
+    || book.enrichmentStatus === 'retrying'
+  )
+)
+
+function scheduleEnrichmentPoll() {
+  if (!import.meta.client || enrichmentPollTimer.value || !hasPendingEnrichment.value) return
+
+  enrichmentPollTimer.value = setTimeout(async () => {
+    enrichmentPollTimer.value = null
+    try {
+      const pendingIds = allBooks.value
+        .filter(book =>
+          book.enrichmentStatus === 'queued'
+          || book.enrichmentStatus === 'preparing'
+          || book.enrichmentStatus === 'retrying'
+        )
+        .map(book => book.id)
+      for (let offset = 0; offset < pendingIds.length; offset += 100) {
+        const updates = await $fetch<EnrichmentUpdate[]>('/api/books/enrichment/updates', {
+          method: 'POST',
+          body: { ids: pendingIds.slice(offset, offset + 100) }
+        })
+        const updatesById = new Map(updates.map(update => [update.userBookId, update]))
+        for (const book of allBooks.value) {
+          const update = updatesById.get(book.id)
+          if (!update) continue
+          book.coverPath = update.coverPath
+          book.enrichmentStatus = update.status
+        }
+      }
+      cacheResultsAction(activeResultCacheKey.value)
+    } catch (error) {
+      console.error('Failed to refresh book enrichment status', error)
+    } finally {
+      scheduleEnrichmentPoll()
+    }
+  }, 5000)
+}
+
+watch(hasPendingEnrichment, (pending) => {
+  if (pending) {
+    scheduleEnrichmentPoll()
+  } else if (enrichmentPollTimer.value) {
+    clearTimeout(enrichmentPollTimer.value)
+    enrichmentPollTimer.value = null
+  }
+}, { immediate: true })
+
 onMounted(() => {
   const syncAndRestore = async () => {
     try {
@@ -211,6 +270,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   if (filterRefreshTimer.value) clearTimeout(filterRefreshTimer.value)
   if (preferenceSaveTimer.value) clearTimeout(preferenceSaveTimer.value)
+  if (enrichmentPollTimer.value) clearTimeout(enrichmentPollTimer.value)
 })
 
 onBeforeRouteLeave((to) => {

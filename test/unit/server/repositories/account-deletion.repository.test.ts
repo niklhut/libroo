@@ -21,7 +21,7 @@ describe('AccountDeletionRepository', () => {
     db = drizzle(client)
     await client.execute('PRAGMA foreign_keys = ON')
 
-    for (const migrationFile of ['0000_initial_beta.sql', '0001_add_terms_acceptance.sql', '0002_prevent_location_delete_cascade.sql', '0003_add_library_state.sql', '0006_huge_tiger_shark.sql', '0008_brave_saracen.sql', '0010_owner_private_loan_note.sql', '0011_borrower_suggestions.sql']) {
+    for (const migrationFile of ['0000_initial_beta.sql', '0001_add_terms_acceptance.sql', '0002_prevent_location_delete_cascade.sql', '0003_add_library_state.sql', '0006_huge_tiger_shark.sql', '0008_brave_saracen.sql', '0010_owner_private_loan_note.sql', '0011_borrower_suggestions.sql', '0012_imported_book_enrichment.sql']) {
       const migrationPath = fileURLToPath(
         new URL(`../../../../server/db/migrations/sqlite/${migrationFile}`, import.meta.url)
       )
@@ -61,6 +61,7 @@ describe('AccountDeletionRepository', () => {
     ]))
     expect(result.blobPaths).not.toContain('covers/manual/user-1/shared.webp')
     expect(result.blobPaths).not.toContain('covers/open-library/shared.webp')
+    expect(result.sharedCoverPaths).toEqual([])
 
     await expect(selectIds(db, user)).resolves.toEqual(['user-2'])
     await expect(selectIds(db, account)).resolves.toEqual(['account-2'])

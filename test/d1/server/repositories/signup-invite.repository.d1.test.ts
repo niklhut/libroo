@@ -12,6 +12,7 @@ import previouslyOwnedMigration from '../../../../server/db/migrations/sqlite/00
 import inviteEmailMigration from '../../../../server/db/migrations/sqlite/0008_brave_saracen.sql?raw'
 import loanNoteMigration from '../../../../server/db/migrations/sqlite/0010_owner_private_loan_note.sql?raw'
 import borrowerSuggestionsMigration from '../../../../server/db/migrations/sqlite/0011_borrower_suggestions.sql?raw'
+import enrichmentMigration from '../../../../server/db/migrations/sqlite/0012_imported_book_enrichment.sql?raw'
 import { account, session, signupInvites, user } from '../../../../server/db/schema'
 import { hashInviteToken, SignupInviteRepository, SignupInviteRepositoryLive } from '../../../../server/repositories/signup-invite.repository'
 import { DbService, type DbServiceInterface } from '../../../../server/services/db.service'
@@ -121,7 +122,7 @@ describe('SignupInviteRepository on D1', () => {
 })
 
 async function applyMigrations(database: D1Database) {
-  for (const migration of [initialMigration, termsMigration, locationRestrictMigration, libraryStateMigration, previouslyOwnedMigration, inviteEmailMigration, loanNoteMigration, borrowerSuggestionsMigration]) {
+  for (const migration of [initialMigration, termsMigration, locationRestrictMigration, libraryStateMigration, previouslyOwnedMigration, inviteEmailMigration, loanNoteMigration, borrowerSuggestionsMigration, enrichmentMigration]) {
     for (const statement of migration.split('--> statement-breakpoint')) {
       const migrationStatement = statement.trim()
       if (migrationStatement) await database.prepare(migrationStatement).run()

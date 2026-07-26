@@ -11,6 +11,7 @@ import { getBlob, type StorageService } from '../services/storage.service'
 import { downloadCover, lookupByISBN } from './openLibrary.repository'
 import type { OpenLibraryApiError, OpenLibraryBookData, OpenLibraryBookNotFoundError, OpenLibraryRepository } from './openLibrary.repository'
 import type { LibraryState, TagWithCount } from '../../shared/types/book'
+import { isbnIdentityAliases, normalizeIsbnIdentity } from '../../shared/utils/isbn'
 
 // Error types
 export class BookNotFoundError extends Data.TaggedError('BookNotFoundError')<{
@@ -207,6 +208,11 @@ export interface BookRepositoryInterface {
     isbn: string
   ) => Effect.Effect<string | null, never, StorageService>
 
+  addSystemTagsToBook: (
+    bookId: string,
+    subjects: string[]
+  ) => Effect.Effect<void, DatabaseError, DbService>
+
   getSystemTagsByBookId: (
     bookId: string
   ) => Effect.Effect<BookTagRecord[], DatabaseError, DbService>
@@ -282,7 +288,7 @@ function generateId(): string {
 }
 
 function normalizeISBN(isbn: string): string {
-  return isbn.replace(/[-\s]/g, '')
+  return normalizeIsbnIdentity(isbn)
 }
 
 const TRUSTED_COVER_EXTENSIONS = new Set(['webp', 'jpg', 'jpeg', 'png', 'gif'])
@@ -427,7 +433,7 @@ export const BookRepositoryLive = Layer.effect(
             dbService.db
               .select()
               .from(books)
-              .where(and(eq(books.isbn, isbn), eq(books.source, 'open_library')))
+              .where(and(inArray(books.isbn, isbnIdentityAliases(isbn)), eq(books.source, 'open_library')))
               .limit(1),
           catch: error => new DatabaseError({
             message: `Failed to find existing book: ${error}`,
@@ -849,6 +855,7 @@ export const BookRepositoryLive = Layer.effect(
             publishers: openLibraryData.publishers?.join(', ') || null,
             numberOfPages: openLibraryData.numberOfPages || null,
             source: 'open_library' as const,
+            entrySource: 'isbn_lookup' as const,
             createdByUserId: null,
             createdAt: now
           }
@@ -868,6 +875,7 @@ export const BookRepositoryLive = Layer.effect(
                   "publishers",
                   "number_of_pages",
                   "source",
+                  "entry_source",
                   "created_by_user_id",
                   "created_at"
                 )
@@ -883,6 +891,7 @@ export const BookRepositoryLive = Layer.effect(
                   ${sql.param(newBook.publishers, books.publishers)},
                   ${sql.param(newBook.numberOfPages, books.numberOfPages)},
                   ${sql.param(newBook.source, books.source)},
+                  ${sql.param(newBook.entrySource, books.entrySource)},
                   ${sql.param(newBook.createdByUserId, books.createdByUserId)},
                   ${sql.param(newBook.createdAt, books.createdAt)}
                 )
@@ -978,6 +987,7 @@ export const BookRepositoryLive = Layer.effect(
     return {
       ensureOpenLibraryBook,
       findStoredOpenLibraryCover,
+      addSystemTagsToBook: (bookId, subjects) => hydrateSystemTagsForBook(bookId, subjects),
 
       addBookByISBN: (userId, isbn, libraryState = 'owned') =>
         Effect.gen(function* () {
@@ -995,8 +1005,7 @@ export const BookRepositoryLive = Layer.effect(
                 .innerJoin(books, eq(userBooks.bookId, books.id))
                 .where(and(
                   eq(userBooks.userId, userId),
-                  eq(books.isbn, normalizedISBN),
-                  eq(books.source, 'open_library'),
+                  inArray(books.isbn, isbnIdentityAliases(normalizedISBN)),
                   isNull(userBooks.removedAt)
                 ))
                 .limit(1),
@@ -1066,6 +1075,7 @@ export const BookRepositoryLive = Layer.effect(
                 publishers: input.publisher,
                 numberOfPages: input.numberOfPages,
                 source: 'manual' as const,
+                entrySource: 'manual_entry' as const,
                 createdByUserId: userId,
                 createdAt: now
               }
@@ -1595,8 +1605,7 @@ export const BookRepositoryLive = Layer.effect(
                 .innerJoin(books, eq(userBooks.bookId, books.id))
                 .where(and(
                   eq(userBooks.userId, userId),
-                  eq(books.isbn, isbn),
-                  eq(books.source, 'open_library'),
+                  inArray(books.isbn, isbnIdentityAliases(isbn)),
                   isNull(userBooks.removedAt)
                 ))
                 .limit(1),
@@ -1686,7 +1695,7 @@ export const BookRepositoryLive = Layer.effect(
               dbService.db
                 .select()
                 .from(books)
-                .where(and(eq(books.isbn, isbn), eq(books.source, 'open_library')))
+                .where(and(inArray(books.isbn, isbnIdentityAliases(isbn)), eq(books.source, 'open_library')))
                 .limit(1),
             catch: error => new DatabaseError({
               message: `Failed to find book by ISBN: ${error}`,
@@ -1707,7 +1716,10 @@ export const BookRepositoryLive = Layer.effect(
             try: () => dbService.db
               .select()
               .from(books)
-              .where(and(inArray(books.isbn, isbns), eq(books.source, 'open_library'))),
+              .where(and(
+                inArray(books.isbn, [...new Set(isbns.flatMap(isbnIdentityAliases))]),
+                eq(books.source, 'open_library')
+              )),
             catch: error => new DatabaseError({
               message: `Failed to find books by ISBN: ${error}`,
               operation: 'findByIsbns'
@@ -1716,7 +1728,7 @@ export const BookRepositoryLive = Layer.effect(
           const authorMap = yield* hydrateAuthorsForBookIds(rows.map(book => book.id))
           return new Map(rows.flatMap((book) => {
             if (!book.isbn) return []
-            return [[book.isbn, toBookModel(book, authorMap.get(book.id) || [])] as const]
+            return [[normalizeIsbnIdentity(book.isbn), toBookModel(book, authorMap.get(book.id) || [])] as const]
           }))
         }),
 
@@ -1734,8 +1746,7 @@ export const BookRepositoryLive = Layer.effect(
               .innerJoin(books, eq(userBooks.bookId, books.id))
               .where(and(
                 eq(userBooks.userId, userId),
-                inArray(books.isbn, isbns),
-                eq(books.source, 'open_library'),
+                inArray(books.isbn, [...new Set(isbns.flatMap(isbnIdentityAliases))]),
                 isNull(userBooks.removedAt)
               )),
             catch: error => new DatabaseError({
@@ -1745,7 +1756,7 @@ export const BookRepositoryLive = Layer.effect(
           })
           return new Map(rows.flatMap((row) => {
             if (!row.isbn) return []
-            return [[row.isbn, {
+            return [[normalizeIsbnIdentity(row.isbn), {
               userBookId: row.userBookId,
               libraryState: row.libraryState as LibraryState
             }] as const]

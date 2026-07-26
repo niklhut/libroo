@@ -14,6 +14,7 @@ export class LastAdminAccountDeletionError extends Data.TaggedError('LastAdminAc
 export interface AccountDeletionResult {
   deletedUserId: string
   blobPaths: string[]
+  sharedCoverPaths: string[]
   deletedManualBooks: number
   deletedUserBooks: number
   deletedOwnedLoans: number
@@ -161,14 +162,23 @@ export const AccountDeletionRepositoryLive = Layer.effect(
               })
             }
 
+            const deletedCoverPaths = deletedManualBooks
+              .map(row => row.coverPath)
+              .filter((path): path is string =>
+                typeof path === 'string'
+                && !path.startsWith('http://')
+                && !path.startsWith('https://')
+              )
             const blobPaths = [
               userRow?.image,
-              ...deletedManualBooks.map(row => row.coverPath)
-            ].filter((path): path is string => typeof path === 'string' && !path.startsWith('http://') && !path.startsWith('https://'))
+              ...deletedCoverPaths.filter(path => path.startsWith('covers/manual/'))
+            ].filter((path): path is string => typeof path === 'string')
+            const sharedCoverPaths = deletedCoverPaths.filter(path => !path.startsWith('covers/manual/'))
 
             return {
               deletedUserId: userId,
               blobPaths: [...new Set(blobPaths)],
+              sharedCoverPaths: [...new Set(sharedCoverPaths)],
               deletedManualBooks: deletedManualBooks.length,
               deletedUserBooks: deletedUserBooks.length,
               deletedOwnedLoans: deletedOwnedLoans.length,

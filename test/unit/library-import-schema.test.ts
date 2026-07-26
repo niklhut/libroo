@@ -13,4 +13,9 @@ describe('libraryImportSchema', () => {
       error: { issues: [{ message: 'CSV file is too large' }] }
     })
   })
+
+  it('requires explicit opt-in for metadata enrichment', () => {
+    expect(libraryImportSchema.parse({ csv: 'title\\nDune' }).enrich).toBe(false)
+    expect(libraryImportSchema.parse({ csv: 'title\\nDune', enrich: true }).enrich).toBe(true)
+  })
 })

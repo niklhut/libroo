@@ -43,7 +43,11 @@ describe('library transfer CSV', () => {
       active_loan_status: '',
       active_loan_borrower: '',
       active_loan_loaned_at: '',
-      active_loan_due_at: ''
+      active_loan_due_at: '',
+      format_version: '2',
+      source: 'manual',
+      open_library_key: '',
+      libroo_user_book_id: 'ub-1'
     }])
 
     expect(parseLibraryCsv(csv)[0]).toMatchObject({
@@ -72,7 +76,11 @@ describe('library transfer CSV', () => {
       active_loan_status: 'loaned',
       active_loan_borrower: 'Ada, Jr.',
       active_loan_loaned_at: '2026-06-01T10:00:00.000Z',
-      active_loan_due_at: ''
+      active_loan_due_at: '',
+      format_version: '2',
+      source: 'open_library',
+      open_library_key: '/books/OL1M',
+      libroo_user_book_id: 'ub-1'
     }])
 
     expect(parseLibraryCsv(csv)).toEqual([{
@@ -91,7 +99,11 @@ describe('library transfer CSV', () => {
       active_loan_status: 'loaned',
       active_loan_borrower: 'Ada, Jr.',
       active_loan_loaned_at: '2026-06-01T10:00:00.000Z',
-      active_loan_due_at: ''
+      active_loan_due_at: '',
+      format_version: '2',
+      source: 'open_library',
+      open_library_key: '/books/OL1M',
+      libroo_user_book_id: 'ub-1'
     }])
   })
 
@@ -139,7 +151,8 @@ Dune,["Frank Herbert"],9780441172719,[],Shelf,read,,100,5,,2026-06-12T10:00:00.0
     const row = {
       title: 'Dune', authors: '[]', isbn: '', tags: '[]', location: '', library_state: '', reading_status: '',
       current_page: '', progress_percent: '', rating: '', note: '', added_date: '', active_loan_status: '',
-      active_loan_borrower: '', active_loan_loaned_at: '', active_loan_due_at: ''
+      active_loan_borrower: '', active_loan_loaned_at: '', active_loan_due_at: '', format_version: '',
+      source: '', open_library_key: '', libroo_user_book_id: ''
     }
 
     expect(() => parseLibraryCsv(formatLibraryCsv([{ ...row, title: 'a'.repeat(LIBRARY_CSV_MAX_CELL_LENGTH + 1) }]))).toThrow(

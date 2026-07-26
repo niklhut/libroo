@@ -6,6 +6,7 @@ import {
   manualBookCreateSchema
 } from '../../../../shared/utils/schemas'
 import { BookRepository, type BookRepositoryInterface } from '../../../../server/repositories/book.repository'
+import { BookEnrichmentRepository, type BookEnrichmentRepositoryInterface } from '../../../../server/repositories/book-enrichment.repository'
 import { LocationRepository, type LocationRepositoryInterface } from '../../../../server/repositories/location.repository'
 import { OpenLibraryApiError, OpenLibraryRepository, type OpenLibraryRepositoryInterface } from '../../../../server/repositories/openLibrary.repository'
 import { BookServiceLive, bulkLookupBooks, createManualBook, decodeCoverImage, InvalidManualCoverError } from '../../../../server/services/book.service'
@@ -88,6 +89,7 @@ describe('manual cover validation', () => {
     return effect.pipe(
       Effect.provide(BookServiceLive),
       Effect.provide(Layer.succeed(BookRepository, bookRepository as BookRepositoryInterface)),
+      Effect.provide(Layer.succeed(BookEnrichmentRepository, {} as BookEnrichmentRepositoryInterface)),
       Effect.provide(Layer.succeed(OpenLibraryRepository, {} as OpenLibraryRepositoryInterface)),
       Effect.provide(Layer.succeed(LocationRepository, {} as LocationRepositoryInterface)),
       Effect.provide(Layer.succeed(StorageService, storageService as StorageServiceInterface))
@@ -132,6 +134,7 @@ describe('bulk ISBN lookup', () => {
     ]).pipe(
       Effect.provide(BookServiceLive),
       Effect.provide(Layer.succeed(BookRepository, bookRepository)),
+      Effect.provide(Layer.succeed(BookEnrichmentRepository, {} as BookEnrichmentRepositoryInterface)),
       Effect.provide(Layer.succeed(OpenLibraryRepository, openLibraryRepository)),
       Effect.provide(Layer.succeed(LocationRepository, {} as LocationRepositoryInterface))
     ))
@@ -160,6 +163,7 @@ describe('bulk ISBN lookup', () => {
     ]).pipe(
       Effect.provide(BookServiceLive),
       Effect.provide(Layer.succeed(BookRepository, bookRepository)),
+      Effect.provide(Layer.succeed(BookEnrichmentRepository, {} as BookEnrichmentRepositoryInterface)),
       Effect.provide(Layer.succeed(OpenLibraryRepository, openLibraryRepository)),
       Effect.provide(Layer.succeed(LocationRepository, {} as LocationRepositoryInterface))
     ))
@@ -200,6 +204,7 @@ describe('bulk ISBN lookup', () => {
     const result = await Effect.runPromise(bulkLookupBooks('user-1', isbns).pipe(
       Effect.provide(BookServiceLive),
       Effect.provide(Layer.succeed(BookRepository, bookRepository)),
+      Effect.provide(Layer.succeed(BookEnrichmentRepository, {} as BookEnrichmentRepositoryInterface)),
       Effect.provide(Layer.succeed(OpenLibraryRepository, openLibraryRepository)),
       Effect.provide(Layer.succeed(LocationRepository, {} as LocationRepositoryInterface))
     ))
@@ -247,6 +252,7 @@ describe('bulk ISBN lookup', () => {
     const result = await Effect.runPromise(bulkLookupBooks('user-1', isbns).pipe(
       Effect.provide(BookServiceLive),
       Effect.provide(Layer.succeed(BookRepository, bookRepository)),
+      Effect.provide(Layer.succeed(BookEnrichmentRepository, {} as BookEnrichmentRepositoryInterface)),
       Effect.provide(Layer.succeed(OpenLibraryRepository, openLibraryRepository)),
       Effect.provide(Layer.succeed(LocationRepository, {} as LocationRepositoryInterface))
     ))

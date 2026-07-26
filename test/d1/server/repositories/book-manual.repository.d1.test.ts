@@ -13,6 +13,7 @@ import previouslyOwnedMigration from '../../../../server/db/migrations/sqlite/00
 import inviteEmailMigration from '../../../../server/db/migrations/sqlite/0008_brave_saracen.sql?raw'
 import loanNoteMigration from '../../../../server/db/migrations/sqlite/0010_owner_private_loan_note.sql?raw'
 import borrowerSuggestionsMigration from '../../../../server/db/migrations/sqlite/0011_borrower_suggestions.sql?raw'
+import enrichmentMigration from '../../../../server/db/migrations/sqlite/0012_imported_book_enrichment.sql?raw'
 import libraryIndexesMigration from '../../../../server/db/migrations/sqlite/0004_add_user_books_library_indexes.sql?raw'
 import activeUserBookUniqueMigration from '../../../../server/db/migrations/sqlite/0005_add_active_user_book_unique.sql?raw'
 import { bookAuthors, books, loans, user, userBooks, userBookTags } from '../../../../server/db/schema'
@@ -317,7 +318,8 @@ async function applyMigrations(database: D1Database) {
     previouslyOwnedMigration,
     inviteEmailMigration,
     loanNoteMigration,
-    borrowerSuggestionsMigration
+    borrowerSuggestionsMigration,
+    enrichmentMigration
   ]) {
     for (const statement of migration.split('--> statement-breakpoint')) {
       const migrationStatement = statement.trim()

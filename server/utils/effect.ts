@@ -18,6 +18,7 @@ const BaseServicesLive = Layer.mergeAll(
 const RepositoriesLive = Layer.provideMerge(
   Layer.mergeAll(
     BookRepositoryLive,
+    BookEnrichmentRepositoryLive,
     OpenLibraryRepositoryLive,
     LendingRepositoryLive,
     AdminRepositoryLive,
@@ -37,7 +38,7 @@ const RepositoriesLive = Layer.provideMerge(
 
 // Service layer (depends on repositories)
 const CoreServicesLive = Layer.provideMerge(
-  Layer.mergeAll(BookServiceLive, LendingServiceLive, AdminServiceLive, AuditServiceLive, LocationServiceLive, LibraryTransferServiceLive, PreferencesServiceLive, AccountDeletionServiceLive, SignupInviteServiceLive, EmailCapabilityServiceLive, HealthServiceLive, LegalServiceLive, RateLimitServiceLive),
+  Layer.mergeAll(BookServiceLive, BookEnrichmentServiceLive, LendingServiceLive, AdminServiceLive, AuditServiceLive, LocationServiceLive, LibraryTransferServiceLive, PreferencesServiceLive, AccountDeletionServiceLive, SignupInviteServiceLive, EmailCapabilityServiceLive, HealthServiceLive, LegalServiceLive, RateLimitServiceLive),
   RepositoriesLive
 )
 
@@ -58,6 +59,7 @@ export type MainServices
     | StorageService
     | AuthService
     | BookRepository
+    | BookEnrichmentRepository
     | OpenLibraryRepository
     | LendingRepository
     | AdminRepository
@@ -72,6 +74,7 @@ export type MainServices
     | LegalRepository
     | RateLimitRepository
     | BookService
+    | BookEnrichmentService
     | LendingService
     | AdminService
     | AuditService
