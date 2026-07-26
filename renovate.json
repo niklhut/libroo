@@ -20,8 +20,8 @@
       "minimumReleaseAge": null
     },
     {
-      "description": "Initial digest pinning has no release timestamp to age-gate; keep minimumReleaseAge for later version updates.",
-      "matchUpdateTypes": ["pin", "pinDigest"],
+      "description": "GitHub Action digest changes have no release timestamp to age-gate; keep minimumReleaseAge for later version updates.",
+      "matchUpdateTypes": ["pin", "pinDigest", "digest"],
       "minimumReleaseAge": null
     },
     {
