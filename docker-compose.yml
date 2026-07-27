@@ -1,6 +1,6 @@
 services:
   libroo:
-    image: ${LIBROO_IMAGE:-ghcr.io/niklhut/libroo:latest}
+    image: ${LIBROO_IMAGE:-ghcr.io/niklhut/libroo:latest@sha256:02c3fae63b72e80a90fb642cd7865b6b637e357d87e93c6741883bc5e4cb2d50}
     ports:
       - "3000:3000"
     environment:
