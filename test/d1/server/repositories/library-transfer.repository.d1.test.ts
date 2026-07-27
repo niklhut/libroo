@@ -369,6 +369,57 @@ describe('LibraryTransferRepository.importRecords on D1', () => {
     }])
   })
 
+  it('preserves provider metadata when an imported ISBN only changes formatting', async () => {
+    const now = new Date('2026-06-26T10:00:00.000Z')
+    await db.insert(books).values({
+      id: 'imported-book',
+      isbn: '978-0-441-17271-9',
+      title: 'Imported book',
+      coverPath: 'covers/9780441172719.webp',
+      openLibraryKey: '/books/OL1M',
+      description: 'Provider description',
+      source: 'manual',
+      entrySource: 'csv_import',
+      metadataProviderIsbn: '0-441-17271-7',
+      createdByUserId: 'user-1',
+      createdAt: now
+    })
+    await db.insert(userBooks).values({
+      id: 'source-user-book',
+      userId: 'user-1',
+      bookId: 'imported-book',
+      addedAt: now
+    })
+
+    const result = await importRecords([
+      importRecord({
+        sourceUserBookId: 'source-user-book',
+        title: 'Imported book',
+        authors: ['Frank Herbert'],
+        isbn: '9780441172719'
+      })
+    ], 'csv', true)
+
+    expect(result).toMatchObject({
+      updated: 1,
+      enrichmentQueued: 1,
+      orphanedSharedCoverPaths: []
+    })
+    await expect(db.select({
+      isbn: books.isbn,
+      coverPath: books.coverPath,
+      openLibraryKey: books.openLibraryKey,
+      description: books.description,
+      metadataProviderIsbn: books.metadataProviderIsbn
+    }).from(books).where(eq(books.id, 'imported-book'))).resolves.toEqual([{
+      isbn: '9780441172719',
+      coverPath: 'covers/9780441172719.webp',
+      openLibraryKey: '/books/OL1M',
+      description: 'Provider description',
+      metadataProviderIsbn: '0-441-17271-7'
+    }])
+  })
+
   it('cancels a queued job when enrichment is disabled on a later import', async () => {
     const record = importRecord({
       sourceUserBookId: 'source-user-book',

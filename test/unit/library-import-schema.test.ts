@@ -15,7 +15,7 @@ describe('libraryImportSchema', () => {
   })
 
   it('requires explicit opt-in for metadata enrichment', () => {
-    expect(libraryImportSchema.parse({ csv: 'title\\nDune' }).enrich).toBe(false)
-    expect(libraryImportSchema.parse({ csv: 'title\\nDune', enrich: true }).enrich).toBe(true)
+    expect(libraryImportSchema.parse({ csv: 'title\nDune' }).enrich).toBe(false)
+    expect(libraryImportSchema.parse({ csv: 'title\nDune', enrich: true }).enrich).toBe(true)
   })
 })

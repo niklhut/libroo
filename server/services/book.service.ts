@@ -12,10 +12,11 @@ import {
 } from '../../shared/utils/schemas'
 import type { LibraryQueryFilters } from '../../shared/utils/library-query'
 import { detectImageContentType, UNKNOWN_IMAGE_CONTENT_TYPE } from '../../shared/utils/image-content-type'
-import type { BookEnrichmentUiStatus, BulkBookLookupItem, BulkBookLookupResponse, BookLookupResult, LibraryState, TagWithCount } from '../../shared/types/book'
+import type { BookEnrichmentStatus, BulkBookLookupItem, BulkBookLookupResponse, BookLookupResult, LibraryState, TagWithCount } from '../../shared/types/book'
+import { toBookEnrichmentUiStatus } from '../../shared/utils/book-enrichment'
 import type { Book } from '../repositories/book.repository'
 import { normalizeIsbnIdentity } from '../../shared/utils/isbn'
-import { BookEnrichmentRepository, type BookEnrichmentStatus } from '../repositories/book-enrichment.repository'
+import { BookEnrichmentRepository } from '../repositories/book-enrichment.repository'
 
 const BULK_COVER_LOOKUP_CONCURRENCY = 16
 
@@ -90,14 +91,6 @@ export interface BulkAddBooksResult {
   failed: Array<{ isbn: string, error: string }>
 }
 
-function toUiEnrichmentStatus(status: BookEnrichmentStatus | undefined): BookEnrichmentUiStatus | null {
-  if (status === 'pending') return 'queued'
-  if (status === 'processing') return 'preparing'
-  if (status === 'retrying') return 'retrying'
-  if (status === 'no_cover' || status === 'not_found' || status === 'failed') return status
-  return null
-}
-
 export const toLibraryBook = (
   userBook: UserBookViewModel,
   enrichmentStatus?: BookEnrichmentStatus
@@ -115,7 +108,7 @@ export const toLibraryBook = (
   lastKnownLocation: userBook.lastKnownLocation,
   addedAt: userBook.addedAt,
   activeLoan: userBook.activeLoan,
-  enrichmentStatus: toUiEnrichmentStatus(enrichmentStatus)
+  enrichmentStatus: toBookEnrichmentUiStatus(enrichmentStatus)
 })
 
 // ===== Service Interface =====
@@ -327,6 +320,15 @@ export const BookServiceLive = Layer.effect(
       existingState: ownership?.libraryState ?? null
     })
 
+    const getEnrichmentStatuses = (userId: string, bookIds: string[]) =>
+      enrichmentRepo.getStatusesForUserBooks(userId, bookIds).pipe(
+        Effect.catchAll(error =>
+          Effect.logWarning(`Failed to load optional book enrichment statuses: ${String(error)}`).pipe(
+            Effect.as(new Map<string, BookEnrichmentStatus>())
+          )
+        )
+      )
+
     return {
       listTags: userId => bookRepo.listTags(userId),
       getUserLibrary: (userId, pagination) =>
@@ -338,7 +340,7 @@ export const BookServiceLive = Layer.effect(
             ...pagination,
             locationPath: selectedLocation?.path
           })
-          const statuses = yield* enrichmentRepo.getStatusesForUserBooks(
+          const statuses = yield* getEnrichmentStatuses(
             userId,
             result.items.map(item => item.bookId)
           )
@@ -485,7 +487,7 @@ export const BookServiceLive = Layer.effect(
       getAuthorLibrary: (userId, authorId, pagination) =>
         Effect.gen(function* () {
           const result = yield* bookRepo.getLibraryByAuthor(userId, authorId, pagination)
-          const statuses = yield* enrichmentRepo.getStatusesForUserBooks(
+          const statuses = yield* getEnrichmentStatuses(
             userId,
             result.items.map(item => item.bookId)
           )
@@ -532,10 +534,10 @@ export const BookServiceLive = Layer.effect(
       getBookDetails: (userBookId, userId) =>
         Effect.gen(function* () {
           const details = yield* bookRepo.getUserBookWithDetails(userBookId, userId)
-          const statuses = yield* enrichmentRepo.getStatusesForUserBooks(userId, [details.bookId])
+          const statuses = yield* getEnrichmentStatuses(userId, [details.bookId])
           return {
             ...details,
-            enrichmentStatus: toUiEnrichmentStatus(statuses.get(details.bookId))
+            enrichmentStatus: toBookEnrichmentUiStatus(statuses.get(details.bookId))
           }
         }),
 

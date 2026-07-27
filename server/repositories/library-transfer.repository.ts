@@ -12,7 +12,7 @@ import type {
 } from '../../shared/types/library-transfer'
 import { DatabaseError } from './book.repository'
 import { DbService, type AtomicDbStatement } from '../services/db.service'
-import { isbnIdentityAliases, isValidIsbn } from '../../shared/utils/isbn'
+import { isbnIdentityAliases, isValidIsbn, normalizeIsbnIdentity } from '../../shared/utils/isbn'
 
 interface ExistingImportMatch {
   userBookId: string
@@ -24,6 +24,8 @@ interface ExistingImportMatch {
   coverPath: string | null
   metadataProviderIsbn: string | null
 }
+
+const normalizedStoredBookIsbn = sql<string>`replace(replace(upper(${books.isbn}), '-', ''), ' ', '')`
 
 interface ImportLocationNode {
   id: string
@@ -247,7 +249,7 @@ export const LibraryTransferRepositoryLive = Layer.effect(
                   .innerJoin(books, eq(userBooks.bookId, books.id))
                   .where(and(
                     eq(userBooks.userId, userId),
-                    inArray(books.isbn, isbnIdentityAliases(record.isbn)),
+                    inArray(normalizedStoredBookIsbn, isbnIdentityAliases(record.isbn)),
                     isNull(userBooks.removedAt)
                   ))
                   .limit(1)
@@ -478,7 +480,7 @@ export const LibraryTransferRepositoryLive = Layer.effect(
                     })
                     .from(books)
                     .where(and(
-                      inArray(books.isbn, isbnIdentityAliases(record.isbn)),
+                      inArray(normalizedStoredBookIsbn, isbnIdentityAliases(record.isbn)),
                       eq(books.source, 'open_library')
                     ))
                     .limit(1)
@@ -510,11 +512,16 @@ export const LibraryTransferRepositoryLive = Layer.effect(
                 const isUserOwnedManualBook = existing?.bookSource === 'manual' && existing.createdByUserId === userId
                 const isNewManualBook = !existing && !sharedOpenLibraryBookId
                 const isImportedManualBook = isUserOwnedManualBook && existing?.entrySource === 'csv_import'
-                const isbnChanged = Boolean(existing && existing.bookIsbn !== record.isbn)
+                const importedIsbn = record.isbn ? normalizeIsbnIdentity(record.isbn) : null
+                const existingBookIsbn = existing?.bookIsbn ? normalizeIsbnIdentity(existing.bookIsbn) : null
+                const metadataProviderIsbn = existing?.metadataProviderIsbn
+                  ? normalizeIsbnIdentity(existing.metadataProviderIsbn)
+                  : null
+                const isbnChanged = Boolean(existing && existingBookIsbn !== importedIsbn)
                 const providerMetadataIsStale = Boolean(
                   isbnChanged
-                  && existing?.metadataProviderIsbn
-                  && existing.metadataProviderIsbn !== record.isbn
+                  && metadataProviderIsbn
+                  && metadataProviderIsbn !== importedIsbn
                 )
                 const shouldQueueEnrichment = options.enqueueEnrichment
                   && Boolean(record.isbn && isValidIsbn(record.isbn))

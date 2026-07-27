@@ -291,6 +291,8 @@ function normalizeISBN(isbn: string): string {
   return normalizeIsbnIdentity(isbn)
 }
 
+const normalizedStoredBookIsbn = sql<string>`replace(replace(upper(${books.isbn}), '-', ''), ' ', '')`
+
 const TRUSTED_COVER_EXTENSIONS = new Set(['webp', 'jpg', 'jpeg', 'png', 'gif'])
 
 function validateManualCoverPath(userId: string, coverPath: string | null): string | null {
@@ -433,7 +435,7 @@ export const BookRepositoryLive = Layer.effect(
             dbService.db
               .select()
               .from(books)
-              .where(and(inArray(books.isbn, isbnIdentityAliases(isbn)), eq(books.source, 'open_library')))
+              .where(and(inArray(normalizedStoredBookIsbn, isbnIdentityAliases(isbn)), eq(books.source, 'open_library')))
               .limit(1),
           catch: error => new DatabaseError({
             message: `Failed to find existing book: ${error}`,
@@ -1005,7 +1007,7 @@ export const BookRepositoryLive = Layer.effect(
                 .innerJoin(books, eq(userBooks.bookId, books.id))
                 .where(and(
                   eq(userBooks.userId, userId),
-                  inArray(books.isbn, isbnIdentityAliases(normalizedISBN)),
+                  inArray(normalizedStoredBookIsbn, isbnIdentityAliases(normalizedISBN)),
                   isNull(userBooks.removedAt)
                 ))
                 .limit(1),
@@ -1065,7 +1067,7 @@ export const BookRepositoryLive = Layer.effect(
               const coverPath = validateManualCoverPath(userId, input.coverPath)
               const newBook = {
                 id: bookId,
-                isbn: input.isbn,
+                isbn: input.isbn ? normalizeIsbnIdentity(input.isbn) : null,
                 title: input.title,
                 coverPath,
                 openLibraryKey: null,
@@ -1605,7 +1607,7 @@ export const BookRepositoryLive = Layer.effect(
                 .innerJoin(books, eq(userBooks.bookId, books.id))
                 .where(and(
                   eq(userBooks.userId, userId),
-                  inArray(books.isbn, isbnIdentityAliases(isbn)),
+                  inArray(normalizedStoredBookIsbn, isbnIdentityAliases(isbn)),
                   isNull(userBooks.removedAt)
                 ))
                 .limit(1),
@@ -1695,7 +1697,7 @@ export const BookRepositoryLive = Layer.effect(
               dbService.db
                 .select()
                 .from(books)
-                .where(and(inArray(books.isbn, isbnIdentityAliases(isbn)), eq(books.source, 'open_library')))
+                .where(and(inArray(normalizedStoredBookIsbn, isbnIdentityAliases(isbn)), eq(books.source, 'open_library')))
                 .limit(1),
             catch: error => new DatabaseError({
               message: `Failed to find book by ISBN: ${error}`,
@@ -1717,7 +1719,7 @@ export const BookRepositoryLive = Layer.effect(
               .select()
               .from(books)
               .where(and(
-                inArray(books.isbn, [...new Set(isbns.flatMap(isbnIdentityAliases))]),
+                inArray(normalizedStoredBookIsbn, [...new Set(isbns.flatMap(isbnIdentityAliases))]),
                 eq(books.source, 'open_library')
               )),
             catch: error => new DatabaseError({
@@ -1746,7 +1748,7 @@ export const BookRepositoryLive = Layer.effect(
               .innerJoin(books, eq(userBooks.bookId, books.id))
               .where(and(
                 eq(userBooks.userId, userId),
-                inArray(books.isbn, [...new Set(isbns.flatMap(isbnIdentityAliases))]),
+                inArray(normalizedStoredBookIsbn, [...new Set(isbns.flatMap(isbnIdentityAliases))]),
                 isNull(userBooks.removedAt)
               )),
             catch: error => new DatabaseError({

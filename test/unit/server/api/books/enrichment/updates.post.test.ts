@@ -21,7 +21,7 @@ describe('server/api/books/enrichment/updates.post', () => {
   itRequiresAuth(route, { body: { ids: ['user-book-1'] } })
   itRejectsBannedUsers(route, { body: { ids: ['user-book-1'] } })
 
-  it('returns silent card updates only for the authenticated user', async () => {
+  it('forwards the authenticated user and requested ids to the enrichment service', async () => {
     mockLoggedInUser({ id: 'session-user', name: 'Ada', email: 'ada@example.com' })
     const updates = [{ userBookId: 'user-book-1', coverPath: 'covers/book.webp', status: null }]
     serviceMocks.getBookEnrichmentUpdates.mockReturnValueOnce(Effect.succeed(updates))
@@ -29,5 +29,19 @@ describe('server/api/books/enrichment/updates.post', () => {
 
     await expect(handler(makeEvent({ body: { ids: ['user-book-1'] } }))).resolves.toBe(updates)
     expect(serviceMocks.getBookEnrichmentUpdates).toHaveBeenCalledWith('session-user', ['user-book-1'])
+  })
+
+  it.each([
+    [],
+    Array.from({ length: 101 }, (_, index) => `user-book-${index}`)
+  ])('rejects invalid requested id counts', async (ids) => {
+    mockLoggedInUser()
+    const handler = await importRoute(route)
+
+    await expect(handler(makeEvent({ body: { ids } }))).rejects.toMatchObject({
+      statusCode: 400,
+      message: 'Validation Error'
+    })
+    expect(serviceMocks.getBookEnrichmentUpdates).not.toHaveBeenCalled()
   })
 })

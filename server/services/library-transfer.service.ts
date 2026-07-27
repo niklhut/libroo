@@ -107,8 +107,11 @@ function toImportRecord(row: LibraryCsvRow): LibraryImportBookInput {
   const source: 'manual' | 'open_library' | null
     = rawSource === 'manual' || rawSource === 'open_library' ? rawSource : null
   const rawFormatVersion = row.format_version.trim()
-  const formatVersion = rawFormatVersion ? Number.parseInt(rawFormatVersion, 10) : null
-  if (rawFormatVersion && (!Number.isInteger(formatVersion) || formatVersion! < 1)) {
+  const formatVersion = rawFormatVersion ? Number(rawFormatVersion) : null
+  if (rawFormatVersion && (
+    !/^[1-9]\d*$/.test(rawFormatVersion)
+    || !Number.isSafeInteger(formatVersion)
+  )) {
     throw new Error('format_version must be a positive integer')
   }
 

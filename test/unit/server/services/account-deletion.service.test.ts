@@ -156,6 +156,8 @@ describe('AccountDeletionService', () => {
     const isCoverReferenced = vi.fn((pathname: string) =>
       Effect.succeed(pathname === 'covers/9780141439518.webp')
     )
+    const acquireIsbnLocks = vi.fn((isbns: string[]) => Effect.succeed(new Set(isbns)))
+    const releaseIsbnLocks = vi.fn(() => Effect.void)
 
     await runAccountDeletionService(
       Effect.flatMap(AccountDeletionService, service =>
@@ -166,9 +168,13 @@ describe('AccountDeletionService', () => {
       ),
       deleteAccountData,
       deleteBlob,
-      isCoverReferenced
+      isCoverReferenced,
+      acquireIsbnLocks,
+      releaseIsbnLocks
     )
 
+    expect(acquireIsbnLocks).toHaveBeenCalledTimes(2)
+    expect(releaseIsbnLocks).toHaveBeenCalledTimes(2)
     expect(deleteBlob).toHaveBeenCalledTimes(1)
     expect(deleteBlob).toHaveBeenCalledWith('covers/9780441172719.webp')
   })
@@ -178,7 +184,9 @@ function runAccountDeletionService<A, E>(
   effect: Effect.Effect<A, E, AccountDeletionService | AccountDeletionRepository | BookEnrichmentRepository | StorageService>,
   deleteAccountData: ReturnType<typeof vi.fn>,
   deleteBlob: ReturnType<typeof vi.fn>,
-  isCoverReferenced = vi.fn(() => Effect.succeed(false))
+  isCoverReferenced = vi.fn(() => Effect.succeed(false)),
+  acquireIsbnLocks = vi.fn((isbns: string[]) => Effect.succeed(new Set(isbns))),
+  releaseIsbnLocks = vi.fn(() => Effect.void)
 ) {
   return Effect.runPromise(effect.pipe(
     Effect.provide(AccountDeletionServiceLive),
@@ -186,7 +194,9 @@ function runAccountDeletionService<A, E>(
       deleteAccountData
     })),
     Effect.provide(Layer.succeed(BookEnrichmentRepository, {
-      isCoverReferenced
+      isCoverReferenced,
+      acquireIsbnLocks,
+      releaseIsbnLocks
     } as never)),
     Effect.provide(Layer.succeed(StorageService, {
       put: vi.fn(),

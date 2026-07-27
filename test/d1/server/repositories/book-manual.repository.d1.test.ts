@@ -47,7 +47,7 @@ describe('BookRepository.createManualBook on D1', () => {
       repository.createManualBook('user-1', {
         title: 'Manual Cloudflare Book',
         authors: ['Ada Lovelace', 'Ada Lovelace', 'Grace Hopper'],
-        isbn: null,
+        isbn: '0-441-17271-7',
         coverPath: 'covers/manual/user-1/book.webp',
         publishDate: '1843',
         publisher: 'Notes Press',
@@ -66,7 +66,8 @@ describe('BookRepository.createManualBook on D1', () => {
       id: expect.any(String),
       book: {
         title: 'Manual Cloudflare Book',
-        author: 'Ada Lovelace, Grace Hopper'
+        author: 'Ada Lovelace, Grace Hopper',
+        isbn: '9780441172719'
       }
     })
     expect([...result.tags].sort()).toEqual(['Computing', 'History'])

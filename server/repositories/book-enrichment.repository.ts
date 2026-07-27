@@ -1,18 +1,9 @@
 import { Context, Effect, Layer } from 'effect'
 import { and, asc, eq, exists, inArray, isNull, lte, not, or, sql } from 'drizzle-orm'
 import { bookEnrichmentJobs, bookEnrichmentLocks, books, loans, userBooks } from 'hub:db:schema'
+import type { BookEnrichmentStatus } from '../../shared/types/book'
 import { DatabaseError } from './book.repository'
 import { DbService } from '../services/db.service'
-
-export type BookEnrichmentStatus
-  = | 'pending'
-    | 'processing'
-    | 'retrying'
-    | 'completed'
-    | 'no_cover'
-    | 'not_found'
-    | 'failed'
-    | 'cancelled'
 
 export interface ClaimedBookEnrichmentJob {
   id: string

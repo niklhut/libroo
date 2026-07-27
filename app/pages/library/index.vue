@@ -112,6 +112,8 @@ const isApplyingFilters = ref(false)
 const filterRefreshTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 const preferenceSaveTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 const enrichmentPollTimer = ref<ReturnType<typeof setTimeout> | null>(null)
+const isEnrichmentPollActive = ref(true)
+const enrichmentPollFailures = ref(0)
 const shouldPersistLibraryStatePreference = ref(false)
 const suppressFilterWatcher = ref(false)
 const ALL_LOCATIONS_VALUE = '__all_locations__'
@@ -190,7 +192,9 @@ const hasPendingEnrichment = computed(() =>
 )
 
 function scheduleEnrichmentPoll() {
-  if (!import.meta.client || enrichmentPollTimer.value || !hasPendingEnrichment.value) return
+  if (!import.meta.client || !isEnrichmentPollActive.value || enrichmentPollTimer.value || !hasPendingEnrichment.value) return
+
+  const delay = Math.min(60_000, 5000 * 2 ** enrichmentPollFailures.value)
 
   enrichmentPollTimer.value = setTimeout(async () => {
     enrichmentPollTimer.value = null
@@ -216,20 +220,25 @@ function scheduleEnrichmentPoll() {
         }
       }
       cacheResultsAction(activeResultCacheKey.value)
+      enrichmentPollFailures.value = 0
     } catch (error) {
+      enrichmentPollFailures.value = Math.min(enrichmentPollFailures.value + 1, 4)
       console.error('Failed to refresh book enrichment status', error)
     } finally {
       scheduleEnrichmentPoll()
     }
-  }, 5000)
+  }, delay)
 }
 
 watch(hasPendingEnrichment, (pending) => {
   if (pending) {
     scheduleEnrichmentPoll()
-  } else if (enrichmentPollTimer.value) {
-    clearTimeout(enrichmentPollTimer.value)
-    enrichmentPollTimer.value = null
+  } else {
+    enrichmentPollFailures.value = 0
+    if (enrichmentPollTimer.value) {
+      clearTimeout(enrichmentPollTimer.value)
+      enrichmentPollTimer.value = null
+    }
   }
 }, { immediate: true })
 
@@ -270,7 +279,11 @@ onMounted(() => {
 onBeforeUnmount(() => {
   if (filterRefreshTimer.value) clearTimeout(filterRefreshTimer.value)
   if (preferenceSaveTimer.value) clearTimeout(preferenceSaveTimer.value)
-  if (enrichmentPollTimer.value) clearTimeout(enrichmentPollTimer.value)
+  isEnrichmentPollActive.value = false
+  if (enrichmentPollTimer.value) {
+    clearTimeout(enrichmentPollTimer.value)
+    enrichmentPollTimer.value = null
+  }
 })
 
 onBeforeRouteLeave((to) => {

@@ -5,11 +5,12 @@ import {
   MANUAL_COVER_MAX_DATA_URL_PREFIX_LENGTH,
   manualBookCreateSchema
 } from '../../../../shared/utils/schemas'
-import { BookRepository, type BookRepositoryInterface } from '../../../../server/repositories/book.repository'
+import { BookRepository, DatabaseError, type BookRepositoryInterface } from '../../../../server/repositories/book.repository'
 import { BookEnrichmentRepository, type BookEnrichmentRepositoryInterface } from '../../../../server/repositories/book-enrichment.repository'
 import { LocationRepository, type LocationRepositoryInterface } from '../../../../server/repositories/location.repository'
 import { OpenLibraryApiError, OpenLibraryRepository, type OpenLibraryRepositoryInterface } from '../../../../server/repositories/openLibrary.repository'
-import { BookServiceLive, bulkLookupBooks, createManualBook, decodeCoverImage, InvalidManualCoverError } from '../../../../server/services/book.service'
+import type { BookService } from '../../../../server/services/book.service'
+import { BookServiceLive, bulkLookupBooks, createManualBook, decodeCoverImage, getBookDetails, getUserLibrary, InvalidManualCoverError } from '../../../../server/services/book.service'
 import { putCoverImage, StorageService, type StorageServiceInterface } from '../../../../server/services/storage.service'
 
 Object.assign(globalThis, { BookRepository, OpenLibraryRepository, LocationRepository, putCoverImage })
@@ -95,6 +96,93 @@ describe('manual cover validation', () => {
       Effect.provide(Layer.succeed(StorageService, storageService as StorageServiceInterface))
     )
   }
+})
+
+describe('optional enrichment status decoration', () => {
+  const userBook = {
+    id: 'user-book-1',
+    bookId: 'book-1',
+    libraryState: 'owned' as const,
+    book: {
+      title: 'Dune',
+      author: 'Frank Herbert',
+      authors: [{ id: 'author-1', name: 'Frank Herbert' }],
+      isbn: '9780441172719',
+      coverPath: null
+    },
+    location: null,
+    lastKnownLocation: null,
+    tags: [],
+    addedAt: new Date('2026-07-27T10:00:00.000Z'),
+    activeLoan: null
+  }
+  const details = {
+    id: userBook.id,
+    bookId: userBook.bookId,
+    libraryState: userBook.libraryState,
+    title: userBook.book.title,
+    author: userBook.book.author,
+    authors: userBook.book.authors,
+    isbn: userBook.book.isbn,
+    coverPath: null,
+    description: null,
+    rating: null,
+    note: null,
+    location: null,
+    lastKnownLocation: null,
+    readingProgress: {
+      status: 'unread' as const,
+      currentPage: null,
+      progressPercent: null,
+      startedAt: null,
+      finishedAt: null
+    },
+    userTags: [],
+    suggestedTags: [],
+    publishDate: null,
+    publishers: null,
+    numberOfPages: null,
+    openLibraryKey: null,
+    workKey: null,
+    addedAt: userBook.addedAt,
+    activeLoan: null
+  }
+
+  it('returns library and detail payloads when enrichment status lookup fails', async () => {
+    const bookRepository = {
+      getLibrary: vi.fn(() => Effect.succeed({
+        items: [userBook],
+        pagination: { page: 1, pageSize: 20, total: 1, totalPages: 1 }
+      })),
+      getUserBookWithDetails: vi.fn(() => Effect.succeed(details))
+    } as unknown as BookRepositoryInterface
+    const enrichmentRepository = {
+      getStatusesForUserBooks: vi.fn(() => Effect.fail(new DatabaseError({
+        message: 'status table unavailable',
+        operation: 'getStatusesForUserBooks'
+      })))
+    } as unknown as BookEnrichmentRepositoryInterface
+
+    const provideService = <A, E>(effect: Effect.Effect<A, E, BookService>) =>
+      effect.pipe(
+        Effect.provide(BookServiceLive),
+        Effect.provide(Layer.succeed(BookRepository, bookRepository)),
+        Effect.provide(Layer.succeed(BookEnrichmentRepository, enrichmentRepository)),
+        Effect.provide(Layer.succeed(OpenLibraryRepository, {} as OpenLibraryRepositoryInterface)),
+        Effect.provide(Layer.succeed(LocationRepository, {} as LocationRepositoryInterface))
+      )
+
+    const library = await Effect.runPromise(provideService(
+      getUserLibrary('user-1', { page: 1, pageSize: 20 })
+    ))
+    const bookDetails = await Effect.runPromise(provideService(
+      getBookDetails('user-book-1', 'user-1')
+    ))
+
+    expect(library.items[0]?.enrichmentStatus).toBeNull()
+    expect(bookDetails.enrichmentStatus).toBeNull()
+    expect(enrichmentRepository.getStatusesForUserBooks).toHaveBeenCalledTimes(2)
+  })
 })
 
 describe('bulk ISBN lookup', () => {

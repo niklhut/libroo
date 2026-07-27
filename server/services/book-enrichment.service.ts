@@ -6,6 +6,7 @@ import { OpenLibraryRepository } from '../repositories/openLibrary.repository'
 import type { DbService } from './db.service'
 import { deleteBlob, type StorageError, type StorageService } from './storage.service'
 import { getBooksEnrichmentConfig } from '../utils/books-config'
+import { toBookEnrichmentUiStatus } from '../../shared/utils/book-enrichment'
 
 export interface EnrichImportedBooksResult {
   claimed: number
@@ -60,14 +61,6 @@ function retryAt(now: Date, attempts: number, baseSeconds: number) {
   const exponentialSeconds = Math.min(24 * 60 * 60, baseSeconds * 2 ** Math.max(0, attempts - 1))
   const jitter = 0.75 + Math.random() * 0.5
   return new Date(now.getTime() + Math.round(exponentialSeconds * jitter) * 1000)
-}
-
-function toUiStatus(status: import('../repositories/book-enrichment.repository').BookEnrichmentStatus): BookEnrichmentUpdate['status'] {
-  if (status === 'pending') return 'queued'
-  if (status === 'processing') return 'preparing'
-  if (status === 'retrying') return 'retrying'
-  if (status === 'no_cover' || status === 'not_found' || status === 'failed') return status
-  return null
 }
 
 export const BookEnrichmentServiceLive = Layer.effect(
@@ -283,7 +276,7 @@ export const BookEnrichmentServiceLive = Layer.effect(
           Effect.map(updates => updates.map(update => ({
             userBookId: update.userBookId,
             coverPath: update.coverPath,
-            status: toUiStatus(update.status)
+            status: toBookEnrichmentUiStatus(update.status)
           })))
         ),
 

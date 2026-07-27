@@ -22,6 +22,16 @@ export interface LibraryBook {
 
 export type BookEnrichmentUiStatus = 'queued' | 'preparing' | 'retrying' | 'no_cover' | 'not_found' | 'failed'
 
+export type BookEnrichmentStatus
+  = | 'pending'
+    | 'processing'
+    | 'retrying'
+    | 'completed'
+    | 'no_cover'
+    | 'not_found'
+    | 'failed'
+    | 'cancelled'
+
 export interface BookTag {
   id: string
   name: string

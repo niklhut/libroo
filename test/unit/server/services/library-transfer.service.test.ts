@@ -30,14 +30,30 @@ const publicResult: LibraryImportResult = {
 }
 const result = { ...publicResult, orphanedSharedCoverPaths: [] }
 
-function runImport(csv: string, importRecords = vi.fn(() => Effect.succeed(result))) {
-  const isCoverReferenced = vi.fn(() => Effect.succeed(false))
+function csvWithFormatVersion(formatVersion: string) {
+  return `${header}\n${['Dune', ...Array.from({ length: 15 }, () => ''), formatVersion].join(',')}`
+}
+
+function runImport(
+  csv: string,
+  options: {
+    importRecords?: ReturnType<typeof vi.fn>
+    enrich?: boolean
+    isCoverReferenced?: boolean
+  } = {}
+) {
+  const {
+    importRecords = vi.fn(() => Effect.succeed(result)),
+    enrich = true,
+    isCoverReferenced: coverReferenced = false
+  } = options
+  const isCoverReferenced = vi.fn(() => Effect.succeed(coverReferenced))
   const deleteBlob = vi.fn(() => Effect.void)
   const repository = {
     listExportRecords: vi.fn(() => Effect.succeed([])),
     importRecords
   }
-  const effect = importLibraryCsv('user-1', csv, 'existing', true).pipe(
+  const effect = importLibraryCsv('user-1', csv, 'existing', enrich).pipe(
     Effect.provide(LibraryTransferServiceLive),
     Effect.provide(Layer.succeed(LibraryTransferRepository, repository)),
     Effect.provide(Layer.succeed(BookEnrichmentRepository, {
@@ -68,7 +84,9 @@ describe('LibraryTransferService.importLibraryCsv', () => {
     [`CSV column title is too long (maximum ${LIBRARY_CSV_MAX_CELL_LENGTH} characters)`, `${header}\n${'a'.repeat(LIBRARY_CSV_MAX_CELL_LENGTH + 1)}`],
     [`Too many tags in row (maximum ${LIBRARY_CSV_MAX_LIST_ITEMS})`, `${header}\nDune,,,"${Array.from({ length: LIBRARY_CSV_MAX_LIST_ITEMS + 1 }, () => 'tag').join(';')}"`],
     [`tags item is too long (maximum ${LIBRARY_CSV_MAX_LIST_ITEM_LENGTH} characters)`, `${header}\nDune,,,${'a'.repeat(LIBRARY_CSV_MAX_LIST_ITEM_LENGTH + 1)}`],
-    [`Location nesting is too deep (maximum ${LOCATION_MAX_DEPTH} levels)`, `${header}\nDune,,,,${Array.from({ length: LOCATION_MAX_DEPTH + 1 }, (_, index) => `Shelf ${index}`).join(' - ')}`]
+    [`Location nesting is too deep (maximum ${LOCATION_MAX_DEPTH} levels)`, `${header}\nDune,,,,${Array.from({ length: LOCATION_MAX_DEPTH + 1 }, (_, index) => `Shelf ${index}`).join(' - ')}`],
+    ['format_version must be a positive integer', csvWithFormatVersion('2beta')],
+    ['format_version must be a positive integer', csvWithFormatVersion('1.5')]
   ])('returns InvalidLibraryCsvError for %s without importing', async (message, csv) => {
     const { effect, importRecords } = runImport(csv)
     const outcome = await effect
@@ -139,10 +157,36 @@ describe('LibraryTransferService.importLibraryCsv', () => {
       ...result,
       orphanedSharedCoverPaths: ['covers/9780441172719.webp']
     }))
-    const { effect, isCoverReferenced, deleteBlob } = runImport(`${header}\nDune`, importRecords)
+    const { effect, isCoverReferenced, deleteBlob } = runImport(`${header}\nDune`, { importRecords })
 
     await expect(effect).resolves.toMatchObject({ _tag: 'Right' })
     expect(isCoverReferenced).toHaveBeenCalledWith('covers/9780441172719.webp')
     expect(deleteBlob).toHaveBeenCalledWith('covers/9780441172719.webp')
+  })
+
+  it('keeps a replaced shared cover while another record or loan references it', async () => {
+    const importRecords = vi.fn(() => Effect.succeed({
+      ...result,
+      orphanedSharedCoverPaths: ['covers/9780441172719.webp']
+    }))
+    const { effect, deleteBlob } = runImport(`${header}\nDune`, {
+      importRecords,
+      isCoverReferenced: true
+    })
+
+    await expect(effect).resolves.toMatchObject({ _tag: 'Right' })
+    expect(deleteBlob).not.toHaveBeenCalled()
+  })
+
+  it('does not enqueue enrichment without explicit opt-in', async () => {
+    const { effect, importRecords } = runImport(`${header}\nDune`, { enrich: false })
+
+    await expect(effect).resolves.toMatchObject({ _tag: 'Right' })
+    expect(importRecords).toHaveBeenCalledWith(
+      'user-1',
+      expect.any(Array),
+      'existing',
+      expect.objectContaining({ enqueueEnrichment: false })
+    )
   })
 })

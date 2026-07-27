@@ -30,6 +30,12 @@ export interface AccountDeletionServiceInterface {
 
 export class AccountDeletionService extends Context.Tag('AccountDeletionService')<AccountDeletionService, AccountDeletionServiceInterface>() { }
 
+const SHARED_COVER_CLEANUP_LEASE_MS = 60_000
+
+function isbnFromSharedCoverPath(pathname: string) {
+  return /^covers\/([^/]+)\.webp$/.exec(pathname)?.[1] ?? null
+}
+
 export const AccountDeletionServiceLive = Layer.succeed(AccountDeletionService, {
   deleteOwnAccount: (event, userId, input) =>
     Effect.gen(function* () {
@@ -62,21 +68,59 @@ export const AccountDeletionServiceLive = Layer.succeed(AccountDeletionService, 
       }
 
       const enrichmentRepo = yield* BookEnrichmentRepository
-      for (const sharedCoverPath of result.sharedCoverPaths) {
-        const referenced = yield* enrichmentRepo.isCoverReferenced(sharedCoverPath).pipe(
-          Effect.catchAll(error =>
-            Effect.logWarning(`Failed to check shared account cover ${sharedCoverPath}: ${String(error)}`).pipe(
-              Effect.as(true)
+      yield* Effect.forEach(
+        result.sharedCoverPaths,
+        sharedCoverPath =>
+          Effect.gen(function* () {
+            const isbn = isbnFromSharedCoverPath(sharedCoverPath)
+            if (!isbn) {
+              yield* Effect.logWarning(`Skipped shared account cover with an unsupported path: ${sharedCoverPath}`)
+              return
+            }
+
+            const claimToken = `account-deletion:${crypto.randomUUID()}`
+            const now = new Date()
+            const leaseExpiresAt = new Date(now.getTime() + SHARED_COVER_CLEANUP_LEASE_MS)
+            const acquired = yield* enrichmentRepo.acquireIsbnLocks(
+              [isbn],
+              claimToken,
+              leaseExpiresAt,
+              now
+            ).pipe(
+              Effect.catchAll(error =>
+                Effect.logWarning(`Failed to lock shared account cover ${sharedCoverPath}: ${String(error)}`).pipe(
+                  Effect.as(new Set<string>())
+                )
+              )
             )
-          )
-        )
-        if (referenced) continue
-        yield* deleteBlob(sharedCoverPath).pipe(
-          Effect.catchAll(error =>
-            Effect.logWarning(`Failed to delete unreferenced account cover ${sharedCoverPath}: ${String(error)}`)
-          )
-        )
-      }
+            if (!acquired.has(isbn)) return
+
+            yield* Effect.gen(function* () {
+              const referenced = yield* enrichmentRepo.isCoverReferenced(sharedCoverPath).pipe(
+                Effect.catchAll(error =>
+                  Effect.logWarning(`Failed to check shared account cover ${sharedCoverPath}: ${String(error)}`).pipe(
+                    Effect.as(true)
+                  )
+                )
+              )
+              if (referenced) return
+              yield* deleteBlob(sharedCoverPath).pipe(
+                Effect.catchAll(error =>
+                  Effect.logWarning(`Failed to delete unreferenced account cover ${sharedCoverPath}: ${String(error)}`)
+                )
+              )
+            }).pipe(
+              Effect.ensuring(
+                enrichmentRepo.releaseIsbnLocks([isbn], claimToken).pipe(
+                  Effect.catchAll(error =>
+                    Effect.logWarning(`Failed to unlock shared account cover ${sharedCoverPath}: ${String(error)}`)
+                  )
+                )
+              )
+            )
+          }),
+        { concurrency: 4 }
+      )
 
       return result
     })
