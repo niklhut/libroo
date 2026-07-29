@@ -68,7 +68,7 @@ export function getBooksEnrichmentConfig() {
   return {
     batchSize: positiveInteger(
       runtimeValue('booksEnrichmentBatchSize') ?? process.env.NUXT_BOOKS_ENRICHMENT_BATCH_SIZE,
-      100
+      20
     ),
     concurrency: positiveInteger(
       runtimeValue('booksEnrichmentConcurrency') ?? process.env.NUXT_BOOKS_ENRICHMENT_CONCURRENCY,

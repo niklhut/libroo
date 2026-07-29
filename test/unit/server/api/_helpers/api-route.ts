@@ -167,7 +167,6 @@ interface ApiRouteTestGlobals {
   getAuthorizedCover: (...args: unknown[]) => unknown
   exportLibraryCsv: (...args: unknown[]) => unknown
   importLibraryCsv: (...args: unknown[]) => unknown
-  dispatchBookEnrichment: (...args: unknown[]) => unknown
   getBookEnrichmentUpdates: (...args: unknown[]) => unknown
   listAdminAuditEntries: (...args: unknown[]) => unknown
   listSignupInvites: (...args: unknown[]) => unknown
@@ -250,7 +249,6 @@ export const serviceMocks = {
   getAuthorizedCover: vi.fn(),
   exportLibraryCsv: vi.fn(),
   importLibraryCsv: vi.fn(),
-  dispatchBookEnrichment: vi.fn(),
   getBookEnrichmentUpdates: vi.fn(),
   listAdminAuditEntries: vi.fn(),
   listSignupInvites: vi.fn(),
@@ -318,7 +316,6 @@ const originalGlobals = {
   getAuthorizedCover: testGlobal.getAuthorizedCover,
   exportLibraryCsv: testGlobal.exportLibraryCsv,
   importLibraryCsv: testGlobal.importLibraryCsv,
-  dispatchBookEnrichment: testGlobal.dispatchBookEnrichment,
   getBookEnrichmentUpdates: testGlobal.getBookEnrichmentUpdates,
   listAdminAuditEntries: testGlobal.listAdminAuditEntries,
   listSignupInvites: testGlobal.listSignupInvites,
@@ -450,7 +447,6 @@ export async function setupApiRouteTest() {
   testGlobal.getAuthorizedCover = (...args: unknown[]) => serviceMocks.getAuthorizedCover(...args)
   testGlobal.exportLibraryCsv = (...args: unknown[]) => serviceMocks.exportLibraryCsv(...args)
   testGlobal.importLibraryCsv = (...args: unknown[]) => serviceMocks.importLibraryCsv(...args)
-  testGlobal.dispatchBookEnrichment = (...args: unknown[]) => serviceMocks.dispatchBookEnrichment(...args)
   testGlobal.getBookEnrichmentUpdates = (...args: unknown[]) => serviceMocks.getBookEnrichmentUpdates(...args)
   testGlobal.listAdminAuditEntries = (...args: unknown[]) => serviceMocks.listAdminAuditEntries(...args)
   testGlobal.listSignupInvites = (...args: unknown[]) => serviceMocks.listSignupInvites(...args)

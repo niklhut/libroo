@@ -47,6 +47,5 @@ describe('server/api/library/import.post', () => {
       'csv',
       true
     )
-    expect(serviceMocks.dispatchBookEnrichment).toHaveBeenCalledWith('batch-1', 1)
   })
 })

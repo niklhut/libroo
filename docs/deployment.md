@@ -100,7 +100,7 @@ Optional email and registration settings:
 | `NUXT_OPEN_LIBRARY_COVER_TIMEOUT_SECONDS` | `20` | Timeout for downloading and repairing cover images from Open Library. |
 | `NUXT_OPEN_LIBRARY_CONTACT_EMAIL` | empty | Contact included in the Open Library `User-Agent`. When configured, the shared outbound limiter permits three requests per second; otherwise it permits one. |
 | `NUXT_BOOKS_BULK_LOOKUP_RATE_LIMIT_WINDOW_SECONDS` / `NUXT_BOOKS_BULK_LOOKUP_RATE_LIMIT_MAX_REQUESTS` | `60` / `10` | Dedicated database-backed inbound limit for authenticated bulk ISBN lookup requests. |
-| `NUXT_BOOKS_ENRICHMENT_BATCH_SIZE` / `NUXT_BOOKS_ENRICHMENT_CONCURRENCY` | `100` / `4` | Bounds each opted-in CSV import enrichment sweep and its parallel cover/storage checks. |
+| `NUXT_BOOKS_ENRICHMENT_BATCH_SIZE` / `NUXT_BOOKS_ENRICHMENT_CONCURRENCY` | `20` / `4` | Bounds each opted-in CSV import enrichment sweep and its parallel cover/storage checks. |
 | `NUXT_BOOKS_ENRICHMENT_LEASE_SECONDS` | `900` | Claim and per-ISBN lock duration. Expired work can be safely reclaimed; stale workers cannot complete another worker's claim. |
 | `NUXT_BOOKS_ENRICHMENT_MAX_ATTEMPTS` / `NUXT_BOOKS_ENRICHMENT_BACKOFF_SECONDS` | `5` / `60` | Maximum attempts and exponential-backoff base for transient Open Library failures. |
 | `NUXT_LEGAL_MARKDOWN_FETCH_TIMEOUT_SECONDS` | `5` | Timeout for fetching configured legal Markdown source documents. |
@@ -248,7 +248,7 @@ Secrets should be injected through the orchestrator, an env file outside source 
 
 ### Scheduled Tasks
 
-Libroo runs an opted-in CSV import enrichment sweep every five minutes, a daily audit cleanup task at 03:00, and a daily Open Library cover repair task at 03:30. A supported request runtime also dispatches the import's batch immediately through `waitUntil`; the sweep recovers deferred, retried, or interrupted work. Enrichment jobs use expiring claims and per-ISBN locks, apply provider fields additively, and stop when their imported record changes or is removed. The cover repair task checks a small random batch of Open Library books that were saved without a generated cover image, retries the cover download, and fills `cover_path` only when a cover is successfully stored.
+Libroo runs an opted-in CSV import enrichment sweep every five minutes, a daily audit cleanup task at 03:00, and a daily Open Library cover repair task at 03:30. The sweep processes bounded batches and recovers deferred, retried, or interrupted work without attaching enrichment to an interactive request. Enrichment jobs use expiring claims and per-ISBN locks, apply provider fields additively, and stop when their imported record changes or is removed. Cloudflare preview Workers intentionally omit cron triggers, so queued enrichment remains pending in previews. The cover repair task checks a small random batch of Open Library books that were saved without a generated cover image, retries the cover download, and fills `cover_path` only when a cover is successfully stored.
 
 ### Account Deletion Operations
 
@@ -575,7 +575,7 @@ Repository or environment variables:
 | `NUXT_OPEN_LIBRARY_REQUEST_TIMEOUT_SECONDS` | `12` |
 | `NUXT_OPEN_LIBRARY_COVER_TIMEOUT_SECONDS` | `20` |
 | `NUXT_BOOKS_BULK_LOOKUP_RATE_LIMIT_WINDOW_SECONDS` / `NUXT_BOOKS_BULK_LOOKUP_RATE_LIMIT_MAX_REQUESTS` | `60` / `10` |
-| `NUXT_BOOKS_ENRICHMENT_BATCH_SIZE` / `NUXT_BOOKS_ENRICHMENT_CONCURRENCY` | `100` / `4` |
+| `NUXT_BOOKS_ENRICHMENT_BATCH_SIZE` / `NUXT_BOOKS_ENRICHMENT_CONCURRENCY` | `20` / `4` |
 | `NUXT_BOOKS_ENRICHMENT_LEASE_SECONDS` | `900` |
 | `NUXT_BOOKS_ENRICHMENT_MAX_ATTEMPTS` / `NUXT_BOOKS_ENRICHMENT_BACKOFF_SECONDS` | `5` / `60` |
 | `NUXT_LEGAL_MARKDOWN_FETCH_TIMEOUT_SECONDS` | `5` |
