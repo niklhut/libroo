@@ -58,7 +58,7 @@ if (config) {
   }
 
   const crons = config.triggers?.crons ?? []
-  for (const cron of ['0 3 * * *', '30 3 * * *']) {
+  for (const cron of ['*/5 * * * *', '0 3 * * *', '30 3 * * *']) {
     if (!crons.includes(cron)) {
       errors.push(`Production cron triggers must contain ${cron}`)
     }

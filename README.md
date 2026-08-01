@@ -22,7 +22,7 @@ Database migrations live under `server/db/migrations/sqlite`.
 - Manual book creation and ISBN lookup with Open Library metadata.
 - Library list/detail views, authors, locations, tags, ratings, notes, and reading progress.
 - Borrowing and lending workflows, including public borrower invite links.
-- CSV import/export for library transfer.
+- Versioned CSV import/export with optional background metadata and cover enrichment.
 - Local and hosted cover/blob storage.
 - Optional SMTP or Plunk email delivery for verification, password reset, invites, and security notifications.
 - Self-hosted Docker deployment and hosted Cloudflare/NuxtHub deployment.

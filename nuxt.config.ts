@@ -27,6 +27,11 @@ const cloudflareRuntimeVars = definedEnvVars({
   NUXT_BOOKS_RATE_LIMIT_ENABLED: process.env.NUXT_BOOKS_RATE_LIMIT_ENABLED || 'false',
   NUXT_BOOKS_RATE_LIMIT_WINDOW_SECONDS: process.env.NUXT_BOOKS_RATE_LIMIT_WINDOW_SECONDS || '60',
   NUXT_BOOKS_RATE_LIMIT_MAX_REQUESTS: process.env.NUXT_BOOKS_RATE_LIMIT_MAX_REQUESTS || '30',
+  NUXT_BOOKS_ENRICHMENT_BATCH_SIZE: process.env.NUXT_BOOKS_ENRICHMENT_BATCH_SIZE || '20',
+  NUXT_BOOKS_ENRICHMENT_CONCURRENCY: process.env.NUXT_BOOKS_ENRICHMENT_CONCURRENCY || '4',
+  NUXT_BOOKS_ENRICHMENT_LEASE_SECONDS: process.env.NUXT_BOOKS_ENRICHMENT_LEASE_SECONDS || '900',
+  NUXT_BOOKS_ENRICHMENT_MAX_ATTEMPTS: process.env.NUXT_BOOKS_ENRICHMENT_MAX_ATTEMPTS || '5',
+  NUXT_BOOKS_ENRICHMENT_BACKOFF_SECONDS: process.env.NUXT_BOOKS_ENRICHMENT_BACKOFF_SECONDS || '60',
   NUXT_CLOUDFLARE_ACCESS_AUDIENCE: process.env.NUXT_CLOUDFLARE_ACCESS_AUDIENCE,
   NUXT_CLOUDFLARE_ACCESS_TEAM_DOMAIN: process.env.NUXT_CLOUDFLARE_ACCESS_TEAM_DOMAIN,
   NUXT_CLOUDFLARE_PREVIEW: cloudflarePreview ? 'true' : undefined,
@@ -84,6 +89,11 @@ export default defineNuxtConfig({
     booksRateLimitMaxRequests: '30',
     booksBulkLookupRateLimitWindowSeconds: '60',
     booksBulkLookupRateLimitMaxRequests: '10',
+    booksEnrichmentBatchSize: '20',
+    booksEnrichmentConcurrency: '4',
+    booksEnrichmentLeaseSeconds: '900',
+    booksEnrichmentMaxAttempts: '5',
+    booksEnrichmentBackoffSeconds: '60',
     cloudflareAccessAudience: '',
     cloudflareAccessTeamDomain: '',
     cloudflarePreview: '',
@@ -161,7 +171,7 @@ export default defineNuxtConfig({
             ...(!cloudflarePreview
               ? {
                   triggers: {
-                    crons: ['0 3 * * *', '30 3 * * *']
+                    crons: ['*/5 * * * *', '0 3 * * *', '30 3 * * *']
                   }
                 }
               : {}),
@@ -179,6 +189,7 @@ export default defineNuxtConfig({
       tasks: true
     },
     scheduledTasks: {
+      '*/5 * * * *': 'books:enrich-imported',
       '0 3 * * *': 'audit:cleanup',
       '30 3 * * *': 'books:repair-covers'
     },
@@ -227,10 +238,15 @@ export default defineNuxtConfig({
         'books:repair-covers': {
           handler: './tasks/books/repair-covers.ts',
           description: 'Try to fetch missing Open Library cover images for existing books.'
+        },
+        'books:enrich-imported': {
+          handler: './tasks/books/enrich-imported.ts',
+          description: 'Enrich opted-in CSV imports with Open Library metadata and covers.'
         }
       }
       nitroConfig.scheduledTasks = {
         ...nitroConfig.scheduledTasks,
+        '*/5 * * * *': 'books:enrich-imported',
         '0 3 * * *': 'audit:cleanup',
         '30 3 * * *': 'books:repair-covers'
       }

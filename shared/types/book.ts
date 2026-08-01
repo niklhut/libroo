@@ -17,7 +17,20 @@ export interface LibraryBook {
   tags?: string[]
   addedAt: Date | string
   activeLoan?: ActiveLoanSummary | null
+  enrichmentStatus?: BookEnrichmentUiStatus | null
 }
+
+export type BookEnrichmentUiStatus = 'queued' | 'preparing' | 'retrying' | 'no_cover' | 'not_found' | 'failed'
+
+export type BookEnrichmentStatus
+  = | 'pending'
+    | 'processing'
+    | 'retrying'
+    | 'completed'
+    | 'no_cover'
+    | 'not_found'
+    | 'failed'
+    | 'cancelled'
 
 export interface BookTag {
   id: string
@@ -135,6 +148,7 @@ export interface BookDetails {
   workKey: string | null
   addedAt: Date | string
   activeLoan: ActiveLoanSummary | null
+  enrichmentStatus?: BookEnrichmentUiStatus | null
 }
 
 export type LoanStatus = 'active' | 'returned' | 'canceled'

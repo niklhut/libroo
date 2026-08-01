@@ -70,6 +70,7 @@ const importFileInput = ref<HTMLInputElement | null>(null)
 const importFileName = ref('')
 const importCsv = ref('')
 const importConflictStrategy = ref<LibraryImportConflictStrategy>('existing')
+const importEnrich = ref(false)
 const importConfirmOpen = ref(false)
 const isImporting = ref(false)
 const isExporting = ref(false)
@@ -318,6 +319,7 @@ function resetImport() {
   importFileName.value = ''
   importCsv.value = ''
   importConflictStrategy.value = 'existing'
+  importEnrich.value = false
   if (importFileInput.value) {
     importFileInput.value.value = ''
   }
@@ -356,7 +358,8 @@ async function importLibraryCsvFile() {
       method: 'POST',
       body: {
         csv: importCsv.value,
-        conflictStrategy: importConflictStrategy.value
+        conflictStrategy: importConflictStrategy.value,
+        enrich: importEnrich.value
       }
     })
 
@@ -365,7 +368,7 @@ async function importLibraryCsvFile() {
 
     toast.add({
       title: 'Import complete',
-      description: `${result.created} created, ${result.updated} updated, ${result.skipped} skipped${result.failed.length ? `, ${result.failed.length} failed` : ''}.`,
+      description: `${result.created} created, ${result.updated} updated, ${result.skipped} skipped${result.enrichmentQueued ? `, ${result.enrichmentQueued} queued for missing covers and details` : ''}${result.failed.length ? `, ${result.failed.length} failed` : ''}.`,
       color: result.failed.length ? 'warning' : 'success'
     })
   } catch (err: unknown) {
@@ -681,6 +684,12 @@ async function importLibraryCsvFile() {
               legend="When a book already exists"
             />
 
+            <UCheckbox
+              v-model="importEnrich"
+              label="Find missing covers and book details"
+              description="After import, uses valid ISBNs to fill blank descriptions, publication details, and covers from Open Library. It never replaces a value that is already stored."
+            />
+
             <UButton
               icon="i-lucide-upload"
               :disabled="!importCsv || isImporting"
@@ -747,6 +756,16 @@ async function importLibraryCsvFile() {
               Existing books:
               <span class="font-medium">
                 {{ importConflictStrategy === 'existing' ? 'keep existing data' : 'use CSV data' }}
+              </span>
+            </p>
+            <p>
+              Open Library:
+              <span class="font-medium">
+                {{ !importEnrich
+                  ? 'do not look up missing information'
+                  : importConflictStrategy === 'existing'
+                    ? 'look up only newly created imports; matched library books are skipped'
+                    : 'look up new and previously CSV-imported books without replacing stored values' }}
               </span>
             </p>
           </div>

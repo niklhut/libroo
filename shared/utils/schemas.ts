@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { isValidIsbn } from './isbn'
 import {
   normalizeTagInputText,
   TAG_INPUT_ALLOWED_CHARACTERS,
@@ -61,7 +62,7 @@ function isValidIsbn13Checksum(isbn: string): boolean {
 
 /** Returns whether a normalized ISBN-10 or ISBN-13 has a valid checksum. */
 export function isValidIsbnChecksum(isbn: string): boolean {
-  return isValidIsbn10Checksum(isbn) || isValidIsbn13Checksum(isbn)
+  return isValidIsbn(isbn)
 }
 
 /**
@@ -547,7 +548,12 @@ export const libraryImportSchema = z.object({
     .refine(csv => new TextEncoder().encode(csv).byteLength <= LIBRARY_CSV_MAX_BYTES, {
       error: 'CSV file is too large'
     }),
-  conflictStrategy: z.enum(['existing', 'csv'], { error: 'Conflict strategy is invalid' }).default('existing')
+  conflictStrategy: z.enum(['existing', 'csv'], { error: 'Conflict strategy is invalid' }).default('existing'),
+  enrich: z.boolean({ error: 'Enrichment preference must be a boolean' }).default(false)
+})
+
+export const bookEnrichmentUpdatesSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(100)
 })
 
 export type LibraryImportSchema = z.infer<typeof libraryImportSchema>

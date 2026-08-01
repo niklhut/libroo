@@ -115,6 +115,7 @@ describe('production Wrangler config validator', () => {
     expect(result.stderr).toContain('Worker name matches a preview pattern')
     expect(result.stderr).toContain('Production routes must contain library.example.test with custom_domain enabled')
     expect(result.stderr).toContain('Production cron triggers must contain 0 3 * * *')
+    expect(result.stderr).toContain('Production cron triggers must contain */5 * * * *')
     expect(result.stderr).toContain('Production Worker must have workers_dev disabled or omitted')
     expect(result.stderr).toContain('Production runtime preview enforcement must be absent or "false"')
     expect(result.stderr).toContain('DB binding targets wrong-db-id, expected prod-db-uuid-456')

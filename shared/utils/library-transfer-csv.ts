@@ -14,7 +14,11 @@ export const libraryCsvColumns = [
   'active_loan_status',
   'active_loan_borrower',
   'active_loan_loaned_at',
-  'active_loan_due_at'
+  'active_loan_due_at',
+  'format_version',
+  'source',
+  'open_library_key',
+  'libroo_user_book_id'
 ] as const
 
 export type LibraryCsvColumn = typeof libraryCsvColumns[number]
@@ -147,7 +151,13 @@ export function* parseLibraryCsvRows(csv: string): Generator<LibraryCsvRow> {
     if (!headerIndexes) {
       const parsedHeaderIndexes = new Map(row.map((column, index) => [column.replace(/^\uFEFF/, '').trim(), index]))
       headerIndexes = parsedHeaderIndexes
-      const legacyOptionalColumns = new Set<LibraryCsvColumn>(['library_state'])
+      const legacyOptionalColumns = new Set<LibraryCsvColumn>([
+        'library_state',
+        'format_version',
+        'source',
+        'open_library_key',
+        'libroo_user_book_id'
+      ])
       const missingColumns = libraryCsvColumns.filter(column => !legacyOptionalColumns.has(column) && !parsedHeaderIndexes.has(column))
       if (missingColumns.length > 0) {
         throw new Error(`CSV is missing required columns: ${missingColumns.join(', ')}`)

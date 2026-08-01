@@ -4,8 +4,10 @@ import { accountDeletionSchema } from '~~/shared/utils/account-settings'
 import { deleteAccountData } from '../repositories/account-deletion.repository'
 import type { AccountDeletionRepository, AccountDeletionResult, LastAdminAccountDeletionError } from '../repositories/account-deletion.repository'
 import type { DatabaseError } from '../repositories/book.repository'
+import { BookEnrichmentRepository } from '../repositories/book-enrichment.repository'
 import { deleteBlob } from './storage.service'
 import type { StorageService } from './storage.service'
+import type { DbService } from './db.service'
 import { auth } from '../utils/auth'
 import { UnauthorizedError } from './auth.service'
 
@@ -23,10 +25,16 @@ export interface AccountDeletionServiceInterface {
     event: H3Event,
     userId: string,
     input: AccountDeletionInput
-  ) => Effect.Effect<AccountDeletionResult, InvalidAccountDeletionConfirmationError | LastAdminAccountDeletionError | UnauthorizedError | DatabaseError, AccountDeletionRepository | StorageService>
+  ) => Effect.Effect<AccountDeletionResult, InvalidAccountDeletionConfirmationError | LastAdminAccountDeletionError | UnauthorizedError | DatabaseError, AccountDeletionRepository | BookEnrichmentRepository | DbService | StorageService>
 }
 
 export class AccountDeletionService extends Context.Tag('AccountDeletionService')<AccountDeletionService, AccountDeletionServiceInterface>() { }
+
+const SHARED_COVER_CLEANUP_LEASE_MS = 60_000
+
+function isbnFromSharedCoverPath(pathname: string) {
+  return /^covers\/([^/]+)\.webp$/.exec(pathname)?.[1] ?? null
+}
 
 export const AccountDeletionServiceLive = Layer.succeed(AccountDeletionService, {
   deleteOwnAccount: (event, userId, input) =>
@@ -58,6 +66,61 @@ export const AccountDeletionServiceLive = Layer.succeed(AccountDeletionService, 
           )
         )
       }
+
+      const enrichmentRepo = yield* BookEnrichmentRepository
+      yield* Effect.forEach(
+        result.sharedCoverPaths,
+        sharedCoverPath =>
+          Effect.gen(function* () {
+            const isbn = isbnFromSharedCoverPath(sharedCoverPath)
+            if (!isbn) {
+              yield* Effect.logWarning(`Skipped shared account cover with an unsupported path: ${sharedCoverPath}`)
+              return
+            }
+
+            const claimToken = `account-deletion:${crypto.randomUUID()}`
+            const now = new Date()
+            const leaseExpiresAt = new Date(now.getTime() + SHARED_COVER_CLEANUP_LEASE_MS)
+            const acquired = yield* enrichmentRepo.acquireIsbnLocks(
+              [isbn],
+              claimToken,
+              leaseExpiresAt,
+              now
+            ).pipe(
+              Effect.catchAll(error =>
+                Effect.logWarning(`Failed to lock shared account cover ${sharedCoverPath}: ${String(error)}`).pipe(
+                  Effect.as(new Set<string>())
+                )
+              )
+            )
+            if (!acquired.has(isbn)) return
+
+            yield* Effect.gen(function* () {
+              const referenced = yield* enrichmentRepo.isCoverReferenced(sharedCoverPath).pipe(
+                Effect.catchAll(error =>
+                  Effect.logWarning(`Failed to check shared account cover ${sharedCoverPath}: ${String(error)}`).pipe(
+                    Effect.as(true)
+                  )
+                )
+              )
+              if (referenced) return
+              yield* deleteBlob(sharedCoverPath).pipe(
+                Effect.catchAll(error =>
+                  Effect.logWarning(`Failed to delete unreferenced account cover ${sharedCoverPath}: ${String(error)}`)
+                )
+              )
+            }).pipe(
+              Effect.ensuring(
+                enrichmentRepo.releaseIsbnLocks([isbn], claimToken).pipe(
+                  Effect.catchAll(error =>
+                    Effect.logWarning(`Failed to unlock shared account cover ${sharedCoverPath}: ${String(error)}`)
+                  )
+                )
+              )
+            )
+          }),
+        { concurrency: 4 }
+      )
 
       return result
     })

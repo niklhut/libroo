@@ -1,6 +1,6 @@
 import { Context, Effect, Layer } from 'effect'
 import { asc, and, eq, inArray, isNull, sql } from 'drizzle-orm'
-import { authors, bookAuthors, books, locations, loans, tags, userBooks, userBookTags } from 'hub:db:schema'
+import { authors, bookAuthors, bookEnrichmentJobs, books, locations, loans, tags, userBooks, userBookTags } from 'hub:db:schema'
 import { normalizeBookLocationKey, normalizeBookLocationName } from '../../shared/utils/book-location'
 import { locationChildPath } from '../../shared/utils/location-hierarchy'
 import { normalizeTagInput } from '../../shared/utils/tag-ingestion'
@@ -12,13 +12,20 @@ import type {
 } from '../../shared/types/library-transfer'
 import { DatabaseError } from './book.repository'
 import { DbService, type AtomicDbStatement } from '../services/db.service'
+import { isbnIdentityAliases, isValidIsbn, normalizeIsbnIdentity } from '../../shared/utils/isbn'
 
 interface ExistingImportMatch {
   userBookId: string
   bookId: string
   bookSource: 'open_library' | 'manual'
   createdByUserId: string | null
+  bookIsbn: string | null
+  entrySource: 'csv_import' | 'manual_entry' | 'isbn_lookup' | null
+  coverPath: string | null
+  metadataProviderIsbn: string | null
 }
+
+const normalizedStoredBookIsbn = sql<string>`replace(replace(upper(${books.isbn}), '-', ''), ' ', '')`
 
 interface ImportLocationNode {
   id: string
@@ -33,13 +40,18 @@ interface PendingLocationCreate extends ImportLocationNode {
   cacheKey: string
 }
 
+export interface LibraryImportRepositoryResult extends LibraryImportResult {
+  orphanedSharedCoverPaths: string[]
+}
+
 export interface LibraryTransferRepositoryInterface {
   listExportRecords: (userId: string) => Effect.Effect<LibraryExportRecord[], DatabaseError, DbService>
   importRecords: (
     userId: string,
     records: LibraryImportBookInput[],
-    conflictStrategy: LibraryImportConflictStrategy
-  ) => Effect.Effect<LibraryImportResult, DatabaseError, DbService>
+    conflictStrategy: LibraryImportConflictStrategy,
+    options: { enqueueEnrichment: boolean, batchId: string, maxAttempts: number }
+  ) => Effect.Effect<LibraryImportRepositoryResult, DatabaseError, DbService>
 }
 
 export class LibraryTransferRepository extends Context.Tag('LibraryTransferRepository')<
@@ -90,6 +102,7 @@ export const LibraryTransferRepositoryLive = Layer.effect(
                 title: books.title,
                 isbn: books.isbn,
                 source: books.source,
+                openLibraryKey: books.openLibraryKey,
                 locationPath: locations.path,
                 lastKnownLocation: userBooks.lastKnownLocation,
                 libraryState: userBooks.libraryState,
@@ -154,6 +167,7 @@ export const LibraryTransferRepositoryLive = Layer.effect(
             }
 
             return rows.map(row => ({
+              userBookId: row.userBookId,
               title: row.title,
               authors: authorsByBook.get(row.bookId) ?? ['Unknown Author'],
               isbn: row.isbn ?? null,
@@ -169,6 +183,7 @@ export const LibraryTransferRepositoryLive = Layer.effect(
               note: row.note ?? null,
               addedAt: row.addedAt,
               source: row.source,
+              openLibraryKey: row.openLibraryKey,
               activeLoan: row.activeLoanBorrower && row.activeLoanLoanedAt
                 ? {
                     status: 'loaned' as const,
@@ -185,26 +200,58 @@ export const LibraryTransferRepositoryLive = Layer.effect(
           })
         }),
 
-      importRecords: (userId, records, conflictStrategy) =>
+      importRecords: (userId, records, conflictStrategy, options) =>
         Effect.tryPromise({
           try: async () => {
-            const result: LibraryImportResult = { created: 0, updated: 0, skipped: 0, failed: [] }
+            const result: LibraryImportRepositoryResult = {
+              created: 0,
+              updated: 0,
+              skipped: 0,
+              enrichmentQueued: 0,
+              enrichmentBatchId: null,
+              orphanedSharedCoverPaths: [],
+              failed: []
+            }
             const authorCache = new Map<string, string>()
             const tagCache = new Map<string, string>()
             const locationCache = new Map<string, ImportLocationNode>()
 
             const findExisting = async (record: LibraryImportBookInput): Promise<ExistingImportMatch | null> => {
-              if (record.isbn) {
+              const selectedFields = {
+                userBookId: userBooks.id,
+                bookId: books.id,
+                bookSource: books.source,
+                createdByUserId: books.createdByUserId,
+                bookIsbn: books.isbn,
+                entrySource: books.entrySource,
+                coverPath: books.coverPath,
+                metadataProviderIsbn: books.metadataProviderIsbn
+              }
+
+              if (record.sourceUserBookId) {
                 const rows = await dbService.db
-                  .select({
-                    userBookId: userBooks.id,
-                    bookId: books.id,
-                    bookSource: books.source,
-                    createdByUserId: books.createdByUserId
-                  })
+                  .select(selectedFields)
                   .from(userBooks)
                   .innerJoin(books, eq(userBooks.bookId, books.id))
-                  .where(and(eq(userBooks.userId, userId), eq(books.isbn, record.isbn), isNull(userBooks.removedAt)))
+                  .where(and(
+                    eq(userBooks.id, record.sourceUserBookId),
+                    eq(userBooks.userId, userId),
+                    isNull(userBooks.removedAt)
+                  ))
+                  .limit(1)
+                if (rows[0]) return rows[0]
+              }
+
+              if (record.isbn) {
+                const rows = await dbService.db
+                  .select(selectedFields)
+                  .from(userBooks)
+                  .innerJoin(books, eq(userBooks.bookId, books.id))
+                  .where(and(
+                    eq(userBooks.userId, userId),
+                    inArray(normalizedStoredBookIsbn, isbnIdentityAliases(record.isbn)),
+                    isNull(userBooks.removedAt)
+                  ))
                   .limit(1)
                 return rows[0] ?? null
               }
@@ -215,6 +262,10 @@ export const LibraryTransferRepositoryLive = Layer.effect(
                   bookId: books.id,
                   bookSource: books.source,
                   createdByUserId: books.createdByUserId,
+                  bookIsbn: books.isbn,
+                  entrySource: books.entrySource,
+                  coverPath: books.coverPath,
+                  metadataProviderIsbn: books.metadataProviderIsbn,
                   authorName: authors.name
                 })
                 .from(userBooks)
@@ -230,7 +281,11 @@ export const LibraryTransferRepositoryLive = Layer.effect(
                     userBookId: matched.userBookId,
                     bookId: matched.bookId,
                     bookSource: matched.bookSource,
-                    createdByUserId: matched.createdByUserId
+                    createdByUserId: matched.createdByUserId,
+                    bookIsbn: matched.bookIsbn,
+                    entrySource: matched.entrySource,
+                    coverPath: matched.coverPath,
+                    metadataProviderIsbn: matched.metadataProviderIsbn
                   }
                 : null
             }
@@ -418,17 +473,59 @@ export const LibraryTransferRepositoryLive = Layer.effect(
                 let sharedOpenLibraryBookId: string | null = null
                 if (!existing && record.isbn) {
                   const shared = await dbService.db
-                    .select({ id: books.id })
+                    .select({
+                      id: books.id,
+                      title: books.title,
+                      openLibraryKey: books.openLibraryKey
+                    })
                     .from(books)
-                    .where(and(eq(books.isbn, record.isbn), eq(books.source, 'open_library')))
+                    .where(and(
+                      inArray(normalizedStoredBookIsbn, isbnIdentityAliases(record.isbn)),
+                      eq(books.source, 'open_library')
+                    ))
                     .limit(1)
-                  sharedOpenLibraryBookId = shared[0]?.id ?? null
+                  const candidate = shared[0]
+                  if (candidate) {
+                    const sharedAuthors = await dbService.db
+                      .select({ name: authors.name })
+                      .from(bookAuthors)
+                      .innerJoin(authors, eq(authors.id, bookAuthors.authorId))
+                      .where(eq(bookAuthors.bookId, candidate.id))
+                    const importedAuthorKeys = new Set(record.authors.map(normalizeConflictText))
+                    const hasCompatibleAuthor = sharedAuthors.some(author =>
+                      importedAuthorKeys.has(normalizeConflictText(author.name))
+                    )
+                    const trustedProvenance = record.source === 'open_library'
+                      && Boolean(record.openLibraryKey)
+                      && record.openLibraryKey === candidate.openLibraryKey
+                    const compatibleLegacyMetadata = record.source === null
+                      && normalizeConflictText(record.title) === normalizeConflictText(candidate.title)
+                      && hasCompatibleAuthor
+                    sharedOpenLibraryBookId = trustedProvenance || compatibleLegacyMetadata
+                      ? candidate.id
+                      : null
+                  }
                 }
 
                 const bookId = existing?.bookId ?? sharedOpenLibraryBookId ?? generateId()
                 const userBookId = existing?.userBookId ?? generateId()
                 const isUserOwnedManualBook = existing?.bookSource === 'manual' && existing.createdByUserId === userId
                 const isNewManualBook = !existing && !sharedOpenLibraryBookId
+                const isImportedManualBook = isUserOwnedManualBook && existing?.entrySource === 'csv_import'
+                const importedIsbn = record.isbn ? normalizeIsbnIdentity(record.isbn) : null
+                const existingBookIsbn = existing?.bookIsbn ? normalizeIsbnIdentity(existing.bookIsbn) : null
+                const metadataProviderIsbn = existing?.metadataProviderIsbn
+                  ? normalizeIsbnIdentity(existing.metadataProviderIsbn)
+                  : null
+                const isbnChanged = Boolean(existing && existingBookIsbn !== importedIsbn)
+                const providerMetadataIsStale = Boolean(
+                  isbnChanged
+                  && metadataProviderIsbn
+                  && metadataProviderIsbn !== importedIsbn
+                )
+                const shouldQueueEnrichment = options.enqueueEnrichment
+                  && Boolean(record.isbn && isValidIsbn(record.isbn))
+                  && (isNewManualBook || isImportedManualBook)
                 const shouldSetAuthors = isNewManualBook || isUserOwnedManualBook
                 const authorLinks = shouldSetAuthors ? await resolveAuthorLinks(record.authors) : []
                 const tagLinks = await resolveTagLinks(record.tags)
@@ -476,7 +573,19 @@ export const LibraryTransferRepositoryLive = Layer.effect(
                       statements.push(database.update(books)
                         .set({
                           title: record.title,
-                          isbn: record.isbn
+                          isbn: record.isbn,
+                          ...(providerMetadataIsStale
+                            ? {
+                                coverPath: existing.coverPath?.startsWith('covers/manual/') ? existing.coverPath : null,
+                                openLibraryKey: null,
+                                workKey: null,
+                                description: null,
+                                publishDate: null,
+                                publishers: null,
+                                numberOfPages: null,
+                                metadataProviderIsbn: null
+                              }
+                            : {})
                         })
                         .where(and(eq(books.id, existing.bookId), eq(books.source, 'manual'), eq(books.createdByUserId, userId))))
                     }
@@ -493,6 +602,8 @@ export const LibraryTransferRepositoryLive = Layer.effect(
                       publishers: null,
                       numberOfPages: null,
                       source: 'manual',
+                      entrySource: 'csv_import',
+                      metadataProviderIsbn: null,
                       createdByUserId: userId,
                       createdAt: now
                     }))
@@ -524,6 +635,51 @@ export const LibraryTransferRepositoryLive = Layer.effect(
                     }))
                   }
 
+                  if (shouldQueueEnrichment && record.isbn) {
+                    const jobId = generateId()
+                    statements.push(database.insert(bookEnrichmentJobs).values({
+                      id: jobId,
+                      batchId: options.batchId,
+                      userId,
+                      bookId,
+                      isbn: record.isbn,
+                      status: 'pending',
+                      attempts: 0,
+                      maxAttempts: options.maxAttempts,
+                      createdAt: now,
+                      updatedAt: now
+                    }).onConflictDoUpdate({
+                      target: bookEnrichmentJobs.bookId,
+                      set: {
+                        batchId: options.batchId,
+                        userId,
+                        isbn: record.isbn,
+                        status: 'pending',
+                        attempts: 0,
+                        maxAttempts: options.maxAttempts,
+                        claimToken: null,
+                        leaseExpiresAt: null,
+                        nextAttemptAt: null,
+                        lastError: null,
+                        outcome: null,
+                        updatedAt: now,
+                        completedAt: null
+                      }
+                    }))
+                  } else if (isImportedManualBook) {
+                    statements.push(database.update(bookEnrichmentJobs)
+                      .set({
+                        status: 'cancelled',
+                        claimToken: null,
+                        leaseExpiresAt: null,
+                        nextAttemptAt: null,
+                        lastError: 'Enrichment was disabled by the user',
+                        updatedAt: now,
+                        completedAt: now
+                      })
+                      .where(eq(bookEnrichmentJobs.bookId, bookId)))
+                  }
+
                   statements.push(database.delete(userBookTags).where(eq(userBookTags.userBookId, userBookId)))
                   for (const tag of tagLinks) {
                     statements.push(database.insert(userBookTags).values({
@@ -539,11 +695,22 @@ export const LibraryTransferRepositoryLive = Layer.effect(
                 })
 
                 for (const updateCache of cacheUpdates) updateCache()
+                if (
+                  providerMetadataIsStale
+                  && existing?.coverPath
+                  && !existing.coverPath.startsWith('covers/manual/')
+                ) {
+                  result.orphanedSharedCoverPaths.push(existing.coverPath)
+                }
 
                 if (existing) {
                   result.updated++
                 } else {
                   result.created++
+                }
+                if (shouldQueueEnrichment) {
+                  result.enrichmentQueued++
+                  result.enrichmentBatchId = options.batchId
                 }
               } catch (error) {
                 result.failed.push({

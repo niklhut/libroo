@@ -23,20 +23,29 @@ describe('server/api/library/import.post', () => {
 
   it('imports CSV for the authenticated user only', async () => {
     mockLoggedInUser({ id: 'session-user', name: 'Ada', email: 'ada@example.com' })
-    const result = { created: 1, updated: 0, skipped: 0, failed: [] }
+    const result = {
+      created: 1,
+      updated: 0,
+      skipped: 0,
+      enrichmentQueued: 1,
+      enrichmentBatchId: 'batch-1',
+      failed: []
+    }
     serviceMocks.importLibraryCsv.mockReturnValueOnce(Effect.succeed(result))
     const handler = await importRoute(route)
 
     await expect(handler(makeEvent({
       body: {
         csv: 'title,authors,isbn,tags,location,reading_status,current_page,progress_percent,rating,note,added_date,active_loan_status,active_loan_borrower,active_loan_loaned_at,active_loan_due_at\nDune,Frank Herbert,,,,unread,,,,,,,,,',
-        conflictStrategy: 'csv'
+        conflictStrategy: 'csv',
+        enrich: true
       }
     }))).resolves.toBe(result)
     expect(serviceMocks.importLibraryCsv).toHaveBeenCalledWith(
       'session-user',
       expect.stringContaining('Dune'),
-      'csv'
+      'csv',
+      true
     )
   })
 })

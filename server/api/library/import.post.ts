@@ -7,6 +7,6 @@ export default effectHandler((event, user) =>
       catch: e => createError({ statusCode: 400, message: 'Validation Error', data: e })
     })
 
-    return yield* importLibraryCsv(user.id, body.csv, body.conflictStrategy)
+    return yield* importLibraryCsv(user.id, body.csv, body.conflictStrategy, body.enrich)
   })
 )

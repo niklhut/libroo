@@ -4,6 +4,7 @@ import { Effect, Layer } from 'effect'
 const liveLayerNames = [
   'AuthServiceLive',
   'BookRepositoryLive',
+  'BookEnrichmentRepositoryLive',
   'OpenLibraryRepositoryLive',
   'LendingRepositoryLive',
   'AdminRepositoryLive',
@@ -18,6 +19,7 @@ const liveLayerNames = [
   'LegalRepositoryLive',
   'RateLimitRepositoryLive',
   'BookServiceLive',
+  'BookEnrichmentServiceLive',
   'LendingServiceLive',
   'AdminServiceLive',
   'AuditServiceLive',

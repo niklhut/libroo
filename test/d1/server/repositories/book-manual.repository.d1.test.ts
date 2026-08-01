@@ -13,6 +13,7 @@ import previouslyOwnedMigration from '../../../../server/db/migrations/sqlite/00
 import inviteEmailMigration from '../../../../server/db/migrations/sqlite/0008_brave_saracen.sql?raw'
 import loanNoteMigration from '../../../../server/db/migrations/sqlite/0010_owner_private_loan_note.sql?raw'
 import borrowerSuggestionsMigration from '../../../../server/db/migrations/sqlite/0011_borrower_suggestions.sql?raw'
+import enrichmentMigration from '../../../../server/db/migrations/sqlite/0012_imported_book_enrichment.sql?raw'
 import libraryIndexesMigration from '../../../../server/db/migrations/sqlite/0004_add_user_books_library_indexes.sql?raw'
 import activeUserBookUniqueMigration from '../../../../server/db/migrations/sqlite/0005_add_active_user_book_unique.sql?raw'
 import { bookAuthors, books, loans, user, userBooks, userBookTags } from '../../../../server/db/schema'
@@ -46,7 +47,7 @@ describe('BookRepository.createManualBook on D1', () => {
       repository.createManualBook('user-1', {
         title: 'Manual Cloudflare Book',
         authors: ['Ada Lovelace', 'Ada Lovelace', 'Grace Hopper'],
-        isbn: null,
+        isbn: '0-441-17271-7',
         coverPath: 'covers/manual/user-1/book.webp',
         publishDate: '1843',
         publisher: 'Notes Press',
@@ -65,7 +66,8 @@ describe('BookRepository.createManualBook on D1', () => {
       id: expect.any(String),
       book: {
         title: 'Manual Cloudflare Book',
-        author: 'Ada Lovelace, Grace Hopper'
+        author: 'Ada Lovelace, Grace Hopper',
+        isbn: '9780441172719'
       }
     })
     expect([...result.tags].sort()).toEqual(['Computing', 'History'])
@@ -317,7 +319,8 @@ async function applyMigrations(database: D1Database) {
     previouslyOwnedMigration,
     inviteEmailMigration,
     loanNoteMigration,
-    borrowerSuggestionsMigration
+    borrowerSuggestionsMigration,
+    enrichmentMigration
   ]) {
     for (const statement of migration.split('--> statement-breakpoint')) {
       const migrationStatement = statement.trim()

@@ -2,6 +2,7 @@ import { Effect, Layer } from 'effect'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ACCOUNT_DELETION_CONFIRMATION_TEXT } from '../../../../shared/utils/account-settings'
 import { AccountDeletionRepository } from '../../../../server/repositories/account-deletion.repository'
+import { BookEnrichmentRepository } from '../../../../server/repositories/book-enrichment.repository'
 import { AccountDeletionService, AccountDeletionServiceLive, InvalidAccountDeletionConfirmationError } from '../../../../server/services/account-deletion.service'
 import { UnauthorizedError } from '../../../../server/services/auth.service'
 import { StorageError, StorageService } from '../../../../server/services/storage.service'
@@ -73,6 +74,7 @@ describe('AccountDeletionService', () => {
     const deleteAccountData = vi.fn(() => Effect.succeed({
       deletedUserId: 'user-1',
       blobPaths: ['covers/manual/user-1/a.webp', 'profiles/user-1.webp'],
+      sharedCoverPaths: [],
       deletedManualBooks: 1,
       deletedUserBooks: 2,
       deletedOwnedLoans: 1,
@@ -110,6 +112,7 @@ describe('AccountDeletionService', () => {
     const deleteAccountData = vi.fn(() => Effect.succeed({
       deletedUserId: 'user-1',
       blobPaths: ['covers/manual/user-1/a.webp'],
+      sharedCoverPaths: [],
       deletedManualBooks: 1,
       deletedUserBooks: 2,
       deletedOwnedLoans: 1,
@@ -138,18 +141,63 @@ describe('AccountDeletionService', () => {
     expect(deleteAccountData).toHaveBeenCalledWith('user-1')
     expect(deleteBlob).toHaveBeenCalledWith('covers/manual/user-1/a.webp')
   })
+
+  it('deletes a shared provider cover only after its last database reference is gone', async () => {
+    const deleteAccountData = vi.fn(() => Effect.succeed({
+      deletedUserId: 'user-1',
+      blobPaths: [],
+      sharedCoverPaths: ['covers/9780441172719.webp', 'covers/9780141439518.webp'],
+      deletedManualBooks: 2,
+      deletedUserBooks: 2,
+      deletedOwnedLoans: 0,
+      anonymizedBorrowedLoans: 0
+    }))
+    const deleteBlob = vi.fn(() => Effect.void)
+    const isCoverReferenced = vi.fn((pathname: string) =>
+      Effect.succeed(pathname === 'covers/9780141439518.webp')
+    )
+    const acquireIsbnLocks = vi.fn((isbns: string[]) => Effect.succeed(new Set(isbns)))
+    const releaseIsbnLocks = vi.fn(() => Effect.void)
+
+    await runAccountDeletionService(
+      Effect.flatMap(AccountDeletionService, service =>
+        service.deleteOwnAccount(makeEvent(), 'user-1', {
+          currentPassword: 'secret',
+          confirmation: ACCOUNT_DELETION_CONFIRMATION_TEXT
+        })
+      ),
+      deleteAccountData,
+      deleteBlob,
+      isCoverReferenced,
+      acquireIsbnLocks,
+      releaseIsbnLocks
+    )
+
+    expect(acquireIsbnLocks).toHaveBeenCalledTimes(2)
+    expect(releaseIsbnLocks).toHaveBeenCalledTimes(2)
+    expect(deleteBlob).toHaveBeenCalledTimes(1)
+    expect(deleteBlob).toHaveBeenCalledWith('covers/9780441172719.webp')
+  })
 })
 
 function runAccountDeletionService<A, E>(
-  effect: Effect.Effect<A, E, AccountDeletionService | AccountDeletionRepository | StorageService>,
+  effect: Effect.Effect<A, E, AccountDeletionService | AccountDeletionRepository | BookEnrichmentRepository | StorageService>,
   deleteAccountData: ReturnType<typeof vi.fn>,
-  deleteBlob: ReturnType<typeof vi.fn>
+  deleteBlob: ReturnType<typeof vi.fn>,
+  isCoverReferenced = vi.fn(() => Effect.succeed(false)),
+  acquireIsbnLocks = vi.fn((isbns: string[]) => Effect.succeed(new Set(isbns))),
+  releaseIsbnLocks = vi.fn(() => Effect.void)
 ) {
   return Effect.runPromise(effect.pipe(
     Effect.provide(AccountDeletionServiceLive),
     Effect.provide(Layer.succeed(AccountDeletionRepository, {
       deleteAccountData
     })),
+    Effect.provide(Layer.succeed(BookEnrichmentRepository, {
+      isCoverReferenced,
+      acquireIsbnLocks,
+      releaseIsbnLocks
+    } as never)),
     Effect.provide(Layer.succeed(StorageService, {
       put: vi.fn(),
       putCoverImage: vi.fn(),

@@ -3,27 +3,10 @@ import type { Page } from '@playwright/test'
 import { expect } from '@playwright/test'
 import { librarySearchInput } from './selectors'
 import { e2ePassword, login, logout, registerUser, uniqueEmail } from './auth'
+import { libraryCsvColumns } from '../../../shared/utils/library-transfer-csv'
 
 export { e2ePassword, login, logout, registerUser, uniqueEmail }
-
-export const libraryCsvColumns = [
-  'title',
-  'authors',
-  'isbn',
-  'tags',
-  'location',
-  'library_state',
-  'reading_status',
-  'current_page',
-  'progress_percent',
-  'rating',
-  'note',
-  'added_date',
-  'active_loan_status',
-  'active_loan_borrower',
-  'active_loan_loaned_at',
-  'active_loan_due_at'
-] as const
+export { libraryCsvColumns }
 
 export const libraryImportFixturePath = path.resolve('test/e2e/support/fixtures/library-import.csv')
 

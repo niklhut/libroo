@@ -54,7 +54,8 @@ Account deletion hard-deletes:
 
 Account deletion anonymizes or retains:
 
-- Shared Open Library-derived book metadata and generated shared cover assets, because those rows are not user-specific personal data.
+- Shared Open Library-derived book metadata and generated shared cover assets that are still referenced, because those rows are not user-specific personal data.
+- Imported manual book rows and their enrichment jobs are deleted when no remaining library record references them. User-uploaded covers under `covers/manual/` are deleted with those rows; shared provider cover paths are never treated as personal uploads.
 - Manual book rows created by the deleting user if another retained user's library record legitimately still references that row. The direct creator reference is cleared when the user is deleted.
 - Global tag and author dictionary rows that no longer identify a user.
 - Borrowed-loan rows owned by another user. Libroo clears the deleted borrower's account association and accepted state, but the owner may retain their own loan row and owner-supplied borrower display text.
