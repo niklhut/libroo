@@ -25,6 +25,12 @@
       "minimumReleaseAge": null
     },
     {
+      "description": "The default self-hosted image intentionally follows the latest tag; users can opt into a digest through LIBROO_IMAGE.",
+      "matchFileNames": ["docker-compose.yml"],
+      "matchPackageNames": ["ghcr.io/niklhut/libroo"],
+      "pinDigests": false
+    },
+    {
       "matchManagers": ["github-actions"],
       "addLabels": ["github-actions"],
       "groupName": "GitHub Actions",
