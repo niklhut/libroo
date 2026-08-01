@@ -41,20 +41,26 @@ function runImport(
     enrich?: boolean
     isCoverReferenced?: boolean
     acquireLock?: boolean
+    isCoverReferencedEffect?: ReturnType<typeof vi.fn>
+    acquireIsbnLocksEffect?: ReturnType<typeof vi.fn>
+    deleteBlobEffect?: ReturnType<typeof vi.fn>
   } = {}
 ) {
   const {
     importRecords = vi.fn(() => Effect.succeed(result)),
     enrich = true,
     isCoverReferenced: coverReferenced = false,
-    acquireLock = true
+    acquireLock = true,
+    isCoverReferencedEffect,
+    acquireIsbnLocksEffect,
+    deleteBlobEffect
   } = options
-  const isCoverReferenced = vi.fn(() => Effect.succeed(coverReferenced))
-  const acquireIsbnLocks = vi.fn((isbns: string[]) => Effect.succeed(
+  const isCoverReferenced = isCoverReferencedEffect ?? vi.fn(() => Effect.succeed(coverReferenced))
+  const acquireIsbnLocks = acquireIsbnLocksEffect ?? vi.fn((isbns: string[]) => Effect.succeed(
     acquireLock ? new Set(isbns) : new Set<string>()
   ))
   const releaseIsbnLocks = vi.fn(() => Effect.void)
-  const deleteBlob = vi.fn(() => Effect.void)
+  const deleteBlob = deleteBlobEffect ?? vi.fn(() => Effect.void)
   const repository = {
     listExportRecords: vi.fn(() => Effect.succeed([])),
     importRecords
@@ -209,6 +215,55 @@ describe('LibraryTransferService.importLibraryCsv', () => {
     expect(isCoverReferenced).not.toHaveBeenCalled()
     expect(deleteBlob).not.toHaveBeenCalled()
     expect(releaseIsbnLocks).not.toHaveBeenCalled()
+  })
+
+  it('keeps the import successful when acquiring a shared-cover lock fails', async () => {
+    const importRecords = vi.fn(() => Effect.succeed({
+      ...result,
+      orphanedSharedCoverPaths: ['covers/9780441172719.webp']
+    }))
+    const acquireIsbnLocksEffect = vi.fn(() => Effect.fail(new Error('lock unavailable')))
+    const { effect, isCoverReferenced, releaseIsbnLocks, deleteBlob } = runImport(`${header}\nDune`, {
+      importRecords,
+      acquireIsbnLocksEffect
+    })
+
+    await expect(effect).resolves.toMatchObject({ _tag: 'Right', right: publicResult })
+    expect(isCoverReferenced).not.toHaveBeenCalled()
+    expect(deleteBlob).not.toHaveBeenCalled()
+    expect(releaseIsbnLocks).not.toHaveBeenCalled()
+  })
+
+  it('keeps the import successful when checking a shared cover reference fails', async () => {
+    const importRecords = vi.fn(() => Effect.succeed({
+      ...result,
+      orphanedSharedCoverPaths: ['covers/9780441172719.webp']
+    }))
+    const isCoverReferencedEffect = vi.fn(() => Effect.fail(new Error('reference check unavailable')))
+    const { effect, deleteBlob, releaseIsbnLocks } = runImport(`${header}\nDune`, {
+      importRecords,
+      isCoverReferencedEffect
+    })
+
+    await expect(effect).resolves.toMatchObject({ _tag: 'Right', right: publicResult })
+    expect(deleteBlob).not.toHaveBeenCalled()
+    expect(releaseIsbnLocks).toHaveBeenCalledOnce()
+  })
+
+  it('keeps the import successful when deleting an unreferenced shared cover fails', async () => {
+    const importRecords = vi.fn(() => Effect.succeed({
+      ...result,
+      orphanedSharedCoverPaths: ['covers/9780441172719.webp']
+    }))
+    const deleteBlobEffect = vi.fn(() => Effect.fail(new Error('blob storage unavailable')))
+    const { effect, deleteBlob, releaseIsbnLocks } = runImport(`${header}\nDune`, {
+      importRecords,
+      deleteBlobEffect
+    })
+
+    await expect(effect).resolves.toMatchObject({ _tag: 'Right', right: publicResult })
+    expect(deleteBlob).toHaveBeenCalledWith('covers/9780441172719.webp')
+    expect(releaseIsbnLocks).toHaveBeenCalledOnce()
   })
 
   it('does not enqueue enrichment without explicit opt-in', async () => {
