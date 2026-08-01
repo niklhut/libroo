@@ -40,14 +40,20 @@ function runImport(
     importRecords?: ReturnType<typeof vi.fn>
     enrich?: boolean
     isCoverReferenced?: boolean
+    acquireLock?: boolean
   } = {}
 ) {
   const {
     importRecords = vi.fn(() => Effect.succeed(result)),
     enrich = true,
-    isCoverReferenced: coverReferenced = false
+    isCoverReferenced: coverReferenced = false,
+    acquireLock = true
   } = options
   const isCoverReferenced = vi.fn(() => Effect.succeed(coverReferenced))
+  const acquireIsbnLocks = vi.fn((isbns: string[]) => Effect.succeed(
+    acquireLock ? new Set(isbns) : new Set<string>()
+  ))
+  const releaseIsbnLocks = vi.fn(() => Effect.void)
   const deleteBlob = vi.fn(() => Effect.void)
   const repository = {
     listExportRecords: vi.fn(() => Effect.succeed([])),
@@ -57,7 +63,9 @@ function runImport(
     Effect.provide(LibraryTransferServiceLive),
     Effect.provide(Layer.succeed(LibraryTransferRepository, repository)),
     Effect.provide(Layer.succeed(BookEnrichmentRepository, {
-      isCoverReferenced
+      isCoverReferenced,
+      acquireIsbnLocks,
+      releaseIsbnLocks
     } as never)),
     Effect.provide(Layer.succeed(StorageService, {
       put: vi.fn(),
@@ -71,6 +79,8 @@ function runImport(
   return {
     importRecords,
     isCoverReferenced,
+    acquireIsbnLocks,
+    releaseIsbnLocks,
     deleteBlob,
     effect: Effect.runPromise(Effect.either(effect))
   }
@@ -157,11 +167,18 @@ describe('LibraryTransferService.importLibraryCsv', () => {
       ...result,
       orphanedSharedCoverPaths: ['covers/9780441172719.webp']
     }))
-    const { effect, isCoverReferenced, deleteBlob } = runImport(`${header}\nDune`, { importRecords })
+    const { effect, isCoverReferenced, acquireIsbnLocks, releaseIsbnLocks, deleteBlob } = runImport(`${header}\nDune`, { importRecords })
 
     await expect(effect).resolves.toMatchObject({ _tag: 'Right' })
+    expect(acquireIsbnLocks).toHaveBeenCalledWith(
+      ['9780441172719'],
+      expect.stringMatching(/^library-import:/),
+      expect.any(Date),
+      expect.any(Date)
+    )
     expect(isCoverReferenced).toHaveBeenCalledWith('covers/9780441172719.webp')
     expect(deleteBlob).toHaveBeenCalledWith('covers/9780441172719.webp')
+    expect(releaseIsbnLocks).toHaveBeenCalledWith(['9780441172719'], expect.stringMatching(/^library-import:/))
   })
 
   it('keeps a replaced shared cover while another record or loan references it', async () => {
@@ -176,6 +193,22 @@ describe('LibraryTransferService.importLibraryCsv', () => {
 
     await expect(effect).resolves.toMatchObject({ _tag: 'Right' })
     expect(deleteBlob).not.toHaveBeenCalled()
+  })
+
+  it('leaves a replaced shared cover alone while an enrichment worker owns its ISBN lock', async () => {
+    const importRecords = vi.fn(() => Effect.succeed({
+      ...result,
+      orphanedSharedCoverPaths: ['covers/9780441172719.webp']
+    }))
+    const { effect, isCoverReferenced, releaseIsbnLocks, deleteBlob } = runImport(`${header}\nDune`, {
+      importRecords,
+      acquireLock: false
+    })
+
+    await expect(effect).resolves.toMatchObject({ _tag: 'Right' })
+    expect(isCoverReferenced).not.toHaveBeenCalled()
+    expect(deleteBlob).not.toHaveBeenCalled()
+    expect(releaseIsbnLocks).not.toHaveBeenCalled()
   })
 
   it('does not enqueue enrichment without explicit opt-in', async () => {

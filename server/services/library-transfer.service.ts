@@ -41,6 +41,12 @@ export class LibraryTransferService extends Context.Tag('LibraryTransferService'
   LibraryTransferServiceInterface
 >() { }
 
+const SHARED_COVER_CLEANUP_LEASE_MS = 60_000
+
+function isbnFromSharedCoverPath(pathname: string) {
+  return /^covers\/([^/]+)\.webp$/.exec(pathname)?.[1] ?? null
+}
+
 function serializeDate(value: Date | string | null | undefined): string {
   if (!value) return ''
   const date = value instanceof Date ? value : new Date(value)
@@ -192,17 +198,49 @@ export const LibraryTransferServiceLive = Layer.effect(
           })
           const enrichmentRepo = yield* BookEnrichmentRepository
           for (const pathname of new Set(imported.orphanedSharedCoverPaths)) {
-            const referenced = yield* enrichmentRepo.isCoverReferenced(pathname).pipe(
+            const isbn = isbnFromSharedCoverPath(pathname)
+            if (!isbn) {
+              yield* Effect.logWarning(`Skipped replaced import cover with an unsupported path: ${pathname}`)
+              continue
+            }
+
+            const claimToken = `library-import:${crypto.randomUUID()}`
+            const now = new Date()
+            const acquired = yield* enrichmentRepo.acquireIsbnLocks(
+              [isbn],
+              claimToken,
+              new Date(now.getTime() + SHARED_COVER_CLEANUP_LEASE_MS),
+              now
+            ).pipe(
               Effect.catchAll(error =>
-                Effect.logWarning(`Failed to check replaced import cover ${pathname}: ${String(error)}`).pipe(
-                  Effect.as(true)
+                Effect.logWarning(`Failed to lock replaced import cover ${pathname}: ${String(error)}`).pipe(
+                  Effect.as(new Set<string>())
                 )
               )
             )
-            if (referenced) continue
-            yield* deleteBlob(pathname).pipe(
-              Effect.catchAll(error =>
-                Effect.logWarning(`Failed to delete replaced import cover ${pathname}: ${String(error)}`)
+            if (!acquired.has(isbn)) continue
+
+            yield* Effect.gen(function* () {
+              const referenced = yield* enrichmentRepo.isCoverReferenced(pathname).pipe(
+                Effect.catchAll(error =>
+                  Effect.logWarning(`Failed to check replaced import cover ${pathname}: ${String(error)}`).pipe(
+                    Effect.as(true)
+                  )
+                )
+              )
+              if (referenced) return
+              yield* deleteBlob(pathname).pipe(
+                Effect.catchAll(error =>
+                  Effect.logWarning(`Failed to delete replaced import cover ${pathname}: ${String(error)}`)
+                )
+              )
+            }).pipe(
+              Effect.ensuring(
+                enrichmentRepo.releaseIsbnLocks([isbn], claimToken).pipe(
+                  Effect.catchAll(error =>
+                    Effect.logWarning(`Failed to unlock replaced import cover ${pathname}: ${String(error)}`)
+                  )
+                )
               )
             )
           }
