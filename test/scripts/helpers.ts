@@ -17,6 +17,7 @@ export type TemporaryBackupTarget = {
   databaseUrl: string
   blobDir: string
   client: Client
+  close: () => void
   cleanup: () => Promise<void>
 }
 
@@ -52,14 +53,23 @@ export async function buildTemporaryBackupTarget({
     await seedBlobDirectory(blobDir, integrityIssues)
   }
 
+  let closed = false
+  const close = () => {
+    if (!closed) {
+      client.close()
+      closed = true
+    }
+  }
+
   return {
     rootDir,
     databasePath,
     databaseUrl,
     blobDir,
     client,
+    close,
     cleanup: async () => {
-      client.close()
+      close()
       await rm(rootDir, { recursive: true, force: true })
     }
   }

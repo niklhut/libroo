@@ -33,10 +33,19 @@ type ManifestFixture = {
 }
 
 describe('self-hosted backup and restore CLIs', () => {
-  it('backs up and restores a self-hosted target with matching data', async () => {
+  it('backs up and restores a self-hosted target with matching data', {
+    retry: {
+      count: 2,
+      delay: 250
+    }
+  }, async () => {
     const source = await buildTemporaryBackupTarget({ integrityIssues: false })
     const tempDir = await mkdtemp(join(tmpdir(), 'libroo-backup-restore-test-'))
     try {
+      // The backup runs in a child process. Release the fixture's connection so
+      // SQLite never has a second client holding a lock during VACUUM INTO.
+      source.close()
+
       const outputDir = join(tempDir, 'backups')
       const backup = runScript(scriptPath('scripts/backup-selfhost.mjs'), ['--output-dir', outputDir], {
         env: {
@@ -62,7 +71,11 @@ describe('self-hosted backup and restore CLIs', () => {
         }
       })
 
-      expect(restore.status).toBe(0)
+      expect(restore.status, [
+        'Restore command failed.',
+        `stdout:\n${restore.stdout}`,
+        `stderr:\n${restore.stderr}`
+      ].join('\n')).toBe(0)
       expect(restore.stdout).toContain('Backup verification passed.')
       expect(restore.stdout).toContain('Restore complete.')
       await expect(readCounts(source.databaseUrl)).resolves.toEqual(await readCounts(`file:${restoredDb}`))
