@@ -1087,6 +1087,7 @@ async function importLibraryCsvFile() {
                     variant="ghost"
                     size="xs"
                     :icon="showCurrentPassword ? 'i-lucide-eye-off' : 'i-lucide-eye'"
+                    :aria-label="showCurrentPassword ? 'Hide current password' : 'Show current password'"
                     @click="() => { showCurrentPassword = !showCurrentPassword }"
                   />
                 </template>
@@ -1110,6 +1111,7 @@ async function importLibraryCsvFile() {
                     variant="ghost"
                     size="xs"
                     :icon="showNewPassword ? 'i-lucide-eye-off' : 'i-lucide-eye'"
+                    :aria-label="showNewPassword ? 'Hide new password' : 'Show new password'"
                     @click="() => { showNewPassword = !showNewPassword }"
                   />
                 </template>
@@ -1133,6 +1135,7 @@ async function importLibraryCsvFile() {
                     variant="ghost"
                     size="xs"
                     :icon="showConfirmPassword ? 'i-lucide-eye-off' : 'i-lucide-eye'"
+                    :aria-label="showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'"
                     @click="() => { showConfirmPassword = !showConfirmPassword }"
                   />
                 </template>

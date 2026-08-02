@@ -88,8 +88,10 @@ describe('librooSecurityNotificationPlugin', () => {
     process.env.NUXT_SMTP_HOST = 'smtp.example.com'
 
     const plugin = librooSecurityNotificationPlugin()
-    const beforeHandler = plugin.hooks?.before?.[0]?.handler as (ctx: unknown) => Promise<unknown>
-    const afterHandler = plugin.hooks?.after?.[0]?.handler as (ctx: unknown) => Promise<unknown>
+    const beforeHook = plugin.hooks?.before?.[0]
+    const afterHook = plugin.hooks?.after?.[0]
+    const beforeHandler = beforeHook?.handler as (ctx: unknown) => Promise<unknown>
+    const afterHandler = afterHook?.handler as (ctx: unknown) => Promise<unknown>
     const ctx = {
       path: '/passkey/verify-registration',
       context: {
@@ -99,6 +101,8 @@ describe('librooSecurityNotificationPlugin', () => {
       }
     }
 
+    expect(beforeHook?.matcher?.(ctx)).toBe(true)
+    expect(afterHook?.matcher?.(ctx)).toBe(true)
     await beforeHandler(ctx)
     await afterHandler(ctx)
 
