@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { FormSubmitEvent } from '@nuxt/ui'
-import QRCode from 'qrcode'
 import {
   ACCOUNT_DELETION_CONFIRMATION_TEXT,
   accountDeletionSchema,
@@ -288,6 +287,7 @@ async function enableTwoFactor() {
     if (result.error || !result.data) throw new Error(result.error?.message || 'Unable to start two-factor setup')
     totpUri.value = result.data.totpURI
     backupCodes.value = result.data.backupCodes
+    const { default: QRCode } = await import('qrcode')
     totpQrCode.value = await QRCode.toDataURL(result.data.totpURI, { margin: 1, width: 220 })
     twoFactorState.code = ''
     backupCodesCopied.value = false
