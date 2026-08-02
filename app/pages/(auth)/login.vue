@@ -26,11 +26,9 @@ const showForgotPassword = computed(() => canShowForgotPasswordAction(emailCapab
 const browserSupportsPasskeys = ref(false)
 const showPasskeySignIn = computed(() => browserSupportsPasskeys.value && canShowPasskeySignIn(authCapabilities.value))
 const mfaCode = ref('')
-const mfaOtp = ref<number[]>([])
 const useBackupCode = ref(false)
 const isVerifyingMfa = ref(false)
 const isPasskeyLoading = ref(false)
-const secondFactorCode = computed(() => useBackupCode.value ? mfaCode.value : mfaOtp.value.join(''))
 
 onMounted(() => {
   browserSupportsPasskeys.value = typeof PublicKeyCredential !== 'undefined'
@@ -150,7 +148,7 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
 }
 
 async function verifySecondFactor() {
-  const code = secondFactorCode.value.trim()
+  const code = mfaCode.value.trim()
   if (!code) return
   isVerifyingMfa.value = true
   error.value = ''
@@ -164,7 +162,6 @@ async function verifySecondFactor() {
     }
     authStore.clearPendingMfa()
     mfaCode.value = ''
-    mfaOtp.value = []
     isFromSignout.value = false
     await authStore.refresh()
     toast.add({ title: 'Welcome back!', description: 'Second factor verified.', color: 'success' })
@@ -226,28 +223,27 @@ async function signInWithPasskey() {
             inputmode="text"
             autocomplete="off"
             placeholder="Enter a recovery code"
-            @keydown.enter="() => { if (secondFactorCode.trim() && !isVerifyingMfa) verifySecondFactor() }"
+            @keydown.enter="() => { if (mfaCode.trim() && !isVerifyingMfa) verifySecondFactor() }"
           />
         </UFormField>
         <UFormField
           v-else
           label="Authenticator code"
         >
-          <div class="flex justify-center">
-            <UPinInput
-              v-model="mfaOtp"
-              :length="6"
-              type="number"
-              otp
-              autofocus
-              @complete="() => { if (!isVerifyingMfa) verifySecondFactor() }"
-            />
-          </div>
+          <UInput
+            v-model="mfaCode"
+            class="w-full"
+            inputmode="numeric"
+            autocomplete="one-time-code"
+            name="one-time-code"
+            placeholder="123456"
+            @keydown.enter="() => { if (mfaCode.trim() && !isVerifyingMfa) verifySecondFactor() }"
+          />
         </UFormField>
         <UButton
           block
           :loading="isVerifyingMfa"
-          :disabled="!secondFactorCode.trim()"
+          :disabled="!mfaCode.trim()"
           @click="verifySecondFactor"
         >
           Verify and sign in
@@ -256,7 +252,7 @@ async function signInWithPasskey() {
           color="neutral"
           variant="link"
           block
-          @click="() => { useBackupCode = !useBackupCode; mfaCode = ''; mfaOtp = [] }"
+          @click="() => { useBackupCode = !useBackupCode; mfaCode = '' }"
         >
           {{ useBackupCode ? 'Use an authenticator code' : 'Use a recovery code instead' }}
         </UButton>
