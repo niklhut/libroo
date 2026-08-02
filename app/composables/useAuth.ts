@@ -1,5 +1,6 @@
 import { createAuthClient } from 'better-auth/vue'
-import { adminClient } from 'better-auth/client/plugins'
+import { adminClient, twoFactorClient } from 'better-auth/client/plugins'
+import { passkeyClient } from '@better-auth/passkey/client'
 
 export function useAuth() {
   const url = useRequestURL()
@@ -11,7 +12,9 @@ export function useAuth() {
     baseURL: url.origin,
     fetchOptions: { headers },
     plugins: [
-      adminClient()
+      adminClient(),
+      twoFactorClient(),
+      passkeyClient()
     ]
   })
 }

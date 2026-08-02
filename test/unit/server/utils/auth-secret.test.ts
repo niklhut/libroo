@@ -12,7 +12,8 @@ vi.mock('better-auth/adapters/drizzle', () => ({
 }))
 
 vi.mock('better-auth/plugins', () => ({
-  admin: vi.fn(() => ({ id: 'admin' }))
+  admin: vi.fn(() => ({ id: 'admin' })),
+  twoFactor: vi.fn(() => ({ id: 'two-factor' }))
 }))
 
 vi.mock('better-auth/plugins/admin/access', () => ({
@@ -38,6 +39,7 @@ vi.mock('@nuxthub/db/schema', () => ({
 }))
 
 vi.mock('../../../../server/utils/email-verification-config', () => ({
+  getConfigValue: vi.fn((envKey: string) => process.env[envKey]),
   getEmailVerificationConfig: vi.fn(() => ({
     enabled: false,
     provider: 'smtp',

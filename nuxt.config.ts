@@ -51,6 +51,7 @@ const cloudflareRuntimeVars = definedEnvVars({
   NUXT_PUBLIC_LEGAL_PRIVACY_POLICY_URL: process.env.NUXT_PUBLIC_LEGAL_PRIVACY_POLICY_URL,
   NUXT_PUBLIC_LEGAL_TERMS_URL: process.env.NUXT_PUBLIC_LEGAL_TERMS_URL,
   NUXT_PUBLIC_REGISTRATION_ENABLED: process.env.NUXT_PUBLIC_REGISTRATION_ENABLED,
+  NUXT_PUBLIC_PASSKEYS_ENABLED: process.env.NUXT_PUBLIC_PASSKEYS_ENABLED,
   NUXT_PUBLIC_TURNSTILE_ENABLED: process.env.NUXT_PUBLIC_TURNSTILE_ENABLED,
   NUXT_PUBLIC_TURNSTILE_SITE_KEY: process.env.NUXT_PUBLIC_TURNSTILE_SITE_KEY,
   NUXT_TURNSTILE_ALLOWED_HOSTNAMES: process.env.NUXT_TURNSTILE_ALLOWED_HOSTNAMES,
@@ -126,6 +127,7 @@ export default defineNuxtConfig({
     },
     public: {
       registrationEnabled: 'true',
+      passkeysEnabled: runtimeProfile === 'selfhost' ? 'false' : process.env.NUXT_PUBLIC_PASSKEYS_ENABLED ?? 'false',
       openLibraryLinksEnabled: process.env.NODE_ENV === 'development' ? 'true' : 'false',
       legalPrivacyPolicyUrl: '',
       legalImprintUrl: '',

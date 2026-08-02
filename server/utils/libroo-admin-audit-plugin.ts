@@ -33,6 +33,7 @@ type AuthActorSnapshot = {
   pendingEmail?: string | null
   verificationEmail?: string | null
   verificationUpdateTo?: string | null
+  twoFactorEnabled?: boolean | null
 }
 
 type HookContext = {
@@ -77,7 +78,8 @@ export const librooAdminAuditPlugin = (): BetterAuthPlugin => ({
             setAuthActor(ctx.context, {
               id: session.user.id,
               name: session.user.name,
-              email: session.user.email
+              email: session.user.email,
+              twoFactorEnabled: session.user.twoFactorEnabled
             })
           }
         })
@@ -378,13 +380,33 @@ export async function buildAuthAuditEntry(ctx: HookContext): Promise<CreateAdmin
 
   if (path === '/two-factor/verify-totp') {
     const user = getResponseUser(response)
-    if (user?.id && user.twoFactorEnabled !== true) return null
+    // This endpoint is used both for setup and for every TOTP sign-in. Only
+    // record an enable event when it transitions the current session from off.
+    if (authActor?.twoFactorEnabled !== false || user?.twoFactorEnabled !== true) return null
 
     return authAuditEntry({
       actorUserId: user?.id ?? actorUserId,
       targetUserId: user?.id ?? targetUserId,
       action: 'auth.two_factor_enabled',
       metadata: null
+    })
+  }
+
+  if (path === '/passkey/verify-registration') {
+    return authAuditEntry({
+      actorUserId,
+      targetUserId,
+      action: 'auth.passkey_added',
+      metadata: compactMetadata({ name: readStringField(ctx.body, 'name') })
+    })
+  }
+
+  if (path === '/passkey/delete-passkey') {
+    return authAuditEntry({
+      actorUserId,
+      targetUserId,
+      action: 'auth.passkey_removed',
+      metadata: compactMetadata({ passkeyId: readStringField(ctx.body, 'id') })
     })
   }
 
@@ -398,7 +420,7 @@ function isAuditedAdminMutationPath(path: string | undefined) {
     || path === '/admin/unban-user'
 }
 
-function isAuditedAuthPath(path: string | undefined) {
+export function isAuditedAuthPath(path: string | undefined) {
   return path === '/sign-up/email'
     || path === '/sign-in/email'
     || path === '/change-password'
@@ -414,6 +436,9 @@ function isAuditedAuthPath(path: string | undefined) {
     || path === '/two-factor/generate-backup-codes'
     || path === '/two-factor/verify-backup-code'
     || path === '/two-factor/verify-totp'
+    || path === '/passkey/generate-register-options'
+    || path === '/passkey/verify-registration'
+    || path === '/passkey/delete-passkey'
 }
 
 function normalizeRole(role: string | string[] | null | undefined) {

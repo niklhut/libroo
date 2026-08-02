@@ -1,8 +1,29 @@
 import { describe, expect, it } from 'vitest'
 import { roleIncludesAdmin } from '../../shared/utils/auth-roles'
-import { IMPERSONATION_DISABLED_MESSAGE, assignFirstAdminRole, blockAdminImpersonation, enforceBanUserPolicy, enforceSetRolePolicy, normalizeAdminBanMutationBody, normalizeAdminRoleMutationBody, validateAdminSetUserPasswordBody } from '../../server/utils/libroo-admin-auth-plugin'
+import { IMPERSONATION_DISABLED_MESSAGE, assignFirstAdminRole, blockAdminImpersonation, enforceBanUserPolicy, enforceLastFactorRemovalPolicy, enforceSetRolePolicy, normalizeAdminBanMutationBody, normalizeAdminRoleMutationBody, validateAdminSetUserPasswordBody } from '../../server/utils/libroo-admin-auth-plugin'
 
 describe('librooAdminPolicyPlugin', () => {
+  it('blocks removal of a passwordless sole admin’s last factor', async () => {
+    await expect(enforceLastFactorRemovalPolicy({
+      user: { id: 'admin-1', role: 'admin', banned: false },
+      reserveLastFactorRemoval: async () => ({ reserved: true })
+    })).rejects.toMatchObject({
+      statusCode: 409,
+      body: { code: 'LAST_FACTOR_REMOVAL' }
+    })
+  })
+
+  it('does not block normal users from disabling their TOTP factor', async () => {
+    let reserved = false
+    await expect(enforceLastFactorRemovalPolicy({
+      user: { id: 'user-1', role: 'user', banned: false },
+      reserveLastFactorRemoval: async () => {
+        reserved = true
+        return { reserved: true }
+      }
+    })).resolves.toBeUndefined()
+    expect(reserved).toBe(false)
+  })
   it('allows promotions to pass through to Better Auth', async () => {
     await expect(enforceSetRolePolicy({
       body: { userId: 'user-2', role: 'admin' },

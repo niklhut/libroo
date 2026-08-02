@@ -2,6 +2,8 @@
 import * as z from 'zod'
 import type { FormSubmitEvent, AuthFormField } from '@nuxt/ui'
 import { canShowForgotPasswordAction } from '~~/shared/utils/email-capability-ui'
+import { canShowPasskeySignIn } from '~~/shared/utils/auth-capability-ui'
+import { authClient } from '~/utils/auth-client'
 
 definePageMeta({
   auth: false
@@ -11,15 +13,21 @@ usePageTitle('Login')
 
 const route = useRoute()
 const authStore = useAuthStore()
-const { user } = storeToRefs(authStore)
+const { user, pendingMfa } = storeToRefs(authStore)
 const { signIn } = authStore
 const toast = useToast()
 const { data: emailCapabilities } = await useEmailCapabilities()
+const { data: authCapabilities } = await useAuthCapabilities()
 
 const isLoading = ref(false)
 const error = ref('')
 const showPassword = ref(false)
 const showForgotPassword = computed(() => canShowForgotPasswordAction(emailCapabilities.value))
+const showPasskeySignIn = computed(() => canShowPasskeySignIn(authCapabilities.value))
+const mfaCode = ref('')
+const useBackupCode = ref(false)
+const isVerifyingMfa = ref(false)
+const isPasskeyLoading = ref(false)
 
 // Get redirect path from query
 const redirectPath = computed(() => {
@@ -33,13 +41,13 @@ const redirectPath = computed(() => {
 // Redirect if already logged in (but not if we just signed out - race condition with stale state)
 const isFromSignout = ref(route.query.signout === 'true')
 
-watch([user, isFromSignout], ([newUser, signingOut]) => {
+watch([user, isFromSignout, pendingMfa], ([newUser, signingOut, awaitingMfa]) => {
   // Skip auto-redirect if we just came from sign-out (stale user state may still be present)
   if (signingOut) {
     return
   }
 
-  if (newUser) {
+  if (newUser && !awaitingMfa) {
     navigateTo(redirectPath.value)
   }
 }, { immediate: true })
@@ -113,7 +121,7 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
         description: error.value,
         color: 'error'
       })
-    } else {
+    } else if (!pendingMfa.value) {
       isFromSignout.value = false
       await authStore.refresh()
       toast.add({
@@ -133,11 +141,99 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
     isLoading.value = false
   }
 }
+
+async function verifySecondFactor() {
+  if (!mfaCode.value.trim()) return
+  isVerifyingMfa.value = true
+  error.value = ''
+  try {
+    const result = useBackupCode.value
+      ? await authClient.twoFactor.verifyBackupCode({ code: mfaCode.value.trim() })
+      : await authClient.twoFactor.verifyTotp({ code: mfaCode.value.trim() })
+    if (result.error) {
+      error.value = result.error.message || 'Unable to verify the code'
+      return
+    }
+    authStore.clearPendingMfa()
+    isFromSignout.value = false
+    await authStore.refresh()
+    toast.add({ title: 'Welcome back!', description: 'Second factor verified.', color: 'success' })
+  } catch (cause: unknown) {
+    error.value = cause instanceof Error ? cause.message : 'Unable to verify the code'
+  } finally {
+    isVerifyingMfa.value = false
+  }
+}
+
+async function signInWithPasskey() {
+  isPasskeyLoading.value = true
+  error.value = ''
+  try {
+    const result = await authClient.signIn.passkey()
+    if (result.error) {
+      error.value = result.error.message || 'Passkey sign-in failed'
+      return
+    }
+    isFromSignout.value = false
+    await authStore.refresh()
+  } catch (cause: unknown) {
+    error.value = cause instanceof Error ? cause.message : 'Passkey sign-in failed'
+  } finally {
+    isPasskeyLoading.value = false
+  }
+}
 </script>
 
 <template>
   <UContainer class="py-12 max-w-md">
-    <UPageCard>
+    <UPageCard v-if="pendingMfa">
+      <div class="space-y-5">
+        <div class="space-y-1 text-center">
+          <UIcon
+            name="i-lucide-shield-check"
+            class="mx-auto size-8 text-primary"
+          />
+          <h1 class="text-xl font-semibold">
+            Verify your sign-in
+          </h1>
+          <p class="text-sm text-muted">
+            Enter the code from your authenticator app or a recovery code.
+          </p>
+        </div>
+        <UFormField :label="useBackupCode ? 'Recovery code' : 'Authenticator code'">
+          <UInput
+            v-model="mfaCode"
+            class="w-full"
+            :autocomplete="useBackupCode ? 'off' : 'one-time-code'"
+            :placeholder="useBackupCode ? 'Enter a recovery code' : '123456'"
+          />
+        </UFormField>
+        <UButton
+          block
+          :loading="isVerifyingMfa"
+          :disabled="!mfaCode.trim()"
+          @click="verifySecondFactor"
+        >
+          Verify and sign in
+        </UButton>
+        <UButton
+          color="neutral"
+          variant="link"
+          block
+          @click="() => { useBackupCode = !useBackupCode; mfaCode = '' }"
+        >
+          {{ useBackupCode ? 'Use an authenticator code' : 'Use a recovery code instead' }}
+        </UButton>
+        <UAlert
+          v-if="error"
+          color="error"
+          icon="i-lucide-alert-circle"
+          :title="error"
+        />
+      </div>
+    </UPageCard>
+
+    <UPageCard v-else>
       <UAuthForm
         novalidate
         :schema="schema"
@@ -201,6 +297,17 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
         </template>
 
         <template #footer>
+          <UButton
+            v-if="showPasskeySignIn"
+            block
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-fingerprint"
+            :loading="isPasskeyLoading"
+            @click="signInWithPasskey"
+          >
+            Sign in with passkey
+          </UButton>
           <p class="text-center text-sm text-muted">
             Libroo - Your Library, Managed
           </p>

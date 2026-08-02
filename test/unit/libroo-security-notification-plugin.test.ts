@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { librooSecurityNotificationPlugin, notifyPasswordChanged, sendPasswordChangedNotification } from '../../server/utils/libroo-security-notification-plugin'
+import { isPasskeyPath, isSecurityNotificationPath, isTwoFactorPath, librooSecurityNotificationPlugin, notifyPasswordChanged, sendPasswordChangedNotification } from '../../server/utils/libroo-security-notification-plugin'
 import { sendEmailMessage } from '../../server/services/email.service'
 
 vi.mock('../../server/services/email.service', () => ({
@@ -14,6 +14,12 @@ afterEach(() => {
 })
 
 describe('librooSecurityNotificationPlugin', () => {
+  it('matches TOTP and passkey security mutations', () => {
+    expect(isTwoFactorPath('/two-factor/disable')).toBe(true)
+    expect(isPasskeyPath('/passkey/verify-registration')).toBe(true)
+    expect(isSecurityNotificationPath('/passkey/delete-passkey')).toBe(true)
+    expect(isSecurityNotificationPath('/passkey/list-user-passkeys')).toBe(false)
+  })
   it('watches admin set-password alongside user password changes', () => {
     const plugin = librooSecurityNotificationPlugin()
     const beforeMatcher = plugin.hooks?.before?.[0]?.matcher

@@ -1,6 +1,7 @@
 import { betterAuth } from 'better-auth/minimal'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
-import { admin } from 'better-auth/plugins'
+import { admin, twoFactor } from 'better-auth/plugins'
+import { passkey } from '@better-auth/passkey'
 import { defaultAc } from 'better-auth/plugins/admin/access'
 import { eq } from 'drizzle-orm'
 import { PASSWORD_MIN_LENGTH } from '~~/shared/utils/password'
@@ -14,6 +15,7 @@ import { createTurnstileCaptchaPlugins } from './turnstile'
 import { sendEmailMessage } from '../services/email.service'
 import { createBackgroundTaskHandler } from '../runtime/background-tasks.active'
 import { runtimeProfile } from '../runtime/profile.active'
+import { getWebAuthnConfig, passkeysAvailable } from './webauthn-config'
 
 interface EnvSecretOptions {
   envKey: string
@@ -89,6 +91,7 @@ validateEmailVerificationConfig(emailVerificationConfig)
 const authRateLimitEnabled = process.env.NUXT_BETTER_AUTH_RATE_LIMIT_ENABLED !== 'false'
 const backgroundTaskHandler = createBackgroundTaskHandler()
 const trustedIpHeaders = getTrustedIpHeaders()
+const webAuthnConfig = getWebAuthnConfig()
 
 const adminRole = defaultAc.newRole({
   user: [
@@ -307,6 +310,17 @@ export const auth = betterAuth({
   },
   plugins: [
     ...createTurnstileCaptchaPlugins(),
+    twoFactor({
+      issuer: 'Libroo',
+      skipVerificationOnEnable: false
+    }),
+    ...(passkeysAvailable(webAuthnConfig)
+      ? [passkey({
+          rpID: webAuthnConfig.rpID,
+          rpName: 'Libroo',
+          origin: webAuthnConfig.origin
+        })]
+      : []),
     librooTermsConsentPlugin(),
     admin({
       roles: {

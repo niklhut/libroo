@@ -29,6 +29,7 @@ jobs:
       NUXT_CLOUDFLARE_ACCESS_TEAM_DOMAIN: ${{ vars.CLOUDFLARE_ACCESS_TEAM_DOMAIN }}
       PREVIEW_CONCURRENT_LIMIT: ${{ vars.PREVIEW_CONCURRENT_LIMIT || '10' }}
       PREVIEW_SEED_ENABLED: ${{ vars.PREVIEW_SEED_ENABLED || 'false' }}
+      NUXT_PUBLIC_PASSKEYS_ENABLED: ${{ vars.NUXT_PUBLIC_PASSKEYS_ENABLED || 'false' }}
       NUXT_CLOUDFLARE_PREVIEW: 'true'
       NUXT_CLOUDFLARE_WORKER_NAME: libroo-pr-${{ github.event.pull_request.number }}
       PREVIEW_ACCESS_APP_NAME: libroo-preview-pr-${{ github.event.pull_request.number }}

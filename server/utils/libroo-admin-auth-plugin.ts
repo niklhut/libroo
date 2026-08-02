@@ -4,7 +4,7 @@ import { sql } from 'drizzle-orm'
 import { parseRoleValues, roleIncludesAdmin } from '~~/shared/utils/auth-roles'
 import { isActiveBan } from '~~/shared/utils/auth-status'
 import { newPasswordSchema } from '~~/shared/utils/password'
-import { db, user } from '../runtime/auth-db.active'
+import { db, schema, user } from '../runtime/auth-db.active'
 
 type UserWithRole = {
   id: string
@@ -46,6 +46,8 @@ type RunResult = {
 type BanReservationResult
   = | { reserved: true }
     | { reserved: false, reason: 'last_admin' | 'concurrent' }
+
+type LastFactorReservationResult = { reserved: boolean }
 
 export const IMPERSONATION_DISABLED_MESSAGE = 'Admin impersonation is disabled for this Libroo deployment.'
 
@@ -120,6 +122,18 @@ export const librooAdminPolicyPlugin = (): BetterAuthPlugin => ({
         matcher: context => context.path === '/admin/set-user-password',
         handler: createAuthMiddleware(async (ctx) => {
           validateAdminSetUserPasswordBody(ctx.body)
+        })
+      },
+      {
+        matcher: context => context.path === '/two-factor/disable',
+        handler: createAuthMiddleware(async (ctx) => {
+          const session = await getSessionFromCtx(ctx)
+          if (!session?.user?.id) return
+
+          await enforceLastFactorRemovalPolicy({
+            user: session.user as UserWithRole,
+            reserveLastFactorRemoval: reserveLastFactorRemovalInDatabase
+          })
         })
       }
     ]
@@ -265,6 +279,26 @@ export async function enforceBanUserPolicy(input: {
   }
 }
 
+/**
+ * A passwordless sole admin needs at least one surviving authentication factor.
+ * Password-based accounts are deliberately exempt, so ordinary users (and the
+ * normal email/password admin flow) can always turn TOTP off.
+ */
+export async function enforceLastFactorRemovalPolicy(input: {
+  user: UserWithRole
+  reserveLastFactorRemoval: (userId: string) => Promise<LastFactorReservationResult>
+}) {
+  if (!isEffectiveAdmin(input.user) || isActiveBan(input.user)) return
+
+  const reservation = await input.reserveLastFactorRemoval(input.user.id)
+  if (!reservation.reserved) return
+
+  throw APIError.from('CONFLICT', {
+    message: 'Cannot disable two-factor authentication because it is the last sign-in factor for the last active admin',
+    code: 'LAST_FACTOR_REMOVAL'
+  })
+}
+
 async function assignFirstAdminRoleInDatabase(userId: string) {
   return db.run(sql`
     UPDATE ${user}
@@ -323,6 +357,34 @@ async function reserveAdminBanInDatabase(userId: string): Promise<BanReservation
     reserved: false,
     reason: await countUnbannedAdminUsersInDatabase() <= 1 ? 'last_admin' : 'concurrent'
   }
+}
+
+async function reserveLastFactorRemovalInDatabase(userId: string): Promise<LastFactorReservationResult> {
+  // A conditional update gives this decision one atomic database statement,
+  // matching the existing last-admin protection rather than relying on a
+  // read-then-write race. The no-op assignment is intentional.
+  const result = await db.run(sql`
+    UPDATE ${user}
+    SET ${user.updatedAt} = ${user.updatedAt}
+    WHERE ${user.id} = ${userId}
+      AND ${adminRoleTokenPredicate()}
+      AND ${inactiveBanPredicate()}
+      AND NOT EXISTS (
+        SELECT 1 FROM ${schema.account}
+        WHERE ${schema.account.userId} = ${userId}
+          AND ${schema.account.password} IS NOT NULL
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM ${schema.passkey}
+        WHERE ${schema.passkey.userId} = ${userId}
+      )
+      AND (
+        SELECT count(*) FROM ${user}
+        WHERE ${adminRoleTokenPredicate()} AND ${inactiveBanPredicate()}
+      ) = 1
+  `)
+
+  return { reserved: getAffectedRowCount(result) > 0 }
 }
 
 async function countUnbannedAdminUsersInDatabase() {

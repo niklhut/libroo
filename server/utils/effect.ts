@@ -6,6 +6,8 @@ import type { RateLimitRepository } from '../repositories/rate-limit.repository'
 import { RateLimitServiceLive } from '../services/rate-limit.service'
 import type { RateLimitService } from '../services/rate-limit.service'
 import type { EmailService } from '../runtime/email.core'
+import { AuthCapabilityServiceLive } from '../services/auth-capability.service'
+import type { AuthCapabilityService } from '../services/auth-capability.service'
 import { StructuredLoggerLive } from './logger'
 
 // Base services layer (no dependencies)
@@ -38,7 +40,7 @@ const RepositoriesLive = Layer.provideMerge(
 
 // Service layer (depends on repositories)
 const CoreServicesLive = Layer.provideMerge(
-  Layer.mergeAll(BookServiceLive, BookEnrichmentServiceLive, LendingServiceLive, AdminServiceLive, AuditServiceLive, LocationServiceLive, LibraryTransferServiceLive, PreferencesServiceLive, AccountDeletionServiceLive, SignupInviteServiceLive, EmailCapabilityServiceLive, HealthServiceLive, LegalServiceLive, RateLimitServiceLive),
+  Layer.mergeAll(BookServiceLive, BookEnrichmentServiceLive, LendingServiceLive, AdminServiceLive, AuditServiceLive, LocationServiceLive, LibraryTransferServiceLive, PreferencesServiceLive, AccountDeletionServiceLive, SignupInviteServiceLive, EmailCapabilityServiceLive, AuthCapabilityServiceLive, HealthServiceLive, LegalServiceLive, RateLimitServiceLive),
   RepositoriesLive
 )
 
@@ -86,6 +88,7 @@ export type MainServices
     | AuthRequestService
     | EmailService
     | EmailCapabilityService
+    | AuthCapabilityService
     | HealthService
     | LegalService
     | RateLimitService
