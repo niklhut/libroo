@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import {
   e2ePassword,
+  confirmSettingsRecentAuth,
   exportSettingsCsv,
   expectLibraryBookMetadata,
   libraryCsvColumns,
@@ -16,19 +17,15 @@ test('changes password and requires the new password on the next login', async (
   const newPassword = `${e2ePassword}-changed`
 
   await page.goto('/settings')
-  const securityForm = page.locator('form').filter({
-    has: page.getByRole('button', { name: 'Change password' })
-  })
-  await securityForm.locator('input[name="currentPassword"]').fill(`${e2ePassword}-wrong`)
-  await securityForm.locator('input[name="newPassword"]').fill(newPassword)
-  await securityForm.locator('input[name="confirmPassword"]').fill(newPassword)
-  await securityForm.getByRole('button', { name: 'Change password' }).click()
-  await expect(page.getByText('Password change failed', { exact: true }).last()).toBeVisible()
+  await page.getByRole('button', { name: 'Change password' }).click()
+  await confirmSettingsRecentAuth(page, `${e2ePassword}-wrong`)
+  await expect(page.getByText('Password confirmation failed', { exact: true }).last()).toBeVisible()
 
-  await securityForm.locator('input[name="currentPassword"]').fill(e2ePassword)
-  await securityForm.locator('input[name="newPassword"]').fill(newPassword)
-  await securityForm.locator('input[name="confirmPassword"]').fill(newPassword)
-  await securityForm.getByRole('button', { name: 'Change password' }).click()
+  await confirmSettingsRecentAuth(page)
+  const dialog = page.getByRole('dialog', { name: 'Change password' })
+  await dialog.getByLabel('New password', { exact: true }).fill(newPassword)
+  await dialog.getByLabel('Confirm new password', { exact: true }).fill(newPassword)
+  await dialog.getByRole('button', { name: 'Change password' }).click()
   await expect(page.getByText('Password updated', { exact: true }).last()).toBeVisible()
 
   await logout(page)
@@ -84,6 +81,7 @@ test('imports library data from CSV and renders imported metadata', async ({ pag
   await registerSettingsUser(page, testInfo.title, 'settings-import')
 
   await page.goto('/settings')
+  await page.getByRole('button', { name: 'Import CSV' }).click()
   await selectSettingsCsvFile(page)
   await expect(page.getByRole('button', { name: /library-import\.csv/ })).toBeVisible()
 

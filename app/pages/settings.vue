@@ -170,7 +170,7 @@ function resetAccountDeletionForm() {
 
 function openEmailManagement() {
   emailState.email = user.value?.email ?? ''
-  if (!hasRecentAuth.value) emailState.currentPassword = ''
+  emailState.currentPassword = hasRecentAuth.value ? recentAuthPassword.value : ''
   emailForm.value?.clear()
   emailManagementOpen.value = true
 }
@@ -209,7 +209,7 @@ async function confirmRecentAuth() {
 }
 
 function openPasswordManagement() {
-  if (!hasRecentAuth.value) passwordState.currentPassword = ''
+  passwordState.currentPassword = hasRecentAuth.value ? recentAuthPassword.value : ''
   passwordState.newPassword = ''
   passwordState.confirmPassword = ''
   passwordForm.value?.clear()
@@ -217,7 +217,7 @@ function openPasswordManagement() {
 }
 
 function openTwoFactorManagement() {
-  if (!hasRecentAuth.value) twoFactorState.password = ''
+  twoFactorState.password = hasRecentAuth.value ? recentAuthPassword.value : ''
   backupCodes.value = []
   backupCodesCopied.value = false
   twoFactorManagementOpen.value = true
@@ -226,6 +226,13 @@ function openTwoFactorManagement() {
 function openLibraryImport() {
   resetImport()
   libraryImportOpen.value = true
+}
+
+function openAccountDeletion() {
+  deletionState.currentPassword = hasRecentAuth.value ? recentAuthPassword.value : ''
+  deletionState.confirmation = ''
+  deletionForm.value?.clear()
+  accountDeletionOpen.value = true
 }
 
 async function enableTwoFactor() {
@@ -266,7 +273,7 @@ async function verifyTwoFactorSetup() {
 }
 
 async function openTwoFactorSetup() {
-  if (!hasRecentAuth.value) twoFactorState.password = ''
+  twoFactorState.password = hasRecentAuth.value ? recentAuthPassword.value : ''
   twoFactorState.code = ''
   totpUri.value = ''
   totpQrCode.value = ''
@@ -355,7 +362,7 @@ async function refreshPasskeys() {
 }
 
 async function openPasskeyManagement() {
-  if (!hasRecentAuth.value) passkeyState.password = ''
+  passkeyState.password = hasRecentAuth.value ? recentAuthPassword.value : ''
   passkeyState.name = ''
   passkeyManagementOpen.value = true
   await refreshPasskeys()
@@ -795,7 +802,7 @@ async function importLibraryCsvFile() {
               color="error"
               variant="subtle"
               icon="i-lucide-trash-2"
-              @click="requestRecentAuth(() => { accountDeletionOpen = true })"
+              @click="requestRecentAuth(openAccountDeletion)"
             >
               Delete account
             </UButton>

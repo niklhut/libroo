@@ -42,6 +42,12 @@ export async function selectSettingsCsvFile(page: Page, filePath = libraryImport
   await page.locator('input[type="file"][accept*="csv"]').setInputFiles(filePath)
 }
 
+export async function confirmSettingsRecentAuth(page: Page, password = e2ePassword) {
+  const dialog = page.getByRole('dialog', { name: 'Confirm it’s you' })
+  await dialog.getByLabel('Current password').fill(password)
+  await dialog.getByRole('button', { name: 'Continue' }).click()
+}
+
 export async function expectLibraryBookMetadata(page: Page, options: {
   title: string
   tags: string[]
