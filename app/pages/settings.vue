@@ -960,7 +960,7 @@ async function importLibraryCsvFile() {
             >
               <UAlert
                 :color="verificationStatus.verified ? 'success' : 'warning'"
-                variant="soft"
+                variant="subtle"
                 :icon="verificationStatus.verified ? 'i-lucide-shield-check' : 'i-lucide-mail-warning'"
                 :title="verificationStatus.verified ? 'Email verified' : 'Email verification required'"
                 :description="verificationStatus.verified ? 'Your current email address is verified.' : 'Verify your email address before using the rest of Libroo.'"
@@ -968,7 +968,7 @@ async function importLibraryCsvFile() {
               <UAlert
                 v-if="pendingEmailChange"
                 color="info"
-                variant="soft"
+                variant="subtle"
                 icon="i-lucide-mail-check"
                 title="Pending email change"
                 :description="`Open the verification link sent to ${pendingEmailChange}. Your account email stays ${user?.email} until then.`"
@@ -1240,6 +1240,7 @@ async function importLibraryCsvFile() {
           <div class="space-y-5">
             <UAlert
               color="success"
+              variant="subtle"
               icon="i-lucide-shield-check"
               title="Two-factor authentication is enabled"
             />
@@ -1273,6 +1274,7 @@ async function importLibraryCsvFile() {
             <template v-if="backupCodes.length">
               <UAlert
                 color="warning"
+                variant="subtle"
                 icon="i-lucide-key-round"
                 title="Save your new recovery codes"
                 description="Each code works once. They are shown only now."
@@ -1373,7 +1375,7 @@ async function importLibraryCsvFile() {
           >
             <UAlert
               color="error"
-              variant="soft"
+              variant="subtle"
               icon="i-lucide-triangle-alert"
               title="What will be deleted"
               description="Your account, active sessions, personal library records, tags, notes, ratings, locations, reading state, loans, invites, settings, and uploaded cover images will be removed."
@@ -1381,7 +1383,7 @@ async function importLibraryCsvFile() {
 
             <UAlert
               color="neutral"
-              variant="soft"
+              variant="subtle"
               icon="i-lucide-database"
               title="What may remain"
               description="Information that belongs to other people, or shared book information that no longer identifies you, may remain. Deleted information may also stay temporarily in protected backups."
@@ -1390,7 +1392,7 @@ async function importLibraryCsvFile() {
             <UAlert
               v-if="currentUserIsAdmin"
               color="warning"
-              variant="soft"
+              variant="subtle"
               icon="i-lucide-shield-alert"
               title="Last-admin protection"
               description="The last active admin cannot delete their own account until another active admin exists."
@@ -1474,6 +1476,7 @@ async function importLibraryCsvFile() {
             <template v-if="twoFactorSetupStep === 'backup-codes'">
               <UAlert
                 color="warning"
+                variant="subtle"
                 icon="i-lucide-key-round"
                 title="Save your recovery codes"
                 description="Each code works once. Regenerating recovery codes invalidates every previous code."
