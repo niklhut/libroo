@@ -28,7 +28,7 @@ const comarkPlugins = [
       <UAlert
         v-if="errorMessage"
         color="error"
-        variant="soft"
+        variant="subtle"
         icon="i-lucide-triangle-alert"
         title="This legal page could not be loaded."
         :description="errorMessage"
@@ -37,7 +37,7 @@ const comarkPlugins = [
       <UAlert
         v-else-if="!text"
         color="neutral"
-        variant="soft"
+        variant="subtle"
         icon="i-lucide-file-text"
         title="No legal document has been published here yet."
         description="Please check back later."

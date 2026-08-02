@@ -259,6 +259,7 @@ async function signInWithPasskey() {
         <UAlert
           v-if="error"
           color="error"
+          variant="subtle"
           icon="i-lucide-alert-circle"
           :title="error"
         />
@@ -323,6 +324,7 @@ async function signInWithPasskey() {
         >
           <UAlert
             color="error"
+            variant="subtle"
             icon="i-lucide-alert-circle"
             :title="error"
           />

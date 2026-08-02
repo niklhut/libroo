@@ -152,6 +152,7 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
           <UAlert
             v-if="turnstileMissingConfig"
             color="warning"
+            variant="subtle"
             icon="i-lucide-shield-alert"
             title="Bot protection is not configured"
           />
