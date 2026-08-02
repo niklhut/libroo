@@ -1514,14 +1514,16 @@ async function importLibraryCsvFile() {
                 Copy authenticator URI
               </UButton>
               <UFormField label="First authenticator code">
-                <UPinInput
-                  v-model="twoFactorOtp"
-                  :length="6"
-                  type="number"
-                  otp
-                  autofocus
-                  @complete="() => { if (!isVerifyingTotp) verifyTwoFactorSetup() }"
-                />
+                <div class="flex justify-center">
+                  <UPinInput
+                    v-model="twoFactorOtp"
+                    :length="6"
+                    type="number"
+                    otp
+                    autofocus
+                    @complete="() => { if (!isVerifyingTotp) verifyTwoFactorSetup() }"
+                  />
+                </div>
               </UFormField>
             </template>
           </div>

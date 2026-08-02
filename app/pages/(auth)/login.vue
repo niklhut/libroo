@@ -233,14 +233,16 @@ async function signInWithPasskey() {
           v-else
           label="Authenticator code"
         >
-          <UPinInput
-            v-model="mfaOtp"
-            :length="6"
-            type="number"
-            otp
-            autofocus
-            @complete="() => { if (!isVerifyingMfa) verifySecondFactor() }"
-          />
+          <div class="flex justify-center">
+            <UPinInput
+              v-model="mfaOtp"
+              :length="6"
+              type="number"
+              otp
+              autofocus
+              @complete="() => { if (!isVerifyingMfa) verifySecondFactor() }"
+            />
+          </div>
         </UFormField>
         <UButton
           block
