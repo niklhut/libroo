@@ -1,6 +1,6 @@
 import { booleanConfigValue } from '~~/shared/utils/runtime-config'
 import { getConfigValue } from './email-verification-config'
-import { getAuthUrl } from './auth'
+import { resolveAuthUrl } from './auth-url'
 
 export interface WebAuthnConfig {
   enabled: boolean
@@ -19,7 +19,7 @@ export function isSecureWebAuthnOrigin(origin: string) {
 }
 
 export function getWebAuthnConfig(): WebAuthnConfig {
-  const origin = getAuthUrl()
+  const origin = resolveAuthUrl()
   let rpID = 'localhost'
 
   try {

@@ -1,3 +1,4 @@
+import 'reflect-metadata'
 import { betterAuth } from 'better-auth/minimal'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { admin, twoFactor } from 'better-auth/plugins'
@@ -17,6 +18,9 @@ import { createBackgroundTaskHandler } from '../runtime/background-tasks.active'
 import { runtimeProfile } from '../runtime/profile.active'
 import { getWebAuthnConfig, passkeysAvailable } from './webauthn-config'
 import { librooRecentAuthPlugin } from './libroo-recent-auth-plugin'
+import { resolveAuthUrl } from './auth-url'
+
+export const getAuthUrl = resolveAuthUrl
 
 interface EnvSecretOptions {
   envKey: string
@@ -76,15 +80,6 @@ export const getAuthSecret = () => getEnvSecret({
     'CRITICAL: NUXT_BETTER_AUTH_SECRET environment variable is missing or empty. '
     + 'This is required in production to ensure session security. '
     + 'Please set NUXT_BETTER_AUTH_SECRET in your production environment.'
-})
-
-export const getAuthUrl = () => getEnvSecret({
-  envKey: 'NUXT_BETTER_AUTH_URL',
-  runtimeConfigKey: 'betterAuthUrl',
-  devFallback: 'http://localhost:3000',
-  productionWarning:
-    'WARNING: NUXT_BETTER_AUTH_URL is not set in production. '
-    + 'Using default http://localhost:3000 which may cause authentication failures.'
 })
 
 const emailVerificationConfig = getEmailVerificationConfig()
