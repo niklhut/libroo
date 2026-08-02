@@ -18,6 +18,7 @@ import { runtimeProfile } from '../runtime/profile.active'
 import { getWebAuthnConfig, passkeysAvailable } from './webauthn-config'
 import { librooRecentAuthPlugin } from './libroo-recent-auth-plugin'
 import { resolveAuthUrl } from './auth-url'
+import { librooPasskeyTwoFactorPlugin } from './libroo-passkey-two-factor-plugin'
 
 export const getAuthUrl = resolveAuthUrl
 
@@ -314,7 +315,7 @@ export const auth = betterAuth({
           rpID: webAuthnConfig.rpID,
           rpName: 'Libroo',
           origin: webAuthnConfig.origin
-        })]
+        }), librooPasskeyTwoFactorPlugin()]
       : []),
     librooTermsConsentPlugin(),
     admin({

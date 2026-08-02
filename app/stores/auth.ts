@@ -51,6 +51,10 @@ export const useAuthStore = defineStore('auth', () => {
     pendingMfa.value = false
   }
 
+  function beginPendingMfa() {
+    pendingMfa.value = true
+  }
+
   async function signUp(email: string, password: string, name: string, inviteToken?: string | null, turnstileToken?: string | null, acceptTerms?: boolean | null) {
     const body = {
       email,
@@ -97,6 +101,7 @@ export const useAuthStore = defineStore('auth', () => {
     signUp,
     signOut,
     refresh,
+    beginPendingMfa,
     clearPendingMfa
   }
 })

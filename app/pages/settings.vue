@@ -37,7 +37,8 @@ const deletionState = reactive({
   currentPassword: '',
   confirmation: ''
 })
-const twoFactorState = reactive({ code: '' })
+const twoFactorOtp = ref<number[]>([])
+const twoFactorCode = computed(() => twoFactorOtp.value.join(''))
 const passkeyState = reactive({ name: '' })
 const totpUri = ref('')
 const totpQrCode = ref('')
@@ -158,7 +159,7 @@ watch(twoFactorSetupOpen, (isOpen) => {
   totpQrCode.value = ''
   backupCodes.value = []
   backupCodesCopied.value = false
-  twoFactorState.code = ''
+  twoFactorOtp.value = []
   twoFactorSetupStep.value = 'password'
 })
 
@@ -289,7 +290,7 @@ async function enableTwoFactor() {
     backupCodes.value = result.data.backupCodes
     const { default: QRCode } = await import('qrcode')
     totpQrCode.value = await QRCode.toDataURL(result.data.totpURI, { margin: 1, width: 220 })
-    twoFactorState.code = ''
+    twoFactorOtp.value = []
     backupCodesCopied.value = false
     twoFactorSetupStep.value = 'backup-codes'
   } catch (err: unknown) {
@@ -302,7 +303,7 @@ async function enableTwoFactor() {
 async function verifyTwoFactorSetup() {
   isVerifyingTotp.value = true
   try {
-    const result = await authClient.twoFactor.verifyTotp({ code: twoFactorState.code.trim() })
+    const result = await authClient.twoFactor.verifyTotp({ code: twoFactorCode.value })
     if (result.error) throw new Error(result.error.message || 'Invalid authenticator code')
     twoFactorSetupOpen.value = false
     await authStore.refresh()
@@ -315,7 +316,7 @@ async function verifyTwoFactorSetup() {
 }
 
 async function openTwoFactorSetup() {
-  twoFactorState.code = ''
+  twoFactorOtp.value = []
   totpUri.value = ''
   totpQrCode.value = ''
   backupCodes.value = []
@@ -1513,13 +1514,13 @@ async function importLibraryCsvFile() {
                 Copy authenticator URI
               </UButton>
               <UFormField label="First authenticator code">
-                <UInput
-                  v-model="twoFactorState.code"
-                  inputmode="numeric"
-                  autocomplete="one-time-code"
-                  placeholder="123456"
-                  class="w-full"
-                  @keydown.enter="() => { if (twoFactorState.code.trim() && !isVerifyingTotp) verifyTwoFactorSetup() }"
+                <UPinInput
+                  v-model="twoFactorOtp"
+                  :length="6"
+                  type="number"
+                  otp
+                  autofocus
+                  @complete="() => { if (!isVerifyingTotp) verifyTwoFactorSetup() }"
                 />
               </UFormField>
             </template>
@@ -1545,7 +1546,7 @@ async function importLibraryCsvFile() {
           <UButton
             v-else
             :loading="isVerifyingTotp"
-            :disabled="!twoFactorState.code.trim()"
+            :disabled="!twoFactorCode"
             @click="verifyTwoFactorSetup"
           >
             Verify and finish

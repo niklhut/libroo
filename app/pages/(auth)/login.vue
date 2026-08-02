@@ -26,9 +26,11 @@ const showForgotPassword = computed(() => canShowForgotPasswordAction(emailCapab
 const browserSupportsPasskeys = ref(false)
 const showPasskeySignIn = computed(() => browserSupportsPasskeys.value && canShowPasskeySignIn(authCapabilities.value))
 const mfaCode = ref('')
+const mfaOtp = ref<number[]>([])
 const useBackupCode = ref(false)
 const isVerifyingMfa = ref(false)
 const isPasskeyLoading = ref(false)
+const secondFactorCode = computed(() => useBackupCode.value ? mfaCode.value : mfaOtp.value.join(''))
 
 onMounted(() => {
   browserSupportsPasskeys.value = typeof PublicKeyCredential !== 'undefined'
@@ -148,18 +150,21 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
 }
 
 async function verifySecondFactor() {
-  if (!mfaCode.value.trim()) return
+  const code = secondFactorCode.value.trim()
+  if (!code) return
   isVerifyingMfa.value = true
   error.value = ''
   try {
     const result = useBackupCode.value
-      ? await authClient.twoFactor.verifyBackupCode({ code: mfaCode.value.trim() })
-      : await authClient.twoFactor.verifyTotp({ code: mfaCode.value.trim() })
+      ? await authClient.twoFactor.verifyBackupCode({ code })
+      : await authClient.twoFactor.verifyTotp({ code })
     if (result.error) {
       error.value = result.error.message || 'Unable to verify the code'
       return
     }
     authStore.clearPendingMfa()
+    mfaCode.value = ''
+    mfaOtp.value = []
     isFromSignout.value = false
     await authStore.refresh()
     toast.add({ title: 'Welcome back!', description: 'Second factor verified.', color: 'success' })
@@ -177,6 +182,11 @@ async function signInWithPasskey() {
     const result = await authClient.signIn.passkey()
     if (result.error) {
       error.value = result.error.message || 'Passkey sign-in failed'
+      return
+    }
+    const requiresSecondFactor = Boolean((result.data as { twoFactorRedirect?: boolean } | null)?.twoFactorRedirect)
+    if (requiresSecondFactor) {
+      authStore.beginPendingMfa()
       return
     }
     authStore.clearPendingMfa()
@@ -206,20 +216,36 @@ async function signInWithPasskey() {
             Enter the code from your authenticator app or a recovery code.
           </p>
         </div>
-        <UFormField :label="useBackupCode ? 'Recovery code' : 'Authenticator code'">
+        <UFormField
+          v-if="useBackupCode"
+          label="Recovery code"
+        >
           <UInput
             v-model="mfaCode"
             class="w-full"
-            :inputmode="useBackupCode ? 'text' : 'numeric'"
-            :autocomplete="useBackupCode ? 'off' : 'one-time-code'"
-            :placeholder="useBackupCode ? 'Enter a recovery code' : '123456'"
-            @keydown.enter="() => { if (mfaCode.trim() && !isVerifyingMfa) verifySecondFactor() }"
+            inputmode="text"
+            autocomplete="off"
+            placeholder="Enter a recovery code"
+            @keydown.enter="() => { if (secondFactorCode.trim() && !isVerifyingMfa) verifySecondFactor() }"
+          />
+        </UFormField>
+        <UFormField
+          v-else
+          label="Authenticator code"
+        >
+          <UPinInput
+            v-model="mfaOtp"
+            :length="6"
+            type="number"
+            otp
+            autofocus
+            @complete="() => { if (!isVerifyingMfa) verifySecondFactor() }"
           />
         </UFormField>
         <UButton
           block
           :loading="isVerifyingMfa"
-          :disabled="!mfaCode.trim()"
+          :disabled="!secondFactorCode.trim()"
           @click="verifySecondFactor"
         >
           Verify and sign in
@@ -228,7 +254,7 @@ async function signInWithPasskey() {
           color="neutral"
           variant="link"
           block
-          @click="() => { useBackupCode = !useBackupCode; mfaCode = '' }"
+          @click="() => { useBackupCode = !useBackupCode; mfaCode = ''; mfaOtp = [] }"
         >
           {{ useBackupCode ? 'Use an authenticator code' : 'Use a recovery code instead' }}
         </UButton>
