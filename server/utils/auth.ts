@@ -1,4 +1,3 @@
-import 'reflect-metadata'
 import { betterAuth } from 'better-auth/minimal'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { admin, twoFactor } from 'better-auth/plugins'

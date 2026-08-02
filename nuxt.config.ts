@@ -154,6 +154,14 @@ export default defineNuxtConfig({
   compatibilityDate: '2025-01-15',
 
   nitro: {
+    // @peculiar/x509 (used by Better Auth passkeys) initializes tsyringe while
+    // Cloudflare validates the Worker module. Keep the metadata polyfill in
+    // the generated entry file so it runs before Nitro's bundled chunks.
+    rollupConfig: {
+      output: {
+        banner: runtimeProfile === 'cloudflare' ? 'import "reflect-metadata";' : ''
+      }
+    },
     cloudflare: runtimeProfile === 'cloudflare'
       ? {
           wrangler: {
