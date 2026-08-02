@@ -1243,7 +1243,7 @@ async function importLibraryCsvFile() {
               icon="i-lucide-shield-check"
               title="Two-factor authentication is enabled"
             />
-            <div class="grid gap-3 sm:grid-cols-2">
+            <div class="grid gap-3">
               <UButton
                 color="neutral"
                 variant="outline"

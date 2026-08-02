@@ -403,7 +403,7 @@ function adminRoleTokenPredicate() {
 function inactiveBanPredicate() {
   return sql`(
     COALESCE(${user.banned}, false) = false
-    OR (${user.banExpires} IS NOT NULL AND ${user.banExpires} <= ${new Date()})
+    OR (${user.banExpires} IS NOT NULL AND ${user.banExpires} <= ${Date.now()})
   )`
 }
 
