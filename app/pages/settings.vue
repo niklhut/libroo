@@ -59,10 +59,16 @@ const emailManagementOpen = ref(false)
 const passwordManagementOpen = ref(false)
 const twoFactorManagementOpen = ref(false)
 const libraryImportOpen = ref(false)
+const recentAuthOpen = ref(false)
+const recentAuthPassword = ref('')
+const recentAuthExpiresAt = ref(0)
+const pendingRecentAuthAction = ref<(() => void) | null>(null)
+const isConfirmingRecentAuth = ref(false)
 const showTwoFactorPassword = ref(false)
 const showPasskeyPassword = ref(false)
 const showPasskeyManagement = computed(() => canShowPasskeyManagement(authCapabilities.value))
 const showTwoFactorManagement = computed(() => canShowTwoFactorManagement(authCapabilities.value))
+const hasRecentAuth = computed(() => recentAuthExpiresAt.value > Date.now())
 
 const isChangingEmail = ref(false)
 const isChangingPassword = ref(false)
@@ -164,13 +170,46 @@ function resetAccountDeletionForm() {
 
 function openEmailManagement() {
   emailState.email = user.value?.email ?? ''
-  emailState.currentPassword = ''
+  if (!hasRecentAuth.value) emailState.currentPassword = ''
   emailForm.value?.clear()
   emailManagementOpen.value = true
 }
 
+function requestRecentAuth(action: () => void) {
+  if (hasRecentAuth.value) {
+    action()
+    return
+  }
+  pendingRecentAuthAction.value = action
+  recentAuthPassword.value = ''
+  recentAuthOpen.value = true
+}
+
+async function confirmRecentAuth() {
+  isConfirmingRecentAuth.value = true
+  try {
+    const result = await $fetch<{ expiresAt: string }>('/api/auth/recent-auth', {
+      method: 'POST',
+      body: { password: recentAuthPassword.value }
+    })
+    recentAuthExpiresAt.value = new Date(result.expiresAt).getTime()
+    emailState.currentPassword = recentAuthPassword.value
+    passwordState.currentPassword = recentAuthPassword.value
+    deletionState.currentPassword = recentAuthPassword.value
+    twoFactorState.password = recentAuthPassword.value
+    passkeyState.password = recentAuthPassword.value
+    recentAuthOpen.value = false
+    pendingRecentAuthAction.value?.()
+    pendingRecentAuthAction.value = null
+  } catch (err: unknown) {
+    toast.add({ title: 'Password confirmation failed', description: getFailureMessage(err, 'Unable to confirm your password'), color: 'error' })
+  } finally {
+    isConfirmingRecentAuth.value = false
+  }
+}
+
 function openPasswordManagement() {
-  passwordState.currentPassword = ''
+  if (!hasRecentAuth.value) passwordState.currentPassword = ''
   passwordState.newPassword = ''
   passwordState.confirmPassword = ''
   passwordForm.value?.clear()
@@ -178,7 +217,7 @@ function openPasswordManagement() {
 }
 
 function openTwoFactorManagement() {
-  twoFactorState.password = ''
+  if (!hasRecentAuth.value) twoFactorState.password = ''
   backupCodes.value = []
   backupCodesCopied.value = false
   twoFactorManagementOpen.value = true
@@ -189,15 +228,9 @@ function openLibraryImport() {
   libraryImportOpen.value = true
 }
 
-async function verifyRecentPassword(password: string) {
-  if (!password) throw new Error('Enter your current password to continue.')
-  await $fetch('/api/auth/verify-password', { method: 'POST', body: { password } })
-}
-
 async function enableTwoFactor() {
   isEnablingTwoFactor.value = true
   try {
-    await verifyRecentPassword(twoFactorState.password)
     const result = await authClient.twoFactor.enable({ password: twoFactorState.password })
     if (result.error || !result.data) throw new Error(result.error?.message || 'Unable to start two-factor setup')
     totpUri.value = result.data.totpURI
@@ -232,15 +265,18 @@ async function verifyTwoFactorSetup() {
   }
 }
 
-function openTwoFactorSetup() {
-  twoFactorState.password = ''
+async function openTwoFactorSetup() {
+  if (!hasRecentAuth.value) twoFactorState.password = ''
   twoFactorState.code = ''
   totpUri.value = ''
   totpQrCode.value = ''
   backupCodes.value = []
   backupCodesCopied.value = false
   twoFactorSetupStep.value = 'password'
-  twoFactorSetupOpen.value = true
+  await enableTwoFactor()
+  if (backupCodes.value.length) {
+    twoFactorSetupOpen.value = true
+  }
 }
 
 async function copyBackupCodes() {
@@ -276,7 +312,6 @@ async function copyToClipboard(value: string) {
 async function disableTwoFactor() {
   isDisablingTwoFactor.value = true
   try {
-    await verifyRecentPassword(twoFactorState.password)
     const result = await authClient.twoFactor.disable({ password: twoFactorState.password })
     if (result.error) throw new Error(result.error.message || 'Unable to disable two-factor authentication')
     twoFactorEnabled.value = false
@@ -297,11 +332,9 @@ async function disableTwoFactor() {
 async function regenerateBackupCodes() {
   isRegeneratingBackupCodes.value = true
   try {
-    await verifyRecentPassword(twoFactorState.password)
     const result = await authClient.twoFactor.generateBackupCodes({ password: twoFactorState.password })
     if (result.error || !result.data) throw new Error(result.error?.message || 'Unable to regenerate recovery codes')
     backupCodes.value = result.data.backupCodes
-    twoFactorState.password = ''
     toast.add({ title: 'Recovery codes regenerated', description: 'All previous recovery codes are now invalid.', color: 'success' })
   } catch (err: unknown) {
     toast.add({ title: 'Unable to regenerate recovery codes', description: getFailureMessage(err, 'Unable to regenerate recovery codes'), color: 'error' })
@@ -322,7 +355,7 @@ async function refreshPasskeys() {
 }
 
 async function openPasskeyManagement() {
-  passkeyState.password = ''
+  if (!hasRecentAuth.value) passkeyState.password = ''
   passkeyState.name = ''
   passkeyManagementOpen.value = true
   await refreshPasskeys()
@@ -331,11 +364,9 @@ async function openPasskeyManagement() {
 async function addPasskey() {
   isAddingPasskey.value = true
   try {
-    await verifyRecentPassword(passkeyState.password)
     const result = await authClient.passkey.addPasskey({ name: passkeyState.name.trim() || undefined })
     if (result.error) throw new Error(result.error.message || 'Unable to add passkey')
     passkeyState.name = ''
-    passkeyState.password = ''
     await refreshPasskeys()
     toast.add({ title: 'Passkey added', color: 'success' })
   } catch (err: unknown) {
@@ -348,7 +379,6 @@ async function addPasskey() {
 async function removePasskey(id: string) {
   isRemovingPasskey.value = id
   try {
-    await verifyRecentPassword(passkeyState.password)
     const result = await authClient.passkey.deletePasskey({ id })
     if (result.error) throw new Error(result.error.message || 'Unable to remove passkey')
     await refreshPasskeys()
@@ -661,7 +691,7 @@ async function importLibraryCsvFile() {
             <UButton
               color="neutral"
               variant="outline"
-              @click="openEmailManagement"
+              @click="requestRecentAuth(openEmailManagement)"
             >
               Manage
             </UButton>
@@ -685,7 +715,7 @@ async function importLibraryCsvFile() {
             <UButton
               color="neutral"
               variant="outline"
-              @click="openPasswordManagement"
+              @click="requestRecentAuth(openPasswordManagement)"
             >
               Change password
             </UButton>
@@ -713,7 +743,7 @@ async function importLibraryCsvFile() {
               :icon="twoFactorEnabled ? undefined : 'i-lucide-shield-plus'"
               color="neutral"
               variant="outline"
-              @click="twoFactorEnabled ? openTwoFactorManagement() : openTwoFactorSetup()"
+              @click="requestRecentAuth(twoFactorEnabled ? openTwoFactorManagement : openTwoFactorSetup)"
             >
               {{ twoFactorEnabled ? 'Manage' : 'Set up' }}
             </UButton>
@@ -740,9 +770,9 @@ async function importLibraryCsvFile() {
             <UButton
               color="neutral"
               variant="outline"
-              @click="openPasskeyManagement"
+              @click="requestRecentAuth(openPasskeyManagement)"
             >
-              {{ passkeys.length ? 'Manage' : 'Add passkey' }}
+              Manage passkeys
             </UButton>
           </div>
 
@@ -765,7 +795,7 @@ async function importLibraryCsvFile() {
               color="error"
               variant="subtle"
               icon="i-lucide-trash-2"
-              @click="() => { accountDeletionOpen = true }"
+              @click="requestRecentAuth(() => { accountDeletionOpen = true })"
             >
               Delete account
             </UButton>
@@ -838,9 +868,47 @@ async function importLibraryCsvFile() {
       </UCard>
 
       <UModal
+        v-model:open="recentAuthOpen"
+        title="Confirm it’s you"
+        description="For your security, confirm your current password before changing sign-in or account settings. This confirmation lasts five minutes."
+      >
+        <template #body>
+          <UFormField
+            label="Current password"
+            required
+          >
+            <UInput
+              v-model="recentAuthPassword"
+              type="password"
+              autocomplete="current-password"
+              class="w-full"
+              @keydown.enter="confirmRecentAuth"
+            />
+          </UFormField>
+        </template>
+        <template #footer>
+          <UButton
+            color="neutral"
+            variant="soft"
+            :disabled="isConfirmingRecentAuth"
+            @click="() => { recentAuthOpen = false }"
+          >
+            Cancel
+          </UButton>
+          <UButton
+            :loading="isConfirmingRecentAuth"
+            :disabled="!recentAuthPassword"
+            @click="confirmRecentAuth"
+          >
+            Continue
+          </UButton>
+        </template>
+      </UModal>
+
+      <UModal
         v-model:open="emailManagementOpen"
         title="Manage email"
-        description="Changing your email requires your current password."
+        description="Update the email address for this account."
       >
         <template #body>
           <div class="space-y-5">
@@ -897,6 +965,7 @@ async function importLibraryCsvFile() {
                 />
               </UFormField>
               <UFormField
+                v-if="!hasRecentAuth"
                 label="Current password"
                 name="currentPassword"
                 required
@@ -958,6 +1027,7 @@ async function importLibraryCsvFile() {
             @submit="changePassword"
           >
             <UFormField
+              v-if="!hasRecentAuth"
               label="Current password"
               name="currentPassword"
               required
@@ -1118,7 +1188,7 @@ async function importLibraryCsvFile() {
       <UModal
         v-model:open="twoFactorManagementOpen"
         title="Manage two-factor authentication"
-        description="Recovery-code changes and disabling two-factor authentication require your current password."
+        description="Regenerate recovery codes or turn off two-factor authentication."
       >
         <template #body>
           <div class="space-y-5">
@@ -1128,6 +1198,7 @@ async function importLibraryCsvFile() {
               title="Two-factor authentication is enabled"
             />
             <UFormField
+              v-if="!hasRecentAuth"
               label="Current password"
               required
             >
@@ -1298,6 +1369,7 @@ async function importLibraryCsvFile() {
             />
 
             <UFormField
+              v-if="!hasRecentAuth"
               label="Current password"
               name="currentPassword"
               required
@@ -1349,53 +1421,29 @@ async function importLibraryCsvFile() {
       <UModal
         v-model:open="twoFactorSetupOpen"
         title="Set up two-factor authentication"
-        :description="twoFactorSetupStep === 'password'
-          ? 'Confirm your password to create a new authenticator setup.'
-          : twoFactorSetupStep === 'backup-codes'
-            ? 'Save your recovery codes before continuing. They are shown only now.'
-            : 'Scan the QR code or add the authenticator URI, then enter its first code.'"
+        :description="twoFactorSetupStep === 'backup-codes'
+          ? 'Save your recovery codes before continuing. They are shown only now.'
+          : 'Scan the QR code or add the authenticator URI, then enter its first code.'"
         :ui="{ footer: 'justify-end gap-3' }"
       >
         <template #body>
           <div class="space-y-5">
             <div class="flex items-center gap-2 text-sm text-muted">
-              <UBadge :color="twoFactorSetupStep === 'password' ? 'primary' : 'neutral'">
-                1. Confirm
+              <UBadge
+                :color="twoFactorSetupStep === 'backup-codes' ? 'primary' : 'neutral'"
+                variant="soft"
+              >
+                1. Save codes
               </UBadge>
-              <UBadge :color="twoFactorSetupStep === 'backup-codes' ? 'primary' : 'neutral'">
-                2. Save codes
-              </UBadge>
-              <UBadge :color="twoFactorSetupStep === 'verify' ? 'primary' : 'neutral'">
-                3. Verify
+              <UBadge
+                :color="twoFactorSetupStep === 'verify' ? 'primary' : 'neutral'"
+                variant="soft"
+              >
+                2. Verify
               </UBadge>
             </div>
 
-            <template v-if="twoFactorSetupStep === 'password'">
-              <UFormField
-                label="Current password"
-                required
-              >
-                <UInput
-                  v-model="twoFactorState.password"
-                  :type="showTwoFactorPassword ? 'text' : 'password'"
-                  autocomplete="current-password"
-                  class="w-full"
-                >
-                  <template #trailing>
-                    <UButton
-                      type="button"
-                      color="neutral"
-                      variant="ghost"
-                      size="xs"
-                      :icon="showTwoFactorPassword ? 'i-lucide-eye-off' : 'i-lucide-eye'"
-                      @click="() => { showTwoFactorPassword = !showTwoFactorPassword }"
-                    />
-                  </template>
-                </UInput>
-              </UFormField>
-            </template>
-
-            <template v-else-if="twoFactorSetupStep === 'backup-codes'">
+            <template v-if="twoFactorSetupStep === 'backup-codes'">
               <UAlert
                 color="warning"
                 icon="i-lucide-key-round"
@@ -1465,15 +1513,7 @@ async function importLibraryCsvFile() {
             Cancel
           </UButton>
           <UButton
-            v-if="twoFactorSetupStep === 'password'"
-            :loading="isEnablingTwoFactor"
-            :disabled="!twoFactorState.password"
-            @click="enableTwoFactor"
-          >
-            Continue
-          </UButton>
-          <UButton
-            v-else-if="twoFactorSetupStep === 'backup-codes'"
+            v-if="twoFactorSetupStep === 'backup-codes'"
             :icon="backupCodesCopied ? 'i-lucide-check' : undefined"
             @click="() => { twoFactorSetupStep = 'verify' }"
           >
@@ -1493,12 +1533,13 @@ async function importLibraryCsvFile() {
       <UModal
         v-model:open="passkeyManagementOpen"
         title="Manage passkeys"
-        description="Add, name, or remove passkeys for this account. Confirm your current password before making a change."
+        description="Add, name, or remove passkeys for this account."
         :ui="{ footer: 'justify-end gap-3' }"
       >
         <template #body>
           <div class="space-y-5">
             <UFormField
+              v-if="!hasRecentAuth"
               label="Current password"
               required
             >

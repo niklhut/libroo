@@ -27,6 +27,7 @@ export const session = sqliteTable('session', {
   token: text('token').notNull().unique(),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+  recentAuthAt: integer('recent_auth_at', { mode: 'timestamp' }),
   ipAddress: text('ip_address'),
   userAgent: text('user_agent'),
   impersonatedBy: text('impersonated_by'),

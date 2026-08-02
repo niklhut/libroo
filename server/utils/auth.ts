@@ -16,6 +16,7 @@ import { sendEmailMessage } from '../services/email.service'
 import { createBackgroundTaskHandler } from '../runtime/background-tasks.active'
 import { runtimeProfile } from '../runtime/profile.active'
 import { getWebAuthnConfig, passkeysAvailable } from './webauthn-config'
+import { librooRecentAuthPlugin } from './libroo-recent-auth-plugin'
 
 interface EnvSecretOptions {
   envKey: string
@@ -330,6 +331,7 @@ export const auth = betterAuth({
     }),
     librooAdminAuditPlugin(),
     librooSecurityNotificationPlugin(),
+    librooRecentAuthPlugin(),
     librooAdminPolicyPlugin()
   ]
 })

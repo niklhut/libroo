@@ -297,20 +297,22 @@ async function signInWithPasskey() {
         </template>
 
         <template #footer>
-          <UButton
-            v-if="showPasskeySignIn"
-            block
-            color="neutral"
-            variant="outline"
-            icon="i-lucide-fingerprint"
-            :loading="isPasskeyLoading"
-            @click="signInWithPasskey"
-          >
-            Sign in with passkey
-          </UButton>
-          <p class="text-center text-sm text-muted">
-            Libroo - Your Library, Managed
-          </p>
+          <div class="-mt-3 space-y-4">
+            <UButton
+              v-if="showPasskeySignIn"
+              block
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-fingerprint"
+              :loading="isPasskeyLoading"
+              @click="signInWithPasskey"
+            >
+              Sign in with passkey
+            </UButton>
+            <p class="text-center text-sm text-muted">
+              Libroo - Your Library, Managed
+            </p>
+          </div>
         </template>
       </UAuthForm>
     </UPageCard>
