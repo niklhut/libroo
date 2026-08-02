@@ -15,6 +15,7 @@ describe('librooAdminAuditPlugin', () => {
     expect(isAuditedAuthPath('/passkey/generate-register-options')).toBe(true)
     expect(isAuditedAuthPath('/passkey/verify-registration')).toBe(true)
     expect(isAuditedAuthPath('/passkey/delete-passkey')).toBe(true)
+    expect(isAuditedAuthPath('/passkey/update-passkey')).toBe(true)
 
     await expect(buildAuthAuditEntry({
       path: '/passkey/delete-passkey',
@@ -23,6 +24,15 @@ describe('librooAdminAuditPlugin', () => {
     })).resolves.toEqual(expect.objectContaining({
       action: 'auth.passkey_removed',
       metadata: { passkeyId: 'passkey-1' }
+    }))
+
+    await expect(buildAuthAuditEntry({
+      path: '/passkey/update-passkey',
+      body: { id: 'passkey-1', name: 'Work laptop' },
+      context: { returned: { status: true }, internalAdapter: { findUserById: async () => null } }
+    })).resolves.toEqual(expect.objectContaining({
+      action: 'auth.passkey_renamed',
+      metadata: { passkeyId: 'passkey-1', name: 'Work laptop' }
     }))
   })
   it('builds role-change audit snapshots from Better Auth admin set-role requests', async () => {

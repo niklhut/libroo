@@ -21,6 +21,7 @@ export type AdminAuditAction
     | 'auth.backup_code_used'
     | 'auth.passkey_added'
     | 'auth.passkey_removed'
+    | 'auth.passkey_renamed'
 
 export type AdminAuditCategory = 'admin' | 'auth'
 

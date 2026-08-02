@@ -1,8 +1,7 @@
 import { APIError, createAuthMiddleware, getSessionFromCtx } from 'better-auth/api'
 import type { BetterAuthPlugin } from 'better-auth/types'
-import { and, eq, gt } from 'drizzle-orm'
-import { db, schema } from '../runtime/auth-db.active'
-import { RECENT_AUTH_TTL_MS } from '../services/recent-auth.service'
+import { Effect } from 'effect'
+import { RecentAuthError, RecentAuthService, RecentAuthServiceLive } from '../services/recent-auth.service'
 
 const RECENT_AUTH_PATHS = new Set([
   '/two-factor/enable',
@@ -23,15 +22,19 @@ export const librooRecentAuthPlugin = (): BetterAuthPlugin => ({
         const session = await getSessionFromCtx(ctx)
         const sessionId = session?.session?.id
         if (!sessionId) throw APIError.from('UNAUTHORIZED', { message: 'Unauthorized', code: 'UNAUTHORIZED' })
-        const recent = await db.query.session.findFirst({
-          where: and(
-            eq(schema.session.id, sessionId),
-            gt(schema.session.recentAuthAt, new Date(Date.now() - RECENT_AUTH_TTL_MS))
+        try {
+          await Effect.runPromise(
+            Effect.gen(function* () {
+              const recentAuth = yield* RecentAuthService
+              return yield* recentAuth.requireRecentAuth(sessionId)
+            }).pipe(Effect.provide(RecentAuthServiceLive))
           )
-        })
-        if (!recent) {
+        } catch (error) {
+          const message = error instanceof RecentAuthError
+            ? error.message
+            : 'Unable to verify recent authentication.'
           throw APIError.from('FORBIDDEN', {
-            message: 'Confirm your password before making this change.',
+            message,
             code: 'RECENT_AUTH_REQUIRED'
           })
         }

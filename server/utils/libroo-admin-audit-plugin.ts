@@ -410,6 +410,18 @@ export async function buildAuthAuditEntry(ctx: HookContext): Promise<CreateAdmin
     })
   }
 
+  if (path === '/passkey/update-passkey') {
+    return authAuditEntry({
+      actorUserId,
+      targetUserId,
+      action: 'auth.passkey_renamed',
+      metadata: compactMetadata({
+        passkeyId: readStringField(ctx.body, 'id'),
+        name: readStringField(ctx.body, 'name')
+      })
+    })
+  }
+
   return null
 }
 
@@ -439,6 +451,7 @@ export function isAuditedAuthPath(path: string | undefined) {
     || path === '/passkey/generate-register-options'
     || path === '/passkey/verify-registration'
     || path === '/passkey/delete-passkey'
+    || path === '/passkey/update-passkey'
 }
 
 function normalizeRole(role: string | string[] | null | undefined) {

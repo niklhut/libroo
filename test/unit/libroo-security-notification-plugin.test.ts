@@ -82,6 +82,32 @@ describe('librooSecurityNotificationPlugin', () => {
     expect(sendEmailMessage).not.toHaveBeenCalled()
   })
 
+  it('notifies when passkey registration returns the passkey record', async () => {
+    process.env.NUXT_EMAIL_PROVIDER = 'smtp'
+    process.env.NUXT_EMAIL_FROM = 'Libroo <no-reply@example.com>'
+    process.env.NUXT_SMTP_HOST = 'smtp.example.com'
+
+    const plugin = librooSecurityNotificationPlugin()
+    const beforeHandler = plugin.hooks?.before?.[0]?.handler as (ctx: unknown) => Promise<unknown>
+    const afterHandler = plugin.hooks?.after?.[0]?.handler as (ctx: unknown) => Promise<unknown>
+    const ctx = {
+      path: '/passkey/verify-registration',
+      context: {
+        returned: { id: 'passkey-1', credentialID: 'credential-1' },
+        internalAdapter: {},
+        session: { user: { id: 'user-1', name: 'Ada', email: 'ada@example.com' } }
+      }
+    }
+
+    await beforeHandler(ctx)
+    await afterHandler(ctx)
+
+    expect(sendEmailMessage).toHaveBeenCalledWith(expect.objectContaining({
+      to: 'ada@example.com',
+      subject: 'A passkey was added to your Libroo account'
+    }))
+  })
+
   it('defers password-change notifications when Better Auth provides a background helper', async () => {
     process.env.NUXT_EMAIL_PROVIDER = 'smtp'
     process.env.NUXT_EMAIL_FROM = 'Libroo <no-reply@example.com>'

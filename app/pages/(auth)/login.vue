@@ -23,11 +23,16 @@ const isLoading = ref(false)
 const error = ref('')
 const showPassword = ref(false)
 const showForgotPassword = computed(() => canShowForgotPasswordAction(emailCapabilities.value))
-const showPasskeySignIn = computed(() => canShowPasskeySignIn(authCapabilities.value))
+const browserSupportsPasskeys = ref(false)
+const showPasskeySignIn = computed(() => browserSupportsPasskeys.value && canShowPasskeySignIn(authCapabilities.value))
 const mfaCode = ref('')
 const useBackupCode = ref(false)
 const isVerifyingMfa = ref(false)
 const isPasskeyLoading = ref(false)
+
+onMounted(() => {
+  browserSupportsPasskeys.value = typeof PublicKeyCredential !== 'undefined'
+})
 
 // Get redirect path from query
 const redirectPath = computed(() => {
@@ -174,6 +179,7 @@ async function signInWithPasskey() {
       error.value = result.error.message || 'Passkey sign-in failed'
       return
     }
+    authStore.clearPendingMfa()
     isFromSignout.value = false
     await authStore.refresh()
   } catch (cause: unknown) {
@@ -204,8 +210,10 @@ async function signInWithPasskey() {
           <UInput
             v-model="mfaCode"
             class="w-full"
+            :inputmode="useBackupCode ? 'text' : 'numeric'"
             :autocomplete="useBackupCode ? 'off' : 'one-time-code'"
             :placeholder="useBackupCode ? 'Enter a recovery code' : '123456'"
+            @keydown.enter="() => { if (mfaCode.trim() && !isVerifyingMfa) verifySecondFactor() }"
           />
         </UFormField>
         <UButton

@@ -38,12 +38,12 @@ const deletionState = reactive({
   currentPassword: '',
   confirmation: ''
 })
-const twoFactorState = reactive({ password: '', code: '' })
-const passkeyState = reactive({ password: '', name: '' })
+const twoFactorState = reactive({ code: '' })
+const passkeyState = reactive({ name: '' })
 const totpUri = ref('')
 const totpQrCode = ref('')
 const backupCodes = ref<string[]>([])
-const twoFactorEnabled = ref(Boolean(user.value?.twoFactorEnabled))
+const twoFactorEnabled = computed(() => Boolean(user.value?.twoFactorEnabled))
 const twoFactorSetupOpen = ref(false)
 const twoFactorSetupStep = ref<'password' | 'backup-codes' | 'verify'>('password')
 const backupCodesCopied = ref(false)
@@ -62,13 +62,26 @@ const libraryImportOpen = ref(false)
 const recentAuthOpen = ref(false)
 const recentAuthPassword = ref('')
 const recentAuthExpiresAt = ref(0)
+const recentAuthClock = ref(Date.now())
 const pendingRecentAuthAction = ref<(() => void) | null>(null)
 const isConfirmingRecentAuth = ref(false)
-const showTwoFactorPassword = ref(false)
-const showPasskeyPassword = ref(false)
 const showPasskeyManagement = computed(() => canShowPasskeyManagement(authCapabilities.value))
 const showTwoFactorManagement = computed(() => canShowTwoFactorManagement(authCapabilities.value))
-const hasRecentAuth = computed(() => recentAuthExpiresAt.value > Date.now())
+const hasRecentAuth = computed(() => recentAuthExpiresAt.value > recentAuthClock.value)
+const emailFormState = computed(() => ({
+  ...emailState,
+  currentPassword: hasRecentAuth.value ? recentAuthPassword.value : emailState.currentPassword
+}))
+const passwordFormState = computed(() => ({
+  ...passwordState,
+  currentPassword: hasRecentAuth.value ? recentAuthPassword.value : passwordState.currentPassword
+}))
+const deletionFormState = computed(() => ({
+  ...deletionState,
+  currentPassword: hasRecentAuth.value ? recentAuthPassword.value : deletionState.currentPassword
+}))
+
+let recentAuthExpiryTimer: ReturnType<typeof setTimeout> | undefined
 
 const isChangingEmail = ref(false)
 const isChangingPassword = ref(false)
@@ -140,6 +153,28 @@ watch(libraryImportOpen, (isOpen) => {
   if (!isOpen) resetImport()
 })
 
+watch(twoFactorSetupOpen, (isOpen) => {
+  if (isOpen) return
+  totpUri.value = ''
+  totpQrCode.value = ''
+  backupCodes.value = []
+  backupCodesCopied.value = false
+  twoFactorState.code = ''
+  twoFactorSetupStep.value = 'password'
+})
+
+watch(recentAuthOpen, (isOpen) => {
+  if (!isOpen && !hasRecentAuth.value) recentAuthPassword.value = ''
+})
+
+onBeforeUnmount(() => {
+  if (recentAuthExpiryTimer) clearTimeout(recentAuthExpiryTimer)
+  recentAuthPassword.value = ''
+  emailState.currentPassword = ''
+  passwordState.currentPassword = ''
+  deletionState.currentPassword = ''
+})
+
 onMounted(() => {
   void refreshPasskeys()
 })
@@ -170,7 +205,7 @@ function resetAccountDeletionForm() {
 
 function openEmailManagement() {
   emailState.email = user.value?.email ?? ''
-  emailState.currentPassword = hasRecentAuth.value ? recentAuthPassword.value : ''
+  emailState.currentPassword = ''
   emailForm.value?.clear()
   emailManagementOpen.value = true
 }
@@ -185,6 +220,22 @@ function requestRecentAuth(action: () => void) {
   recentAuthOpen.value = true
 }
 
+function scheduleRecentAuthExpiry() {
+  if (recentAuthExpiryTimer) clearTimeout(recentAuthExpiryTimer)
+  recentAuthClock.value = Date.now()
+  const delay = recentAuthExpiresAt.value - recentAuthClock.value
+  if (delay <= 0) {
+    recentAuthExpiresAt.value = 0
+    recentAuthPassword.value = ''
+    return
+  }
+  recentAuthExpiryTimer = setTimeout(() => {
+    recentAuthClock.value = Date.now()
+    recentAuthExpiresAt.value = 0
+    recentAuthPassword.value = ''
+  }, delay)
+}
+
 async function confirmRecentAuth() {
   isConfirmingRecentAuth.value = true
   try {
@@ -193,11 +244,7 @@ async function confirmRecentAuth() {
       body: { password: recentAuthPassword.value }
     })
     recentAuthExpiresAt.value = new Date(result.expiresAt).getTime()
-    emailState.currentPassword = recentAuthPassword.value
-    passwordState.currentPassword = recentAuthPassword.value
-    deletionState.currentPassword = recentAuthPassword.value
-    twoFactorState.password = recentAuthPassword.value
-    passkeyState.password = recentAuthPassword.value
+    scheduleRecentAuthExpiry()
     recentAuthOpen.value = false
     pendingRecentAuthAction.value?.()
     pendingRecentAuthAction.value = null
@@ -209,7 +256,7 @@ async function confirmRecentAuth() {
 }
 
 function openPasswordManagement() {
-  passwordState.currentPassword = hasRecentAuth.value ? recentAuthPassword.value : ''
+  passwordState.currentPassword = ''
   passwordState.newPassword = ''
   passwordState.confirmPassword = ''
   passwordForm.value?.clear()
@@ -217,7 +264,6 @@ function openPasswordManagement() {
 }
 
 function openTwoFactorManagement() {
-  twoFactorState.password = hasRecentAuth.value ? recentAuthPassword.value : ''
   backupCodes.value = []
   backupCodesCopied.value = false
   twoFactorManagementOpen.value = true
@@ -229,7 +275,7 @@ function openLibraryImport() {
 }
 
 function openAccountDeletion() {
-  deletionState.currentPassword = hasRecentAuth.value ? recentAuthPassword.value : ''
+  deletionState.currentPassword = ''
   deletionState.confirmation = ''
   deletionForm.value?.clear()
   accountDeletionOpen.value = true
@@ -238,7 +284,7 @@ function openAccountDeletion() {
 async function enableTwoFactor() {
   isEnablingTwoFactor.value = true
   try {
-    const result = await authClient.twoFactor.enable({ password: twoFactorState.password })
+    const result = await authClient.twoFactor.enable({ password: recentAuthPassword.value })
     if (result.error || !result.data) throw new Error(result.error?.message || 'Unable to start two-factor setup')
     totpUri.value = result.data.totpURI
     backupCodes.value = result.data.backupCodes
@@ -258,11 +304,7 @@ async function verifyTwoFactorSetup() {
   try {
     const result = await authClient.twoFactor.verifyTotp({ code: twoFactorState.code.trim() })
     if (result.error) throw new Error(result.error.message || 'Invalid authenticator code')
-    twoFactorEnabled.value = true
-    twoFactorState.password = ''
-    twoFactorState.code = ''
     twoFactorSetupOpen.value = false
-    twoFactorSetupStep.value = 'password'
     await authStore.refresh()
     toast.add({ title: 'Two-factor authentication enabled', description: 'Store your recovery codes somewhere safe.', color: 'success' })
   } catch (err: unknown) {
@@ -273,7 +315,6 @@ async function verifyTwoFactorSetup() {
 }
 
 async function openTwoFactorSetup() {
-  twoFactorState.password = hasRecentAuth.value ? recentAuthPassword.value : ''
   twoFactorState.code = ''
   totpUri.value = ''
   totpQrCode.value = ''
@@ -319,13 +360,8 @@ async function copyToClipboard(value: string) {
 async function disableTwoFactor() {
   isDisablingTwoFactor.value = true
   try {
-    const result = await authClient.twoFactor.disable({ password: twoFactorState.password })
+    const result = await authClient.twoFactor.disable({ password: recentAuthPassword.value })
     if (result.error) throw new Error(result.error.message || 'Unable to disable two-factor authentication')
-    twoFactorEnabled.value = false
-    totpUri.value = ''
-    totpQrCode.value = ''
-    backupCodes.value = []
-    twoFactorState.password = ''
     twoFactorManagementOpen.value = false
     await authStore.refresh()
     toast.add({ title: 'Two-factor authentication disabled', color: 'success' })
@@ -339,7 +375,7 @@ async function disableTwoFactor() {
 async function regenerateBackupCodes() {
   isRegeneratingBackupCodes.value = true
   try {
-    const result = await authClient.twoFactor.generateBackupCodes({ password: twoFactorState.password })
+    const result = await authClient.twoFactor.generateBackupCodes({ password: recentAuthPassword.value })
     if (result.error || !result.data) throw new Error(result.error?.message || 'Unable to regenerate recovery codes')
     backupCodes.value = result.data.backupCodes
     toast.add({ title: 'Recovery codes regenerated', description: 'All previous recovery codes are now invalid.', color: 'success' })
@@ -362,7 +398,6 @@ async function refreshPasskeys() {
 }
 
 async function openPasskeyManagement() {
-  passkeyState.password = hasRecentAuth.value ? recentAuthPassword.value : ''
   passkeyState.name = ''
   passkeyManagementOpen.value = true
   await refreshPasskeys()
@@ -889,7 +924,7 @@ async function importLibraryCsvFile() {
               type="password"
               autocomplete="current-password"
               class="w-full"
-              @keydown.enter="confirmRecentAuth"
+              @keydown.enter="() => { if (recentAuthPassword && !isConfirmingRecentAuth) confirmRecentAuth() }"
             />
           </UFormField>
         </template>
@@ -955,7 +990,7 @@ async function importLibraryCsvFile() {
             <UForm
               ref="emailForm"
               :schema="accountEmailChangeSchema"
-              :state="emailState"
+              :state="emailFormState"
               class="space-y-4"
               @submit="changeEmail"
             >
@@ -1010,7 +1045,7 @@ async function importLibraryCsvFile() {
                   type="submit"
                   icon="i-lucide-mail"
                   :loading="isChangingEmail"
-                  :disabled="isChangingEmail || emailState.email === user?.email || !emailState.currentPassword"
+                  :disabled="isChangingEmail || emailState.email === user?.email || !(hasRecentAuth || emailState.currentPassword)"
                 >
                   Change email
                 </UButton>
@@ -1029,7 +1064,7 @@ async function importLibraryCsvFile() {
           <UForm
             ref="passwordForm"
             :schema="accountPasswordChangeSchema"
-            :state="passwordState"
+            :state="passwordFormState"
             class="space-y-4"
             @submit="changePassword"
           >
@@ -1204,35 +1239,12 @@ async function importLibraryCsvFile() {
               icon="i-lucide-shield-check"
               title="Two-factor authentication is enabled"
             />
-            <UFormField
-              v-if="!hasRecentAuth"
-              label="Current password"
-              required
-            >
-              <UInput
-                v-model="twoFactorState.password"
-                :type="showTwoFactorPassword ? 'text' : 'password'"
-                autocomplete="current-password"
-                class="w-full"
-              >
-                <template #trailing>
-                  <UButton
-                    type="button"
-                    color="neutral"
-                    variant="ghost"
-                    size="xs"
-                    :icon="showTwoFactorPassword ? 'i-lucide-eye-off' : 'i-lucide-eye'"
-                    @click="() => { showTwoFactorPassword = !showTwoFactorPassword }"
-                  />
-                </template>
-              </UInput>
-            </UFormField>
             <div class="flex flex-wrap gap-3">
               <UButton
                 color="neutral"
                 variant="outline"
                 :loading="isRegeneratingBackupCodes"
-                :disabled="!twoFactorState.password"
+                :disabled="!hasRecentAuth"
                 @click="regenerateBackupCodes"
               >
                 Regenerate recovery codes
@@ -1241,7 +1253,7 @@ async function importLibraryCsvFile() {
                 color="error"
                 variant="soft"
                 :loading="isDisablingTwoFactor"
-                :disabled="!twoFactorState.password"
+                :disabled="!hasRecentAuth"
                 @click="disableTwoFactor"
               >
                 Disable two-factor authentication
@@ -1346,7 +1358,7 @@ async function importLibraryCsvFile() {
           <UForm
             ref="deletionForm"
             :schema="accountDeletionSchema"
-            :state="deletionState"
+            :state="deletionFormState"
             class="space-y-4"
             @submit="deleteAccount"
           >
@@ -1416,7 +1428,7 @@ async function importLibraryCsvFile() {
                 color="error"
                 icon="i-lucide-trash-2"
                 :loading="isDeletingAccount"
-                :disabled="isDeletingAccount || deletionState.confirmation !== ACCOUNT_DELETION_CONFIRMATION_TEXT || !deletionState.currentPassword"
+                :disabled="isDeletingAccount || deletionState.confirmation !== ACCOUNT_DELETION_CONFIRMATION_TEXT || !(hasRecentAuth || deletionState.currentPassword)"
               >
                 Delete permanently
               </UButton>
@@ -1504,6 +1516,7 @@ async function importLibraryCsvFile() {
                   autocomplete="one-time-code"
                   placeholder="123456"
                   class="w-full"
+                  @keydown.enter="() => { if (twoFactorState.code.trim() && !isVerifyingTotp) verifyTwoFactorSetup() }"
                 />
               </UFormField>
             </template>
@@ -1545,29 +1558,6 @@ async function importLibraryCsvFile() {
       >
         <template #body>
           <div class="space-y-5">
-            <UFormField
-              v-if="!hasRecentAuth"
-              label="Current password"
-              required
-            >
-              <UInput
-                v-model="passkeyState.password"
-                :type="showPasskeyPassword ? 'text' : 'password'"
-                autocomplete="current-password"
-                class="w-full"
-              >
-                <template #trailing>
-                  <UButton
-                    type="button"
-                    color="neutral"
-                    variant="ghost"
-                    size="xs"
-                    :icon="showPasskeyPassword ? 'i-lucide-eye-off' : 'i-lucide-eye'"
-                    @click="() => { showPasskeyPassword = !showPasskeyPassword }"
-                  />
-                </template>
-              </UInput>
-            </UFormField>
             <div class="flex flex-wrap items-end gap-3">
               <UFormField
                 label="Passkey name"
@@ -1582,7 +1572,7 @@ async function importLibraryCsvFile() {
               <UButton
                 icon="i-lucide-fingerprint"
                 :loading="isAddingPasskey"
-                :disabled="!passkeyState.password"
+                :disabled="!hasRecentAuth"
                 @click="addPasskey"
               >
                 Add passkey
@@ -1613,7 +1603,7 @@ async function importLibraryCsvFile() {
                   variant="ghost"
                   size="sm"
                   :loading="isRemovingPasskey === item.id"
-                  :disabled="!passkeyState.password"
+                  :disabled="!hasRecentAuth"
                   @click="removePasskey(item.id)"
                 >
                   Remove

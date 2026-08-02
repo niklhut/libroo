@@ -127,7 +127,7 @@ export default defineNuxtConfig({
     },
     public: {
       registrationEnabled: 'true',
-      passkeysEnabled: runtimeProfile === 'selfhost' ? 'false' : process.env.NUXT_PUBLIC_PASSKEYS_ENABLED ?? 'false',
+      passkeysEnabled: process.env.NUXT_PUBLIC_PASSKEYS_ENABLED ?? 'false',
       openLibraryLinksEnabled: process.env.NODE_ENV === 'development' ? 'true' : 'false',
       legalPrivacyPolicyUrl: '',
       legalImprintUrl: '',

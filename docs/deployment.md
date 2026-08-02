@@ -520,7 +520,6 @@ Repository or environment secrets:
 | `NUXT_BETTER_AUTH_SECRET` | Hosted auth secret. |
 | `NUXT_PLUNK_API_KEY` | Hosted email delivery. |
 | `NUXT_OPEN_LIBRARY_CONTACT_EMAIL` | Contact address sent in Open Library requests so hosted Workers are identified and receive the documented identified-client limit. Configure this separately in both the `production` and `preview` GitHub Environments. |
-| `NUXT_PUBLIC_PASSKEYS_ENABLED` | Optional public capability flag. Configure it as a GitHub Environment variable in both `production` and `preview`; set `true` only for an HTTPS origin that matches `NUXT_BETTER_AUTH_URL`. |
 | `NUXT_TURNSTILE_SECRET_KEY` | Hosted Turnstile server-side verification secret. |
 
 Create a GitHub Environment named `production`, mirroring the general shape of
@@ -585,6 +584,7 @@ Repository or environment variables:
 | `NUXT_EMAIL_REPLY_TO` | Optional hosted reply-to address. |
 | `NUXT_EMAIL_VERIFICATION_ENABLED` | `true` |
 | `NUXT_PUBLIC_REGISTRATION_ENABLED` | `false` after the first admin exists. |
+| `NUXT_PUBLIC_PASSKEYS_ENABLED` | `true` only for an HTTPS origin that matches `NUXT_BETTER_AUTH_URL`; otherwise `false`. |
 | `NUXT_PUBLIC_TURNSTILE_ENABLED` | `true` for hosted public deployments. |
 | `NUXT_PUBLIC_TURNSTILE_SITE_KEY` | Hosted Turnstile public site key. |
 | `NUXT_TURNSTILE_ALLOWED_HOSTNAMES` | Hosted public hostname, or a comma-separated list if multiple hostnames serve the app. |

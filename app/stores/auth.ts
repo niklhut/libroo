@@ -77,6 +77,7 @@ export const useAuthStore = defineStore('auth', () => {
       const { clearUserScopedState } = useClearUserScopedState()
       clearUserScopedState()
       session.data.value = null
+      pendingMfa.value = false
     }
   }
 

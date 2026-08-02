@@ -4,7 +4,9 @@ import { canShowPasskeyManagement, canShowPasskeySignIn, canShowTwoFactorManagem
 describe('auth capability UI predicates', () => {
   it('only exposes passkey UI when the deployment supports it', () => {
     expect(canShowPasskeySignIn({ twoFactorEnabled: true, passkeysEnabled: false })).toBe(false)
+    expect(canShowPasskeySignIn({ twoFactorEnabled: true, passkeysEnabled: true })).toBe(true)
     expect(canShowPasskeyManagement({ twoFactorEnabled: true, passkeysEnabled: true })).toBe(true)
+    expect(canShowPasskeyManagement({ twoFactorEnabled: true, passkeysEnabled: false })).toBe(false)
   })
 
   it('keeps TOTP management independent of passkey availability', () => {

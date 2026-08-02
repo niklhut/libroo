@@ -69,7 +69,7 @@ export async function notifyPasswordChanged(ctx: HookContext) {
 
 export async function notifySecurityChange(ctx: HookContext) {
   if (!isSecurityNotificationPath(ctx.path)) return false
-  if (!emailDeliveryConfigured() || !await endpointSucceeded(ctx.context.returned)) return false
+  if (!emailDeliveryConfigured() || !await endpointSucceeded(ctx.path, ctx.context.returned)) return false
 
   // verify-totp also completes every TOTP sign-in challenge; only notify for
   // the enrollment transition captured from an authenticated pre-hook session.
@@ -143,13 +143,16 @@ async function sendSecurityChangeEmail(user: SecurityNotificationUser, path?: st
   })
 }
 
-async function endpointSucceeded(returned: unknown) {
+async function endpointSucceeded(path: string | undefined, returned: unknown) {
   if (!returned) return false
   if (returned instanceof Response) return returned.ok
   if (typeof returned === 'object') {
     if ('statusCode' in returned) return false
     if ('status' in returned && typeof returned.status === 'boolean') return returned.status
     if ('success' in returned && typeof returned.success === 'boolean') return returned.success
+    if (path === '/passkey/verify-registration') {
+      return 'id' in returned && 'credentialID' in returned
+    }
   }
   return false
 }
