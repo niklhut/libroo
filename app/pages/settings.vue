@@ -493,6 +493,7 @@ async function changeEmail(payload: FormSubmitEvent<AccountEmailChangeSchema>) {
     emailState.currentPassword = ''
     emailForm.value?.clear()
     await refreshVerificationStatus()
+    emailManagementOpen.value = false
   } catch (err: unknown) {
     toast.add({
       title: 'Email change failed',

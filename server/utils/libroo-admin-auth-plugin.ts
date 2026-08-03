@@ -365,7 +365,7 @@ async function reserveLastFactorRemovalInDatabase(userId: string): Promise<LastF
   // read-then-write race. The no-op assignment is intentional.
   const result = await db.run(sql`
     UPDATE ${user}
-    SET ${user.updatedAt} = ${user.updatedAt}
+    SET ${sql.raw('updated_at = updated_at')}
     WHERE ${user.id} = ${userId}
       AND ${adminRoleTokenPredicate()}
       AND ${inactiveBanPredicate()}
