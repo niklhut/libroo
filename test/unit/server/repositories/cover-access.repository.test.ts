@@ -7,6 +7,7 @@ import inviteEmailMigration from '../../../../server/db/migrations/sqlite/0008_b
 import loanNoteMigration from '../../../../server/db/migrations/sqlite/0010_owner_private_loan_note.sql?raw'
 import borrowerSuggestionsMigration from '../../../../server/db/migrations/sqlite/0011_borrower_suggestions.sql?raw'
 import enrichmentMigration from '../../../../server/db/migrations/sqlite/0012_imported_book_enrichment.sql?raw'
+import authFactorsMigration from '../../../../server/db/migrations/sqlite/0013_auth-two-factor-passkeys.sql?raw'
 import { Effect, Layer } from 'effect'
 import { createClient } from '@libsql/client'
 import { drizzle } from 'drizzle-orm/libsql'
@@ -29,7 +30,7 @@ describe('cover access repository helpers', () => {
     testDb = db
     await client.execute('PRAGMA foreign_keys = ON')
 
-    for (const migration of [initialMigration, termsAcceptanceMigration, locationRestrictMigration, libraryStateMigration, previouslyOwnedMigration, inviteEmailMigration, loanNoteMigration, borrowerSuggestionsMigration, enrichmentMigration]) {
+    for (const migration of [initialMigration, termsAcceptanceMigration, locationRestrictMigration, libraryStateMigration, previouslyOwnedMigration, inviteEmailMigration, loanNoteMigration, borrowerSuggestionsMigration, enrichmentMigration, authFactorsMigration]) {
       for (const statement of migration.split('--> statement-breakpoint')) {
         const sql = statement.trim()
         if (sql) {

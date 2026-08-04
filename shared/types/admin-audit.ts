@@ -19,6 +19,9 @@ export type AdminAuditAction
     | 'auth.two_factor_disabled'
     | 'auth.backup_codes_regenerated'
     | 'auth.backup_code_used'
+    | 'auth.passkey_added'
+    | 'auth.passkey_removed'
+    | 'auth.passkey_renamed'
 
 export type AdminAuditCategory = 'admin' | 'auth'
 

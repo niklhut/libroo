@@ -7,6 +7,7 @@ type SecurityNotificationUser = {
   id: string
   name?: string | null
   email?: string | null
+  twoFactorEnabled?: boolean | null
 }
 
 type HookContext = {
@@ -21,50 +22,62 @@ type HookContext = {
   body?: unknown
 }
 
-const PASSWORD_CHANGE_USER_KEY = Symbol('libroo-password-change-user')
+const SECURITY_CHANGE_USER_KEY = Symbol('libroo-security-change-user')
 const PASSWORD_CHANGE_PATHS = new Set(['/change-password', '/admin/set-user-password'])
+export const TWO_FACTOR_PATHS = new Set([
+  '/two-factor/disable',
+  '/two-factor/generate-backup-codes',
+  '/two-factor/verify-totp'
+])
+export const PASSKEY_PATHS = new Set([
+  '/passkey/verify-registration',
+  '/passkey/delete-passkey'
+])
 
 export const librooSecurityNotificationPlugin = (): BetterAuthPlugin => ({
   id: 'libroo-security-notifications',
   hooks: {
-    before: [
-      {
-        matcher: context => isPasswordChangePath(context.path),
-        handler: createAuthMiddleware(async (ctx) => {
-          const user = ctx.path === '/admin/set-user-password'
-            ? await getAdminPasswordTargetUser(ctx as HookContext)
-            : await getCurrentSessionUser(ctx)
-          if (!user?.email) return
-
-          setPasswordChangeUser(ctx.context, user)
-        })
-      }
-    ],
-    after: [
-      {
-        matcher: context => isPasswordChangePath(context.path),
-        handler: createAuthMiddleware(async (ctx) => {
-          await runInBackgroundOrAwait(ctx as HookContext, notifyPasswordChanged(ctx as HookContext))
-        })
-      }
-    ]
+    before: [{
+      matcher: context => isSecurityNotificationPath(context.path),
+      handler: createAuthMiddleware(async (ctx) => {
+        const user = ctx.path === '/admin/set-user-password'
+          ? await getAdminPasswordTargetUser(ctx as HookContext)
+          : await getCurrentSessionUser(ctx)
+        if (user?.email) setSecurityChangeUser(ctx.context, user)
+      })
+    }],
+    after: [{
+      matcher: context => isSecurityNotificationPath(context.path),
+      handler: createAuthMiddleware(async (ctx) => {
+        await runInBackgroundOrAwait(ctx as HookContext, notifySecurityChange(ctx as HookContext))
+      })
+    }]
   }
 })
 
 function runInBackgroundOrAwait(ctx: HookContext, promise: Promise<unknown>) {
-  if (ctx.context.runInBackgroundOrAwait) {
-    return ctx.context.runInBackgroundOrAwait(promise)
-  }
-
-  return promise
+  return ctx.context.runInBackgroundOrAwait
+    ? ctx.context.runInBackgroundOrAwait(promise)
+    : promise
 }
 
+// Kept as a focused export for existing consumers and tests.
 export async function notifyPasswordChanged(ctx: HookContext) {
   if (!isPasswordChangePath(ctx.path)) return false
-  if (!emailDeliveryConfigured()) return false
-  if (!await endpointSucceeded(ctx.context.returned)) return false
+  return notifySecurityChange(ctx)
+}
 
-  return sendPasswordChangedNotification(getPasswordChangeUser(ctx.context), ctx.path)
+export async function notifySecurityChange(ctx: HookContext) {
+  if (!isSecurityNotificationPath(ctx.path)) return false
+  if (!emailDeliveryConfigured() || !await endpointSucceeded(ctx.path, ctx.context.returned)) return false
+
+  // verify-totp also completes every TOTP sign-in challenge; only notify for
+  // the enrollment transition captured from an authenticated pre-hook session.
+  if (ctx.path === '/two-factor/verify-totp' && getSecurityChangeUser(ctx.context)?.twoFactorEnabled !== false) {
+    return false
+  }
+
+  return sendSecurityChangeNotification(getSecurityChangeUser(ctx.context), ctx.path)
 }
 
 async function getCurrentSessionUser(ctx: Parameters<Parameters<typeof createAuthMiddleware>[0]>[0]) {
@@ -74,27 +87,34 @@ async function getCurrentSessionUser(ctx: Parameters<Parameters<typeof createAut
   return {
     id: session.user.id,
     name: session.user.name,
-    email: session.user.email
+    email: session.user.email,
+    twoFactorEnabled: session.user.twoFactorEnabled
   }
 }
 
 async function getAdminPasswordTargetUser(ctx: HookContext) {
   const userId = getUserIdFromBody(ctx.body)
-  if (!userId) return null
-
-  return ctx.context.internalAdapter?.findUserById?.(userId) ?? null
+  return userId ? ctx.context.internalAdapter?.findUserById?.(userId) ?? null : null
 }
 
 export async function sendPasswordChangedNotification(user: SecurityNotificationUser | null, path?: string) {
+  return sendSecurityChangeNotification(user, path)
+}
+
+export async function sendSecurityChangeNotification(user: SecurityNotificationUser | null, path?: string) {
   if (!user?.email) return false
 
   try {
-    await sendPasswordChangedEmail(user)
+    await sendSecurityChangeEmail(user, path)
     return true
   } catch (error) {
-    console.error('Failed to send password change security notification', {
+    console.error(isPasswordChangePath(path)
+      ? 'Failed to send password change security notification'
+      : 'Failed to send security change notification', {
       severity: 'error',
-      operation: 'security-notification.password-changed',
+      operation: isPasswordChangePath(path)
+        ? 'security-notification.password-changed'
+        : 'security-notification.security-change',
       path,
       error
     })
@@ -102,35 +122,38 @@ export async function sendPasswordChangedNotification(user: SecurityNotification
   }
 }
 
-async function sendPasswordChangedEmail(user: SecurityNotificationUser) {
+async function sendSecurityChangeEmail(user: SecurityNotificationUser, path?: string) {
+  const change = getSecurityChangeCopy(path)
   const displayName = escapeHtml(user.name || user.email || 'there')
   await sendEmailMessage({
     to: user.email!,
-    subject: 'Your Libroo password was changed',
+    subject: change.subject,
     text: [
       `Hello ${user.name || user.email || 'there'},`,
       '',
-      'The password for your Libroo account was changed.',
+      change.text,
       '',
       'If you made this change, no action is needed. If you did not make this change, contact your Libroo administrator immediately.'
     ].join('\n'),
     html: [
       `<p>Hello ${displayName},</p>`,
-      '<p>The password for your Libroo account was changed.</p>',
+      `<p>${escapeHtml(change.text)}</p>`,
       '<p>If you made this change, no action is needed. If you did not make this change, contact your Libroo administrator immediately.</p>'
     ].join('')
   })
 }
 
-async function endpointSucceeded(returned: unknown) {
+async function endpointSucceeded(path: string | undefined, returned: unknown) {
   if (!returned) return false
   if (returned instanceof Response) return returned.ok
-  if (typeof returned === 'object' && returned) {
+  if (typeof returned === 'object') {
     if ('statusCode' in returned) return false
     if ('status' in returned && typeof returned.status === 'boolean') return returned.status
     if ('success' in returned && typeof returned.success === 'boolean') return returned.success
+    if (path === '/passkey/verify-registration') {
+      return 'id' in returned && 'credentialID' in returned
+    }
   }
-
   return false
 }
 
@@ -138,22 +161,56 @@ function isPasswordChangePath(path: string | undefined) {
   return Boolean(path && PASSWORD_CHANGE_PATHS.has(path))
 }
 
+export function isTwoFactorPath(path: string | undefined) {
+  return Boolean(path && TWO_FACTOR_PATHS.has(path))
+}
+
+export function isPasskeyPath(path: string | undefined) {
+  return Boolean(path && PASSKEY_PATHS.has(path))
+}
+
+export function isSecurityNotificationPath(path: string | undefined) {
+  return isPasswordChangePath(path) || isTwoFactorPath(path) || isPasskeyPath(path)
+}
+
+function getSecurityChangeCopy(path: string | undefined) {
+  if (path === '/two-factor/disable') return {
+    subject: 'Two-factor authentication was disabled',
+    text: 'Two-factor authentication for your Libroo account was disabled.'
+  }
+  if (path === '/two-factor/generate-backup-codes') return {
+    subject: 'Your Libroo recovery codes were regenerated',
+    text: 'The recovery codes for your Libroo account were regenerated. All previous recovery codes are no longer valid.'
+  }
+  if (path === '/two-factor/verify-totp') return {
+    subject: 'Two-factor authentication was enabled',
+    text: 'Two-factor authentication was enabled for your Libroo account.'
+  }
+  if (path === '/passkey/verify-registration') return {
+    subject: 'A passkey was added to your Libroo account',
+    text: 'A passkey was added to your Libroo account.'
+  }
+  if (path === '/passkey/delete-passkey') return {
+    subject: 'A passkey was removed from your Libroo account',
+    text: 'A passkey was removed from your Libroo account.'
+  }
+  return {
+    subject: 'Your Libroo password was changed',
+    text: 'The password for your Libroo account was changed.'
+  }
+}
+
 function getUserIdFromBody(body: unknown) {
-  if (!body || typeof body !== 'object') return null
-  const userId = (body as { userId?: unknown }).userId
-  if (typeof userId !== 'string') return null
-  const trimmedUserId = userId.trim()
-  return trimmedUserId ? trimmedUserId : null
+  const userId = body && typeof body === 'object' ? (body as { userId?: unknown }).userId : null
+  return typeof userId === 'string' && userId.trim() ? userId.trim() : null
 }
 
-function setPasswordChangeUser(context: object, user: SecurityNotificationUser) {
-  Object.assign(context, {
-    [PASSWORD_CHANGE_USER_KEY]: user
-  })
+function setSecurityChangeUser(context: object, user: SecurityNotificationUser) {
+  Object.assign(context, { [SECURITY_CHANGE_USER_KEY]: user })
 }
 
-function getPasswordChangeUser(context: object): SecurityNotificationUser | null {
-  return (context as { [PASSWORD_CHANGE_USER_KEY]?: SecurityNotificationUser })[PASSWORD_CHANGE_USER_KEY] ?? null
+function getSecurityChangeUser(context: object): SecurityNotificationUser | null {
+  return (context as { [SECURITY_CHANGE_USER_KEY]?: SecurityNotificationUser })[SECURITY_CHANGE_USER_KEY] ?? null
 }
 
 function escapeHtml(value: string) {

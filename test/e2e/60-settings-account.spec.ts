@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { createClient } from '@libsql/client'
 import { addManualBook, currentDetailCoverPath } from './support/books'
-import { e2ePassword } from './support/settings'
+import { confirmSettingsRecentAuth, e2ePassword } from './support/settings'
 import { e2eEmailRuntimePaths, e2eMailSinkHttpBase } from './support/runtime'
 import { login, registerUser, uniqueEmail } from './support/auth'
 
@@ -16,13 +16,13 @@ test('changes email immediately when verification is disabled', async ({ page },
   const nextEmail = uniqueEmail('settings-email-direct-next', testInfo.title)
 
   await page.goto('/settings')
-  const accountForm = page.locator('form').filter({
-    has: page.getByRole('button', { name: 'Change email' })
-  })
-  await accountForm.locator('input[name="email"]').fill(nextEmail)
-  await accountForm.locator('input[name="currentPassword"]').fill(e2ePassword)
-  await accountForm.getByRole('button', { name: 'Change email' }).click()
+  await page.getByRole('button', { name: 'Manage' }).click()
+  await confirmSettingsRecentAuth(page)
+  const dialog = page.getByRole('dialog', { name: 'Manage email' })
+  await dialog.getByLabel('Email').fill(nextEmail)
+  await dialog.getByRole('button', { name: 'Change email' }).click()
   await expect(page.getByText('Email updated', { exact: true }).last()).toBeVisible()
+  await expect(dialog).toBeHidden()
 
   await page.getByRole('button', { name: 'Sign Out' }).click()
   await expect(page).toHaveURL(/\/login\?signout=true/)
@@ -44,17 +44,16 @@ test('records pending email changes and resends verification through the local s
 
   await page.goto('/settings')
   await submitEmailChange(page, pendingEmail)
-  await expect(page.getByText(/Verified|Unverified/, { exact: true })).toBeVisible()
-  await expect(page.getByText('Pending email change')).toBeVisible()
-  await expect(page.getByText(new RegExp(escapeRegExp(pendingEmail)))).toBeVisible()
+  await expectPendingEmailSummary(page, pendingEmail)
   await expectVerificationStatus(page, user.email, pendingEmail)
 
   await submitEmailChange(page, replacementEmail)
-  await expect(page.getByText(new RegExp(escapeRegExp(replacementEmail)))).toBeVisible()
+  await expectPendingEmailSummary(page, replacementEmail)
   await expectVerificationStatus(page, user.email, replacementEmail)
 
   await resetMailSink(page)
-  await page.getByRole('button', { name: 'Resend verification email' }).click()
+  await page.getByRole('button', { name: 'Manage' }).click()
+  await page.getByRole('dialog', { name: 'Manage email' }).getByRole('button', { name: 'Resend verification email' }).click()
   await expect(page.getByText('Verification email sent', { exact: true }).last()).toBeVisible()
   await expect.poll(async () => (await readMailSink(page)).messages.length).toBeGreaterThan(0)
   const messages = (await readMailSink(page)).messages
@@ -73,8 +72,8 @@ test('deletes an account and removes private library data', async ({ page }, tes
 
   await page.goto('/settings')
   await page.getByRole('button', { name: 'Delete account' }).click()
+  await confirmSettingsRecentAuth(page)
   const dialog = page.getByRole('dialog', { name: 'Delete your account?' })
-  await dialog.getByLabel('Current password').fill(e2ePassword)
   await dialog.getByLabel('Type DELETE MY ACCOUNT').fill('DELETE MY ACCOUNT')
   await dialog.getByRole('button', { name: 'Delete permanently' }).click()
   await expect(page.getByText('Your library is empty')).toBeVisible()
@@ -94,13 +93,20 @@ test('deletes an account and removes private library data', async ({ page }, tes
 })
 
 async function submitEmailChange(page: Page, email: string) {
-  const accountForm = page.locator('form').filter({
-    has: page.getByRole('button', { name: 'Change email' })
-  })
-  await accountForm.locator('input[name="email"]').fill(email)
-  await accountForm.locator('input[name="currentPassword"]').fill(e2ePassword)
-  await accountForm.getByRole('button', { name: 'Change email' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Manage email' })
+  await page.getByRole('button', { name: 'Manage' }).click()
+  const recentAuthDialog = page.getByRole('dialog', { name: 'Confirm it’s you' })
+  if (await recentAuthDialog.isVisible()) {
+    await confirmSettingsRecentAuth(page)
+  }
+  await dialog.getByLabel('Email').fill(email)
+  await dialog.getByRole('button', { name: 'Change email' }).click()
   await expect(page.getByText('Verification email sent', { exact: true }).last()).toBeVisible()
+  await expect(dialog).toBeHidden()
+}
+
+async function expectPendingEmailSummary(page: Page, pendingEmail: string) {
+  await expect(page.getByText(`Changing to ${pendingEmail} — verification pending`, { exact: true })).toBeVisible()
 }
 
 async function expectVerificationStatus(page: Page, email: string, pendingEmail: string) {
@@ -151,8 +157,4 @@ async function setEmailVerified(email: string, verified: boolean) {
   } finally {
     client.close()
   }
-}
-
-function escapeRegExp(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }

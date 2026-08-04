@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { librooSecurityNotificationPlugin, notifyPasswordChanged, sendPasswordChangedNotification } from '../../server/utils/libroo-security-notification-plugin'
+import { isPasskeyPath, isSecurityNotificationPath, isTwoFactorPath, librooSecurityNotificationPlugin, notifyPasswordChanged, sendPasswordChangedNotification } from '../../server/utils/libroo-security-notification-plugin'
 import { sendEmailMessage } from '../../server/services/email.service'
 
 vi.mock('../../server/services/email.service', () => ({
@@ -14,6 +14,12 @@ afterEach(() => {
 })
 
 describe('librooSecurityNotificationPlugin', () => {
+  it('matches TOTP and passkey security mutations', () => {
+    expect(isTwoFactorPath('/two-factor/disable')).toBe(true)
+    expect(isPasskeyPath('/passkey/verify-registration')).toBe(true)
+    expect(isSecurityNotificationPath('/passkey/delete-passkey')).toBe(true)
+    expect(isSecurityNotificationPath('/passkey/list-user-passkeys')).toBe(false)
+  })
   it('watches admin set-password alongside user password changes', () => {
     const plugin = librooSecurityNotificationPlugin()
     const beforeMatcher = plugin.hooks?.before?.[0]?.matcher
@@ -74,6 +80,36 @@ describe('librooSecurityNotificationPlugin', () => {
     })).resolves.toBe(false)
 
     expect(sendEmailMessage).not.toHaveBeenCalled()
+  })
+
+  it('notifies when passkey registration returns the passkey record', async () => {
+    process.env.NUXT_EMAIL_PROVIDER = 'smtp'
+    process.env.NUXT_EMAIL_FROM = 'Libroo <no-reply@example.com>'
+    process.env.NUXT_SMTP_HOST = 'smtp.example.com'
+
+    const plugin = librooSecurityNotificationPlugin()
+    const beforeHook = plugin.hooks?.before?.[0]
+    const afterHook = plugin.hooks?.after?.[0]
+    const beforeHandler = beforeHook?.handler as (ctx: unknown) => Promise<unknown>
+    const afterHandler = afterHook?.handler as (ctx: unknown) => Promise<unknown>
+    const ctx = {
+      path: '/passkey/verify-registration',
+      context: {
+        returned: { id: 'passkey-1', credentialID: 'credential-1' },
+        internalAdapter: {},
+        session: { user: { id: 'user-1', name: 'Ada', email: 'ada@example.com' } }
+      }
+    }
+
+    expect(beforeHook?.matcher?.(ctx)).toBe(true)
+    expect(afterHook?.matcher?.(ctx)).toBe(true)
+    await beforeHandler(ctx)
+    await afterHandler(ctx)
+
+    expect(sendEmailMessage).toHaveBeenCalledWith(expect.objectContaining({
+      to: 'ada@example.com',
+      subject: 'A passkey was added to your Libroo account'
+    }))
   })
 
   it('defers password-change notifications when Better Auth provides a background helper', async () => {

@@ -26,7 +26,12 @@ function getRuntimeConfigValue(runtimeKey: string): string | undefined {
   try {
     if (typeof useRuntimeConfig === 'function') {
       const config = useRuntimeConfig()
-      const runtimeValue = config[runtimeKey]
+      const runtimeValue = runtimeKey.split('.').reduce<unknown>(
+        (value, key) => value && typeof value === 'object'
+          ? (value as Record<string, unknown>)[key]
+          : undefined,
+        config
+      )
       if (typeof runtimeValue === 'string' && runtimeValue.trim()) {
         return runtimeValue
       }
@@ -36,7 +41,7 @@ function getRuntimeConfigValue(runtimeKey: string): string | undefined {
   }
 }
 
-function getConfigValue(envKey: string, runtimeKey: string): string | undefined {
+export function getConfigValue(envKey: string, runtimeKey: string): string | undefined {
   const runtimeValue = getRuntimeConfigValue(runtimeKey)
   if (runtimeValue) return runtimeValue
 

@@ -27,6 +27,7 @@
     "test:e2e:ui": "pnpm build:selfhost && playwright test --ui"
   },
   "dependencies": {
+    "@better-auth/passkey": "^1.6.25",
     "@comark/nuxt": "^0.5.1",
     "@effect/platform": "^0.97.0",
     "@effect/platform-node": "^0.108.0",
@@ -50,6 +51,8 @@
     "nodemailer": "^9.0.3",
     "nuxt": "^4.5.1",
     "pinia": "^3.0.4",
+    "qrcode": "^1.5.4",
+    "reflect-metadata": "^0.2.2",
     "sharp": "^0.35.3",
     "vue": "^3.5.40",
     "vue-qrcode-reader": "^5.7.3",
@@ -65,6 +68,7 @@
     "@nuxt/test-utils": "^4.0.3",
     "@playwright/test": "^1.62.0",
     "@types/nodemailer": "^8.0.1",
+    "@types/qrcode": "^1.5.6",
     "drizzle-kit": "^0.31.10",
     "eslint": "^10.8.0",
     "typescript": "^6.0.3",

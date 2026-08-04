@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { buildAdminAuditSnapshotsForActor, buildAuthAuditEntry, librooAdminAuditPlugin, metadataFromResponse } from '../../server/utils/libroo-admin-audit-plugin'
+import { buildAdminAuditSnapshotsForActor, buildAuthAuditEntry, isAuditedAuthPath, librooAdminAuditPlugin, metadataFromResponse } from '../../server/utils/libroo-admin-audit-plugin'
 import { createAdminAuditEntryInDatabase } from '../../server/repositories/audit.repository'
 
 vi.mock('../../server/repositories/audit.repository', () => ({
@@ -11,6 +11,30 @@ afterEach(() => {
 })
 
 describe('librooAdminAuditPlugin', () => {
+  it('audits the registered passkey mutation endpoints', async () => {
+    expect(isAuditedAuthPath('/passkey/generate-register-options')).toBe(true)
+    expect(isAuditedAuthPath('/passkey/verify-registration')).toBe(true)
+    expect(isAuditedAuthPath('/passkey/delete-passkey')).toBe(true)
+    expect(isAuditedAuthPath('/passkey/update-passkey')).toBe(true)
+
+    await expect(buildAuthAuditEntry({
+      path: '/passkey/delete-passkey',
+      body: { id: 'passkey-1' },
+      context: { returned: { status: true }, internalAdapter: { findUserById: async () => null } }
+    })).resolves.toEqual(expect.objectContaining({
+      action: 'auth.passkey_removed',
+      metadata: { passkeyId: 'passkey-1' }
+    }))
+
+    await expect(buildAuthAuditEntry({
+      path: '/passkey/update-passkey',
+      body: { id: 'passkey-1', name: 'Work laptop' },
+      context: { returned: { status: true }, internalAdapter: { findUserById: async () => null } }
+    })).resolves.toEqual(expect.objectContaining({
+      action: 'auth.passkey_renamed',
+      metadata: { passkeyId: 'passkey-1', name: 'Work laptop' }
+    }))
+  })
   it('builds role-change audit snapshots from Better Auth admin set-role requests', async () => {
     const snapshots = await buildAdminAuditSnapshotsForActor({
       actorUserId: 'admin-1',

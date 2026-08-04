@@ -51,6 +51,7 @@ const cloudflareRuntimeVars = definedEnvVars({
   NUXT_PUBLIC_LEGAL_PRIVACY_POLICY_URL: process.env.NUXT_PUBLIC_LEGAL_PRIVACY_POLICY_URL,
   NUXT_PUBLIC_LEGAL_TERMS_URL: process.env.NUXT_PUBLIC_LEGAL_TERMS_URL,
   NUXT_PUBLIC_REGISTRATION_ENABLED: process.env.NUXT_PUBLIC_REGISTRATION_ENABLED,
+  NUXT_PUBLIC_PASSKEYS_ENABLED: process.env.NUXT_PUBLIC_PASSKEYS_ENABLED,
   NUXT_PUBLIC_TURNSTILE_ENABLED: process.env.NUXT_PUBLIC_TURNSTILE_ENABLED,
   NUXT_PUBLIC_TURNSTILE_SITE_KEY: process.env.NUXT_PUBLIC_TURNSTILE_SITE_KEY,
   NUXT_TURNSTILE_ALLOWED_HOSTNAMES: process.env.NUXT_TURNSTILE_ALLOWED_HOSTNAMES,
@@ -126,6 +127,7 @@ export default defineNuxtConfig({
     },
     public: {
       registrationEnabled: 'true',
+      passkeysEnabled: process.env.NUXT_PUBLIC_PASSKEYS_ENABLED ?? 'false',
       openLibraryLinksEnabled: process.env.NODE_ENV === 'development' ? 'true' : 'false',
       legalPrivacyPolicyUrl: '',
       legalImprintUrl: '',
@@ -152,6 +154,14 @@ export default defineNuxtConfig({
   compatibilityDate: '2025-01-15',
 
   nitro: {
+    // @peculiar/x509 (used by Better Auth passkeys) initializes tsyringe while
+    // Cloudflare validates the Worker module. Keep the metadata polyfill in
+    // the generated entry file so it runs before Nitro's bundled chunks.
+    rollupConfig: {
+      output: {
+        banner: runtimeProfile === 'cloudflare' ? 'import "reflect-metadata";' : ''
+      }
+    },
     cloudflare: runtimeProfile === 'cloudflare'
       ? {
           wrangler: {

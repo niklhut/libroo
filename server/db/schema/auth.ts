@@ -9,6 +9,7 @@ export const user = sqliteTable('user', {
   name: text('name').notNull(),
   email: text('email').notNull().unique(),
   emailVerified: integer('email_verified', { mode: 'boolean' }).notNull().default(false),
+  twoFactorEnabled: integer('two_factor_enabled', { mode: 'boolean' }).notNull().default(false),
   pendingEmail: text('pending_email'),
   image: text('image'),
   termsAcceptedAt: integer('terms_accepted_at', { mode: 'timestamp' }),
@@ -26,6 +27,7 @@ export const session = sqliteTable('session', {
   token: text('token').notNull().unique(),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+  recentAuthAt: integer('recent_auth_at', { mode: 'timestamp' }),
   ipAddress: text('ip_address'),
   userAgent: text('user_agent'),
   impersonatedBy: text('impersonated_by'),
@@ -56,6 +58,39 @@ export const verification = sqliteTable('verification', {
   createdAt: integer('created_at', { mode: 'timestamp' }),
   updatedAt: integer('updated_at', { mode: 'timestamp' })
 })
+
+// Better Auth two-factor authentication plugin tables.
+export const twoFactor = sqliteTable('twoFactor', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  secret: text('secret').notNull(),
+  backupCodes: text('backup_codes').notNull(),
+  verified: integer('verified', { mode: 'boolean' }).notNull().default(true),
+  failedVerificationCount: integer('failed_verification_count').notNull().default(0),
+  lockedUntil: integer('locked_until', { mode: 'timestamp' })
+}, table => [
+  index('two_factor_user_id_idx').on(table.userId),
+  index('two_factor_secret_idx').on(table.secret)
+])
+
+// Better Auth passkey plugin table. The plugin encrypts/verifies protocol data;
+// this table only persists the public credential material and metadata.
+export const passkey = sqliteTable('passkey', {
+  id: text('id').primaryKey(),
+  name: text('name'),
+  publicKey: text('public_key').notNull(),
+  userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  credentialID: text('credential_id').notNull(),
+  counter: integer('counter').notNull(),
+  deviceType: text('device_type').notNull(),
+  backedUp: integer('backed_up', { mode: 'boolean' }).notNull(),
+  transports: text('transports'),
+  createdAt: integer('created_at', { mode: 'timestamp' }),
+  aaguid: text('aaguid')
+}, table => [
+  index('passkey_user_id_idx').on(table.userId),
+  index('passkey_credential_id_idx').on(table.credentialID)
+])
 
 // Better Auth's database-backed rate limiter.
 export const rateLimit = sqliteTable('rateLimit', {

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import type { Ref } from 'vue'
-import { computed, unref } from 'vue'
+import { computed, ref, unref } from 'vue'
 import { authClient } from '~/utils/auth-client'
 import { useClearUserScopedState } from '~/composables/useClearUserScopedState'
 
@@ -36,12 +36,23 @@ export const useAuthStore = defineStore('auth', () => {
     return unref(pending) ?? true
   })
   const error = computed(() => unref(session.error) ?? null)
+  const pendingMfa = ref(false)
 
   async function signIn(email: string, password: string) {
-    return authClient.signIn.email({
+    const result = await authClient.signIn.email({
       email,
       password
     })
+    pendingMfa.value = Boolean((result.data as { twoFactorRedirect?: boolean } | null)?.twoFactorRedirect)
+    return result
+  }
+
+  function clearPendingMfa() {
+    pendingMfa.value = false
+  }
+
+  function beginPendingMfa() {
+    pendingMfa.value = true
   }
 
   async function signUp(email: string, password: string, name: string, inviteToken?: string | null, turnstileToken?: string | null, acceptTerms?: boolean | null) {
@@ -70,6 +81,7 @@ export const useAuthStore = defineStore('auth', () => {
       const { clearUserScopedState } = useClearUserScopedState()
       clearUserScopedState()
       session.data.value = null
+      pendingMfa.value = false
     }
   }
 
@@ -84,9 +96,12 @@ export const useAuthStore = defineStore('auth', () => {
     isAuthenticated,
     isPending,
     error,
+    pendingMfa,
     signIn,
     signUp,
     signOut,
-    refresh
+    refresh,
+    beginPendingMfa,
+    clearPendingMfa
   }
 })

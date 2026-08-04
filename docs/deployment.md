@@ -92,6 +92,7 @@ Optional email and registration settings:
 | --- | --- | --- |
 | `NUXT_EMAIL_VERIFICATION_ENABLED` | `false` | Set `true` for public installs. |
 | `NUXT_PUBLIC_REGISTRATION_ENABLED` | `true` | Set `false` after creating the first admin for invite-only operation. |
+| `NUXT_PUBLIC_PASSKEYS_ENABLED` | `false` | Enables WebAuthn passkeys only when the configured Better Auth origin is HTTPS (or localhost). Keep disabled unless the deployment origin and TLS termination are configured correctly. |
 | `NUXT_PUBLIC_TURNSTILE_ENABLED` | `false` | Enables Cloudflare Turnstile server enforcement and client widget rendering for signup and password-reset email requests. Public installs should set it to `true`; private LAN, VPN/Tailscale, Cloudflare Access, or otherwise access-controlled installs may leave it `false` intentionally. |
 | `NUXT_PUBLIC_TURNSTILE_SITE_KEY` / `NUXT_TURNSTILE_SECRET_KEY` | empty | Cloudflare Turnstile site key and secret key. Required when Turnstile is enabled. |
 | `NUXT_TURNSTILE_ALLOWED_HOSTNAMES` | empty | Optional comma-separated hostname allow-list for Turnstile token responses, such as `libroo.example.com,app.libroo.example.com`. |
@@ -174,6 +175,20 @@ When enabled, signup and password-reset email requests must include a valid Turn
 Public/hosted deployments should enable Turnstile before leaving public signup or password-reset email enabled. If those flows are public without Turnstile, operators should treat the deployment as more exposed to automated account creation and reset-email spam.
 
 Private self-hosted deployments may intentionally opt out by leaving `NUXT_PUBLIC_TURNSTILE_ENABLED=false`, especially when Libroo is only reachable on a LAN, behind VPN/Tailscale, behind Cloudflare Access, or behind another access-control layer. The app does not refuse to run when Turnstile is disabled.
+
+### Passkeys / WebAuthn
+
+Passkeys are an optional, per-user sign-in method. Enabling this deployment capability neither enrolls users nor enforces passkeys or two-factor authentication globally.
+
+```bash
+NUXT_PUBLIC_PASSKEYS_ENABLED=true
+```
+
+Libroo only registers the WebAuthn plugin when this flag is true and `NUXT_BETTER_AUTH_URL` is a secure context: `https:` or `http://localhost` for local development. The hostname from that URL is used as the WebAuthn relying-party ID, so it must be the browser-visible application hostname. The passkey controls stay hidden when either condition is not met.
+
+For self-hosting behind a reverse proxy, terminate TLS at the public hostname and set `NUXT_BETTER_AUTH_URL` to that exact HTTPS origin (for example `https://libroo.example.com`), not the internal HTTP container URL. Do not enable passkeys on plain HTTP LAN deployments: browsers will reject WebAuthn there. Self-hosted deployments can opt out by keeping `NUXT_PUBLIC_PASSKEYS_ENABLED=false`, which is the image default.
+
+For recovery-code handling and the sole-admin last-factor safeguard, see [MFA recovery](./mfa-recovery.md).
 
 ### Client IP Handling And Rate Limiting
 
@@ -376,6 +391,7 @@ The canonical checked-in values are in `scripts/preview/runtime.env`; the deploy
 | --- | --- |
 | Email verification | Disabled. No Plunk API key is synced, so email-dependent flows must degrade gracefully. |
 | Turnstile | Disabled. Cloudflare's always-pass public test site and secret keys are used as non-secret test values. |
+| Passkeys | Disabled by default. Set `NUXT_PUBLIC_PASSKEYS_ENABLED=true` on the `preview` GitHub Environment only when actively testing WebAuthn. |
 | Public access | Denied by Cloudflare Access unless the visitor matches the reusable preview policy. Libroo also validates the Access JWT and fails closed when it is missing or invalid. |
 | Legal Markdown and canonical URLs | Empty, so no production legal content endpoint is contacted. |
 | Registration | Enabled for tester convenience. |
@@ -568,6 +584,7 @@ Repository or environment variables:
 | `NUXT_EMAIL_REPLY_TO` | Optional hosted reply-to address. |
 | `NUXT_EMAIL_VERIFICATION_ENABLED` | `true` |
 | `NUXT_PUBLIC_REGISTRATION_ENABLED` | `false` after the first admin exists. |
+| `NUXT_PUBLIC_PASSKEYS_ENABLED` | `true` only for an HTTPS origin that matches `NUXT_BETTER_AUTH_URL`; otherwise `false`. |
 | `NUXT_PUBLIC_TURNSTILE_ENABLED` | `true` for hosted public deployments. |
 | `NUXT_PUBLIC_TURNSTILE_SITE_KEY` | Hosted Turnstile public site key. |
 | `NUXT_TURNSTILE_ALLOWED_HOSTNAMES` | Hosted public hostname, or a comma-separated list if multiple hostnames serve the app. |

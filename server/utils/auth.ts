@@ -1,6 +1,7 @@
 import { betterAuth } from 'better-auth/minimal'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
-import { admin } from 'better-auth/plugins'
+import { admin, twoFactor } from 'better-auth/plugins'
+import { passkey } from '@better-auth/passkey'
 import { defaultAc } from 'better-auth/plugins/admin/access'
 import { eq } from 'drizzle-orm'
 import { PASSWORD_MIN_LENGTH } from '~~/shared/utils/password'
@@ -14,6 +15,12 @@ import { createTurnstileCaptchaPlugins } from './turnstile'
 import { sendEmailMessage } from '../services/email.service'
 import { createBackgroundTaskHandler } from '../runtime/background-tasks.active'
 import { runtimeProfile } from '../runtime/profile.active'
+import { getWebAuthnConfig, passkeysAvailable } from './webauthn-config'
+import { librooRecentAuthPlugin } from './libroo-recent-auth-plugin'
+import { resolveAuthUrl } from './auth-url'
+import { librooPasskeyTwoFactorPlugin } from './libroo-passkey-two-factor-plugin'
+
+export const getAuthUrl = resolveAuthUrl
 
 interface EnvSecretOptions {
   envKey: string
@@ -75,20 +82,12 @@ export const getAuthSecret = () => getEnvSecret({
     + 'Please set NUXT_BETTER_AUTH_SECRET in your production environment.'
 })
 
-export const getAuthUrl = () => getEnvSecret({
-  envKey: 'NUXT_BETTER_AUTH_URL',
-  runtimeConfigKey: 'betterAuthUrl',
-  devFallback: 'http://localhost:3000',
-  productionWarning:
-    'WARNING: NUXT_BETTER_AUTH_URL is not set in production. '
-    + 'Using default http://localhost:3000 which may cause authentication failures.'
-})
-
 const emailVerificationConfig = getEmailVerificationConfig()
 validateEmailVerificationConfig(emailVerificationConfig)
 const authRateLimitEnabled = process.env.NUXT_BETTER_AUTH_RATE_LIMIT_ENABLED !== 'false'
 const backgroundTaskHandler = createBackgroundTaskHandler()
 const trustedIpHeaders = getTrustedIpHeaders()
+const webAuthnConfig = getWebAuthnConfig()
 
 const adminRole = defaultAc.newRole({
   user: [
@@ -307,6 +306,17 @@ export const auth = betterAuth({
   },
   plugins: [
     ...createTurnstileCaptchaPlugins(),
+    twoFactor({
+      issuer: 'Libroo',
+      skipVerificationOnEnable: false
+    }),
+    ...(passkeysAvailable(webAuthnConfig)
+      ? [passkey({
+          rpID: webAuthnConfig.rpID,
+          rpName: 'Libroo',
+          origin: webAuthnConfig.origin
+        }), librooPasskeyTwoFactorPlugin()]
+      : []),
     librooTermsConsentPlugin(),
     admin({
       roles: {
@@ -316,6 +326,7 @@ export const auth = betterAuth({
     }),
     librooAdminAuditPlugin(),
     librooSecurityNotificationPlugin(),
+    librooRecentAuthPlugin(),
     librooAdminPolicyPlugin()
   ]
 })
