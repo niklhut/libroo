@@ -11,6 +11,7 @@ export class RecentAuthError extends Data.TaggedError('RecentAuthError')<{ messa
 export interface RecentAuthServiceInterface {
   confirmPassword: (event: H3Event, password: string) => Effect.Effect<{ expiresAt: string }, RecentAuthError>
   requireRecentAuth: (sessionId: string) => Effect.Effect<void, RecentAuthError>
+  markSessionAsRecentlyAuthenticated: (sessionId: string) => Effect.Effect<void, RecentAuthError>
 }
 
 export class RecentAuthService extends Context.Tag('RecentAuthService')<RecentAuthService, RecentAuthServiceInterface>() { }
@@ -43,5 +44,9 @@ export const RecentAuthServiceLive = Layer.succeed(RecentAuthService, {
     if (!record?.recentAuthAt || record.recentAuthAt < threshold) {
       return yield* Effect.fail(new RecentAuthError({ message: 'Confirm your password before making this change.' }))
     }
-  })
+  }),
+  markSessionAsRecentlyAuthenticated: sessionId => Effect.tryPromise({
+    try: () => db.update(schema.session).set({ recentAuthAt: new Date() }).where(eq(schema.session.id, sessionId)),
+    catch: () => new RecentAuthError({ message: 'Unable to preserve recent authentication.' })
+  }).pipe(Effect.asVoid)
 })
