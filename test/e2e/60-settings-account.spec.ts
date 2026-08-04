@@ -22,7 +22,7 @@ test('changes email immediately when verification is disabled', async ({ page },
   await dialog.getByLabel('Email').fill(nextEmail)
   await dialog.getByRole('button', { name: 'Change email' }).click()
   await expect(page.getByText('Email updated', { exact: true }).last()).toBeVisible()
-  await dialog.getByRole('button', { name: 'Close' }).click()
+  await expect(dialog).toBeHidden()
 
   await page.getByRole('button', { name: 'Sign Out' }).click()
   await expect(page).toHaveURL(/\/login\?signout=true/)
@@ -44,17 +44,16 @@ test('records pending email changes and resends verification through the local s
 
   await page.goto('/settings')
   await submitEmailChange(page, pendingEmail)
-  await expect(page.getByText('Email verified', { exact: true })).toBeVisible()
-  await expect(page.getByText('Pending email change')).toBeVisible()
-  await expect(page.getByText(new RegExp(escapeRegExp(pendingEmail))).last()).toBeVisible()
+  await expectPendingEmailSummary(page, pendingEmail)
   await expectVerificationStatus(page, user.email, pendingEmail)
 
   await submitEmailChange(page, replacementEmail)
-  await expect(page.getByText(new RegExp(escapeRegExp(replacementEmail))).last()).toBeVisible()
+  await expectPendingEmailSummary(page, replacementEmail)
   await expectVerificationStatus(page, user.email, replacementEmail)
 
   await resetMailSink(page)
-  await page.getByRole('button', { name: 'Resend verification email' }).click()
+  await page.getByRole('button', { name: 'Manage' }).click()
+  await page.getByRole('dialog', { name: 'Manage email' }).getByRole('button', { name: 'Resend verification email' }).click()
   await expect(page.getByText('Verification email sent', { exact: true }).last()).toBeVisible()
   await expect.poll(async () => (await readMailSink(page)).messages.length).toBeGreaterThan(0)
   const messages = (await readMailSink(page)).messages
@@ -95,10 +94,6 @@ test('deletes an account and removes private library data', async ({ page }, tes
 
 async function submitEmailChange(page: Page, email: string) {
   const dialog = page.getByRole('dialog', { name: 'Manage email' })
-  if (await dialog.isVisible()) {
-    await dialog.getByRole('button', { name: 'Close' }).click()
-  }
-
   await page.getByRole('button', { name: 'Manage' }).click()
   const recentAuthDialog = page.getByRole('dialog', { name: 'Confirm it’s you' })
   if (await recentAuthDialog.isVisible()) {
@@ -107,6 +102,11 @@ async function submitEmailChange(page: Page, email: string) {
   await dialog.getByLabel('Email').fill(email)
   await dialog.getByRole('button', { name: 'Change email' }).click()
   await expect(page.getByText('Verification email sent', { exact: true }).last()).toBeVisible()
+  await expect(dialog).toBeHidden()
+}
+
+async function expectPendingEmailSummary(page: Page, pendingEmail: string) {
+  await expect(page.getByText(`Changing to ${pendingEmail} — verification pending`, { exact: true })).toBeVisible()
 }
 
 async function expectVerificationStatus(page: Page, email: string, pendingEmail: string) {
@@ -157,8 +157,4 @@ async function setEmailVerified(email: string, verified: boolean) {
   } finally {
     client.close()
   }
-}
-
-function escapeRegExp(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
