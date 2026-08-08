@@ -111,6 +111,10 @@ Deliberately unaudited domain actions:
 
 Email-verification configuration is controlled by deployment environment variables, not by admins inside the app, so configuration changes are out of scope for in-app audit logging.
 
+### Metrics Dashboard
+
+The admin metrics dashboard shows aggregate, instance-level operational metadata, not per-user analytics. Its user, canonical-book, active-library-entry, active-loan, location, and tag figures are aggregate counts. Approximate cover-blob storage usage is derived from a scheduled storage calculation, not per-request activity, and is shown with its `lastCalculatedAt` time.
+
 ## Export, Deletion, And Retention Notes
 
 The library CSV export is a versioned transfer format for the current user's library. It includes current book/library fields, source identifiers used for conservative deduplication, and at most one active loan snapshot. It does not include borrower email or historical loan rows. See [Account Deletion And Retention](./account-deletion.md) for deletion mechanics and operator support guidance.

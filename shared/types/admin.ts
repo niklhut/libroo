@@ -21,3 +21,26 @@ export interface AdminUsersPage {
   page: number
   pageSize: number
 }
+
+export interface AdminMetrics {
+  users: number
+  library: {
+    canonicalBooks: number
+    activeUserBooks: number
+    activeLoans: number
+    locations: number
+    tags: number
+  }
+  storage: AdminStorageMetrics
+}
+
+export type AdminStorageMetrics
+  = | { state: 'unavailable' }
+    | {
+      state: 'stale' | 'ok'
+      totalBytes: number
+      totalMegabytes: number
+      totalGigabytes: number
+      objectCount: number
+      lastCalculatedAt: string | Date
+    }
