@@ -115,7 +115,12 @@ async function writeBlob(pathname: string, data: Buffer | Blob | ArrayBuffer, op
 }
 
 async function listFiles(root: string, current = root): Promise<string[]> {
-  const entries = await readdir(current, { withFileTypes: true }).catch(() => [])
+  const entries = await readdir(current, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') {
+      return []
+    }
+    throw error
+  })
   const files = await Promise.all(entries.map(async (entry) => {
     const entryPath = join(current, entry.name)
     if (entry.isDirectory()) {

@@ -1,5 +1,5 @@
 import { Effect, Either } from 'effect'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import sharp from 'sharp'
@@ -124,6 +124,21 @@ describe('StorageServiceLocalSharpLive', () => {
   })
 
   describe('metadata lifecycle', () => {
+    it('reports a storage error instead of zero usage when the storage root cannot be read', async () => {
+      const fileRoot = join(tempDir, 'not-a-directory')
+      await writeFile(fileRoot, 'not a directory')
+      process.env.NUXT_LOCAL_STORAGE_DIR = fileRoot
+
+      const result = await run(Effect.either(Effect.flatMap(StorageService, service => service.getUsage('covers/'))))
+
+      expect(Either.isLeft(result)).toBe(true)
+      if (Either.isLeft(result)) {
+        expect(result.left).toMatchObject({ operation: 'getUsage' })
+      }
+
+      process.env.NUXT_LOCAL_STORAGE_DIR = tempDir
+    })
+
     it('calculates usage for cover blobs only', async () => {
       const cover = await run(Effect.flatMap(StorageService, service =>
         service.put('covers/a.webp', Buffer.from('cover'), { contentType: 'image/webp' })
