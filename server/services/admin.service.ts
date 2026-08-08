@@ -5,15 +5,13 @@ import { AdminRepository } from '../repositories/admin.repository'
 import { AuditRepository } from '../repositories/audit.repository'
 import { DatabaseError } from '../repositories/book.repository'
 import { auth } from '../utils/auth'
-import { requireAdmin } from '../utils/admin-access'
+import { AdminAccessForbiddenError as AdminForbiddenError, requireAdmin } from '../utils/admin-access'
 import { roleIncludesAdmin } from '~~/shared/utils/auth-roles'
 
 const DEFAULT_ADMIN_PAGE_SIZE = 25
 const MAX_ADMIN_PAGE_SIZE = 100
 
-export class AdminForbiddenError extends Data.TaggedError('AdminForbiddenError')<{
-  message: string
-}> { }
+export { AdminAccessForbiddenError as AdminForbiddenError } from '../utils/admin-access'
 
 export class InvalidAdminRequestError extends Data.TaggedError('InvalidAdminRequestError')<{
   message: string

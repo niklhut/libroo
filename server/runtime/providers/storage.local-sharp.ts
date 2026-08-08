@@ -3,7 +3,7 @@ import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, normalize, relative, resolve, win32 } from 'node:path'
 import sharp from 'sharp'
 import { StorageError, StorageService } from '../../services/storage.service'
-import type { BlobMetadata, BlobPutOptions } from '../../services/storage.service'
+import type { BlobMetadata, BlobPutOptions, StorageUsage } from '../../services/storage.service'
 
 interface LocalBlobMetadata extends BlobMetadata {
   contentType: string
@@ -129,6 +129,23 @@ async function listFiles(root: string, current = root): Promise<string[]> {
   return files.flat()
 }
 
+function coverUsagePrefix(prefix?: string) {
+  return prefix?.startsWith('covers/') ? prefix : 'covers/'
+}
+
+async function getCoverUsage(prefix?: string): Promise<StorageUsage> {
+  const root = getLocalStorageRoot()
+  const files = await listFiles(root)
+  const coverFiles = files.filter(file => file.startsWith(coverUsagePrefix(prefix)))
+  const sizes = await Promise.all(coverFiles.map(async pathname => stat(resolveBlobPath(pathname))))
+
+  return {
+    available: true,
+    totalBytes: sizes.reduce((total, entry) => total + entry.size, 0),
+    objectCount: sizes.length
+  }
+}
+
 export const StorageServiceLocalSharpLive = Layer.succeed(StorageService, {
   put: (pathname, data, options) =>
     Effect.tryPromise({
@@ -212,6 +229,15 @@ export const StorageServiceLocalSharpLive = Layer.succeed(StorageService, {
       catch: error => new StorageError({
         message: `Failed to list local blobs: ${error}`,
         operation: 'list'
+      })
+    }),
+
+  getUsage: prefix =>
+    Effect.tryPromise({
+      try: () => getCoverUsage(prefix),
+      catch: error => new StorageError({
+        message: `Failed to calculate local blob usage: ${error}`,
+        operation: 'getUsage'
       })
     })
 })

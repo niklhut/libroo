@@ -94,6 +94,30 @@ describe('StorageServiceCloudflareLive', () => {
   })
 
   describe('delegation and metadata normalization', () => {
+    it('paginates only cover blobs when calculating usage', async () => {
+      blobMock.list
+        .mockResolvedValueOnce({
+          blobs: [{ pathname: 'covers/a.webp', size: 10 }],
+          cursor: 'next-page'
+        })
+        .mockResolvedValueOnce({
+          blobs: [{ pathname: 'covers/b.webp', size: 20 }]
+        })
+
+      const result = await run(Effect.flatMap(StorageService, service => service.getUsage('covers/')))
+
+      expect(result).toEqual({ available: true, totalBytes: 30, objectCount: 2 })
+      expect(blobMock.list).toHaveBeenNthCalledWith(1, { prefix: 'covers/', cursor: undefined })
+      expect(blobMock.list).toHaveBeenNthCalledWith(2, { prefix: 'covers/', cursor: 'next-page' })
+    })
+
+    it('marks usage unavailable when the provider omits object sizes', async () => {
+      blobMock.list.mockResolvedValueOnce({ blobs: [{ pathname: 'covers/a.webp' }] })
+
+      await expect(run(Effect.flatMap(StorageService, service => service.getUsage('covers/'))))
+        .resolves.toEqual({ available: false, totalBytes: 0, objectCount: 0 })
+    })
+
     it('forwards put arguments and normalizes returned metadata dates', async () => {
       const data = Buffer.from('cloud blob')
       blobMock.put.mockResolvedValueOnce({

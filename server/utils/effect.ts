@@ -3,8 +3,14 @@ import type * as HttpClient from '@effect/platform/HttpClient'
 import { RuntimeInfrastructureLive } from '../runtime/active'
 import { RateLimitRepositoryLive } from '../repositories/rate-limit.repository'
 import type { RateLimitRepository } from '../repositories/rate-limit.repository'
+import { MetricsRepositoryLive } from '../repositories/metrics.repository'
+import type { MetricsRepository } from '../repositories/metrics.repository'
+import { StorageUsageSnapshotRepositoryLive } from '../repositories/storage-metrics.repository'
+import type { StorageUsageSnapshotRepository } from '../repositories/storage-metrics.repository'
 import { RateLimitServiceLive } from '../services/rate-limit.service'
 import type { RateLimitService } from '../services/rate-limit.service'
+import { MetricsServiceLive } from '../services/metrics.service'
+import type { MetricsService } from '../services/metrics.service'
 import type { EmailService } from '../runtime/email.core'
 import { AuthCapabilityServiceLive } from '../services/auth-capability.service'
 import type { AuthCapabilityService } from '../services/auth-capability.service'
@@ -33,14 +39,16 @@ const RepositoriesLive = Layer.provideMerge(
     SignupInviteRepositoryLive,
     HealthRepositoryLive,
     LegalRepositoryLive,
-    RateLimitRepositoryLive
+    RateLimitRepositoryLive,
+    MetricsRepositoryLive,
+    StorageUsageSnapshotRepositoryLive
   ),
   BaseServicesLive
 )
 
 // Service layer (depends on repositories)
 const CoreServicesLive = Layer.provideMerge(
-  Layer.mergeAll(BookServiceLive, BookEnrichmentServiceLive, LendingServiceLive, AdminServiceLive, AuditServiceLive, LocationServiceLive, LibraryTransferServiceLive, PreferencesServiceLive, AccountDeletionServiceLive, SignupInviteServiceLive, EmailCapabilityServiceLive, AuthCapabilityServiceLive, HealthServiceLive, LegalServiceLive, RateLimitServiceLive),
+  Layer.mergeAll(BookServiceLive, BookEnrichmentServiceLive, LendingServiceLive, AdminServiceLive, AuditServiceLive, LocationServiceLive, LibraryTransferServiceLive, PreferencesServiceLive, AccountDeletionServiceLive, SignupInviteServiceLive, EmailCapabilityServiceLive, AuthCapabilityServiceLive, HealthServiceLive, LegalServiceLive, RateLimitServiceLive, MetricsServiceLive),
   RepositoriesLive
 )
 
@@ -75,6 +83,8 @@ export type MainServices
     | HealthRepository
     | LegalRepository
     | RateLimitRepository
+    | MetricsRepository
+    | StorageUsageSnapshotRepository
     | BookService
     | BookEnrichmentService
     | LendingService
@@ -92,6 +102,7 @@ export type MainServices
     | HealthService
     | LegalService
     | RateLimitService
+    | MetricsService
     | HttpClient.HttpClient
 
 // Helper to safely get property from unknown object

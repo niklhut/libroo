@@ -2,7 +2,7 @@ import { Context, Effect, Data } from 'effect'
 
 export class StorageError extends Data.TaggedError('StorageError')<{
   message: string
-  operation: 'put' | 'convertCoverImage' | 'putCoverImage' | 'get' | 'delete' | 'list'
+  operation: 'put' | 'convertCoverImage' | 'putCoverImage' | 'get' | 'delete' | 'list' | 'getUsage'
 }> { }
 
 export interface BlobPutOptions {
@@ -17,12 +17,19 @@ export interface BlobMetadata {
   uploadedAt: Date
 }
 
+export interface StorageUsage {
+  available: boolean
+  totalBytes: number
+  objectCount: number
+}
+
 export interface StorageServiceInterface {
   put: (pathname: string, data: Buffer | Blob | ArrayBuffer, options?: BlobPutOptions) => Effect.Effect<BlobMetadata, StorageError>
   putCoverImage: (pathname: string, data: Buffer | ArrayBuffer) => Effect.Effect<BlobMetadata, StorageError>
   get: (pathname: string) => Effect.Effect<Blob | null, StorageError>
   delete: (pathname: string) => Effect.Effect<void, StorageError>
   list: (prefix?: string) => Effect.Effect<BlobMetadata[], StorageError>
+  getUsage: (prefix?: string) => Effect.Effect<StorageUsage, StorageError>
 }
 
 export class StorageService extends Context.Tag('StorageService')<StorageService, StorageServiceInterface>() { }
@@ -41,3 +48,6 @@ export const deleteBlob = (pathname: string) =>
 
 export const listBlobs = (prefix?: string) =>
   Effect.flatMap(StorageService, service => service.list(prefix))
+
+export const getStorageUsage = (prefix?: string) =>
+  Effect.flatMap(StorageService, service => service.getUsage(prefix))

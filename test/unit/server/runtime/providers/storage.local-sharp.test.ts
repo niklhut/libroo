@@ -124,6 +124,18 @@ describe('StorageServiceLocalSharpLive', () => {
   })
 
   describe('metadata lifecycle', () => {
+    it('calculates usage for cover blobs only', async () => {
+      const cover = await run(Effect.flatMap(StorageService, service =>
+        service.put('covers/a.webp', Buffer.from('cover'), { contentType: 'image/webp' })
+      ))
+      await run(Effect.flatMap(StorageService, service =>
+        service.put('documents/readme.txt', Buffer.from('document'), { contentType: 'text/plain' })
+      ))
+
+      await expect(run(Effect.flatMap(StorageService, service => service.getUsage('covers/'))))
+        .resolves.toEqual({ available: true, totalBytes: cover.size, objectCount: 1 })
+    })
+
     it('writes sidecar metadata, reads blobs, lists metadata, and deletes idempotently', async () => {
       const data = Buffer.from('hello local blob')
       const metadata = await run(Effect.flatMap(StorageService, service =>
