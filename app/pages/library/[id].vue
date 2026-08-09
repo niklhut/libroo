@@ -3,28 +3,20 @@ import { booleanConfigValue } from '~~/shared/utils/runtime-config'
 
 const route = useRoute()
 const config = useRuntimeConfig()
-const toast = useToast()
 const userBookId = route.params.id as string
 
-const isDeleting = ref(false)
 const isLocationModalOpen = ref(false)
 const isLendingModalOpen = ref(false)
 const isReadingModalOpen = ref(false)
 const isTagModalOpen = ref(false)
 const isBookNoteModalOpen = ref(false)
 const isLoanNoteModalOpen = ref(false)
-const isReturningLoan = ref(false)
-const isSavingReadingProgress = ref(false)
-const isSavingBookNote = ref(false)
-const isSavingLoanNote = ref(false)
-const isSavingRating = ref(false)
 const isLoanRemovalDialogOpen = ref(false)
 const isOwnershipDialogOpen = ref(false)
 const isWishlistRemovalDialogOpen = ref(false)
 const isRecordDeletionDialogOpen = ref(false)
 const isMoveToWishlistDialogOpen = ref(false)
 const isMoveToLibraryDialogOpen = ref(false)
-const isUpdatingLibraryState = ref(false)
 const bookNoteDraft = ref('')
 const loanNoteDraft = ref('')
 
@@ -34,7 +26,22 @@ const { data: book, status, refresh } = await useFetch<BookDetails>(`/api/books/
 
 usePageTitle(computed(() => book.value?.title ?? 'Book'))
 
-const coverUrl = computed(() => book.value?.coverPath ? `/api/blob/${book.value.coverPath}` : null)
+const {
+  isDeleting,
+  isReturningLoan,
+  isSavingReadingProgress,
+  isSavingBookNote,
+  isSavingLoanNote,
+  isUpdatingLibraryState,
+  removeBook,
+  updateBookLibraryState,
+  saveBookNote: persistBookNote,
+  saveLoanNote: persistLoanNote,
+  returnActiveLoan,
+  saveReadingProgress: persistReadingProgress,
+  saveRating
+} = useBookDetailActions(userBookId, book, refresh)
+
 const isOwnedBook = computed(() => book.value?.libraryState === 'owned')
 const showOpenLibraryLinks = computed(() =>
   booleanConfigValue(config.public.openLibraryLinksEnabled, false)
@@ -67,58 +74,6 @@ function formatDate(value: Date | string | null): string | null {
   return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
-function openBookNote() {
-  bookNoteDraft.value = book.value?.note ?? ''
-  isBookNoteModalOpen.value = true
-}
-
-function openLoanNote() {
-  loanNoteDraft.value = book.value?.activeLoan?.note ?? ''
-  isLoanNoteModalOpen.value = true
-}
-
-async function removeBook(confirmActiveLoan = false) {
-  isDeleting.value = true
-  try {
-    await $fetch(`/api/books/${userBookId}`, {
-      method: 'DELETE',
-      query: confirmActiveLoan ? { confirmActiveLoan: 'true' } : undefined
-    })
-    toast.add({ title: 'Book removed', color: 'success' })
-    await navigateTo('/library')
-  } catch (error: unknown) {
-    const statusCode = (error as { statusCode?: number, data?: { statusCode?: number } })?.statusCode
-      ?? (error as { data?: { statusCode?: number } })?.data?.statusCode
-    if (statusCode === 409 && book.value?.activeLoan && !confirmActiveLoan) {
-      isLoanRemovalDialogOpen.value = true
-      return
-    }
-    toast.add({ title: 'Could not remove book', color: 'error' })
-  } finally {
-    isDeleting.value = false
-  }
-}
-
-async function updateBookLibraryState(state: LibraryState) {
-  if (!book.value || isUpdatingLibraryState.value) return
-  isUpdatingLibraryState.value = true
-  try {
-    await $fetch(`/api/books/${userBookId}/state`, {
-      method: 'PUT',
-      body: { state }
-    })
-    await refresh()
-    toast.add({
-      title: state === 'owned' ? 'Moved to library' : state === 'wishlisted' ? 'Moved to wishlist' : 'Marked previously owned',
-      color: 'success'
-    })
-  } catch {
-    toast.add({ title: 'Could not update book state', color: 'error' })
-  } finally {
-    isUpdatingLibraryState.value = false
-  }
-}
-
 function moveToWishlist() {
   isMoveToWishlistDialogOpen.value = false
   void updateBookLibraryState('wishlisted')
@@ -126,6 +81,14 @@ function moveToWishlist() {
 
 function moveToLibrary() {
   isMoveToLibraryDialogOpen.value = false
+  void updateBookLibraryState('owned')
+}
+
+function requestMoveToLibrary() {
+  if (book.value?.libraryState === 'wishlisted') {
+    isMoveToLibraryDialogOpen.value = true
+    return
+  }
   void updateBookLibraryState('owned')
 }
 
@@ -138,88 +101,31 @@ function deleteBookRecord() {
   isOwnershipDialogOpen.value = false
   isWishlistRemovalDialogOpen.value = false
   isRecordDeletionDialogOpen.value = false
-  void removeBook()
+  void removeBook().then((result) => {
+    if (result === 'active-loan') isLoanRemovalDialogOpen.value = true
+  })
+}
+
+function openBookNote() {
+  bookNoteDraft.value = book.value?.note ?? ''
+  isBookNoteModalOpen.value = true
+}
+
+function openLoanNote() {
+  loanNoteDraft.value = book.value?.activeLoan?.note ?? ''
+  isLoanNoteModalOpen.value = true
 }
 
 async function saveBookNote() {
-  if (!book.value) return
-  isSavingBookNote.value = true
-  try {
-    await $fetch(`/api/books/${userBookId}/note`, {
-      method: 'PUT',
-      body: { note: bookNoteDraft.value.trim() || null }
-    })
-    await refresh()
-    isBookNoteModalOpen.value = false
-    toast.add({ title: bookNoteDraft.value.trim() ? 'Note saved' : 'Note removed', color: 'success' })
-  } catch {
-    toast.add({ title: 'Could not save note', color: 'error' })
-  } finally {
-    isSavingBookNote.value = false
-  }
+  if (await persistBookNote(bookNoteDraft.value)) isBookNoteModalOpen.value = false
 }
 
 async function saveLoanNote() {
-  const loan = book.value?.activeLoan
-  if (!loan) return
-  isSavingLoanNote.value = true
-  try {
-    await $fetch(`/api/loans/${loan.id}/note`, {
-      method: 'PUT',
-      body: { note: loanNoteDraft.value.trim() || null }
-    })
-    await refresh()
-    isLoanNoteModalOpen.value = false
-    toast.add({ title: loanNoteDraft.value.trim() ? 'Loan note saved' : 'Loan note removed', color: 'success' })
-  } catch {
-    toast.add({ title: 'Could not save loan note', color: 'error' })
-  } finally {
-    isSavingLoanNote.value = false
-  }
-}
-
-async function returnActiveLoan() {
-  const loan = book.value?.activeLoan
-  if (!loan || isReturningLoan.value) return
-  isReturningLoan.value = true
-  try {
-    await $fetch(`/api/loans/${loan.id}/return`, { method: 'POST' })
-    await refresh()
-    toast.add({ title: 'Book marked as returned', color: 'success' })
-  } catch {
-    toast.add({ title: 'Could not update lending status', color: 'error' })
-  } finally {
-    isReturningLoan.value = false
-  }
+  if (await persistLoanNote(loanNoteDraft.value)) isLoanNoteModalOpen.value = false
 }
 
 async function saveReadingProgress(progress: ReadingProgress) {
-  isSavingReadingProgress.value = true
-  try {
-    await $fetch(`/api/books/${userBookId}/reading`, { method: 'PUT', body: progress })
-    await refresh()
-    isReadingModalOpen.value = false
-    toast.add({ title: 'Progress saved', color: 'success' })
-  } catch {
-    toast.add({ title: 'Could not save reading progress', color: 'error' })
-  } finally {
-    isSavingReadingProgress.value = false
-  }
-}
-
-async function saveRating(rating: number | null) {
-  if (!book.value || isSavingRating.value) return
-  const previousRating = book.value.rating
-  book.value = { ...book.value, rating }
-  isSavingRating.value = true
-  try {
-    await $fetch(`/api/books/${userBookId}/rating`, { method: 'PUT', body: { rating } })
-  } catch {
-    book.value = { ...book.value, rating: previousRating }
-    toast.add({ title: 'Could not save rating', color: 'error' })
-  } finally {
-    isSavingRating.value = false
-  }
+  if (await persistReadingProgress(progress)) isReadingModalOpen.value = false
 }
 
 async function onLocationSaved(location: BookLocation | null) {
@@ -266,199 +172,20 @@ async function onTagsSaved() {
 
       <template v-else>
         <div class="grid gap-6 lg:grid-cols-[17.5rem_minmax(0,1fr)] lg:gap-8">
-          <aside class="lg:sticky lg:top-24 lg:self-start">
-            <div class="w-full space-y-4 sm:grid sm:grid-cols-[17.5rem_minmax(0,1fr)] sm:items-start sm:gap-6 sm:space-y-0 lg:block lg:space-y-4">
-              <div class="mx-auto w-full max-w-70 border border-default bg-default sm:mx-0 sm:col-start-1 lg:col-auto">
-                <NuxtImg
-                  v-if="coverUrl"
-                  :src="coverUrl"
-                  :alt="book.title"
-                  width="280"
-                  height="420"
-                  class="aspect-2/3 w-full object-cover"
-                />
-                <div
-                  v-else
-                  class="flex aspect-2/3 items-center justify-center bg-muted"
-                >
-                  <UIcon
-                    name="i-lucide-book"
-                    class="text-6xl text-muted"
-                  />
-                </div>
-              </div>
-
-              <UCard
-                class="sm:col-start-2 sm:row-start-1 lg:col-auto"
-                :ui="{ body: 'p-4' }"
-                aria-labelledby="summary-heading"
-              >
-                <h2
-                  id="summary-heading"
-                  class="text-sm font-bold uppercase tracking-wide"
-                >
-                  At a glance
-                </h2>
-                <dl class="mt-4 space-y-3 text-sm">
-                  <div class="flex items-start justify-between gap-4">
-                    <dt class="flex items-center gap-2 text-muted">
-                      <UIcon
-                        name="i-lucide-box"
-                        class="size-4"
-                      />Status
-                    </dt><dd class="text-right font-medium">
-                      {{ isOwnedBook ? (book.activeLoan ? 'Lent out' : 'Available') : book.libraryState === 'wishlisted' ? 'Wishlist' : 'Previously owned' }}
-                    </dd>
-                  </div>
-                  <div
-                    v-if="isOwnedBook"
-                    class="flex items-start justify-between gap-4"
-                  >
-                    <dt class="flex items-center gap-2 text-muted">
-                      <UIcon
-                        name="i-lucide-map-pin"
-                        class="size-4"
-                      />Location
-                    </dt><dd class="max-w-36 text-right font-medium">
-                      {{ isOwnedBook ? book.location?.path || 'Not set' : book.lastKnownLocation || 'Not in inventory' }}
-                    </dd>
-                  </div>
-                  <div
-                    v-if="isOwnedBook"
-                    class="flex items-start justify-between gap-4"
-                  >
-                    <dt class="flex items-center gap-2 text-muted">
-                      <UIcon
-                        name="i-lucide-book-open"
-                        class="size-4"
-                      />Reading
-                    </dt><dd class="max-w-36 text-right font-medium">
-                      {{ isOwnedBook ? readingSummary : 'Unavailable' }}
-                    </dd>
-                  </div>
-                  <div
-                    v-if="isOwnedBook"
-                    class="flex items-start justify-between gap-4"
-                  >
-                    <dt class="flex items-center gap-2 text-muted">
-                      <UIcon
-                        name="i-lucide-star"
-                        class="size-4"
-                      />Rating
-                    </dt><dd class="flex min-h-5 items-center justify-end gap-0.5">
-                      <template v-if="isOwnedBook && book.rating">
-                        <UIcon
-                          v-for="star in 5"
-                          :key="star"
-                          name="i-lucide-star"
-                          :class="star <= book.rating ? 'size-4 fill-amber-400 text-amber-500' : 'size-4 text-muted'"
-                        />
-                      </template>
-                      <span
-                        v-else
-                        class="font-medium"
-                      >{{ isOwnedBook ? 'Not rated' : 'Unavailable' }}</span>
-                    </dd>
-                  </div>
-                </dl>
-              </UCard>
-            </div>
-          </aside>
+          <BookDetailSidebar :book="book" />
 
           <main class="flex flex-col gap-4">
-            <header class="order-0 space-y-4">
-              <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <h1 class="text-3xl font-bold tracking-tight md:text-4xl">
-                    {{ book.title }}
-                  </h1>
-                  <p class="mt-2 text-lg text-muted">
-                    {{ book.authors.map(author => author.name).join(', ') || book.author }}
-                  </p>
-                </div>
-                <div class="flex shrink-0 flex-wrap gap-2">
-                  <UButton
-                    v-if="book.libraryState === 'wishlisted'"
-                    size="sm"
-                    icon="i-lucide-arrow-up-right"
-                    :loading="isUpdatingLibraryState"
-                    :disabled="isUpdatingLibraryState"
-                    @click="isMoveToLibraryDialogOpen = true"
-                  >
-                    Move to Library
-                  </UButton>
-                  <UButton
-                    v-else-if="book.libraryState === 'previously_owned'"
-                    size="sm"
-                    icon="i-lucide-arrow-up-right"
-                    :loading="isUpdatingLibraryState"
-                    :disabled="isUpdatingLibraryState"
-                    @click="updateBookLibraryState('owned')"
-                  >
-                    Move to Library
-                  </UButton>
-                  <UDropdownMenu
-                    :items="[
-                      ...(isOwnedBook && !book.activeLoan ? [{ label: 'Move to Wishlist', icon: 'i-lucide-bookmark', onSelect: () => { isMoveToWishlistDialogOpen = true } }] : []),
-                      ...(isOwnedBook ? [{ label: 'No longer own this book', icon: 'i-lucide-history', onSelect: () => { isOwnershipDialogOpen = true } }] : []),
-                      ...(book.libraryState === 'wishlisted' ? [{ label: 'Remove from Wishlist', icon: 'i-lucide-x', color: 'error' as const, onSelect: () => { isWishlistRemovalDialogOpen = true } }] : []),
-                      ...(book.libraryState === 'previously_owned' ? [{ label: 'Delete this book', icon: 'i-lucide-trash-2', color: 'error' as const, onSelect: () => { isRecordDeletionDialogOpen = true } }] : [])
-                    ]"
-                  >
-                    <UButton
-                      color="neutral"
-                      variant="outline"
-                      size="sm"
-                      icon="i-lucide-ellipsis"
-                      aria-label="More book actions"
-                      :disabled="isDeleting || isUpdatingLibraryState"
-                    />
-                  </UDropdownMenu>
-                </div>
-              </div>
-              <div class="flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted">
-                <span
-                  v-if="book.publishDate"
-                  class="inline-flex items-center gap-1.5"
-                ><UIcon
-                  name="i-lucide-calendar-days"
-                  class="size-4"
-                /> Published {{ formatDate(book.publishDate) }}</span>
-                <span
-                  v-if="book.publishers"
-                  class="inline-flex items-center gap-1.5"
-                ><UIcon
-                  name="i-lucide-building-2"
-                  class="size-4"
-                /> {{ book.publishers }}</span>
-                <span
-                  v-if="book.numberOfPages"
-                  class="inline-flex items-center gap-1.5"
-                ><UIcon
-                  name="i-lucide-book-open"
-                  class="size-4"
-                /> {{ book.numberOfPages }} pages</span>
-                <span
-                  v-if="book.isbn"
-                  class="inline-flex items-center gap-1.5"
-                ><UIcon
-                  name="i-lucide-scan-barcode"
-                  class="size-4"
-                /> ISBN {{ book.isbn }}</span>
-                <span class="inline-flex items-center gap-1.5"><UIcon
-                  name="i-lucide-plus-circle"
-                  class="size-4"
-                /> Added {{ formatDate(book.addedAt) }}</span>
-              </div>
-              <div
-                v-if="book.description"
-                class="max-w-3xl"
-              >
-                <h2 class="mb-2 text-lg font-semibold">
-                  Description
-                </h2><BookDescription :description="book.description" />
-              </div>
-            </header>
+            <BookDetailHeader
+              :book="book"
+              :is-deleting="isDeleting"
+              :is-updating-library-state="isUpdatingLibraryState"
+              :format-date="formatDate"
+              @move-to-library="requestMoveToLibrary"
+              @move-to-wishlist="isMoveToWishlistDialogOpen = true"
+              @mark-previously-owned="isOwnershipDialogOpen = true"
+              @remove-wishlist="isWishlistRemovalDialogOpen = true"
+              @delete-record="isRecordDeletionDialogOpen = true"
+            />
 
             <BookDetailCard
               v-if="isOwnedBook"
