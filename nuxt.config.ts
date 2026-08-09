@@ -181,7 +181,7 @@ export default defineNuxtConfig({
             ...(!cloudflarePreview
               ? {
                   triggers: {
-                    crons: ['*/5 * * * *', '0 3 * * *', '30 3 * * *']
+                    crons: ['*/5 * * * *', '0 3 * * *', '30 3 * * *', '0 4 * * *']
                   }
                 }
               : {}),
@@ -201,7 +201,8 @@ export default defineNuxtConfig({
     scheduledTasks: {
       '*/5 * * * *': 'books:enrich-imported',
       '0 3 * * *': 'audit:cleanup',
-      '30 3 * * *': 'books:repair-covers'
+      '30 3 * * *': 'books:repair-covers',
+      '0 4 * * *': 'storage:recalculate-usage'
     },
     imports: {
       dirs: [
@@ -252,13 +253,18 @@ export default defineNuxtConfig({
         'books:enrich-imported': {
           handler: './tasks/books/enrich-imported.ts',
           description: 'Enrich opted-in CSV imports with Open Library metadata and covers.'
+        },
+        'storage:recalculate-usage': {
+          handler: './tasks/storage/recalculate-usage.ts',
+          description: 'Recalculate the approximate storage used by cover blobs.'
         }
       }
       nitroConfig.scheduledTasks = {
         ...nitroConfig.scheduledTasks,
         '*/5 * * * *': 'books:enrich-imported',
         '0 3 * * *': 'audit:cleanup',
-        '30 3 * * *': 'books:repair-covers'
+        '30 3 * * *': 'books:repair-covers',
+        '0 4 * * *': 'storage:recalculate-usage'
       }
     }
   },

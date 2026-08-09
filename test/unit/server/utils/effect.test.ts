@@ -18,6 +18,8 @@ const liveLayerNames = [
   'HealthRepositoryLive',
   'LegalRepositoryLive',
   'RateLimitRepositoryLive',
+  'MetricsRepositoryLive',
+  'StorageUsageSnapshotRepositoryLive',
   'BookServiceLive',
   'BookEnrichmentServiceLive',
   'LendingServiceLive',
@@ -32,7 +34,8 @@ const liveLayerNames = [
   'EmailCapabilityServiceLive',
   'HealthServiceLive',
   'LegalServiceLive',
-  'RateLimitServiceLive'
+  'RateLimitServiceLive',
+  'MetricsServiceLive'
 ] as const
 
 vi.mock('../../../../server/runtime/active', () => ({

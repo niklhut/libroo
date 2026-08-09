@@ -1,7 +1,7 @@
 import { Effect, Layer } from 'effect'
 import { blob } from '@nuxthub/blob'
 import { StorageError, StorageService } from '../../services/storage.service'
-import type { BlobMetadata } from '../../services/storage.service'
+import type { BlobMetadata, StorageUsage } from '../../services/storage.service'
 import { detectImageContentType, UNKNOWN_IMAGE_CONTENT_TYPE } from '../../../shared/utils/image-content-type'
 
 function toMetadata(result: {
@@ -45,6 +45,30 @@ function pathnameForStoredCover(pathname: string, contentType: string) {
     return `${pathname.slice(0, lastDot)}${extension}`
   }
   return `${pathname}${extension}`
+}
+
+function coverUsagePrefix(prefix?: string) {
+  return prefix?.startsWith('covers/') ? prefix : 'covers/'
+}
+
+async function getCoverUsage(prefix?: string): Promise<StorageUsage> {
+  let cursor: string | undefined
+  let totalBytes = 0
+  let objectCount = 0
+
+  do {
+    const result = await blob.list({ prefix: coverUsagePrefix(prefix), cursor })
+    for (const item of result.blobs) {
+      if (typeof item.size !== 'number') {
+        return { available: false, totalBytes: 0, objectCount: 0 }
+      }
+      totalBytes += item.size
+      objectCount += 1
+    }
+    cursor = result.cursor
+  } while (cursor)
+
+  return { available: true, totalBytes, objectCount }
 }
 
 export const StorageServiceCloudflareLive = Layer.succeed(StorageService, {
@@ -112,6 +136,15 @@ export const StorageServiceCloudflareLive = Layer.succeed(StorageService, {
       catch: error => new StorageError({
         message: `Failed to list blobs: ${error}`,
         operation: 'list'
+      })
+    }),
+
+  getUsage: prefix =>
+    Effect.tryPromise({
+      try: () => getCoverUsage(prefix),
+      catch: error => new StorageError({
+        message: `Failed to calculate blob usage: ${error}`,
+        operation: 'getUsage'
       })
     })
 })

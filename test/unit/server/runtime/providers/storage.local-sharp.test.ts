@@ -1,5 +1,5 @@
 import { Effect, Either } from 'effect'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import sharp from 'sharp'
@@ -124,6 +124,40 @@ describe('StorageServiceLocalSharpLive', () => {
   })
 
   describe('metadata lifecycle', () => {
+    it('reports a storage error instead of zero usage when the storage root cannot be read', async () => {
+      const fileRoot = join(tempDir, 'not-a-directory')
+      await writeFile(fileRoot, 'not a directory')
+      const previousRoot = process.env.NUXT_LOCAL_STORAGE_DIR
+      process.env.NUXT_LOCAL_STORAGE_DIR = fileRoot
+
+      try {
+        const result = await run(Effect.either(Effect.flatMap(StorageService, service => service.getUsage('covers/'))))
+
+        expect(Either.isLeft(result)).toBe(true)
+        if (Either.isLeft(result)) {
+          expect(result.left).toMatchObject({ operation: 'getUsage' })
+        }
+      } finally {
+        if (previousRoot === undefined) {
+          Reflect.deleteProperty(process.env, 'NUXT_LOCAL_STORAGE_DIR')
+        } else {
+          process.env.NUXT_LOCAL_STORAGE_DIR = previousRoot
+        }
+      }
+    })
+
+    it('calculates usage for cover blobs only', async () => {
+      const cover = await run(Effect.flatMap(StorageService, service =>
+        service.put('covers/a.webp', Buffer.from('cover'), { contentType: 'image/webp' })
+      ))
+      await run(Effect.flatMap(StorageService, service =>
+        service.put('documents/readme.txt', Buffer.from('document'), { contentType: 'text/plain' })
+      ))
+
+      await expect(run(Effect.flatMap(StorageService, service => service.getUsage('covers/'))))
+        .resolves.toEqual({ available: true, totalBytes: cover.size, objectCount: 1 })
+    })
+
     it('writes sidecar metadata, reads blobs, lists metadata, and deletes idempotently', async () => {
       const data = Buffer.from('hello local blob')
       const metadata = await run(Effect.flatMap(StorageService, service =>

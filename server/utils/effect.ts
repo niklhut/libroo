@@ -33,14 +33,16 @@ const RepositoriesLive = Layer.provideMerge(
     SignupInviteRepositoryLive,
     HealthRepositoryLive,
     LegalRepositoryLive,
-    RateLimitRepositoryLive
+    RateLimitRepositoryLive,
+    MetricsRepositoryLive,
+    StorageUsageSnapshotRepositoryLive
   ),
   BaseServicesLive
 )
 
 // Service layer (depends on repositories)
 const CoreServicesLive = Layer.provideMerge(
-  Layer.mergeAll(BookServiceLive, BookEnrichmentServiceLive, LendingServiceLive, AdminServiceLive, AuditServiceLive, LocationServiceLive, LibraryTransferServiceLive, PreferencesServiceLive, AccountDeletionServiceLive, SignupInviteServiceLive, EmailCapabilityServiceLive, AuthCapabilityServiceLive, HealthServiceLive, LegalServiceLive, RateLimitServiceLive),
+  Layer.mergeAll(BookServiceLive, BookEnrichmentServiceLive, LendingServiceLive, AdminServiceLive, AuditServiceLive, LocationServiceLive, LibraryTransferServiceLive, PreferencesServiceLive, AccountDeletionServiceLive, SignupInviteServiceLive, EmailCapabilityServiceLive, AuthCapabilityServiceLive, HealthServiceLive, LegalServiceLive, RateLimitServiceLive, MetricsServiceLive),
   RepositoriesLive
 )
 
@@ -75,6 +77,8 @@ export type MainServices
     | HealthRepository
     | LegalRepository
     | RateLimitRepository
+    | MetricsRepository
+    | StorageUsageSnapshotRepository
     | BookService
     | BookEnrichmentService
     | LendingService
@@ -92,6 +96,7 @@ export type MainServices
     | HealthService
     | LegalService
     | RateLimitService
+    | MetricsService
     | HttpClient.HttpClient
 
 // Helper to safely get property from unknown object

@@ -42,6 +42,11 @@ const adminLinks = computed<NavigationMenuItem[]>(() => [
     label: 'Audit',
     icon: 'i-lucide-scroll-text',
     to: '/admin/audit'
+  },
+  {
+    label: 'Metrics',
+    icon: 'i-lucide-bar-chart-3',
+    to: '/admin/metrics'
   }
 ])
 
