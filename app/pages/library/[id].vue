@@ -444,374 +444,473 @@ async function saveReadingProgress(progress: {
         </UButton>
       </UCard>
 
-      <!-- Book Details -->
-      <div
-        v-else
-        class="md:flex md:gap-8"
-      >
-        <!-- Cover - Small centered on mobile, sticky on desktop -->
-        <div class="flex justify-center mb-6 md:mb-0 md:block md:shrink-0 md:w-70">
-          <div class="w-40 md:w-70 md:sticky md:top-24 md:self-start">
-            <div class="rounded-lg overflow-hidden shadow-lg">
-              <NuxtImg
-                v-if="coverUrl"
-                :src="coverUrl"
-                :alt="book.title"
-                width="280"
-                height="420"
-                preload
-              />
-              <div
-                v-else
-                class="w-full h-full flex items-center justify-center bg-muted aspect-1/1.5"
-              >
-                <UIcon
-                  name="i-lucide-book"
-                  class="text-6xl text-muted"
+      <!-- Book detail: cover-side title, persistent summary, and action cards. -->
+      <template v-else>
+        <div class="grid gap-6 lg:grid-cols-[17.5rem_minmax(0,1fr)] lg:gap-8">
+          <aside class="lg:sticky lg:top-24 lg:self-start">
+            <div class="mx-auto max-w-70 space-y-4 lg:mx-0 lg:max-w-none">
+              <div class="border border-default bg-default">
+                <NuxtImg
+                  v-if="coverUrl"
+                  :src="coverUrl"
+                  :alt="book.title"
+                  width="280"
+                  height="420"
+                  preload
+                  class="aspect-2/3 w-full object-cover"
                 />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Info -->
-        <div class="space-y-3 md:flex-1">
-          <!-- Title & Author -->
-          <div class="text-center md:text-left">
-            <h1 class="text-3xl md:text-4xl font-bold tracking-tight">
-              {{ book.title }}
-            </h1>
-            <div class="text-lg text-muted mt-2">
-              <template v-if="book.authors.length > 0">
-                <template
-                  v-for="(author, index) in book.authors"
-                  :key="author.id"
-                >
-                  <ULink
-                    :to="`/library/authors/${author.id}`"
-                    class="hover:text-primary"
-                  >
-                    {{ author.name }}
-                  </ULink><span v-if="index < book.authors.length - 1">, </span>
-                </template>
-              </template>
-              <span v-else>{{ book.author }}</span>
-            </div>
-          </div>
-
-          <!-- Metadata -->
-          <div class="space-y-2">
-            <!-- Compact Metadata -->
-            <div class="flex flex-wrap items-center justify-center md:justify-start gap-x-2 gap-y-1 text-sm text-muted">
-              <span v-if="formattedPublishDate">
-                Published {{ formattedPublishDate }}
-              </span>
-              <span
-                v-if="formattedPublishDate && book.publishers"
-                class="text-muted/50"
-              >•</span>
-              <span v-if="book.publishers">
-                {{ book.publishers }}
-              </span>
-              <span
-                v-if="(formattedPublishDate || book.publishers) && book.numberOfPages"
-                class="text-muted/50"
-              >•</span>
-              <span v-if="book.numberOfPages">
-                {{ book.numberOfPages }} pages
-              </span>
-            </div>
-
-            <!-- ISBN -->
-            <div
-              v-if="book.isbn"
-              class="text-sm text-muted text-center md:text-left"
-            >
-              ISBN: {{ book.isbn }}
-            </div>
-
-            <!-- Added At -->
-            <div
-              v-if="formattedAddedAt"
-              class="text-sm text-muted text-center md:text-left"
-            >
-              Added: {{ formattedAddedAt }}
-            </div>
-            <div
-              v-if="book.libraryState === 'wishlisted' || book.libraryState === 'previously_owned'"
-              class="flex justify-center md:justify-start"
-            >
-              <UBadge
-                :color="book.libraryState === 'wishlisted' ? 'info' : 'neutral'"
-                variant="subtle"
-              >
-                {{ book.libraryState === 'wishlisted' ? 'Wishlist' : 'Previously owned' }}
-              </UBadge>
-            </div>
-          </div>
-
-          <!-- Physical Location -->
-          <div
-            v-if="isOwnedBook"
-            class="space-y-3"
-          >
-            <div class="flex items-center justify-between gap-3">
-              <div>
-                <h2 class="text-lg font-semibold">
-                  Location
-                </h2>
                 <div
-                  class="mt-1 flex items-center gap-2 text-sm"
-                  :class="book.location ? 'text-highlighted' : 'text-muted'"
+                  v-else
+                  class="flex aspect-2/3 items-center justify-center bg-muted"
                 >
                   <UIcon
-                    name="i-lucide-map-pin"
-                    class="size-4 shrink-0"
+                    name="i-lucide-book"
+                    class="text-6xl text-muted"
                   />
-                  <span>{{ book.location?.path || 'No location set' }}</span>
                 </div>
               </div>
-              <UButton
-                color="neutral"
-                variant="outline"
-                size="sm"
-                icon="i-lucide-pencil"
-                @click="() => { isLocationModalOpen = true }"
+
+              <section
+                class="border border-default bg-default p-4"
+                aria-labelledby="at-a-glance-heading"
               >
-                Manage
-              </UButton>
-            </div>
-          </div>
-
-          <div
-            v-else-if="book.libraryState === 'previously_owned' && book.lastKnownLocation"
-            class="space-y-3"
-          >
-            <div>
-              <h2 class="text-lg font-semibold">
-                Last known location
-              </h2>
-              <div class="mt-1 flex items-center gap-2 text-sm text-muted">
-                <UIcon
-                  name="i-lucide-map-pin"
-                  class="size-4 shrink-0"
-                />
-                <span>{{ book.lastKnownLocation }}</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Description -->
-          <div v-if="book.description">
-            <h2 class="text-lg font-semibold mb-2">
-              Description
-            </h2>
-            <BookDescription :description="book.description" />
-          </div>
-
-          <!-- Rating -->
-          <BookRating
-            v-if="isOwnedBook"
-            :rating="book.rating"
-            @update:rating="saveRating"
-          />
-
-          <!-- Reading Progress -->
-          <BookReadingProgress
-            v-if="isOwnedBook"
-            :progress="book.readingProgress"
-            :total-pages="book.numberOfPages"
-            @edit="isReadingModalOpen = true"
-          />
-
-          <div
-            v-if="book.activeLoan"
-            class="space-y-2"
-          >
-            <div class="flex items-center justify-between gap-3">
-              <div class="min-w-0">
-                <div class="flex flex-wrap items-center gap-2">
-                  <h2 class="text-lg font-semibold">
-                    Loan
-                  </h2>
-                  <UBadge
-                    color="warning"
-                    variant="subtle"
-                  >
-                    Lent out
-                  </UBadge>
-                </div>
-                <p class="text-sm text-muted">
-                  {{ book.activeLoan.acceptedByName || book.activeLoan.borrowerDisplayName }} has this book
-                  <template v-if="book.activeLoan.acceptedByName && book.activeLoan.acceptedByName !== book.activeLoan.borrowerDisplayName">
-                    · entered as {{ book.activeLoan.borrowerDisplayName }}
-                  </template>
-                  · Lent {{ formatDate(book.activeLoan.loanedAt) }}
-                </p>
-                <p
-                  v-if="book.activeLoan.dueAt"
-                  class="text-sm text-muted"
+                <h2
+                  id="at-a-glance-heading"
+                  class="text-sm font-bold uppercase tracking-wide"
                 >
-                  Due {{ formatDate(book.activeLoan.dueAt) }}
-                </p>
-              </div>
-              <UButton
-                color="neutral"
-                variant="outline"
-                size="sm"
-                icon="i-lucide-undo-2"
-                :loading="isReturningLoan"
-                :disabled="isReturningLoan"
-                @click="returnActiveLoan"
-              >
-                Mark returned
-              </UButton>
-            </div>
-          </div>
-
-          <!-- Your Note -->
-          <BookNote
-            :note="book.note"
-            @update:note="saveNote"
-          />
-
-          <!-- Tags -->
-          <div class="space-y-4">
-            <div>
-              <div class="flex items-center justify-between gap-3 mb-2">
-                <h2 class="text-lg font-semibold">
-                  Tags
+                  At a glance
                 </h2>
+                <dl class="mt-4 space-y-3 text-sm">
+                  <div class="flex items-start justify-between gap-4">
+                    <dt class="flex items-center gap-2 text-muted">
+                      <UIcon
+                        name="i-lucide-box"
+                        class="size-4 shrink-0"
+                      />
+                      Status
+                    </dt>
+                    <dd class="text-right font-medium">
+                      {{ isOwnedBook ? (book.activeLoan ? 'Lent out' : 'Available') : book.libraryState === 'wishlisted' ? 'Wishlist' : 'Previously owned' }}
+                    </dd>
+                  </div>
+                  <div class="flex items-start justify-between gap-4">
+                    <dt class="flex items-center gap-2 text-muted">
+                      <UIcon
+                        name="i-lucide-map-pin"
+                        class="size-4 shrink-0"
+                      />
+                      Location
+                    </dt>
+                    <dd class="max-w-36 text-right font-medium">
+                      {{ isOwnedBook ? (book.location?.path || 'Not set') : book.lastKnownLocation || 'Not in inventory' }}
+                    </dd>
+                  </div>
+                  <div class="flex items-start justify-between gap-4">
+                    <dt class="flex items-center gap-2 text-muted">
+                      <UIcon
+                        name="i-lucide-book-open"
+                        class="size-4 shrink-0"
+                      />
+                      Reading
+                    </dt>
+                    <dd class="text-right font-medium">
+                      {{ isOwnedBook ? (book.readingProgress.status === 'read' ? 'Finished' : book.readingProgress.status === 'reading' ? 'In progress' : 'Not started') : 'Unavailable' }}
+                    </dd>
+                  </div>
+                  <div class="flex items-start justify-between gap-4">
+                    <dt class="flex items-center gap-2 text-muted">
+                      <UIcon
+                        name="i-lucide-handshake"
+                        class="size-4 shrink-0"
+                      />
+                      Loan
+                    </dt>
+                    <dd class="text-right font-medium">
+                      {{ book.activeLoan ? 'Lent out' : isOwnedBook ? 'Not on loan' : 'Not available' }}
+                    </dd>
+                  </div>
+                </dl>
+              </section>
+            </div>
+          </aside>
+
+          <div class="space-y-4">
+            <div class="space-y-4">
+              <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div class="min-w-0">
+                  <h1 class="text-3xl font-bold tracking-tight md:text-4xl">
+                    {{ book.title }}
+                  </h1>
+                  <div class="mt-2 text-lg text-muted">
+                    <template v-if="book.authors.length > 0">
+                      <template
+                        v-for="(author, index) in book.authors"
+                        :key="author.id"
+                      >
+                        <ULink
+                          :to="`/library/authors/${author.id}`"
+                          class="hover:text-primary"
+                        >
+                          {{ author.name }}
+                        </ULink><span v-if="index < book.authors.length - 1">, </span>
+                      </template>
+                    </template>
+                    <span v-else>{{ book.author }}</span>
+                  </div>
+                </div>
+                <div class="flex shrink-0 flex-wrap gap-2">
+                  <UButton
+                    v-if="isOwnedBook"
+                    color="neutral"
+                    variant="outline"
+                    size="sm"
+                    icon="i-lucide-map-pin"
+                    @click="() => { isLocationModalOpen = true }"
+                  >
+                    Location
+                  </UButton>
+                  <UButton
+                    v-if="isOwnedBook && book.activeLoan"
+                    size="sm"
+                    icon="i-lucide-undo-2"
+                    :loading="isReturningLoan"
+                    :disabled="isReturningLoan"
+                    @click="returnActiveLoan"
+                  >
+                    Mark returned
+                  </UButton>
+                  <UButton
+                    v-else-if="isOwnedBook"
+                    size="sm"
+                    icon="i-lucide-handshake"
+                    @click="() => { isLendingModalOpen = true }"
+                  >
+                    Record loan
+                  </UButton>
+                  <UButton
+                    v-else-if="book.libraryState === 'wishlisted'"
+                    size="sm"
+                    icon="i-lucide-arrow-up-right"
+                    :loading="isUpdatingLibraryState"
+                    :disabled="isUpdatingLibraryState"
+                    @click="() => { isMoveToLibraryDialogOpen = true }"
+                  >
+                    Move to Library
+                  </UButton>
+                  <UButton
+                    v-else
+                    size="sm"
+                    icon="i-lucide-arrow-up-right"
+                    :loading="isUpdatingLibraryState"
+                    :disabled="isUpdatingLibraryState"
+                    @click="updateBookLibraryState('owned')"
+                  >
+                    Move to Library
+                  </UButton>
+                  <UDropdownMenu
+                    :items="[
+                      ...(isOwnedBook && !book.activeLoan ? [{ label: 'Move to Wishlist', icon: 'i-lucide-bookmark', onSelect: () => { isMoveToWishlistDialogOpen = true } }] : []),
+                      ...(isOwnedBook ? [{ label: 'No longer own this book', icon: 'i-lucide-history', onSelect: () => { isOwnershipDialogOpen = true } }] : []),
+                      ...(book.libraryState === 'wishlisted' ? [{ label: 'Remove from Wishlist', icon: 'i-lucide-x', color: 'error' as const, onSelect: () => { isWishlistRemovalDialogOpen = true } }] : []),
+                      ...(book.libraryState === 'previously_owned' ? [{ label: 'Delete this book', icon: 'i-lucide-trash-2', color: 'error' as const, onSelect: () => { isRecordDeletionDialogOpen = true } }] : [])
+                    ]"
+                  >
+                    <UButton
+                      color="neutral"
+                      variant="outline"
+                      size="sm"
+                      icon="i-lucide-ellipsis"
+                      aria-label="More book actions"
+                      :disabled="isDeleting || isUpdatingLibraryState"
+                    />
+                  </UDropdownMenu>
+                </div>
+              </div>
+
+              <div class="flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted">
+                <span
+                  v-if="formattedPublishDate"
+                  class="inline-flex items-center gap-1.5"
+                ><UIcon
+                  name="i-lucide-calendar-days"
+                  class="size-4"
+                /> Published {{ formattedPublishDate }}</span>
+                <span
+                  v-if="book.publishers"
+                  class="inline-flex items-center gap-1.5"
+                ><UIcon
+                  name="i-lucide-building-2"
+                  class="size-4"
+                /> {{ book.publishers }}</span>
+                <span
+                  v-if="book.numberOfPages"
+                  class="inline-flex items-center gap-1.5"
+                ><UIcon
+                  name="i-lucide-book-open"
+                  class="size-4"
+                /> {{ book.numberOfPages }} pages</span>
+                <span
+                  v-if="book.isbn"
+                  class="inline-flex items-center gap-1.5"
+                ><UIcon
+                  name="i-lucide-scan-barcode"
+                  class="size-4"
+                /> ISBN {{ book.isbn }}</span>
+                <span
+                  v-if="formattedAddedAt"
+                  class="inline-flex items-center gap-1.5"
+                ><UIcon
+                  name="i-lucide-plus-circle"
+                  class="size-4"
+                /> Added {{ formattedAddedAt }}</span>
+              </div>
+
+              <div
+                v-if="book.description"
+                class="max-w-3xl pt-1"
+              >
+                <h2 class="mb-2 text-lg font-semibold">
+                  Description
+                </h2>
+                <BookDescription :description="book.description" />
+              </div>
+              <div
+                v-if="showOpenLibraryLinks && (book.openLibraryKey || book.workKey)"
+                class="flex flex-wrap gap-2"
+              >
                 <UButton
+                  v-if="book.openLibraryKey"
                   color="neutral"
-                  variant="outline"
+                  variant="link"
                   size="sm"
-                  icon="i-lucide-tag"
-                  @click="openTagModal"
+                  icon="i-lucide-external-link"
+                  :href="`https://openlibrary.org${book.openLibraryKey}`"
+                  target="_blank"
+                  rel="noopener noreferrer"
                 >
-                  Manage Tags
+                  View Edition
+                </UButton>
+                <UButton
+                  v-if="book.workKey"
+                  color="neutral"
+                  variant="link"
+                  size="sm"
+                  icon="i-lucide-library"
+                  :href="`https://openlibrary.org${book.workKey}`"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  View Work
                 </UButton>
               </div>
-              <div class="flex flex-wrap gap-2">
-                <div
-                  v-for="tag in book.userTags"
-                  :key="tag.id"
-                  class="inline-flex items-center gap-1"
-                >
-                  <UBadge
-                    color="primary"
-                    variant="subtle"
-                    size="md"
+              <UButton
+                :to="`/library/compare/${userBookId}`"
+                color="neutral"
+                variant="link"
+                size="sm"
+                icon="i-lucide-columns-2"
+              >
+                Compare alternate layout
+              </UButton>
+            </div>
+
+            <section
+              class="border border-default border-l-4 border-l-emerald-500/70 bg-emerald-500/[0.03] p-5 md:p-6"
+              aria-labelledby="loan-heading"
+            >
+              <div class="flex items-start gap-3">
+                <div class="flex size-10 shrink-0 items-center justify-center border border-emerald-500/30 bg-emerald-500/10">
+                  <UIcon
+                    name="i-lucide-handshake"
+                    class="size-5 text-emerald-700 dark:text-emerald-300"
+                  />
+                </div>
+                <div class="min-w-0 flex-1">
+                  <h2
+                    id="loan-heading"
+                    class="text-lg font-semibold"
                   >
-                    {{ tag.name }}
-                  </UBadge>
+                    Loan
+                  </h2>
+                  <template v-if="isOwnedBook">
+                    <div class="mt-2 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                      <div class="space-y-1 text-sm">
+                        <template v-if="book.activeLoan">
+                          <p class="font-medium">
+                            Lent to {{ book.activeLoan.acceptedByName || book.activeLoan.borrowerDisplayName }}
+                            <template v-if="book.activeLoan.acceptedByName && book.activeLoan.acceptedByName !== book.activeLoan.borrowerDisplayName">
+                              · entered as {{ book.activeLoan.borrowerDisplayName }}
+                            </template>
+                          </p>
+                          <p
+                            v-if="book.activeLoan.dueAt"
+                            class="text-muted"
+                          >
+                            Lent {{ formatDate(book.activeLoan.loanedAt) }} · Due {{ formatDate(book.activeLoan.dueAt) }}
+                          </p>
+                          <p
+                            v-else
+                            class="text-muted"
+                          >
+                            Lent {{ formatDate(book.activeLoan.loanedAt) }}
+                          </p>
+                        </template>
+                        <p
+                          v-else
+                          class="text-muted"
+                        >
+                          This copy is available to lend<template v-if="book.location">
+                            · {{ book.location.path }}
+                          </template>.
+                        </p>
+                      </div>
+                      <UButton
+                        :color="book.activeLoan ? 'neutral' : 'primary'"
+                        :variant="book.activeLoan ? 'outline' : 'soft'"
+                        size="sm"
+                        :icon="book.activeLoan ? 'i-lucide-undo-2' : 'i-lucide-handshake'"
+                        :loading="isReturningLoan"
+                        :disabled="isReturningLoan"
+                        @click="book.activeLoan ? returnActiveLoan() : (isLendingModalOpen = true)"
+                      >
+                        {{ book.activeLoan ? 'Mark returned' : 'Lend this book' }}
+                      </UButton>
+                    </div>
+                  </template>
+                  <p
+                    v-else-if="book.libraryState === 'wishlisted'"
+                    class="mt-2 text-sm text-muted"
+                  >
+                    This title is on your wishlist, so it is not available to lend yet.
+                  </p>
+                  <p
+                    v-else
+                    class="mt-2 text-sm text-muted"
+                  >
+                    This copy is kept in your history and is no longer available to lend<template v-if="book.lastKnownLocation">
+                      · last seen at {{ book.lastKnownLocation }}
+                    </template>.
+                  </p>
                 </div>
               </div>
-              <p
-                v-if="book.userTags.length === 0"
-                class="text-sm text-muted"
-              >
-                Use Manage Tags to add from suggestions or create your own.
-              </p>
-            </div>
-          </div>
+            </section>
 
-          <!-- Actions -->
-          <USeparator />
-          <div class="flex flex-wrap gap-3">
-            <UButton
-              v-if="isOwnedBook && !book.activeLoan"
-              color="neutral"
-              variant="outline"
-              icon="i-lucide-handshake"
-              @click="() => { isLendingModalOpen = true }"
-            >
-              Record loan
-            </UButton>
-            <UButton
-              v-if="book.libraryState === 'wishlisted'"
-              icon="i-lucide-arrow-up-right"
-              :loading="isUpdatingLibraryState"
-              :disabled="isUpdatingLibraryState"
-              @click="() => { isMoveToLibraryDialogOpen = true }"
-            >
-              Move to Library
-            </UButton>
-            <UButton
-              v-else-if="!isOwnedBook"
-              icon="i-lucide-arrow-up-right"
-              :loading="isUpdatingLibraryState"
-              :disabled="isUpdatingLibraryState"
-              @click="updateBookLibraryState('owned')"
-            >
-              Move to Library
-            </UButton>
-            <UButton
-              v-if="isOwnedBook && !book.activeLoan"
-              color="neutral"
-              variant="outline"
-              icon="i-lucide-bookmark"
-              :loading="isUpdatingLibraryState"
-              :disabled="isUpdatingLibraryState"
-              @click="() => { isMoveToWishlistDialogOpen = true }"
-            >
-              Move to Wishlist
-            </UButton>
-            <UButton
+            <section
               v-if="isOwnedBook"
-              color="neutral"
-              variant="outline"
-              icon="i-lucide-history"
-              :disabled="isUpdatingLibraryState || isDeleting"
-              @click="() => { isOwnershipDialogOpen = true }"
+              class="border border-default border-l-4 border-l-primary/70 bg-primary/[0.03] p-5 md:p-6"
+              aria-labelledby="reading-heading"
             >
-              No longer own this book
-            </UButton>
-            <UButton
-              v-if="book.libraryState === 'wishlisted'"
-              color="error"
-              variant="subtle"
-              icon="i-lucide-x"
-              :disabled="isDeleting"
-              @click="() => { isWishlistRemovalDialogOpen = true }"
+              <div class="flex items-start gap-3">
+                <div class="flex size-10 shrink-0 items-center justify-center border border-primary/30 bg-primary/10">
+                  <UIcon
+                    name="i-lucide-book-open"
+                    class="size-5 text-primary"
+                  />
+                </div>
+                <div class="min-w-0 flex-1">
+                  <h2
+                    id="reading-heading"
+                    class="sr-only"
+                  >
+                    Reading
+                  </h2>
+                  <BookReadingProgress
+                    :progress="book.readingProgress"
+                    :total-pages="book.numberOfPages"
+                    @edit="isReadingModalOpen = true"
+                  />
+                  <USeparator class="my-4" />
+                  <BookRating
+                    :rating="book.rating"
+                    @update:rating="saveRating"
+                  />
+                </div>
+              </div>
+            </section>
+
+            <section
+              class="border border-default border-l-4 border-l-amber-500/70 bg-amber-500/[0.03] p-5 md:p-6"
+              aria-labelledby="note-heading"
             >
-              Remove from Wishlist
-            </UButton>
-            <UButton
-              v-if="book.libraryState === 'previously_owned'"
-              color="error"
-              variant="subtle"
-              icon="i-lucide-trash-2"
-              :disabled="isDeleting"
-              @click="() => { isRecordDeletionDialogOpen = true }"
+              <div class="flex items-start gap-3">
+                <div class="flex size-10 shrink-0 items-center justify-center border border-amber-500/30 bg-amber-500/10">
+                  <UIcon
+                    name="i-lucide-notebook-pen"
+                    class="size-5 text-amber-700 dark:text-amber-300"
+                  />
+                </div>
+                <div class="min-w-0 flex-1">
+                  <h2
+                    id="note-heading"
+                    class="sr-only"
+                  >
+                    Personal note
+                  </h2>
+                  <BookNote
+                    :note="book.note"
+                    @update:note="saveNote"
+                  />
+                </div>
+              </div>
+            </section>
+
+            <section
+              class="border border-default border-l-4 border-l-violet-500/70 bg-violet-500/[0.03] p-5 md:p-6"
+              aria-labelledby="tags-heading"
             >
-              Delete this book
-            </UButton>
-            <UButton
-              v-if="showOpenLibraryLinks && book.openLibraryKey"
-              color="neutral"
-              variant="outline"
-              icon="i-lucide-external-link"
-              :href="`https://openlibrary.org${book.openLibraryKey}`"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              View Edition
-            </UButton>
-            <UButton
-              v-if="showOpenLibraryLinks && book.workKey"
-              color="neutral"
-              variant="outline"
-              icon="i-lucide-library"
-              :href="`https://openlibrary.org${book.workKey}`"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              View Work
-            </UButton>
+              <div class="flex items-start gap-3">
+                <div class="flex size-10 shrink-0 items-center justify-center border border-violet-500/30 bg-violet-500/10">
+                  <UIcon
+                    name="i-lucide-tag"
+                    class="size-5 text-violet-700 dark:text-violet-300"
+                  />
+                </div>
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-start justify-between gap-3">
+                    <div>
+                      <h2
+                        id="tags-heading"
+                        class="text-lg font-semibold"
+                      >
+                        Tags
+                      </h2>
+                      <p
+                        v-if="book.userTags.length === 0"
+                        class="mt-1 text-sm text-muted"
+                      >
+                        Add tags to make this book easier to find and group.
+                      </p>
+                    </div>
+                    <UButton
+                      color="neutral"
+                      variant="link"
+                      size="sm"
+                      icon="i-lucide-pencil"
+                      @click="openTagModal"
+                    >
+                      {{ book.userTags.length ? 'Edit tags' : 'Add tags' }}
+                    </UButton>
+                  </div>
+                  <div
+                    v-if="book.userTags.length"
+                    class="mt-3 flex flex-wrap gap-2"
+                  >
+                    <UBadge
+                      v-for="tag in book.userTags"
+                      :key="tag.id"
+                      color="secondary"
+                      variant="subtle"
+                      size="md"
+                    >
+                      {{ tag.name }}
+                    </UBadge>
+                  </div>
+                </div>
+              </div>
+            </section>
           </div>
         </div>
-      </div>
+      </template>
 
       <TagManagerModal
         v-if="book"
