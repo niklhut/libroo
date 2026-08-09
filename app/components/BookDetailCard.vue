@@ -46,7 +46,10 @@ const bodyClasses: Record<BookDetailCardSize, string> = {
 <template>
   <UCard
     :class="['border-l-4', toneClasses[props.tone].card]"
-    :ui="{ body: bodyClasses[props.size] }"
+    :ui="{
+      root: 'ring-0 divide-y-0',
+      body: bodyClasses[props.size]
+    }"
   >
     <div class="flex gap-3">
       <div
