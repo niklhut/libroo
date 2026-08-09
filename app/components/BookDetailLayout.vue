@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { booleanConfigValue } from '~~/shared/utils/runtime-config'
 
+defineOptions({ name: 'BookDetailLayout' })
+
 const route = useRoute()
 const config = useRuntimeConfig()
 const toast = useToast()
@@ -265,25 +267,6 @@ async function onTagsSaved() {
       </UCard>
 
       <template v-else>
-        <div class="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-default pb-4">
-          <div>
-            <p class="text-xs font-bold uppercase tracking-wide text-primary">
-              Detail layout preview
-            </p>
-            <p class="mt-1 text-sm text-muted">
-              Compare this draft with the current book-detail layout.
-            </p>
-          </div>
-          <UButton
-            :to="`/library/${userBookId}`"
-            color="neutral"
-            variant="outline"
-            icon="i-lucide-columns-2"
-          >
-            Open current layout
-          </UButton>
-        </div>
-
         <div class="grid gap-6 lg:grid-cols-[17.5rem_minmax(0,1fr)] lg:gap-8">
           <aside class="lg:sticky lg:top-24 lg:self-start">
             <div class="w-full space-y-4 sm:grid sm:grid-cols-[17.5rem_minmax(0,1fr)] sm:items-start sm:gap-6 sm:space-y-0 lg:block lg:space-y-4">
