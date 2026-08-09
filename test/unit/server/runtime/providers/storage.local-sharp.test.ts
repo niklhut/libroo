@@ -127,16 +127,23 @@ describe('StorageServiceLocalSharpLive', () => {
     it('reports a storage error instead of zero usage when the storage root cannot be read', async () => {
       const fileRoot = join(tempDir, 'not-a-directory')
       await writeFile(fileRoot, 'not a directory')
+      const previousRoot = process.env.NUXT_LOCAL_STORAGE_DIR
       process.env.NUXT_LOCAL_STORAGE_DIR = fileRoot
 
-      const result = await run(Effect.either(Effect.flatMap(StorageService, service => service.getUsage('covers/'))))
+      try {
+        const result = await run(Effect.either(Effect.flatMap(StorageService, service => service.getUsage('covers/'))))
 
-      expect(Either.isLeft(result)).toBe(true)
-      if (Either.isLeft(result)) {
-        expect(result.left).toMatchObject({ operation: 'getUsage' })
+        expect(Either.isLeft(result)).toBe(true)
+        if (Either.isLeft(result)) {
+          expect(result.left).toMatchObject({ operation: 'getUsage' })
+        }
+      } finally {
+        if (previousRoot === undefined) {
+          Reflect.deleteProperty(process.env, 'NUXT_LOCAL_STORAGE_DIR')
+        } else {
+          process.env.NUXT_LOCAL_STORAGE_DIR = previousRoot
+        }
       }
-
-      process.env.NUXT_LOCAL_STORAGE_DIR = tempDir
     })
 
     it('calculates usage for cover blobs only', async () => {
