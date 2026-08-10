@@ -45,6 +45,8 @@ const bodyClasses: Record<BookDetailCardSize, string> = {
 
 <template>
   <UCard
+    as="section"
+    :aria-label="title"
     :class="['border-l-4', toneClasses[props.tone].card]"
     :ui="{
       root: 'ring-0 divide-y-0',

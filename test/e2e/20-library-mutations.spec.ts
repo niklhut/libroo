@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { addManualBook } from './support/books'
 import { storageState } from './support/auth'
-import { librarySearchInput } from './support/selectors'
+import { bookDetailControls, librarySearchInput } from './support/selectors'
 
 test('searches the library, opens a detail page, and persists rating changes', async ({ browser }, testInfo) => {
   const context = await browser.newContext({ storageState: await storageState(browser, 'user') })
@@ -15,10 +15,11 @@ test('searches the library, opens a detail page, and persists rating changes', a
 
   await page.getByText(title).click()
   await expect(page).toHaveURL(/\/library\/[^/]+$/)
-  await page.getByRole('button', { name: 'Rate 4 stars' }).click()
-  await expect(page.getByText('4 / 5')).toBeVisible()
+  const controls = bookDetailControls(page)
+  await controls.ratingStar(4).click()
+  await expect(controls.ratingDisplay(4)).toBeVisible()
 
   await page.reload()
-  await expect(page.getByText('4 / 5')).toBeVisible()
+  await expect(controls.ratingDisplay(4)).toBeVisible()
   await context.close()
 })
