@@ -2,9 +2,11 @@
 const props = withDefaults(defineProps<{
   rating: number | null
   showValue?: boolean
+  showTitle?: boolean
   compact?: boolean
 }>(), {
   showValue: true,
+  showTitle: true,
   compact: false
 })
 
@@ -34,7 +36,10 @@ function isStarFilled(star: number): boolean {
 <template>
   <div :class="compact ? 'flex flex-wrap items-center gap-x-3 gap-y-2' : ''">
     <div :class="compact ? 'contents' : 'mb-2 flex items-center justify-between gap-3'">
-      <h2 class="text-lg font-semibold">
+      <h2
+        v-if="showTitle"
+        class="text-lg font-semibold"
+      >
         Rating
       </h2>
       <span

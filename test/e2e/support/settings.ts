@@ -73,7 +73,7 @@ export async function expectLibraryBookMetadata(page: Page, options: {
 }
 
 function readingStatusLabel(status: 'unread' | 'reading' | 'read') {
-  if (status === 'read') return /Read .*Finished/
-  if (status === 'reading') return /Reading ·/
-  return /Unread .*Not started/
+  if (status === 'read') return 'Finished'
+  if (status === 'reading') return /\d+% complete|\d+ of \d+ pages/
+  return 'Unread'
 }

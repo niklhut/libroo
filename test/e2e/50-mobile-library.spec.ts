@@ -123,7 +123,7 @@ async function markBookRead(page: Page) {
   const dialog = page.getByRole('dialog', { name: 'Update Reading Progress' })
   await dialog.getByRole('button', { name: 'Read', exact: true }).click()
   await dialog.getByRole('button', { name: 'Save Changes' }).click()
-  await expect(page.getByRole('region', { name: 'Reading progress' }).getByText('Read · Finished')).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Reading progress' }).getByText('Finished')).toBeVisible()
 }
 
 async function selectOption(page: Page, select: Locator, optionName: string) {

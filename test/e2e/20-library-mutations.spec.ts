@@ -19,7 +19,14 @@ test('searches the library, opens a detail page, and persists rating changes', a
   await controls.ratingStar(4).click()
   await expect(controls.ratingDisplay(4)).toBeVisible()
 
+  await controls.noteTrigger.click()
+  await controls.noteTextarea.fill('Saved with a keyboard shortcut')
+  await controls.noteTextarea.press('Meta+Enter')
+  await expect(page.getByRole('dialog', { name: 'Personal note' })).not.toBeVisible()
+  await expect(page.getByRole('region', { name: 'Personal note' }).getByText('Saved with a keyboard shortcut')).toBeVisible()
+
   await page.reload()
   await expect(controls.ratingDisplay(4)).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Personal note' }).getByText('Saved with a keyboard shortcut')).toBeVisible()
   await context.close()
 })

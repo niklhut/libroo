@@ -57,13 +57,13 @@ const readingPercent = computed(() => {
 const readingSummary = computed(() => {
   const progress = book.value?.readingProgress
   if (!progress) return ''
-  if (progress.status === 'read') return 'Read · Finished'
+  if (progress.status === 'read') return 'Finished'
   if (progress.status === 'reading') {
     return progress.currentPage !== null && book.value?.numberOfPages
-      ? `Reading · ${progress.currentPage} of ${book.value.numberOfPages} pages`
-      : `Reading · ${progress.progressPercent ?? 0}% complete`
+      ? `${progress.currentPage} of ${book.value.numberOfPages} pages`
+      : `${progress.progressPercent ?? 0}% complete`
   }
-  return 'Unread · Not started'
+  return 'Unread'
 })
 
 function formatDate(value: Date | string | null): string | null {
@@ -187,204 +187,243 @@ async function onTagsSaved() {
               @delete-record="isRecordDeletionDialogOpen = true"
             />
 
-            <BookDetailCard
-              v-if="isOwnedBook"
-              class="order-4"
-              title="Location"
-              description="Where this physical copy belongs."
-              icon="i-lucide-map-pin"
+            <section
+              class="order-1"
+              aria-labelledby="personal-heading"
             >
-              <template #action>
-                <UButton
-                  color="primary"
-                  variant="link"
-                  size="sm"
-                  icon="i-lucide-pencil"
-                  @click="isLocationModalOpen = true"
-                >
-                  Update
-                </UButton>
-              </template>
-              <p class="mt-4 font-medium">
-                {{ book.location?.path || 'No location set' }}
-              </p>
-            </BookDetailCard>
-
-            <BookDetailCard
-              v-if="isOwnedBook"
-              :class="book.activeLoan ? 'order-1' : 'order-6'"
-              title="Loan"
-              :description="book.activeLoan ? `Lent to ${book.activeLoan.acceptedByName || book.activeLoan.borrowerDisplayName}` : 'This copy is currently available to lend.'"
-              icon="i-lucide-handshake"
-              tone="success"
-            >
-              <template #action>
-                <div
-                  v-if="book.activeLoan"
-                  class="flex items-center gap-2"
-                >
+              <h2
+                id="personal-heading"
+                class="border-b border-default pb-3 text-lg font-semibold"
+              >
+                Personal
+              </h2>
+              <BookDetailCard
+                v-if="isOwnedBook"
+                title="Reading progress"
+                :description="readingSummary"
+                icon="i-lucide-book-open"
+              >
+                <template #action>
                   <UButton
                     color="primary"
                     variant="link"
                     size="sm"
-                    icon="i-lucide-undo-2"
-                    :loading="isReturningLoan"
-                    @click="returnActiveLoan"
+                    trailing-icon="i-lucide-chevron-right"
+                    @click="isReadingModalOpen = true"
                   >
-                    Mark returned
+                    Update
                   </UButton>
-                  <UDropdownMenu :items="[{ label: 'Edit loan note', icon: 'i-lucide-notebook-pen', onSelect: openLoanNote }]">
+                </template>
+                <UProgress
+                  :model-value="readingPercent"
+                  :max="100"
+                  class="mt-3"
+                />
+              </BookDetailCard>
+
+              <BookDetailCard
+                v-if="isOwnedBook"
+                title="Rating"
+                icon="i-lucide-star"
+                tone="warning"
+              >
+                <BookRating
+                  :rating="book.rating"
+                  :show-title="false"
+                  :show-value="false"
+                  class="mt-2"
+                  compact
+                  @update:rating="saveRating"
+                />
+              </BookDetailCard>
+
+              <BookDetailCard
+                title="Personal note"
+                :description="book.note ? undefined : 'Add a note'"
+                icon="i-lucide-notebook-pen"
+                tone="warning"
+              >
+                <template #action>
+                  <UButton
+                    color="primary"
+                    variant="link"
+                    size="sm"
+                    trailing-icon="i-lucide-chevron-right"
+                    @click="openBookNote"
+                  >
+                    {{ book.note ? 'Edit' : 'Add' }}
+                  </UButton>
+                </template>
+                <p
+                  v-if="book.note"
+                  class="mt-2 whitespace-pre-wrap text-sm text-muted"
+                >
+                  {{ book.note }}
+                </p>
+              </BookDetailCard>
+            </section>
+
+            <section
+              class="order-3"
+              aria-labelledby="organization-heading"
+            >
+              <h2
+                id="organization-heading"
+                class="border-b border-default pb-3 text-lg font-semibold"
+              >
+                Organization
+              </h2>
+              <BookDetailCard
+                v-if="isOwnedBook"
+                title="Location"
+                description="Where this physical copy belongs."
+                icon="i-lucide-map-pin"
+              >
+                <template #action>
+                  <UButton
+                    color="primary"
+                    variant="link"
+                    size="sm"
+                    trailing-icon="i-lucide-chevron-right"
+                    @click="isLocationModalOpen = true"
+                  >
+                    {{ book.location ? 'Update' : 'Set location' }}
+                  </UButton>
+                </template>
+                <p class="mt-2 text-sm font-medium">
+                  {{ book.location?.path || 'No location set' }}
+                </p>
+              </BookDetailCard>
+
+              <BookDetailCard
+                title="Tags"
+                :description="book.userTags.length ? undefined : 'Add tags to make this book easier to find and group.'"
+                icon="i-lucide-tag"
+                tone="secondary"
+              >
+                <template #action>
+                  <UButton
+                    color="primary"
+                    variant="link"
+                    size="sm"
+                    trailing-icon="i-lucide-chevron-right"
+                    @click="isTagModalOpen = true"
+                  >
+                    {{ book.userTags.length ? 'Edit' : 'Add' }}
+                  </UButton>
+                </template>
+                <div
+                  v-if="book.userTags.length"
+                  class="mt-2 flex flex-wrap gap-2"
+                >
+                  <UBadge
+                    v-for="tag in book.userTags"
+                    :key="tag.id"
+                    color="neutral"
+                    variant="subtle"
+                  >
+                    {{ tag.name }}
+                  </UBadge>
+                </div>
+              </BookDetailCard>
+            </section>
+
+            <section
+              v-if="isOwnedBook"
+              class="order-2"
+              aria-labelledby="loan-heading"
+            >
+              <h2
+                id="loan-heading"
+                class="border-b border-default pb-3 text-lg font-semibold"
+              >
+                Loan
+              </h2>
+              <BookDetailCard
+                title="Loan"
+                :description="book.activeLoan ? `Lent to ${book.activeLoan.acceptedByName || book.activeLoan.borrowerDisplayName}` : 'This copy is currently available to lend.'"
+                icon="i-lucide-handshake"
+                tone="success"
+              >
+                <template
+                  v-if="book.activeLoan"
+                  #title-suffix
+                >
+                  <UBadge
+                    color="warning"
+                    variant="subtle"
+                    size="sm"
+                  >
+                    Lent out
+                  </UBadge>
+                </template>
+                <template #action>
+                  <div
+                    v-if="book.activeLoan"
+                    class="flex items-center gap-2"
+                  >
                     <UButton
                       color="primary"
                       variant="link"
                       size="sm"
-                      icon="i-lucide-ellipsis"
-                      aria-label="More loan actions"
-                    />
-                  </UDropdownMenu>
-                </div>
-                <UButton
-                  v-else
-                  color="primary"
-                  variant="link"
-                  size="sm"
-                  icon="i-lucide-handshake"
-                  @click="isLendingModalOpen = true"
-                >
-                  Lend this book
-                </UButton>
-              </template>
-              <div
-                v-if="book.activeLoan"
-                class="mt-4 space-y-2 text-sm"
-              >
-                <p class="text-muted">
-                  Lent {{ formatDate(book.activeLoan.loanedAt) }}<template v-if="book.activeLoan.dueAt">
-                    · Due {{ formatDate(book.activeLoan.dueAt) }}
-                  </template>
-                </p>
-                <div
-                  v-if="book.activeLoan.note"
-                  class="border-l-2 border-emerald-500/60 pl-3"
-                >
-                  <p class="text-xs font-bold uppercase tracking-wide text-muted">
-                    Loan note
-                  </p>
-                  <p class="mt-1 whitespace-pre-wrap">
-                    {{ book.activeLoan.note }}
-                  </p>
-                </div>
-              </div>
-            </BookDetailCard>
-
-            <BookDetailCard
-              v-if="isOwnedBook"
-              class="order-2"
-              title="Reading progress"
-              :description="readingSummary"
-              icon="i-lucide-book-open"
-            >
-              <template #action>
-                <UButton
-                  color="primary"
-                  variant="link"
-                  size="sm"
-                  icon="i-lucide-pencil"
-                  @click="isReadingModalOpen = true"
-                >
-                  Update
-                </UButton>
-              </template>
-              <UProgress
-                :model-value="readingPercent"
-                :max="100"
-                class="mt-4"
-              />
-              <template #footer>
-                <div class="mt-4 grid grid-cols-[2.5rem_minmax(0,1fr)] items-center gap-3 border-t border-default pt-4">
-                  <div class="flex size-10 items-center justify-center border border-primary/30 bg-primary/10">
-                    <UIcon
-                      name="i-lucide-star"
-                      class="size-5 text-primary"
-                    />
+                      icon="i-lucide-undo-2"
+                      :loading="isReturningLoan"
+                      @click="returnActiveLoan"
+                    >
+                      Mark returned
+                    </UButton>
+                    <UDropdownMenu :items="[{ label: 'Edit loan note', icon: 'i-lucide-notebook-pen', onSelect: openLoanNote }]">
+                      <UButton
+                        color="primary"
+                        variant="link"
+                        size="sm"
+                        icon="i-lucide-ellipsis"
+                        aria-label="More loan actions"
+                      />
+                    </UDropdownMenu>
                   </div>
-                  <BookRating
-                    :rating="book.rating"
-                    :show-value="false"
-                    compact
-                    @update:rating="saveRating"
-                  />
+                  <UButton
+                    v-else
+                    color="primary"
+                    variant="link"
+                    size="sm"
+                    trailing-icon="i-lucide-chevron-right"
+                    @click="isLendingModalOpen = true"
+                  >
+                    Lend this book
+                  </UButton>
+                </template>
+                <div
+                  v-if="book.activeLoan"
+                  class="mt-3 space-y-2 text-sm"
+                >
+                  <p class="text-muted">
+                    Lent {{ formatDate(book.activeLoan.loanedAt) }}<template v-if="book.activeLoan.dueAt">
+                      · Due {{ formatDate(book.activeLoan.dueAt) }}
+                    </template>
+                  </p>
+                  <div
+                    v-if="book.activeLoan.note"
+                    class="border-l-2 border-primary/50 pl-3"
+                  >
+                    <p class="text-xs font-bold uppercase tracking-wide text-muted">
+                      Loan note
+                    </p>
+                    <p class="mt-1 whitespace-pre-wrap">
+                      {{ book.activeLoan.note }}
+                    </p>
+                  </div>
                 </div>
-              </template>
-            </BookDetailCard>
-
-            <BookDetailCard
-              class="order-3"
-              title="Personal note"
-              icon="i-lucide-notebook-pen"
-              tone="warning"
-            >
-              <template #action>
-                <UButton
-                  color="primary"
-                  variant="link"
-                  size="sm"
-                  :icon="book.note ? 'i-lucide-pencil' : 'i-lucide-plus'"
-                  @click="openBookNote"
-                >
-                  {{ book.note ? 'Edit' : 'Add note' }}
-                </UButton>
-              </template>
-              <p class="mt-1 whitespace-pre-wrap text-sm text-muted">
-                {{ book.note || 'Add thoughts, quotes, or anything you want to remember.' }}
-              </p>
-            </BookDetailCard>
-
-            <BookDetailCard
-              class="order-5"
-              title="Tags"
-              icon="i-lucide-tag"
-              tone="secondary"
-            >
-              <template #action>
-                <UButton
-                  color="primary"
-                  variant="link"
-                  size="sm"
-                  icon="i-lucide-pencil"
-                  @click="isTagModalOpen = true"
-                >
-                  {{ book.userTags.length ? 'Edit tags' : 'Add tags' }}
-                </UButton>
-              </template>
-              <p
-                v-if="book.userTags.length === 0"
-                class="mt-1 text-sm text-muted"
-              >
-                Add tags to make this book easier to find and group.
-              </p>
-              <div
-                v-else
-                class="mt-3 flex flex-wrap gap-2"
-              >
-                <UBadge
-                  v-for="tag in book.userTags"
-                  :key="tag.id"
-                  color="secondary"
-                  variant="subtle"
-                >
-                  {{ tag.name }}
-                </UBadge>
-              </div>
-            </BookDetailCard>
+              </BookDetailCard>
+            </section>
 
             <div
               v-if="showOpenLibraryLinks && (book.openLibraryKey || book.workKey)"
-              class="order-7 flex flex-wrap gap-2 pt-1"
+              class="order-4 flex flex-wrap gap-2 pt-1"
             >
               <UButton
                 v-if="book.openLibraryKey"
-                color="neutral"
+                color="primary"
                 variant="link"
                 size="sm"
                 icon="i-lucide-external-link"
@@ -396,7 +435,7 @@ async function onTagsSaved() {
               </UButton>
               <UButton
                 v-if="book.workKey"
-                color="neutral"
+                color="primary"
                 variant="link"
                 size="sm"
                 icon="i-lucide-library"
@@ -619,6 +658,8 @@ async function onTagsSaved() {
               :rows="6"
               placeholder="Write your note here..."
               class="w-full"
+              @keydown.ctrl.enter.prevent="saveBookNote"
+              @keydown.meta.enter.prevent="saveBookNote"
             />
           </template><template #footer>
             <UButton
@@ -647,6 +688,8 @@ async function onTagsSaved() {
               :rows="6"
               placeholder="Add a private note about this loan..."
               class="w-full"
+              @keydown.ctrl.enter.prevent="saveLoanNote"
+              @keydown.meta.enter.prevent="saveLoanNote"
             />
           </template><template #footer>
             <UButton

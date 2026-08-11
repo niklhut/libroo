@@ -5,16 +5,20 @@ const props = defineProps<{
 
 const coverUrl = computed(() => props.book.coverPath ? `/api/blob/${props.book.coverPath}` : null)
 const isOwnedBook = computed(() => props.book.libraryState === 'owned')
+const statusLabel = computed(() => {
+  if (!isOwnedBook.value) return props.book.libraryState === 'wishlisted' ? 'Wishlist' : 'Previously owned'
+  return props.book.activeLoan ? 'Lent out' : 'Available'
+})
 const readingSummary = computed(() => {
   const progress = props.book.readingProgress
   if (!progress) return ''
-  if (progress.status === 'read') return 'Read · Finished'
+  if (progress.status === 'read') return 'Finished'
   if (progress.status === 'reading') {
     return progress.currentPage !== null && props.book.numberOfPages
-      ? `Reading · ${progress.currentPage} of ${props.book.numberOfPages} pages`
-      : `Reading · ${progress.progressPercent ?? 0}% complete`
+      ? `${progress.currentPage} of ${props.book.numberOfPages} pages`
+      : `${progress.progressPercent ?? 0}% complete`
   }
-  return 'Unread · Not started'
+  return 'Unread'
 })
 </script>
 
@@ -43,7 +47,7 @@ const readingSummary = computed(() => {
 
       <UCard
         class="sm:col-start-2 sm:row-start-1 lg:col-auto"
-        :ui="{ body: 'p-4' }"
+        :ui="{ root: 'ring-1 ring-default', body: 'p-4' }"
         aria-labelledby="summary-heading"
       >
         <h2
@@ -61,7 +65,9 @@ const readingSummary = computed(() => {
               />Status
             </dt>
             <dd class="text-right font-medium">
-              {{ isOwnedBook ? (book.activeLoan ? 'Lent out' : 'Available') : book.libraryState === 'wishlisted' ? 'Wishlist' : 'Previously owned' }}
+              <span :class="book.activeLoan ? 'text-amber-600 dark:text-amber-400' : isOwnedBook ? 'text-emerald-600 dark:text-emerald-400' : ''">
+                {{ statusLabel }}
+              </span>
             </dd>
           </div>
           <div

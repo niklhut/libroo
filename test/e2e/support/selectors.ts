@@ -44,15 +44,16 @@ export function libraryFilters(page: Page) {
 
 export function bookDetailControls(page: Page) {
   const readingCard = page.getByRole('region', { name: 'Reading progress' })
+  const ratingCard = page.getByRole('region', { name: 'Rating' })
 
   return {
     ratingStar(stars: number) {
-      return readingCard.getByRole('button', { name: `Rate ${stars} stars` })
+      return ratingCard.getByRole('button', { name: `Rate ${stars} stars` })
     },
     ratingDisplay(stars: number) {
-      return readingCard.getByRole('group', { name: `Book rating: ${stars} out of 5 stars` })
+      return ratingCard.getByRole('group', { name: `Book rating: ${stars} out of 5 stars` })
     },
-    noteTrigger: page.getByRole('region', { name: 'Personal note' }).getByRole('button', { name: /Add note|Edit/ }),
+    noteTrigger: page.getByRole('region', { name: 'Personal note' }).getByRole('button', { name: /Add|Edit/ }),
     noteTextarea: page.getByPlaceholder('Write your note here...'),
     noteSave: page.getByRole('button', { name: 'Save' }),
     readingProgressUpdate: readingCard.getByRole('button', { name: 'Update' }),
