@@ -37,6 +37,12 @@
       "groupSlug": "github-actions"
     },
     {
+      "description": "Pinia and its Nuxt module have coupled major-version peer dependencies and must be upgraded together.",
+      "matchPackageNames": ["pinia", "@pinia/nuxt"],
+      "groupName": "Pinia ecosystem",
+      "groupSlug": "pinia"
+    },
+    {
       "matchUpdateTypes": ["major"],
       "addLabels": ["major"]
     }
