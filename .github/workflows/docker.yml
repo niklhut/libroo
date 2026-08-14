@@ -10,7 +10,19 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            architecture: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            architecture: arm64
+
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
@@ -21,15 +33,11 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up QEMU
-        if: github.event_name != 'pull_request'
-        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
 
       - name: Log in to GitHub Container Registry
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
           registry: ghcr.io
@@ -49,25 +57,106 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable=${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
-            type=sha,prefix=sha-
+            type=sha,prefix=sha-,enable=${{ github.event_name == 'push' }}
           labels: |
             org.opencontainers.image.title=Libroo
             org.opencontainers.image.description=Self-hosted Libroo library management app
 
       - name: Build production image
+        id: build
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: .
           file: Dockerfile
-          platforms: ${{ github.event_name == 'pull_request' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
-          push: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+          platforms: ${{ matrix.platform }}
+          push: ${{ github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository }}
           load: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: ghcr.io/${{ github.repository_owner }}/libroo
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             VERSION=${{ steps.meta.outputs.version }}
             REVISION=${{ github.sha }}
             CREATED=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
             SOURCE=${{ github.server_url }}/${{ github.repository }}
-          cache-from: type=gha,scope=${{ github.event_name == 'pull_request' && 'docker-amd64' || 'docker-multiarch' }}
-          cache-to: type=gha,mode=max,scope=${{ github.event_name == 'pull_request' && 'docker-amd64' || 'docker-multiarch' }}
+          cache-from: type=gha,scope=docker-${{ matrix.architecture }}
+          cache-to: type=gha,mode=max,scope=docker-${{ matrix.architecture }}
+          outputs: ${{ (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) && 'type=image,name-canonical=true,push-by-digest=true,push=true' || '' }}
+
+      - name: Export image digest
+        if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          test -n "$DIGEST"
+          mkdir -p /tmp/digests
+          touch "/tmp/digests/${DIGEST#sha256:}"
+
+      - name: Upload image digest
+        if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: digests-${{ matrix.architecture }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    needs: build
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Download image digests
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: digests-*
+          merge-multiple: true
+          path: /tmp/digests
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      - name: Generate Docker metadata
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/libroo
+          flavor: |
+            latest=false
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr,prefix=pr-
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+            type=sha,prefix=sha-,enable=${{ github.event_name == 'push' }}
+
+      - name: Create multi-platform manifest
+        working-directory: /tmp
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          tags=()
+          while IFS= read -r tag; do
+            tags+=("--tag" "$tag")
+          done <<< "$TAGS"
+
+          images=()
+          for digest in /tmp/digests/*; do
+            images+=("ghcr.io/${{ github.repository_owner }}/libroo@sha256:$(basename "$digest")")
+          done
+          test "${#images[@]}" -eq 2
+
+          docker buildx imagetools create "${tags[@]}" \
+            "${images[@]}"
