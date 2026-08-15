@@ -31,8 +31,7 @@ const readingSummary = computed(() => {
           :src="coverUrl"
           :alt="book.title"
           width="280"
-          height="420"
-          class="aspect-2/3 w-full object-cover"
+          class="block h-auto w-full"
         />
         <div
           v-else
