@@ -108,6 +108,7 @@ const readingSummary = computed(() => useReadingSummary(
                   name="i-lucide-star"
                   :class="star <= book.rating ? 'size-4 fill-amber-400 text-amber-500' : 'size-4 text-muted'"
                 />
+                <span class="sr-only">{{ book.rating }} out of 5</span>
               </template>
               <span
                 v-else
