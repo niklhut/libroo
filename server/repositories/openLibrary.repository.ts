@@ -291,11 +291,14 @@ export const OpenLibraryRepositoryLive = Layer.effect(
             if (!entry) continue
             const details = entry.details ?? entry
             const fallbackEntry = authorFallbackByIsbn?.[`ISBN:${isbn}`]
-            const authors = (details.authors?.map(author => author.name)
-              ?? fallbackEntry?.authors?.map(author => author.name)
-              ?? [])
-              .map(author => author.trim())
-              .filter(Boolean)
+            const normalizeAuthors = (authorEntries?: Array<{ name: string }>) =>
+              (authorEntries ?? [])
+                .map(author => author.name.trim())
+                .filter(Boolean)
+            const primaryAuthors = normalizeAuthors(details.authors)
+            const authors = primaryAuthors.length > 0
+              ? primaryAuthors
+              : normalizeAuthors(fallbackEntry?.authors)
             const publishers = details.publishers?.map(publisher => typeof publisher === 'string' ? publisher : publisher.name)
             const subjects = details.subjects
               ?.map(subject => typeof subject === 'string' ? subject : subject.name)

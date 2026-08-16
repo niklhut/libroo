@@ -118,6 +118,16 @@ describe('BookRepository cover repair helpers', () => {
       .innerJoin(authors, eq(bookAuthors.authorId, authors.id))
       .where(eq(bookAuthors.bookId, 'candidate'))
     expect(repairedAuthors).toEqual([{ name: 'Jane Austen' }])
+
+    const repeat = await runRepository(db, Effect.flatMap(BookRepository, repository =>
+      repository.replaceUnknownAuthorLinks('candidate', ['Mary Shelley'])
+    ))
+    expect(repeat).toBe(false)
+    const authorsAfterRepeat = await db.select({ name: authors.name })
+      .from(bookAuthors)
+      .innerJoin(authors, eq(bookAuthors.authorId, authors.id))
+      .where(eq(bookAuthors.bookId, 'candidate'))
+    expect(authorsAfterRepeat).toEqual([{ name: 'Jane Austen' }])
   })
 
   it('adds an existing Open Library book and hydrates missing system tags', async () => {

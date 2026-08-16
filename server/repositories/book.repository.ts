@@ -397,6 +397,45 @@ export const BookRepositoryLive = Layer.effect(
           AND ${not(eq(authors.normalizedName, 'unknown author'))}
       )`
     )
+    const canReplaceUnknownAuthorLinks = (bookId: string, normalizedAuthorNames: string[]) => and(
+      eq(books.source, 'open_library'),
+      eq(books.id, bookId),
+      sql`${books.isbn} IS NOT NULL`,
+      sql`EXISTS (
+        SELECT 1 FROM ${bookAuthors}
+        INNER JOIN ${authors} ON ${eq(bookAuthors.authorId, authors.id)}
+        WHERE ${eq(bookAuthors.bookId, books.id)}
+          AND ${eq(authors.normalizedName, 'unknown author')}
+      )`,
+      sql`NOT EXISTS (
+        SELECT 1 FROM ${bookAuthors}
+        INNER JOIN ${authors} ON ${eq(bookAuthors.authorId, authors.id)}
+        WHERE ${eq(bookAuthors.bookId, books.id)}
+          AND ${not(eq(authors.normalizedName, 'unknown author'))}
+          AND ${notInArray(authors.normalizedName, normalizedAuthorNames)}
+      )`
+    )
+    const canReplaceUnknownAuthorLinksById = (bookId: string, normalizedAuthorNames: string[]) => sql`
+      EXISTS (
+        SELECT 1 FROM ${books}
+        WHERE ${eq(books.id, bookId)}
+          AND ${eq(books.source, 'open_library')}
+          AND ${books.isbn} IS NOT NULL
+          AND EXISTS (
+            SELECT 1 FROM ${bookAuthors}
+            INNER JOIN ${authors} ON ${eq(bookAuthors.authorId, authors.id)}
+            WHERE ${eq(bookAuthors.bookId, bookId)}
+              AND ${eq(authors.normalizedName, 'unknown author')}
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM ${bookAuthors}
+            INNER JOIN ${authors} ON ${eq(bookAuthors.authorId, authors.id)}
+            WHERE ${eq(bookAuthors.bookId, bookId)}
+              AND ${not(eq(authors.normalizedName, 'unknown author'))}
+              AND ${notInArray(authors.normalizedName, normalizedAuthorNames)}
+          )
+      )
+    `
     const formatAuthorList = (bookAuthorList: RepositoryBookAuthor[]) =>
       bookAuthorList.length > 0 ? bookAuthorList.map(author => author.name).join(', ') : 'Unknown Author'
 
@@ -1671,48 +1710,45 @@ export const BookRepositoryLive = Layer.effect(
 
           if (replacementAuthors.length === 0) return false
 
-          const candidate = yield* Effect.tryPromise({
-            try: () => dbService.db
-              .select({ id: books.id })
-              .from(books)
-              .where(isUnknownAuthorRepairCandidate(bookId))
-              .limit(1),
-            catch: error => new DatabaseError({
-              message: `Failed to verify unknown-author repair candidate: ${error}`,
-              operation: 'replaceUnknownAuthorLinks.verify'
-            })
-          })
-          if (!candidate[0]) return false
-
           const now = new Date()
+          const normalizedAuthorNames = replacementAuthors.map(normalizeAuthorName)
           yield* Effect.tryPromise({
             try: () => dbService.executeAtomic((database) => {
               const statements: AtomicDbStatement[] = []
               for (const [sortOrder, name] of replacementAuthors.entries()) {
                 const normalizedName = normalizeAuthorName(name)
                 statements.push(
-                  database.insert(authors).values({
-                    id: generateId(),
-                    name,
-                    normalizedName,
-                    createdAt: now,
-                    updatedAt: now
-                  }).onConflictDoNothing(),
-                  database.insert(bookAuthors).values({
-                    bookId,
-                    authorId: sql<string>`(SELECT id FROM authors WHERE normalized_name = ${normalizedName})` as unknown as string,
-                    sortOrder,
-                    createdAt: now
-                  }).onConflictDoNothing()
+                  database.insert(authors).select(
+                    database.select({
+                      id: sql<string>`${generateId()}`.as('id'),
+                      name: sql<string>`${name}`.as('name'),
+                      normalizedName: sql<string>`${normalizedName}`.as('normalized_name'),
+                      createdAt: sql<Date>`${now}`.as('created_at'),
+                      updatedAt: sql<Date>`${now}`.as('updated_at')
+                    })
+                      .from(books)
+                      .where(canReplaceUnknownAuthorLinks(bookId, normalizedAuthorNames))
+                  ).onConflictDoNothing(),
+                  database.insert(bookAuthors).select(
+                    database.select({
+                      bookId: books.id,
+                      authorId: sql<string>`(SELECT id FROM authors WHERE normalized_name = ${normalizedName})`.as('author_id'),
+                      sortOrder: sql<number>`${sortOrder}`.as('sort_order'),
+                      createdAt: sql<Date>`${now}`.as('created_at')
+                    })
+                      .from(books)
+                      .where(canReplaceUnknownAuthorLinks(bookId, normalizedAuthorNames))
+                  ).onConflictDoNothing()
                 )
               }
-              // The batch is transactional on both D1 and libSQL: either all
-              // real links are created and the placeholder is removed, or the
-              // original placeholder link remains untouched.
+              // Every statement is conditional on the current placeholder
+              // link. A concurrent or repeated repair therefore cannot add
+              // authors after another repair has removed that placeholder.
               statements.push(
                 database.delete(bookAuthors).where(and(
                   eq(bookAuthors.bookId, bookId),
-                  sql`${bookAuthors.authorId} IN (SELECT ${authors.id} FROM ${authors} WHERE ${eq(authors.normalizedName, 'unknown author')})`
+                  sql`${bookAuthors.authorId} IN (SELECT ${authors.id} FROM ${authors} WHERE ${eq(authors.normalizedName, 'unknown author')})`,
+                  canReplaceUnknownAuthorLinksById(bookId, normalizedAuthorNames)
                 ))
               )
               return statements as unknown as AtomicDbStatements
@@ -1722,7 +1758,20 @@ export const BookRepositoryLive = Layer.effect(
               operation: 'replaceUnknownAuthorLinks.replace'
             })
           })
-          return true
+          const persistedAuthors = yield* Effect.tryPromise({
+            try: () => dbService.db
+              .select({ normalizedName: authors.normalizedName })
+              .from(bookAuthors)
+              .innerJoin(authors, eq(bookAuthors.authorId, authors.id))
+              .where(eq(bookAuthors.bookId, bookId)),
+            catch: error => new DatabaseError({
+              message: `Failed to confirm unknown-author replacement: ${error}`,
+              operation: 'replaceUnknownAuthorLinks.confirm'
+            })
+          })
+          const persistedNames = new Set(persistedAuthors.map(author => author.normalizedName))
+          return persistedNames.size === normalizedAuthorNames.length
+            && normalizedAuthorNames.every(name => persistedNames.has(name))
         }),
 
       hasBookInUserLibrary: (userId, isbn) =>

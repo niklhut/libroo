@@ -86,7 +86,7 @@ describe('OpenLibraryRepository details lookup', () => {
           }
         : {
             'ISBN:9780141439518': {
-              details: { key: '/books/OL2M', title: 'Pride and Prejudice', works: [] }
+              details: { key: '/books/OL2M', title: 'Pride and Prejudice', authors: [{ name: '   ' }], works: [] }
             }
           }
       return Effect.succeed(HttpClientResponse.fromWeb(request, new Response(JSON.stringify(response))))
