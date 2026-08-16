@@ -68,12 +68,12 @@ export async function expectLibraryBookMetadata(page: Page, options: {
   for (const tag of options.tags) {
     await expect(main.getByText(tag, { exact: true })).toBeVisible()
   }
-  await expect(main.getByText(options.location, { exact: true })).toBeVisible()
-  await expect(main.getByText(readingStatusLabel(options.readingStatus))).toBeVisible()
+  await expect(main.getByRole('region', { name: 'Location' }).getByText(options.location, { exact: true })).toBeVisible()
+  await expect(main.getByRole('region', { name: 'Reading progress' }).getByText(readingStatusLabel(options.readingStatus))).toBeVisible()
 }
 
 function readingStatusLabel(status: 'unread' | 'reading' | 'read') {
-  if (status === 'read') return /Read .*Finished/
-  if (status === 'reading') return /Reading ·/
-  return /Unread .*Not started/
+  if (status === 'read') return 'Finished'
+  if (status === 'reading') return /\d+% complete|\d+ of \d+ pages/
+  return 'Unread'
 }

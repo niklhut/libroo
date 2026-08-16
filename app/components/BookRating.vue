@@ -1,7 +1,14 @@
 <script setup lang="ts">
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   rating: number | null
-}>()
+  showValue?: boolean
+  showTitle?: boolean
+  compact?: boolean
+}>(), {
+  showValue: true,
+  showTitle: true,
+  compact: false
+})
 
 const emit = defineEmits<{
   'update:rating': [rating: number | null]
@@ -27,13 +34,16 @@ function isStarFilled(star: number): boolean {
 </script>
 
 <template>
-  <div>
-    <div class="flex items-center justify-between gap-3 mb-2">
-      <h2 class="text-lg font-semibold">
+  <div :class="compact ? 'flex flex-wrap items-center gap-x-3 gap-y-2' : ''">
+    <div :class="compact ? 'contents' : 'mb-2 flex items-center justify-between gap-3'">
+      <h2
+        v-if="showTitle"
+        class="text-lg font-semibold"
+      >
         Rating
       </h2>
       <span
-        v-if="rating"
+        v-if="showValue && rating"
         class="text-sm text-muted"
       >
         {{ rating }} / 5

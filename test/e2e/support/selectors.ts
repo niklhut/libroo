@@ -43,18 +43,21 @@ export function libraryFilters(page: Page) {
 }
 
 export function bookDetailControls(page: Page) {
+  const readingCard = page.getByRole('region', { name: 'Reading progress' })
+  const ratingCard = page.getByRole('region', { name: 'Rating' })
+
   return {
     ratingStar(stars: number) {
-      return page.getByRole('button', { name: `Rate ${stars} stars` })
+      return ratingCard.getByRole('button', { name: `Rate ${stars} stars` })
     },
     ratingDisplay(stars: number) {
-      return page.getByText(`${stars} / 5`)
+      return ratingCard.getByRole('group', { name: `Book rating: ${stars} out of 5 stars` })
     },
-    noteTrigger: page.getByRole('button', { name: /Add Note|Edit/ }),
+    noteTrigger: page.getByRole('region', { name: 'Personal note' }).getByRole('button', { name: /Add|Edit/ }),
     noteTextarea: page.getByPlaceholder('Write your note here...'),
-    noteSave: page.getByRole('button', { name: 'Save' }),
-    readingProgressUpdate: page.getByRole('button', { name: 'Update' }),
-    locationManage: page.getByRole('button', { name: 'Manage' })
+    noteSave: page.getByRole('dialog', { name: 'Personal note' }).getByRole('button', { name: 'Save note', exact: true }),
+    readingProgressUpdate: readingCard.getByRole('button', { name: 'Update' }),
+    locationManage: page.getByRole('region', { name: 'Location' }).getByRole('button', { name: 'Update' })
   }
 }
 
@@ -87,7 +90,7 @@ export function locationsPage(page: Page) {
 export function lendingModal(page: Page) {
   const dialog = page.getByRole('dialog', { name: 'Record a book loan' })
   return {
-    trigger: page.getByRole('button', { name: 'Record loan' }),
+    trigger: page.getByRole('region', { name: 'Loan' }).getByRole('button', { name: 'Lend this book' }),
     dialog,
     borrowerName: dialog.getByLabel('Borrower name'),
     borrowerEmail: dialog.getByLabel('Email (optional)'),
