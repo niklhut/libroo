@@ -25,13 +25,13 @@ const readingSummary = computed(() => {
 <template>
   <aside class="lg:sticky lg:top-24 lg:self-start">
     <div class="w-full space-y-4 sm:grid sm:grid-cols-[17.5rem_minmax(0,1fr)] sm:items-start sm:gap-6 sm:space-y-0 lg:block lg:space-y-4">
-      <div class="mx-auto w-full max-w-70 border border-default bg-default sm:mx-0 sm:col-start-1 lg:col-auto">
+      <div class="mx-auto w-full max-w-70 sm:mx-0 sm:col-start-1 lg:col-auto">
         <NuxtImg
           v-if="coverUrl"
           :src="coverUrl"
           :alt="book.title"
           width="280"
-          class="block h-auto w-full"
+          class="block h-auto w-full shadow-md"
         />
         <div
           v-else
