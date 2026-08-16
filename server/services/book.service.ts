@@ -3,7 +3,6 @@ import type * as HttpClient from '@effect/platform/HttpClient'
 import { normalizeReadingProgress } from '../../shared/utils/reading-progress'
 import {
   BULK_LOOKUP_CONCURRENCY,
-  MAX_BULK_ISBN_COUNT,
   extractIsbn,
   isValidIsbnChecksum,
   isCanonicalBase64,
@@ -19,6 +18,7 @@ import { toBookEnrichmentUiStatus } from '../../shared/utils/book-enrichment'
 import type { Book } from '../repositories/book.repository'
 import { normalizeIsbnIdentity } from '../../shared/utils/isbn'
 import { BookEnrichmentRepository } from '../repositories/book-enrichment.repository'
+import { OPEN_LIBRARY_REPAIR_AUTHOR_BATCH_SIZE } from '../repositories/openLibrary.repository'
 import { AdminAccessForbiddenError as AdminForbiddenError, requireAdmin } from '../utils/admin-access'
 
 const BULK_COVER_LOOKUP_CONCURRENCY = 16
@@ -524,8 +524,8 @@ export const BookServiceLive = Layer.effect(
             failed: 0
           }
 
-          for (let start = 0; start < candidates.length; start += MAX_BULK_ISBN_COUNT) {
-            const candidateBatch = candidates.slice(start, start + MAX_BULK_ISBN_COUNT)
+          for (let start = 0; start < candidates.length; start += OPEN_LIBRARY_REPAIR_AUTHOR_BATCH_SIZE) {
+            const candidateBatch = candidates.slice(start, start + OPEN_LIBRARY_REPAIR_AUTHOR_BATCH_SIZE)
             const authorsByIsbn = yield* openLibraryRepo.lookupAuthorNamesByISBNs(
               candidateBatch.map(candidate => candidate.isbn)
             ).pipe(

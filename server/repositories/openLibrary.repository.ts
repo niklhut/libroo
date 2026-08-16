@@ -111,6 +111,7 @@ const OPEN_LIBRARY_HTTP_CONCURRENCY = 16
 export const OPEN_LIBRARY_COVER_STORAGE_CONCURRENCY = 4
 const MIN_ENRICHED_SUBJECT_COUNT = 5
 const MAX_REPAIR_AUTHOR_LOOKUP_ATTEMPTS = 2
+export const OPEN_LIBRARY_REPAIR_AUTHOR_BATCH_SIZE = 5
 
 function normalizeBaseUrl(value: string | undefined, fallback: string) {
   const trimmed = value?.trim()
@@ -149,6 +150,18 @@ function getOpenLibraryCoverTimeout() {
     : DEFAULT_OPEN_LIBRARY_COVER_TIMEOUT_SECONDS)
 }
 
+function getOpenLibraryRepairTimeout() {
+  const config = useRuntimeConfig()
+  const rawValue = config.openLibraryRepairTimeoutSeconds
+  const seconds = typeof rawValue === 'number'
+    ? rawValue
+    : Number(String(rawValue ?? '').trim())
+
+  return Duration.seconds(Number.isFinite(seconds) && seconds > 0
+    ? seconds
+    : 30)
+}
+
 function getOpenLibraryContactEmail() {
   const config = useRuntimeConfig()
   const value = config.openLibraryContactEmail || process.env.NUXT_OPEN_LIBRARY_CONTACT_EMAIL
@@ -183,7 +196,8 @@ function isTransientRepairAuthorError(error: OpenLibraryApiError) {
 const fetchJson = <T>(
   url: string,
   acquireSlot: Effect.Effect<void, OpenLibraryApiError>,
-  operation: 'metadata' | 'work'
+  operation: 'metadata' | 'work',
+  timeout = getOpenLibraryTimeout()
 ) =>
   Effect.gen(function* () {
     const slotStartedAt = Date.now()
@@ -193,7 +207,7 @@ const fetchJson = <T>(
     )
     const requestStartedAt = Date.now()
     const response = yield* HttpClient.get(url, { headers: getOpenLibraryHeaders() }).pipe(
-      Effect.timeout(getOpenLibraryTimeout()),
+      Effect.timeout(timeout),
       Effect.mapError(error => new OpenLibraryApiError({
         message: `HTTP request failed: ${HCError.isHttpClientError(error) ? error.message : String(error)}`
       }))
@@ -378,7 +392,8 @@ export const OpenLibraryRepositoryLive = Layer.effect(
           fetchJson<OpenLibraryBooksApiResponse>(
             `${apiBase}/api/books?bibkeys=${chunk.map(isbn => `ISBN:${isbn}`).join(',')}&jscmd=data&format=json`,
             acquireSlot,
-            'metadata'
+            'metadata',
+            getOpenLibraryRepairTimeout()
           ).pipe(
             Effect.catchAll(error => isTransientRepairAuthorError(error) && attempt < MAX_REPAIR_AUTHOR_LOOKUP_ATTEMPTS
               ? Effect.logWarning(`Retrying Open Library author repair lookup after transient error: ${error.message}`).pipe(
@@ -388,8 +403,8 @@ export const OpenLibraryRepositoryLive = Layer.effect(
               : Effect.fail(error))
           )
 
-        for (let start = 0; start < normalized.length; start += MAX_BULK_ISBN_COUNT) {
-          const chunk = normalized.slice(start, start + MAX_BULK_ISBN_COUNT)
+        for (let start = 0; start < normalized.length; start += OPEN_LIBRARY_REPAIR_AUTHOR_BATCH_SIZE) {
+          const chunk = normalized.slice(start, start + OPEN_LIBRARY_REPAIR_AUTHOR_BATCH_SIZE)
           const response = yield* fetchRepairAuthorChunk(chunk)
 
           for (const isbn of chunk) {
