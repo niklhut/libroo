@@ -55,7 +55,7 @@ export function bookDetailControls(page: Page) {
     },
     noteTrigger: page.getByRole('region', { name: 'Personal note' }).getByRole('button', { name: /Add|Edit/ }),
     noteTextarea: page.getByPlaceholder('Write your note here...'),
-    noteSave: page.getByRole('button', { name: 'Save' }),
+    noteSave: page.getByRole('dialog', { name: 'Personal note' }).getByRole('button', { name: 'Save note', exact: true }),
     readingProgressUpdate: readingCard.getByRole('button', { name: 'Update' }),
     locationManage: page.getByRole('region', { name: 'Location' }).getByRole('button', { name: 'Update' })
   }

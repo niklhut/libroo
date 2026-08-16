@@ -54,17 +54,10 @@ const readingPercent = computed(() => {
   }
   return progress.progressPercent ?? 0
 })
-const readingSummary = computed(() => {
-  const progress = book.value?.readingProgress
-  if (!progress) return ''
-  if (progress.status === 'read') return 'Finished'
-  if (progress.status === 'reading') {
-    return progress.currentPage !== null && book.value?.numberOfPages
-      ? `${progress.currentPage} of ${book.value.numberOfPages} pages`
-      : `${progress.progressPercent ?? 0}% complete`
-  }
-  return 'Unread'
-})
+const readingSummary = computed(() => useReadingSummary(
+  book.value?.readingProgress,
+  book.value?.numberOfPages
+))
 
 function formatDate(value: Date | string | null): string | null {
   if (!value) return null
@@ -187,10 +180,7 @@ async function onTagsSaved() {
               @delete-record="isRecordDeletionDialogOpen = true"
             />
 
-            <section
-              class="order-1"
-              aria-labelledby="personal-heading"
-            >
+            <section aria-labelledby="personal-heading">
               <h2
                 id="personal-heading"
                 class="border-b border-default pb-3 text-lg font-semibold"
@@ -264,80 +254,14 @@ async function onTagsSaved() {
             </section>
 
             <section
-              class="order-3"
-              aria-labelledby="organization-heading"
-            >
-              <h2
-                id="organization-heading"
-                class="border-b border-default pb-3 text-lg font-semibold"
-              >
-                Organization
-              </h2>
-              <BookDetailCard
-                v-if="isOwnedBook"
-                title="Location"
-                description="Where this physical copy belongs."
-                icon="i-lucide-map-pin"
-              >
-                <template #action>
-                  <UButton
-                    color="primary"
-                    variant="link"
-                    size="sm"
-                    trailing-icon="i-lucide-chevron-right"
-                    @click="isLocationModalOpen = true"
-                  >
-                    {{ book.location ? 'Update' : 'Set location' }}
-                  </UButton>
-                </template>
-                <p class="mt-2 text-sm font-medium">
-                  {{ book.location?.path || 'No location set' }}
-                </p>
-              </BookDetailCard>
-
-              <BookDetailCard
-                title="Tags"
-                :description="book.userTags.length ? undefined : 'Add tags to make this book easier to find and group.'"
-                icon="i-lucide-tag"
-                tone="secondary"
-              >
-                <template #action>
-                  <UButton
-                    color="primary"
-                    variant="link"
-                    size="sm"
-                    trailing-icon="i-lucide-chevron-right"
-                    @click="isTagModalOpen = true"
-                  >
-                    {{ book.userTags.length ? 'Edit' : 'Add' }}
-                  </UButton>
-                </template>
-                <div
-                  v-if="book.userTags.length"
-                  class="mt-2 flex flex-wrap gap-2"
-                >
-                  <UBadge
-                    v-for="tag in book.userTags"
-                    :key="tag.id"
-                    color="neutral"
-                    variant="subtle"
-                  >
-                    {{ tag.name }}
-                  </UBadge>
-                </div>
-              </BookDetailCard>
-            </section>
-
-            <section
               v-if="isOwnedBook"
-              class="order-2"
-              aria-labelledby="loan-heading"
+              aria-labelledby="lending-heading"
             >
               <h2
-                id="loan-heading"
+                id="lending-heading"
                 class="border-b border-default pb-3 text-lg font-semibold"
               >
-                Loan
+                Lending
               </h2>
               <BookDetailCard
                 title="Loan"
@@ -417,9 +341,73 @@ async function onTagsSaved() {
               </BookDetailCard>
             </section>
 
+            <section
+              aria-labelledby="organization-heading"
+            >
+              <h2
+                id="organization-heading"
+                class="border-b border-default pb-3 text-lg font-semibold"
+              >
+                Organization
+              </h2>
+              <BookDetailCard
+                v-if="isOwnedBook"
+                title="Location"
+                description="Where this physical copy belongs."
+                icon="i-lucide-map-pin"
+              >
+                <template #action>
+                  <UButton
+                    color="primary"
+                    variant="link"
+                    size="sm"
+                    trailing-icon="i-lucide-chevron-right"
+                    @click="isLocationModalOpen = true"
+                  >
+                    {{ book.location ? 'Update' : 'Set location' }}
+                  </UButton>
+                </template>
+                <p class="mt-2 text-sm font-medium">
+                  {{ book.location?.path || 'No location set' }}
+                </p>
+              </BookDetailCard>
+
+              <BookDetailCard
+                title="Tags"
+                :description="book.userTags.length ? undefined : 'Add tags to make this book easier to find and group.'"
+                icon="i-lucide-tag"
+                tone="secondary"
+              >
+                <template #action>
+                  <UButton
+                    color="primary"
+                    variant="link"
+                    size="sm"
+                    trailing-icon="i-lucide-chevron-right"
+                    @click="isTagModalOpen = true"
+                  >
+                    {{ book.userTags.length ? 'Edit' : 'Add' }}
+                  </UButton>
+                </template>
+                <div
+                  v-if="book.userTags.length"
+                  class="mt-2 flex flex-wrap gap-2"
+                >
+                  <UBadge
+                    v-for="tag in book.userTags"
+                    :key="tag.id"
+                    color="neutral"
+                    variant="subtle"
+                  >
+                    {{ tag.name }}
+                  </UBadge>
+                </div>
+              </BookDetailCard>
+            </section>
+
             <div
               v-if="showOpenLibraryLinks && (book.openLibraryKey || book.workKey)"
-              class="order-4 flex flex-wrap gap-2 pt-1"
+              class="flex flex-wrap gap-2 pt-1"
             >
               <UButton
                 v-if="book.openLibraryKey"

@@ -9,17 +9,10 @@ const statusLabel = computed(() => {
   if (!isOwnedBook.value) return props.book.libraryState === 'wishlisted' ? 'Wishlist' : 'Previously owned'
   return props.book.activeLoan ? 'Lent out' : 'Available'
 })
-const readingSummary = computed(() => {
-  const progress = props.book.readingProgress
-  if (!progress) return ''
-  if (progress.status === 'read') return 'Finished'
-  if (progress.status === 'reading') {
-    return progress.currentPage !== null && props.book.numberOfPages
-      ? `${progress.currentPage} of ${props.book.numberOfPages} pages`
-      : `${progress.progressPercent ?? 0}% complete`
-  }
-  return 'Unread'
-})
+const readingSummary = computed(() => useReadingSummary(
+  props.book.readingProgress,
+  props.book.numberOfPages
+))
 </script>
 
 <template>

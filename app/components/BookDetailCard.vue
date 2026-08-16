@@ -13,24 +13,20 @@ const props = withDefaults(defineProps<{
   size: 'md'
 })
 
-const toneClasses: Record<BookDetailCardTone, { card: string, icon: string, iconColor: string }> = {
+const toneClasses: Record<BookDetailCardTone, { icon: string, iconColor: string }> = {
   primary: {
-    card: '',
     icon: 'border-primary/30 bg-primary/10',
     iconColor: 'text-primary'
   },
   success: {
-    card: '',
     icon: 'border-emerald-500/30 bg-emerald-500/10',
     iconColor: 'text-emerald-700 dark:text-emerald-300'
   },
   warning: {
-    card: '',
     icon: 'border-amber-500/30 bg-amber-500/10',
     iconColor: 'text-amber-700 dark:text-amber-300'
   },
   secondary: {
-    card: '',
     icon: 'border-violet-500/30 bg-violet-500/10',
     iconColor: 'text-violet-700 dark:text-violet-300'
   }
@@ -47,7 +43,7 @@ const bodyClasses: Record<BookDetailCardSize, string> = {
   <UCard
     as="section"
     :aria-label="title"
-    :class="['rounded-none border-0 border-b border-default bg-transparent shadow-none', toneClasses[props.tone].card]"
+    class="rounded-none border-0 border-b border-default bg-transparent shadow-none"
     :ui="{
       root: 'ring-0 divide-y-0',
       body: bodyClasses[props.size]

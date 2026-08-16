@@ -36,19 +36,7 @@ const menuItems = computed(() => [
       </div>
       <div class="flex shrink-0 flex-wrap gap-2">
         <UButton
-          v-if="book.libraryState === 'wishlisted'"
-          color="primary"
-          variant="link"
-          size="sm"
-          icon="i-lucide-arrow-up-right"
-          :loading="isUpdatingLibraryState"
-          :disabled="isUpdatingLibraryState"
-          @click="emit('moveToLibrary')"
-        >
-          Move to Library
-        </UButton>
-        <UButton
-          v-else-if="book.libraryState === 'previously_owned'"
+          v-if="book.libraryState === 'wishlisted' || book.libraryState === 'previously_owned'"
           color="primary"
           variant="link"
           size="sm"
