@@ -158,6 +158,29 @@ export const bookEnrichmentLocks = sqliteTable('book_enrichment_locks', {
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
 })
 
+// Canonical ISBN lookups can happen before a user adds a book.  Keep their
+// recovery state separate from import jobs, whose ownership/batch rules do not
+// apply to shared preview records.
+export const canonicalBookEnrichmentJobs = sqliteTable('canonical_book_enrichment_jobs', {
+  bookId: text('book_id').primaryKey().references(() => books.id, { onDelete: 'cascade' }),
+  isbn: text('isbn').notNull(),
+  status: text('status').notNull().default('pending'),
+  attempts: integer('attempts').notNull().default(0),
+  maxAttempts: integer('max_attempts').notNull().default(5),
+  claimToken: text('claim_token'),
+  leaseExpiresAt: integer('lease_expires_at', { mode: 'timestamp' }),
+  nextAttemptAt: integer('next_attempt_at', { mode: 'timestamp' }),
+  lastError: text('last_error'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+  completedAt: integer('completed_at', { mode: 'timestamp' })
+}, table => [
+  index('canonical_book_enrichment_claim_idx').on(table.status, table.nextAttemptAt, table.createdAt),
+  uniqueIndex('canonical_book_enrichment_isbn_unique').on(table.isbn),
+  check('canonical_book_enrichment_status_check', sql`${table.status} IN ('pending', 'processing', 'retrying', 'completed', 'no_cover', 'not_found', 'failed', 'cancelled')`),
+  check('canonical_book_enrichment_attempts_check', sql`${table.attempts} >= 0 AND ${table.maxAttempts} > 0`)
+])
+
 export const userPreferences = sqliteTable('user_preferences', {
   userId: text('user_id').primaryKey().references(() => user.id, { onDelete: 'cascade' }),
   defaultLibraryStateFilter: text('default_library_state_filter', { mode: 'json' }).$type<Array<'owned' | 'wishlisted' | 'previously_owned'>>().notNull().default(sql`'["owned"]'`),

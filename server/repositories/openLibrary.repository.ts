@@ -85,6 +85,8 @@ interface OpenLibraryWorksApiResponse {
 
 // Service interface
 export interface OpenLibraryRepositoryInterface {
+  // The interactive core path deliberately performs only this edition request.
+  lookupCoreByISBN: (isbn: string) => Effect.Effect<OpenLibraryBookData, OpenLibraryBookNotFoundError | OpenLibraryApiError, HttpClientType.HttpClient>
   lookupByISBN: (isbn: string) => Effect.Effect<OpenLibraryBookData, OpenLibraryBookNotFoundError | OpenLibraryApiError, HttpClientType.HttpClient>
   lookupByISBNs: (isbns: string[]) => Effect.Effect<Map<string, OpenLibraryBookData>, OpenLibraryApiError, HttpClientType.HttpClient>
   downloadCover: (isbn: string, size?: 'S' | 'M' | 'L') => Effect.Effect<string | null, never, HttpClientType.HttpClient | StorageService>
@@ -357,6 +359,45 @@ export const OpenLibraryRepositoryLive = Layer.effect(
         return booksByIsbn
       })
 
+    const lookupCoreByISBN = (isbn: string) =>
+      Effect.gen(function* () {
+        const normalizedISBN = normalizeISBN(isbn)
+        const apiBase = getOpenLibraryApiBase()
+        const coversBase = getOpenLibraryCoversBase()
+        const response = yield* fetchJson<OpenLibraryBooksApiResponse>(
+          `${apiBase}/api/books?bibkeys=ISBN:${normalizedISBN}&jscmd=details&format=json`,
+          acquireSlot,
+          'metadata'
+        )
+        const entry = response[`ISBN:${normalizedISBN}`]
+        if (!entry) {
+          return yield* Effect.fail(new OpenLibraryBookNotFoundError({
+            isbn: normalizedISBN,
+            message: 'Open Library has no record for this ISBN'
+          }))
+        }
+        const details = entry.details ?? entry
+        const authors = details.authors?.map(author => author.name).filter(Boolean) ?? []
+        const publishers = details.publishers?.map(publisher => typeof publisher === 'string' ? publisher : publisher.name)
+        const workKey = 'works' in details ? details.works?.[0]?.key ?? null : null
+        const hasCover = ('covers' in details && Boolean(details.covers?.length))
+          || Boolean(entry.cover || entry.thumbnail_url)
+        return {
+          title: details.title || 'Unknown Title',
+          authors: authors.length > 0 ? authors : ['Unknown Author'],
+          isbn: normalizedISBN,
+          openLibraryKey: details.key || '',
+          workKey,
+          coverUrl: hasCover ? `${coversBase}/b/isbn/${normalizedISBN}-L.jpg?default=false` : null,
+          // Edition-provided text is cheap and useful for the initial preview;
+          // work details and subjects remain enrichment-only.
+          description: extractOpenLibraryText(details.notes) ?? extractOpenLibraryText(details.excerpts?.[0]?.text),
+          publishDate: details.publish_date,
+          publishers,
+          numberOfPages: details.number_of_pages
+        } satisfies OpenLibraryBookData
+      })
+
     const fetchCoverImage = (isbn: string, size: 'S' | 'M' | 'L') =>
       Effect.gen(function* () {
         const normalizedISBN = normalizeISBN(isbn)
@@ -436,6 +477,7 @@ export const OpenLibraryRepositoryLive = Layer.effect(
       })
 
     return {
+      lookupCoreByISBN,
       lookupByISBNs,
       lookupByISBN: isbn =>
         Effect.gen(function* () {

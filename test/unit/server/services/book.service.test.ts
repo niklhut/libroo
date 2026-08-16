@@ -7,6 +7,7 @@ import {
 } from '../../../../shared/utils/schemas'
 import { BookRepository, DatabaseError, type BookRepositoryInterface } from '../../../../server/repositories/book.repository'
 import { BookEnrichmentRepository, type BookEnrichmentRepositoryInterface } from '../../../../server/repositories/book-enrichment.repository'
+import { CanonicalBookEnrichmentRepository, type CanonicalBookEnrichmentRepository as CanonicalBookEnrichmentRepositoryService } from '../../../../server/repositories/canonical-book-enrichment.repository'
 import { LocationRepository, type LocationRepositoryInterface } from '../../../../server/repositories/location.repository'
 import { OpenLibraryApiError, OpenLibraryRepository, type OpenLibraryRepositoryInterface } from '../../../../server/repositories/openLibrary.repository'
 import type { BookService } from '../../../../server/services/book.service'
@@ -14,6 +15,10 @@ import { BookServiceLive, bulkLookupBooks, createManualBook, decodeCoverImage, g
 import { putCoverImage, StorageService, type StorageServiceInterface } from '../../../../server/services/storage.service'
 
 Object.assign(globalThis, { BookRepository, OpenLibraryRepository, LocationRepository, putCoverImage })
+
+const canonicalEnrichmentRepository = {
+  get: () => Effect.succeed(null)
+} as unknown as CanonicalBookEnrichmentRepositoryService['Service']
 
 describe('manual cover validation', () => {
   const pngFixture = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00])
@@ -91,6 +96,7 @@ describe('manual cover validation', () => {
       Effect.provide(BookServiceLive),
       Effect.provide(Layer.succeed(BookRepository, bookRepository as BookRepositoryInterface)),
       Effect.provide(Layer.succeed(BookEnrichmentRepository, {} as BookEnrichmentRepositoryInterface)),
+      Effect.provide(Layer.succeed(CanonicalBookEnrichmentRepository, canonicalEnrichmentRepository)),
       Effect.provide(Layer.succeed(OpenLibraryRepository, {} as OpenLibraryRepositoryInterface)),
       Effect.provide(Layer.succeed(LocationRepository, {} as LocationRepositoryInterface)),
       Effect.provide(Layer.succeed(StorageService, storageService as StorageServiceInterface))
@@ -168,6 +174,7 @@ describe('optional enrichment status decoration', () => {
         Effect.provide(BookServiceLive),
         Effect.provide(Layer.succeed(BookRepository, bookRepository)),
         Effect.provide(Layer.succeed(BookEnrichmentRepository, enrichmentRepository)),
+        Effect.provide(Layer.succeed(CanonicalBookEnrichmentRepository, canonicalEnrichmentRepository)),
         Effect.provide(Layer.succeed(OpenLibraryRepository, {} as OpenLibraryRepositoryInterface)),
         Effect.provide(Layer.succeed(LocationRepository, {} as LocationRepositoryInterface))
       )
@@ -223,6 +230,7 @@ describe('bulk ISBN lookup', () => {
       Effect.provide(BookServiceLive),
       Effect.provide(Layer.succeed(BookRepository, bookRepository)),
       Effect.provide(Layer.succeed(BookEnrichmentRepository, {} as BookEnrichmentRepositoryInterface)),
+      Effect.provide(Layer.succeed(CanonicalBookEnrichmentRepository, canonicalEnrichmentRepository)),
       Effect.provide(Layer.succeed(OpenLibraryRepository, openLibraryRepository)),
       Effect.provide(Layer.succeed(LocationRepository, {} as LocationRepositoryInterface))
     ))
@@ -252,6 +260,7 @@ describe('bulk ISBN lookup', () => {
       Effect.provide(BookServiceLive),
       Effect.provide(Layer.succeed(BookRepository, bookRepository)),
       Effect.provide(Layer.succeed(BookEnrichmentRepository, {} as BookEnrichmentRepositoryInterface)),
+      Effect.provide(Layer.succeed(CanonicalBookEnrichmentRepository, canonicalEnrichmentRepository)),
       Effect.provide(Layer.succeed(OpenLibraryRepository, openLibraryRepository)),
       Effect.provide(Layer.succeed(LocationRepository, {} as LocationRepositoryInterface))
     ))
@@ -293,6 +302,7 @@ describe('bulk ISBN lookup', () => {
       Effect.provide(BookServiceLive),
       Effect.provide(Layer.succeed(BookRepository, bookRepository)),
       Effect.provide(Layer.succeed(BookEnrichmentRepository, {} as BookEnrichmentRepositoryInterface)),
+      Effect.provide(Layer.succeed(CanonicalBookEnrichmentRepository, canonicalEnrichmentRepository)),
       Effect.provide(Layer.succeed(OpenLibraryRepository, openLibraryRepository)),
       Effect.provide(Layer.succeed(LocationRepository, {} as LocationRepositoryInterface))
     ))
@@ -341,6 +351,7 @@ describe('bulk ISBN lookup', () => {
       Effect.provide(BookServiceLive),
       Effect.provide(Layer.succeed(BookRepository, bookRepository)),
       Effect.provide(Layer.succeed(BookEnrichmentRepository, {} as BookEnrichmentRepositoryInterface)),
+      Effect.provide(Layer.succeed(CanonicalBookEnrichmentRepository, canonicalEnrichmentRepository)),
       Effect.provide(Layer.succeed(OpenLibraryRepository, openLibraryRepository)),
       Effect.provide(Layer.succeed(LocationRepository, {} as LocationRepositoryInterface))
     ))

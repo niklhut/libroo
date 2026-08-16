@@ -234,6 +234,15 @@ function getStatusText(status: ScannedBook['status']) {
                     loading="lazy"
                   />
                   <div
+                    v-else-if="book.result.enrichment?.status === 'queued' || book.result.enrichment?.status === 'preparing' || book.result.enrichment?.status === 'retrying'"
+                    class="w-full h-full flex items-center justify-center"
+                  >
+                    <UIcon
+                      name="i-lucide-loader-2"
+                      class="animate-spin text-primary text-xl"
+                    />
+                  </div>
+                  <div
                     v-else
                     class="w-full h-full flex items-center justify-center"
                   >

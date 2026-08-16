@@ -55,6 +55,43 @@ describe('useIsbnLookupStore', () => {
     })
   })
 
+  it('merges an immediate enrichment patch into the reactive preview result', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        found: true,
+        bookId: 'book-1',
+        isbn: '9781234567890',
+        title: 'Book A',
+        author: 'Author A',
+        coverUrl: null,
+        enrichment: { status: 'preparing' }
+      })
+      .mockResolvedValueOnce({
+        bookId: 'book-1',
+        isbn: '9781234567890',
+        coverPath: 'covers/9781234567890.webp',
+        coverUrl: '/api/blob/covers/9781234567890.webp',
+        subjects: ['Science fiction'],
+        status: null
+      })
+    ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
+
+    const store = useIsbnLookupStore()
+    const lookup = await store.lookupIsbn('9781234567890')
+
+    await vi.waitFor(() => {
+      expect(lookup).toMatchObject({
+        ok: true,
+        result: { coverUrl: '/api/blob/covers/9781234567890.webp', subjects: ['Science fiction'] }
+      })
+    })
+    expect(store.activeLookupResult?.coverUrl).toBe('/api/blob/covers/9781234567890.webp')
+    expect(fetchMock).toHaveBeenLastCalledWith('/api/books/enrichment/run', {
+      method: 'POST',
+      body: { bookId: 'book-1' }
+    })
+  })
+
   it('adds a typed single ISBN through the shared bulk add primitive and marks dashboard sync', async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce({
       added: [{ isbn: '9781234567890' }],

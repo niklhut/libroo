@@ -1,4 +1,4 @@
-import type { BookLookupResult, BulkBookLookupItem, BulkBookLookupResponse, LibraryState } from '~~/shared/types/book'
+import type { BookEnrichmentPatch, BookLookupResult, BulkBookLookupItem, BulkBookLookupResponse, LibraryState } from '~~/shared/types/book'
 import { getApiErrorMessage } from '~~/shared/utils/api-error'
 import { MAX_BULK_ISBN_COUNT } from '~~/shared/utils/schemas'
 import { defineStore } from 'pinia'
@@ -38,11 +38,17 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
   const pendingAdds = ref(0)
   const lookupError = ref<string | null>(null)
   const addError = ref<string | null>(null)
+  const enrichmentError = ref<string | null>(null)
+  const pendingEnrichments = ref(0)
+  // Keep the reactive object that receives asynchronous enrichment patches.
+  // Consumers get this same proxy, rather than a raw $fetch object.
+  const activeLookupResult = ref<BookLookupResult | null>(null)
   let resetVersion = 0
   const activeLookupControllers = new Set<AbortController>()
 
   const isLookingUp = computed(() => pendingLookups.value > 0)
   const isAdding = computed(() => pendingAdds.value > 0)
+  const isEnriching = computed(() => pendingEnrichments.value > 0)
 
   function reset() {
     resetVersion += 1
@@ -52,10 +58,47 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
     pendingAdds.value = 0
     lookupError.value = null
     addError.value = null
+    enrichmentError.value = null
+    activeLookupResult.value = null
   }
 
   function getErrorMessage(err: unknown, fallback: string): string {
     return getApiErrorMessage(err, fallback)
+  }
+
+  function isPending(enrichment: BookLookupResult['enrichment']) {
+    return enrichment?.status === 'queued' || enrichment?.status === 'preparing' || enrichment?.status === 'retrying'
+  }
+
+  async function enrichResult(result: BookLookupResult, requestVersion: number, attempt = 0): Promise<void> {
+    if (!result.bookId || !isPending(result.enrichment) || requestVersion !== resetVersion) return
+    pendingEnrichments.value += 1
+    try {
+      const patch = await $fetch<BookEnrichmentPatch>('/api/books/enrichment/run', {
+        method: 'POST',
+        body: { bookId: result.bookId }
+      })
+      if (requestVersion !== resetVersion || patch.bookId !== result.bookId) return
+      result.coverUrl = patch.coverUrl
+      result.description = patch.description
+      result.subjects = patch.subjects
+      result.publishDate = patch.publishDate
+      result.publishers = patch.publishers
+      result.numberOfPages = patch.numberOfPages
+      result.enrichment = { status: patch.status }
+      if (isPending(result.enrichment) && attempt < 4) {
+        window.setTimeout(() => {
+          void enrichResult(result, requestVersion, attempt + 1)
+        }, 1500 * (attempt + 1))
+      }
+    } catch (err: unknown) {
+      if (requestVersion === resetVersion) {
+        enrichmentError.value = getErrorMessage(err, 'Book details are still being prepared')
+        result.enrichment = { status: 'failed' }
+      }
+    } finally {
+      pendingEnrichments.value = Math.max(0, pendingEnrichments.value - 1)
+    }
   }
 
   async function lookupIsbn(
@@ -67,14 +110,20 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
     lookupError.value = null
 
     try {
-      const result = await $fetch<BookLookupResult>('/api/books/lookup', {
+      const response = await $fetch<BookLookupResult>('/api/books/lookup', {
         method: 'POST',
         body: { isbn }
       })
+      if (requestVersion !== resetVersion) {
+        return { ok: false, message: options.fallbackMessage || 'Failed to lookup book' }
+      }
+      activeLookupResult.value = response
+      const result = activeLookupResult.value!
 
-      return requestVersion === resetVersion
-        ? { ok: true, result }
-        : { ok: false, message: options.fallbackMessage || 'Failed to lookup book' }
+      if (result.found && result.enrichment && isPending(result.enrichment)) {
+        void enrichResult(result, requestVersion)
+      }
+      return { ok: true, result }
     } catch (err: unknown) {
       const message = getErrorMessage(err, options.fallbackMessage || 'Failed to lookup book')
       if (requestVersion === resetVersion) lookupError.value = message
@@ -197,10 +246,13 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
   return {
     isLookingUp,
     isAdding,
+    isEnriching,
     pendingLookups,
     pendingAdds,
     lookupError,
     addError,
+    enrichmentError,
+    activeLookupResult,
     getErrorMessage,
     lookupIsbn,
     bulkLookupIsbns,

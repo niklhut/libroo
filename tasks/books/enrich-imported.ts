@@ -1,4 +1,6 @@
+import { Effect } from 'effect'
 import { enrichImportedBooks } from '../../server/services/book-enrichment.service'
+import { recoverCanonicalEnrichment } from '../../server/services/book.service'
 import { runEffect } from '../../server/utils/effect'
 
 export default defineTask({
@@ -9,9 +11,12 @@ export default defineTask({
   run: async () => {
     const sweepId = crypto.randomUUID()
     try {
-      const result = await runEffect(enrichImportedBooks())
-      console.info('Imported book enrichment sweep completed', { sweepId, ...result })
-      return { result }
+      const [result, canonicalRecovery] = await runEffect(Effect.all([
+        enrichImportedBooks(),
+        recoverCanonicalEnrichment(20)
+      ], { concurrency: 1 }))
+      console.info('Book enrichment sweep completed', { sweepId, ...result, canonicalRecovery })
+      return { result, canonicalRecovery }
     } catch (error) {
       console.error('Imported book enrichment sweep failed', { sweepId, error })
       throw error

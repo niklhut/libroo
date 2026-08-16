@@ -16,11 +16,16 @@ import borrowerSuggestionsMigration from '../../../../server/db/migrations/sqlit
 import enrichmentMigration from '../../../../server/db/migrations/sqlite/0012_imported_book_enrichment.sql?raw'
 import authFactorsMigration from '../../../../server/db/migrations/sqlite/0013_auth-two-factor-passkeys.sql?raw'
 import recentAuthMigration from '../../../../server/db/migrations/sqlite/0014_recent-auth.sql?raw'
-import { bookEnrichmentJobs, books, user, userBooks } from '../../../../server/db/schema'
+import canonicalEnrichmentMigration from '../../../../server/db/migrations/sqlite/0015_canonical_book_enrichment.sql?raw'
+import { bookEnrichmentJobs, books, canonicalBookEnrichmentJobs, user, userBooks } from '../../../../server/db/schema'
 import {
   BookEnrichmentRepository,
   BookEnrichmentRepositoryLive
 } from '../../../../server/repositories/book-enrichment.repository'
+import {
+  CanonicalBookEnrichmentRepository,
+  CanonicalBookEnrichmentRepositoryLive
+} from '../../../../server/repositories/canonical-book-enrichment.repository'
 import { DbService, type DbServiceInterface } from '../../../../server/services/db.service'
 
 type D1Db = ReturnType<typeof drizzle>
@@ -36,6 +41,7 @@ describe('BookEnrichmentRepository on D1', () => {
   beforeEach(async () => {
     for (const table of [
       'book_enrichment_jobs',
+      'canonical_book_enrichment_jobs',
       'book_enrichment_locks',
       'user_books',
       'books',
@@ -143,6 +149,27 @@ describe('BookEnrichmentRepository on D1', () => {
       status: 'pending'
     }])
   })
+
+  it('persists one canonical pending job and atomically grants a single claim', async () => {
+    await db.update(books).set({ source: 'open_library' }).where(eq(books.id, 'book-1'))
+    const ensure = () => runCanonicalRepository(Effect.flatMap(CanonicalBookEnrichmentRepository, repository =>
+      repository.ensurePending('book-1', '9780441172719')
+    ))
+    await Promise.all([ensure(), ensure()])
+    await expect(db.select().from(canonicalBookEnrichmentJobs)).resolves.toHaveLength(1)
+
+    const now = new Date('2026-07-26T10:00:00.000Z')
+    const claim = () => runCanonicalRepository(Effect.flatMap(CanonicalBookEnrichmentRepository, repository =>
+      repository.claim('book-1', now, new Date(now.getTime() + 60_000))
+    ))
+    const claims = await Promise.all([claim(), claim()])
+    expect(claims.filter(Boolean)).toHaveLength(1)
+
+    const reclaimed = await runCanonicalRepository(Effect.flatMap(CanonicalBookEnrichmentRepository, repository =>
+      repository.claim('book-1', new Date(now.getTime() + 60_001), new Date(now.getTime() + 120_000))
+    ))
+    expect(reclaimed?.attempts).toBe(2)
+  })
 })
 
 async function applyMigrations(database: D1Database) {
@@ -157,7 +184,8 @@ async function applyMigrations(database: D1Database) {
     borrowerSuggestionsMigration,
     enrichmentMigration,
     authFactorsMigration,
-    recentAuthMigration
+    recentAuthMigration,
+    canonicalEnrichmentMigration
   ]) {
     for (const statement of migration.split('--> statement-breakpoint')) {
       const migrationStatement = statement.trim()
@@ -214,6 +242,19 @@ function runRepository<A, E>(
   const typedDatabase = db as unknown as DbServiceInterface['db']
   return Effect.runPromise(effect.pipe(
     Effect.provide(BookEnrichmentRepositoryLive),
+    Effect.provide(Layer.succeed(DbService, {
+      db: typedDatabase,
+      executeAtomic: buildStatements => typedDatabase.batch(buildStatements(typedDatabase))
+    }))
+  ))
+}
+
+function runCanonicalRepository<A, E>(
+  effect: Effect.Effect<A, E, CanonicalBookEnrichmentRepository | DbService>
+) {
+  const typedDatabase = db as unknown as DbServiceInterface['db']
+  return Effect.runPromise(effect.pipe(
+    Effect.provide(CanonicalBookEnrichmentRepositoryLive),
     Effect.provide(Layer.succeed(DbService, {
       db: typedDatabase,
       executeAtomic: buildStatements => typedDatabase.batch(buildStatements(typedDatabase))

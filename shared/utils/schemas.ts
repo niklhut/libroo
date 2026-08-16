@@ -556,6 +556,10 @@ export const bookEnrichmentUpdatesSchema = z.object({
   ids: z.array(z.string().min(1)).min(1).max(100)
 })
 
+export const runBookEnrichmentSchema = z.object({
+  bookId: z.string().min(1).max(128)
+})
+
 export type LibraryImportSchema = z.infer<typeof libraryImportSchema>
 
 export const createLoanSchema = z.object({

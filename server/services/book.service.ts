@@ -12,11 +12,12 @@ import {
 } from '../../shared/utils/schemas'
 import type { LibraryQueryFilters } from '../../shared/utils/library-query'
 import { detectImageContentType, UNKNOWN_IMAGE_CONTENT_TYPE } from '../../shared/utils/image-content-type'
-import type { BookEnrichmentStatus, BulkBookLookupItem, BulkBookLookupResponse, BookLookupResult, LibraryState, TagWithCount } from '../../shared/types/book'
+import type { BookEnrichmentPatch, BookEnrichmentStatus, BulkBookLookupItem, BulkBookLookupResponse, BookLookupResult, LibraryState, TagWithCount } from '../../shared/types/book'
 import { toBookEnrichmentUiStatus } from '../../shared/utils/book-enrichment'
 import type { Book } from '../repositories/book.repository'
 import { normalizeIsbnIdentity } from '../../shared/utils/isbn'
 import { BookEnrichmentRepository } from '../repositories/book-enrichment.repository'
+import { CanonicalBookEnrichmentRepository } from '../repositories/canonical-book-enrichment.repository'
 
 const BULK_COVER_LOOKUP_CONCURRENCY = 16
 
@@ -213,6 +214,15 @@ export interface BookServiceInterface {
     DbService | StorageService | OpenLibraryRepository | HttpClient.HttpClient
   >
 
+  enrichOpenLibraryBook: (
+    userId: string,
+    bookId: string
+  ) => Effect.Effect<BookEnrichmentPatch, DatabaseError | BookNotFoundError | OpenLibraryApiError, DbService | StorageService | OpenLibraryRepository | HttpClient.HttpClient>
+
+  recoverCanonicalEnrichment: (
+    limit?: number
+  ) => Effect.Effect<{ attempted: number, completed: number }, DatabaseError, DbService | StorageService | OpenLibraryRepository | BookService | HttpClient.HttpClient>
+
   bulkLookupBooks: (
     userId: string,
     isbns: string[]
@@ -264,6 +274,7 @@ export const BookServiceLive = Layer.effect(
   Effect.gen(function* () {
     const bookRepo = yield* BookRepository
     const enrichmentRepo = yield* BookEnrichmentRepository
+    const canonicalEnrichmentRepo = yield* CanonicalBookEnrichmentRepository
     const openLibraryRepo = yield* OpenLibraryRepository
     const locationRepo = yield* LocationRepository
 
@@ -305,6 +316,7 @@ export const BookServiceLive = Layer.effect(
       subjects: string[]
     ): BookLookupResult => ({
       found: true,
+      bookId: book.id,
       isbn: book.isbn || normalizedISBN,
       title: book.title,
       author: book.author,
@@ -321,13 +333,51 @@ export const BookServiceLive = Layer.effect(
     })
 
     const getEnrichmentStatuses = (userId: string, bookIds: string[]) =>
-      enrichmentRepo.getStatusesForUserBooks(userId, bookIds).pipe(
-        Effect.catchAll(error =>
-          Effect.logWarning(`Failed to load optional book enrichment statuses: ${String(error)}`).pipe(
+      Effect.gen(function* () {
+        const imported = yield* enrichmentRepo.getStatusesForUserBooks(userId, bookIds).pipe(
+          Effect.catchAll(error => Effect.logWarning(`Failed to load optional book enrichment statuses: ${String(error)}`).pipe(
             Effect.as(new Map<string, BookEnrichmentStatus>())
-          )
+          ))
         )
-      )
+        const canonical = yield* Effect.forEach(
+          bookIds.filter(bookId => !imported.has(bookId)),
+          bookId => canonicalEnrichmentRepo.get(bookId).pipe(Effect.map(job => [bookId, job?.status] as const)),
+          { concurrency: 8 }
+        )
+        for (const [bookId, status] of canonical) if (status) imported.set(bookId, status)
+        return imported
+      })
+
+    const ensureCoreOpenLibraryBook = (isbn: string) =>
+      Effect.gen(function* () {
+        const normalizedISBN = normalizeISBN(isbn)
+        const existing = yield* withDebugTiming('core.localCanonicalLookup', normalizedISBN, bookRepo.findByIsbn(normalizedISBN))
+        if (existing?.source === 'open_library') {
+          const tags = yield* bookRepo.getSystemTagsByBookId(existing.id)
+          const needsRepair = !existing.coverPath || !existing.description || tags.length === 0
+          const job = needsRepair
+            ? yield* canonicalEnrichmentRepo.ensurePending(existing.id, normalizedISBN)
+            : null
+          return { book: existing, job }
+        }
+        const data = yield* withDebugTiming('core.openLibraryMetadata', normalizedISBN, openLibraryRepo.lookupCoreByISBN(normalizedISBN))
+        const book = yield* withDebugTiming('core.minimumPersistence', normalizedISBN, bookRepo.createCoreOpenLibraryBook(normalizedISBN, data))
+        const job = yield* withDebugTiming('core.pendingJobPersistence', normalizedISBN, canonicalEnrichmentRepo.ensurePending(book.id, normalizedISBN))
+        return { book, job }
+      })
+
+    const toEnrichmentPatch = (book: Book, status: BookEnrichmentStatus, subjects: string[]): BookEnrichmentPatch => ({
+      bookId: book.id,
+      isbn: book.isbn || '',
+      coverPath: book.coverPath,
+      coverUrl: book.coverPath ? `/api/blob/${book.coverPath}` : null,
+      description: book.description ?? undefined,
+      subjects,
+      publishDate: book.publishDate ?? undefined,
+      publishers: book.publishers ? book.publishers.split(', ') : null,
+      numberOfPages: book.numberOfPages ?? undefined,
+      status: toBookEnrichmentUiStatus(status)
+    })
 
     return {
       listTags: userId => bookRepo.listTags(userId),
@@ -354,9 +404,12 @@ export const BookServiceLive = Layer.effect(
       addBookToLibrary: (userId, isbn, libraryState = 'owned') =>
         Effect.gen(function* () {
           const normalizedISBN = normalizeISBN(isbn)
-          const userBook = yield* bookRepo.addBookByISBN(userId, normalizedISBN, libraryState)
-
-          return toLibraryBook(userBook)
+          // Adding requires only core metadata. It deliberately does not wait
+          // for artwork, work details, or suggested tags.
+          yield* ensureCoreOpenLibraryBook(normalizedISBN)
+          const userBook = yield* bookRepo.addBookByISBN(userId, normalizedISBN, libraryState, { coreOnly: true })
+          const job = yield* canonicalEnrichmentRepo.get(userBook.bookId)
+          return toLibraryBook(userBook, job?.status)
         }),
 
       bulkAddBooks: (userId, books) =>
@@ -371,7 +424,8 @@ export const BookServiceLive = Layer.effect(
           const results = yield* Effect.forEach(
             normalizedBooks,
             book => Effect.either(
-              bookRepo.addBookByISBN(userId, book.isbn, book.libraryState).pipe(
+              ensureCoreOpenLibraryBook(book.isbn).pipe(
+                Effect.flatMap(() => bookRepo.addBookByISBN(userId, book.isbn, book.libraryState, { coreOnly: true })),
                 Effect.map(() => ({ isbn: book.isbn }))
               )
             ),
@@ -545,74 +599,82 @@ export const BookServiceLive = Layer.effect(
         Effect.gen(function* () {
           const normalizedISBN = normalizeISBN(isbn)
           const existingInUserLibrary = yield* bookRepo.hasBookInUserLibrary(userId, normalizedISBN)
-
-          // First check if book exists locally
           const localBook = yield* bookRepo.findByIsbn(normalizedISBN)
-
           if (localBook) {
             const bookTags = yield* bookRepo.getSystemTagsByBookId(localBook.id)
-
+            const job = localBook.source === 'open_library' && (!localBook.coverPath || !localBook.description || bookTags.length === 0)
+              ? yield* canonicalEnrichmentRepo.ensurePending(localBook.id, normalizedISBN)
+              : null
             return {
-              found: true,
-              isbn: localBook.isbn || normalizedISBN,
-              title: localBook.title,
-              author: localBook.author,
-              authors: localBook.authors.map(author => author.name),
-              coverUrl: localBook.coverPath ? `/api/blob/${localBook.coverPath}` : null,
-              description: localBook.description ?? undefined,
-              subjects: bookTags.map(tag => tag.name),
-              publishDate: localBook.publishDate ?? undefined,
-              publishers: localBook.publishers ? localBook.publishers.split(', ') : null,
-              numberOfPages: localBook.numberOfPages ?? undefined,
-              existsLocally: Boolean(existingInUserLibrary),
-              existingUserBookId: existingInUserLibrary?.userBookId ?? null,
-              existingState: existingInUserLibrary?.libraryState ?? null
+              ...toLookupResult(localBook, normalizedISBN, existingInUserLibrary, bookTags.map(tag => tag.name)),
+              enrichment: job ? { status: toBookEnrichmentUiStatus(job.status) } : undefined
             } satisfies BookLookupResult
           }
-
-          // Not found locally, persist OpenLibrary metadata for later add flows.
-          const lookupEffect = withDebugTiming(
-            'lookupBook.ensureOpenLibraryBook',
-            normalizedISBN,
-            bookRepo.ensureOpenLibraryBook(normalizedISBN)
-          ).pipe(
-            Effect.flatMap(book =>
-              Effect.gen(function* () {
-                const bookTags = yield* withDebugTiming(
-                  'lookupBook.systemTagLoad',
-                  normalizedISBN,
-                  bookRepo.getSystemTagsByBookId(book.id)
-                )
-
-                return {
-                  found: true,
-                  isbn: book.isbn || normalizedISBN,
-                  title: book.title,
-                  author: book.author,
-                  authors: book.authors.map(author => author.name),
-                  coverUrl: book.coverPath ? `/api/blob/${book.coverPath}` : null,
-                  description: book.description ?? undefined,
-                  subjects: bookTags.map(tag => tag.name),
-                  publishDate: book.publishDate ?? undefined,
-                  publishers: book.publishers ? book.publishers.split(', ') : null,
-                  numberOfPages: book.numberOfPages ?? undefined,
-                  existsLocally: Boolean(existingInUserLibrary),
-                  existingUserBookId: existingInUserLibrary?.userBookId ?? null,
-                  existingState: existingInUserLibrary?.libraryState ?? null
-                } satisfies BookLookupResult
-              })
-            ),
-            Effect.catchTag('OpenLibraryBookNotFoundError', () =>
-              Effect.succeed({
-                found: false,
-                isbn: normalizedISBN,
-                message: 'Book not found on OpenLibrary'
-              } satisfies BookLookupResult)
-            )
+          const core = yield* ensureCoreOpenLibraryBook(normalizedISBN).pipe(
+            Effect.catchTag('OpenLibraryBookNotFoundError', () => Effect.succeed(null))
           )
-
-          return yield* lookupEffect
+          if (!core) return { found: false, isbn: normalizedISBN, message: 'Book not found on OpenLibrary' } satisfies BookLookupResult
+          return {
+            ...toLookupResult(core.book, normalizedISBN, existingInUserLibrary, []),
+            enrichment: core.job ? { status: toBookEnrichmentUiStatus(core.job.status) } : undefined
+          } satisfies BookLookupResult
         }),
+
+      enrichOpenLibraryBook: (_userId, bookId) =>
+        Effect.gen(function* () {
+          const current = yield* bookRepo.getBookById(bookId)
+          if (current.source !== 'open_library' || !current.isbn) {
+            return yield* Effect.fail(new DatabaseError({ message: 'Book is not eligible for Open Library enrichment', operation: 'enrichOpenLibraryBook.validate' }))
+          }
+          const existingJob = yield* canonicalEnrichmentRepo.ensurePending(current.id, current.isbn)
+          const terminal = ['completed', 'no_cover', 'not_found', 'failed', 'cancelled'] as const
+          if (terminal.includes(existingJob.status as typeof terminal[number])) {
+            const tags = yield* bookRepo.getSystemTagsByBookId(current.id)
+            return toEnrichmentPatch(current, existingJob.status, tags.map(tag => tag.name))
+          }
+          const now = new Date()
+          const claimed = yield* canonicalEnrichmentRepo.claim(current.id, now, new Date(now.getTime() + 60_000))
+          if (!claimed) {
+            const job = yield* canonicalEnrichmentRepo.get(current.id)
+            const tags = yield* bookRepo.getSystemTagsByBookId(current.id)
+            return toEnrichmentPatch(current, job?.status ?? 'pending', tags.map(tag => tag.name))
+          }
+
+          const enrichment = yield* Effect.either(Effect.gen(function* () {
+            const data = yield* withDebugTiming('enrichment.workMetadata', current.isbn!, openLibraryRepo.lookupByISBN(current.isbn!))
+            const storedCover = data.coverUrl
+              ? yield* bookRepo.findStoredOpenLibraryCover(current.isbn!)
+              : null
+            const coverPath = storedCover ?? (data.coverUrl
+              ? yield* withDebugTiming('enrichment.coverDownload', current.isbn!, openLibraryRepo.downloadCover(current.isbn!, 'L'))
+              : null)
+            const book = yield* bookRepo.applyOpenLibraryEnrichment(current.id, data, coverPath)
+            yield* bookRepo.addSystemTagsToBook(book.id, data.subjects ?? [])
+            const status = coverPath || book.coverPath ? 'completed' as const : 'no_cover' as const
+            yield* canonicalEnrichmentRepo.complete(book.id, claimed.claimToken!, status, null, new Date())
+            const tags = yield* bookRepo.getSystemTagsByBookId(book.id)
+            return toEnrichmentPatch(book, status, tags.map(tag => tag.name))
+          }))
+          if (Either.isRight(enrichment)) return enrichment.right
+          const retryAt = new Date(Date.now() + Math.min(300_000, 5_000 * 2 ** Math.max(0, claimed.attempts - 1)))
+          yield* canonicalEnrichmentRepo.retry(current.id, claimed.claimToken!, retryAt, String(enrichment.left), new Date())
+          const tags = yield* bookRepo.getSystemTagsByBookId(current.id)
+          return toEnrichmentPatch(current, 'retrying', tags.map(tag => tag.name))
+        }),
+
+      recoverCanonicalEnrichment(limit = 20) {
+        return Effect.gen(function* () {
+          const jobs = yield* canonicalEnrichmentRepo.listRecoverable(new Date(), limit)
+          let completed = 0
+          for (const job of jobs) {
+            const patch = yield* enrichOpenLibraryBook('scheduled-recovery', job.bookId).pipe(
+              Effect.catchAll(error => Effect.logWarning(`Canonical enrichment recovery failed: ${String(error)}`).pipe(Effect.as(null)))
+            )
+            if (patch?.status === null) completed++
+          }
+          return { attempted: jobs.length, completed }
+        })
+      },
 
       bulkLookupBooks: (userId, inputs) =>
         Effect.gen(function* () {
@@ -850,6 +912,12 @@ export const getBookDetails = (userBookId: string, userId: string) =>
 
 export const lookupBook = (userId: string, isbn: string) =>
   Effect.flatMap(BookService, service => service.lookupBook(userId, isbn))
+
+export const enrichOpenLibraryBook = (userId: string, bookId: string) =>
+  Effect.flatMap(BookService, service => service.enrichOpenLibraryBook(userId, bookId))
+
+export const recoverCanonicalEnrichment = (limit?: number) =>
+  Effect.flatMap(BookService, service => service.recoverCanonicalEnrichment(limit))
 
 export const bulkLookupBooks = (userId: string, isbns: string[]) =>
   Effect.flatMap(BookService, service => service.bulkLookupBooks(userId, isbns))

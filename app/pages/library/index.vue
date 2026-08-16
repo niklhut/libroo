@@ -219,6 +219,9 @@ function scheduleEnrichmentPoll() {
           book.enrichmentStatus = update.status
         }
       }
+      // Canonical ISBN enrichment is shared before a user_book exists, so its
+      // latest cover/details are read through the normal library projection.
+      await refresh()
       cacheResultsAction(activeResultCacheKey.value)
       enrichmentPollFailures.value = 0
     } catch (error) {
@@ -879,6 +882,7 @@ async function syncLoadedPages(targetPages: number) {
                 :active-loan="book.activeLoan"
                 :library-state="book.libraryState"
                 :tags="book.tags"
+                :enrichment-status="book.enrichmentStatus"
                 @tag-selected="toggleTagFilter"
               />
             </div>
@@ -904,6 +908,7 @@ async function syncLoadedPages(targetPages: number) {
             :active-loan="book.activeLoan"
             :library-state="book.libraryState"
             :tags="book.tags"
+            :enrichment-status="book.enrichmentStatus"
             @tag-selected="toggleTagFilter"
           />
         </div>

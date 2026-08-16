@@ -33,6 +33,15 @@ defineEmits<{
           loading="eager"
         />
         <div
+          v-else-if="book.enrichment?.status === 'queued' || book.enrichment?.status === 'preparing' || book.enrichment?.status === 'retrying'"
+          class="w-full h-full flex items-center justify-center bg-muted aspect-[1/1.5]"
+        >
+          <UIcon
+            name="i-lucide-loader-2"
+            class="animate-spin text-3xl text-primary"
+          />
+        </div>
+        <div
           v-else
           class="flex h-full w-full items-center justify-center"
         >
@@ -100,6 +109,12 @@ defineEmits<{
     >
       {{ book.description }}
     </div>
+    <p
+      v-else-if="book.enrichment?.status === 'failed'"
+      class="text-sm text-muted"
+    >
+      Extra book details could not be loaded. You can still add this book.
+    </p>
 
     <USeparator />
 

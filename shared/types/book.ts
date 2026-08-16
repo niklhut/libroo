@@ -74,6 +74,7 @@ export interface ReadingProgress {
 
 export interface BookLookupResult {
   found: boolean
+  bookId?: string
   isbn: string
   title?: string
   author?: string
@@ -87,7 +88,23 @@ export interface BookLookupResult {
   existsLocally?: boolean
   existingUserBookId?: string | null
   existingState?: LibraryState | null
+  enrichment?: {
+    status: BookEnrichmentUiStatus | null
+  }
   message?: string
+}
+
+export interface BookEnrichmentPatch {
+  bookId: string
+  isbn: string
+  coverPath: string | null
+  coverUrl: string | null
+  description?: string
+  subjects: string[]
+  publishDate?: string
+  publishers?: string[] | null
+  numberOfPages?: number
+  status: BookEnrichmentUiStatus | null
 }
 
 interface BulkBookLookupItemBase {
