@@ -365,22 +365,22 @@ describe('unknown Open Library author repair', () => {
     Effect.provide(Layer.succeed(LocationRepository, {} as LocationRepositoryInterface))
   ))
 
-  it('repairs real provider authors while preserving unresolved placeholders and reporting failures', async () => {
+  it('repairs real provider authors while preserving unresolved placeholders', async () => {
     const replaceUnknownAuthorLinks = vi.fn((bookId: string) => Effect.succeed(bookId === 'repair'))
     const bookRepository = {
       listUnknownAuthorRepairCandidates: vi.fn(() => Effect.succeed([
         { id: 'repair', isbn: '9780141439518' },
-        { id: 'still-unknown', isbn: '9780439139601' },
-        { id: 'failed', isbn: '9780451524935' }
+        { id: 'still-unknown', isbn: '9780439139601' }
       ])),
       replaceUnknownAuthorLinks
     }
     const openLibraryRepository = {
-      lookupByISBN: vi.fn((isbn: string) => {
-        if (isbn === '9780141439518') return Effect.succeed({ authors: ['Jane Austen'] })
-        if (isbn === '9780439139601') return Effect.succeed({ authors: ['Unknown Author'] })
-        return Effect.fail(new OpenLibraryApiError({ message: 'rate limited' }))
-      })
+      lookupAuthorNamesByISBNs: vi.fn(() =>
+        Effect.succeed(new Map([
+          ['9780141439518', ['Jane Austen']],
+          ['9780439139601', ['Unknown Author']]
+        ]))
+      )
     }
 
     const result = await runRepair(
@@ -389,9 +389,29 @@ describe('unknown Open Library author repair', () => {
       openLibraryRepository
     )
 
-    expect(result).toEqual({ scanned: 3, repaired: 1, stillUnknown: 1, skipped: 0, failed: 1 })
+    expect(result).toEqual({ scanned: 2, repaired: 1, stillUnknown: 1, skipped: 0, failed: 0 })
     expect(replaceUnknownAuthorLinks).toHaveBeenCalledWith('repair', ['Jane Austen'])
     expect(replaceUnknownAuthorLinks).toHaveBeenCalledTimes(1)
+  })
+
+  it('reports an unavailable provider batch without modifying its candidates', async () => {
+    const replaceUnknownAuthorLinks = vi.fn()
+    const result = await runRepair(
+      repairUnknownOpenLibraryAuthors({ id: 'admin-1', role: 'admin' }),
+      {
+        listUnknownAuthorRepairCandidates: () => Effect.succeed([
+          { id: 'first', isbn: '9780141439518' },
+          { id: 'second', isbn: '9780439139601' }
+        ]),
+        replaceUnknownAuthorLinks
+      },
+      {
+        lookupAuthorNamesByISBNs: () => Effect.fail(new OpenLibraryApiError({ message: 'rate limited' }))
+      }
+    )
+
+    expect(result).toEqual({ scanned: 2, repaired: 0, stillUnknown: 0, skipped: 0, failed: 2 })
+    expect(replaceUnknownAuthorLinks).not.toHaveBeenCalled()
   })
 
   it('does not query candidates for non-admin users', async () => {
@@ -400,7 +420,7 @@ describe('unknown Open Library author repair', () => {
     await expect(runRepair(
       repairUnknownOpenLibraryAuthors({ id: 'user-1', role: 'user' }),
       { listUnknownAuthorRepairCandidates },
-      { lookupByISBN: vi.fn() }
+      { lookupAuthorNamesByISBNs: vi.fn() }
     )).rejects.toThrow('Admin access required')
 
     expect(listUnknownAuthorRepairCandidates).not.toHaveBeenCalled()

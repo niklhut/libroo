@@ -3,6 +3,7 @@ import type * as HttpClient from '@effect/platform/HttpClient'
 import { normalizeReadingProgress } from '../../shared/utils/reading-progress'
 import {
   BULK_LOOKUP_CONCURRENCY,
+  MAX_BULK_ISBN_COUNT,
   extractIsbn,
   isValidIsbnChecksum,
   isCanonicalBase64,
@@ -510,11 +511,11 @@ export const BookServiceLive = Layer.effect(
           return yield* bookRepo.countUnknownAuthorRepairCandidates()
         }),
 
-      repairUnknownOpenLibraryAuthors: (actor, limit = 20) =>
+      repairUnknownOpenLibraryAuthors: (actor, limit = 100) =>
         Effect.gen(function* () {
           yield* requireAdmin(actor, () => new AdminForbiddenError({ message: 'Admin access required' }))
-          const normalizedLimit = Number.isFinite(limit) ? Math.floor(limit) : 20
-          const candidates = yield* bookRepo.listUnknownAuthorRepairCandidates(Math.min(Math.max(1, normalizedLimit), 50))
+          const normalizedLimit = Number.isFinite(limit) ? Math.floor(limit) : 100
+          const candidates = yield* bookRepo.listUnknownAuthorRepairCandidates(Math.min(Math.max(1, normalizedLimit), 100))
           const result: RepairUnknownAuthorsResult = {
             scanned: candidates.length,
             repaired: 0,
@@ -523,28 +524,40 @@ export const BookServiceLive = Layer.effect(
             failed: 0
           }
 
-          yield* Effect.forEach(candidates, candidate =>
-            openLibraryRepo.lookupByISBN(candidate.isbn).pipe(
-              Effect.flatMap((data) => {
-                const realAuthors = data.authors.filter(author => author.trim().toLowerCase() !== 'unknown author')
+          for (let start = 0; start < candidates.length; start += MAX_BULK_ISBN_COUNT) {
+            const candidateBatch = candidates.slice(start, start + MAX_BULK_ISBN_COUNT)
+            const authorsByIsbn = yield* openLibraryRepo.lookupAuthorNamesByISBNs(
+              candidateBatch.map(candidate => candidate.isbn)
+            ).pipe(
+              Effect.either
+            )
+
+            if (Either.isLeft(authorsByIsbn)) {
+              result.failed += candidateBatch.length
+              yield* Effect.logWarning(`Failed to repair Open Library authors for ${candidateBatch.length} ISBNs: ${String(authorsByIsbn.left)}`)
+              continue
+            }
+
+            yield* Effect.forEach(candidateBatch, candidate =>
+              Effect.gen(function* () {
+                const realAuthors = (authorsByIsbn.right.get(candidate.isbn) ?? [])
+                  .filter(author => author.trim().toLowerCase() !== 'unknown author')
                 if (realAuthors.length === 0) {
                   result.stillUnknown += 1
-                  return Effect.void
+                  return
                 }
-                return bookRepo.replaceUnknownAuthorLinks(candidate.id, realAuthors).pipe(
-                  Effect.map((replaced) => {
-                    if (replaced) result.repaired += 1
-                    else result.skipped += 1
-                  })
+                const replaced = yield* bookRepo.replaceUnknownAuthorLinks(candidate.id, realAuthors)
+                if (replaced) result.repaired += 1
+                else result.skipped += 1
+              }).pipe(
+                Effect.catchAll(error =>
+                  Effect.logWarning(`Failed to repair Open Library author for ISBN ${candidate.isbn}: ${String(error)}`).pipe(
+                    Effect.zipRight(Effect.sync(() => { result.failed += 1 }))
+                  )
                 )
-              }),
-              Effect.catchAll(error =>
-                Effect.logWarning(`Failed to repair Open Library author for ISBN ${candidate.isbn}: ${String(error)}`).pipe(
-                  Effect.zipRight(Effect.sync(() => { result.failed += 1 }))
-                )
-              )
-            ),
-          { concurrency: 1 })
+              ),
+            { concurrency: 1 })
+          }
 
           yield* Effect.log('Completed unknown-author repair').pipe(
             Effect.annotateLogs({ ...result })
