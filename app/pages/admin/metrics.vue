@@ -30,7 +30,7 @@ function getErrorMessage(error: unknown) {
 }
 
 async function repairUnknownAuthors() {
-  if (!confirm('Repair up to 50 Open Library books that currently have only “Unknown Author”? This can safely be run again until no candidates remain.')) return
+  if (!confirm('Repair up to 100 Open Library books that currently have only “Unknown Author”? This can safely be run again until no candidates remain.')) return
 
   isRepairingAuthors.value = true
   authorRepairResult.value = null
@@ -201,7 +201,7 @@ function formatBytes(totalBytes: number) {
                   v-else-if="!authorRepairStatusError"
                   class="mt-1 text-sm text-muted"
                 >
-                  {{ authorRepairStatus?.candidateCount ?? 0 }} canonical books currently have only the “Unknown Author” placeholder. Each run checks up to 50 books and is safe to repeat.
+                  {{ authorRepairStatus?.candidateCount ?? 0 }} canonical books currently have only the “Unknown Author” placeholder. Each run checks up to 100 books and is safe to repeat.
                 </p>
               </div>
               <UButton
