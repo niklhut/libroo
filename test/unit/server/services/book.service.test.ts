@@ -10,7 +10,7 @@ import { BookEnrichmentRepository, type BookEnrichmentRepositoryInterface } from
 import { LocationRepository, type LocationRepositoryInterface } from '../../../../server/repositories/location.repository'
 import { OpenLibraryApiError, OpenLibraryRepository, type OpenLibraryRepositoryInterface } from '../../../../server/repositories/openLibrary.repository'
 import type { BookService } from '../../../../server/services/book.service'
-import { BookServiceLive, bulkLookupBooks, createManualBook, decodeCoverImage, getBookDetails, getUserLibrary, InvalidManualCoverError } from '../../../../server/services/book.service'
+import { BookServiceLive, bulkLookupBooks, createManualBook, decodeCoverImage, getBookDetails, getUserLibrary, InvalidManualCoverError, repairUnknownOpenLibraryAuthors } from '../../../../server/services/book.service'
 import { putCoverImage, StorageService, type StorageServiceInterface } from '../../../../server/services/storage.service'
 
 Object.assign(globalThis, { BookRepository, OpenLibraryRepository, LocationRepository, putCoverImage })
@@ -349,5 +349,60 @@ describe('bulk ISBN lookup', () => {
     expect(downloadCovers).toHaveBeenCalledWith(isbns, 'L')
     expect(ensureOpenLibraryBook).toHaveBeenNthCalledWith(1, isbns[0], remoteData.get(isbns[0]), `covers/${isbns[0]}.webp`)
     expect(ensureOpenLibraryBook).toHaveBeenNthCalledWith(2, isbns[1], remoteData.get(isbns[1]), `covers/${isbns[1]}.webp`)
+  })
+})
+
+describe('unknown Open Library author repair', () => {
+  const runRepair = <A, E>(
+    effect: Effect.Effect<A, E, BookService>,
+    bookRepository: Partial<BookRepositoryInterface>,
+    openLibraryRepository: Partial<OpenLibraryRepositoryInterface>
+  ) => Effect.runPromise(effect.pipe(
+    Effect.provide(BookServiceLive),
+    Effect.provide(Layer.succeed(BookRepository, bookRepository as BookRepositoryInterface)),
+    Effect.provide(Layer.succeed(BookEnrichmentRepository, {} as BookEnrichmentRepositoryInterface)),
+    Effect.provide(Layer.succeed(OpenLibraryRepository, openLibraryRepository as OpenLibraryRepositoryInterface)),
+    Effect.provide(Layer.succeed(LocationRepository, {} as LocationRepositoryInterface))
+  ))
+
+  it('repairs real provider authors while preserving unresolved placeholders and reporting failures', async () => {
+    const replaceUnknownAuthorLinks = vi.fn((bookId: string) => Effect.succeed(bookId === 'repair'))
+    const bookRepository = {
+      listUnknownAuthorRepairCandidates: vi.fn(() => Effect.succeed([
+        { id: 'repair', isbn: '9780141439518' },
+        { id: 'still-unknown', isbn: '9780439139601' },
+        { id: 'failed', isbn: '9780451524935' }
+      ])),
+      replaceUnknownAuthorLinks
+    }
+    const openLibraryRepository = {
+      lookupByISBN: vi.fn((isbn: string) => {
+        if (isbn === '9780141439518') return Effect.succeed({ authors: ['Jane Austen'] })
+        if (isbn === '9780439139601') return Effect.succeed({ authors: ['Unknown Author'] })
+        return Effect.fail(new OpenLibraryApiError({ message: 'rate limited' }))
+      })
+    }
+
+    const result = await runRepair(
+      repairUnknownOpenLibraryAuthors({ id: 'admin-1', role: 'admin' }),
+      bookRepository,
+      openLibraryRepository
+    )
+
+    expect(result).toEqual({ scanned: 3, repaired: 1, stillUnknown: 1, skipped: 0, failed: 1 })
+    expect(replaceUnknownAuthorLinks).toHaveBeenCalledWith('repair', ['Jane Austen'])
+    expect(replaceUnknownAuthorLinks).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not query candidates for non-admin users', async () => {
+    const listUnknownAuthorRepairCandidates = vi.fn()
+
+    await expect(runRepair(
+      repairUnknownOpenLibraryAuthors({ id: 'user-1', role: 'user' }),
+      { listUnknownAuthorRepairCandidates },
+      { lookupByISBN: vi.fn() }
+    )).rejects.toThrow('Admin access required')
+
+    expect(listUnknownAuthorRepairCandidates).not.toHaveBeenCalled()
   })
 })

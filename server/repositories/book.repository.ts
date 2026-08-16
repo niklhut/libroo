@@ -89,6 +89,11 @@ export interface MissingOpenLibraryCoverBook {
   isbn: string
 }
 
+export interface UnknownAuthorRepairCandidate {
+  id: string
+  isbn: string
+}
+
 interface RepositoryBookAuthor {
   id: string
   name: string
@@ -173,6 +178,17 @@ export interface BookRepositoryInterface {
   updateOpenLibraryCoverPath: (
     bookId: string,
     coverPath: string
+  ) => Effect.Effect<boolean, DatabaseError, DbService>
+
+  countUnknownAuthorRepairCandidates: () => Effect.Effect<number, DatabaseError, DbService>
+
+  listUnknownAuthorRepairCandidates: (
+    limit: number
+  ) => Effect.Effect<UnknownAuthorRepairCandidate[], DatabaseError, DbService>
+
+  replaceUnknownAuthorLinks: (
+    bookId: string,
+    authorNames: string[]
   ) => Effect.Effect<boolean, DatabaseError, DbService>
 
   hasBookInUserLibrary: (
@@ -364,6 +380,23 @@ export const BookRepositoryLive = Layer.effect(
     const dbService = yield* DbService
 
     const normalizeAuthorName = (name: string) => name.trim().replace(/\s+/g, ' ').toLowerCase()
+    const isUnknownAuthorRepairCandidate = (bookId?: string) => and(
+      eq(books.source, 'open_library'),
+      sql`${books.isbn} IS NOT NULL`,
+      bookId ? eq(books.id, bookId) : undefined,
+      sql`EXISTS (
+        SELECT 1 FROM ${bookAuthors}
+        INNER JOIN ${authors} ON ${eq(bookAuthors.authorId, authors.id)}
+        WHERE ${eq(bookAuthors.bookId, books.id)}
+          AND ${eq(authors.normalizedName, 'unknown author')}
+      )`,
+      sql`NOT EXISTS (
+        SELECT 1 FROM ${bookAuthors}
+        INNER JOIN ${authors} ON ${eq(bookAuthors.authorId, authors.id)}
+        WHERE ${eq(bookAuthors.bookId, books.id)}
+          AND ${not(eq(authors.normalizedName, 'unknown author'))}
+      )`
+    )
     const formatAuthorList = (bookAuthorList: RepositoryBookAuthor[]) =>
       bookAuthorList.length > 0 ? bookAuthorList.map(author => author.name).join(', ') : 'Unknown Author'
 
@@ -1593,6 +1626,104 @@ export const BookRepositoryLive = Layer.effect(
         }).pipe(
           Effect.map(rows => rows.length > 0)
         ),
+
+      countUnknownAuthorRepairCandidates: () =>
+        Effect.tryPromise({
+          try: async () => Number((await dbService.db
+            .select({ value: count() })
+            .from(books)
+            .where(isUnknownAuthorRepairCandidate()))[0]?.value ?? 0),
+          catch: error => new DatabaseError({
+            message: `Failed to count unknown-author repair candidates: ${error}`,
+            operation: 'countUnknownAuthorRepairCandidates'
+          })
+        }),
+
+      listUnknownAuthorRepairCandidates: limit =>
+        Effect.tryPromise({
+          try: () => dbService.db
+            .select({ id: books.id, isbn: books.isbn })
+            .from(books)
+            .where(isUnknownAuthorRepairCandidate())
+            .orderBy(asc(books.createdAt), asc(books.id))
+            .limit(Math.max(1, limit)),
+          catch: error => new DatabaseError({
+            message: `Failed to list unknown-author repair candidates: ${error}`,
+            operation: 'listUnknownAuthorRepairCandidates'
+          })
+        }).pipe(
+          Effect.map(rows => rows.filter((row): row is UnknownAuthorRepairCandidate =>
+            typeof row.isbn === 'string' && row.isbn.length > 0
+          ))
+        ),
+
+      replaceUnknownAuthorLinks: (bookId, authorNames) =>
+        Effect.gen(function* () {
+          const seen = new Set<string>()
+          const replacementAuthors = authorNames
+            .map(name => name.trim().replace(/\s+/g, ' '))
+            .filter((name) => {
+              const normalized = normalizeAuthorName(name)
+              if (!normalized || normalized === 'unknown author' || seen.has(normalized)) return false
+              seen.add(normalized)
+              return true
+            })
+
+          if (replacementAuthors.length === 0) return false
+
+          const candidate = yield* Effect.tryPromise({
+            try: () => dbService.db
+              .select({ id: books.id })
+              .from(books)
+              .where(isUnknownAuthorRepairCandidate(bookId))
+              .limit(1),
+            catch: error => new DatabaseError({
+              message: `Failed to verify unknown-author repair candidate: ${error}`,
+              operation: 'replaceUnknownAuthorLinks.verify'
+            })
+          })
+          if (!candidate[0]) return false
+
+          const now = new Date()
+          yield* Effect.tryPromise({
+            try: () => dbService.executeAtomic((database) => {
+              const statements: AtomicDbStatement[] = []
+              for (const [sortOrder, name] of replacementAuthors.entries()) {
+                const normalizedName = normalizeAuthorName(name)
+                statements.push(
+                  database.insert(authors).values({
+                    id: generateId(),
+                    name,
+                    normalizedName,
+                    createdAt: now,
+                    updatedAt: now
+                  }).onConflictDoNothing(),
+                  database.insert(bookAuthors).values({
+                    bookId,
+                    authorId: sql<string>`(SELECT id FROM authors WHERE normalized_name = ${normalizedName})` as unknown as string,
+                    sortOrder,
+                    createdAt: now
+                  }).onConflictDoNothing()
+                )
+              }
+              // The batch is transactional on both D1 and libSQL: either all
+              // real links are created and the placeholder is removed, or the
+              // original placeholder link remains untouched.
+              statements.push(
+                database.delete(bookAuthors).where(and(
+                  eq(bookAuthors.bookId, bookId),
+                  sql`${bookAuthors.authorId} IN (SELECT ${authors.id} FROM ${authors} WHERE ${eq(authors.normalizedName, 'unknown author')})`
+                ))
+              )
+              return statements as unknown as AtomicDbStatements
+            }),
+            catch: error => new DatabaseError({
+              message: `Failed to replace unknown-author links: ${error}`,
+              operation: 'replaceUnknownAuthorLinks.replace'
+            })
+          })
+          return true
+        }),
 
       hasBookInUserLibrary: (userId, isbn) =>
         Effect.gen(function* () {
