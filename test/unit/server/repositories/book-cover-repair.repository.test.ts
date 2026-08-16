@@ -12,7 +12,7 @@ import { createClient } from '@libsql/client'
 import { drizzle } from 'drizzle-orm/libsql'
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { bookSystemTags, books, tags, user, userBooks } from '../../../../server/db/schema'
+import { authors, bookAuthors, bookSystemTags, books, tags, user, userBooks } from '../../../../server/db/schema'
 import { BookRepository, BookRepositoryLive } from '../../../../server/repositories/book.repository'
 import { OpenLibraryRepository, type OpenLibraryRepositoryInterface } from '../../../../server/repositories/openLibrary.repository'
 import { DbService } from '../../../../server/services/db.service'
@@ -84,6 +84,50 @@ describe('BookRepository cover repair helpers', () => {
       { id: 'missing', coverPath: 'covers/repaired.webp' },
       { id: 'covered', coverPath: 'covers/existing.webp' }
     ]))
+  })
+
+  it('selects only canonical books linked solely to the unknown author and atomically replaces that link', async () => {
+    const now = new Date('2026-06-22T10:00:00.000Z')
+    await db.insert(authors).values([
+      { id: 'unknown', name: 'Unknown Author', normalizedName: 'unknown author', createdAt: now, updatedAt: now },
+      { id: 'real', name: 'Existing Author', normalizedName: 'existing author', createdAt: now, updatedAt: now }
+    ])
+    await db.insert(books).values([
+      { id: 'candidate', isbn: '9781234567890', title: 'Candidate', source: 'open_library', createdAt: now },
+      { id: 'mixed', isbn: '9781234567891', title: 'Mixed', source: 'open_library', createdAt: now },
+      { id: 'manual', isbn: '9781234567892', title: 'Manual', source: 'manual', createdAt: now }
+    ])
+    await db.insert(bookAuthors).values([
+      { bookId: 'candidate', authorId: 'unknown', sortOrder: 0, createdAt: now },
+      { bookId: 'mixed', authorId: 'unknown', sortOrder: 0, createdAt: now },
+      { bookId: 'mixed', authorId: 'real', sortOrder: 1, createdAt: now },
+      { bookId: 'manual', authorId: 'unknown', sortOrder: 0, createdAt: now }
+    ])
+
+    const result = await runRepository(db, Effect.flatMap(BookRepository, repository =>
+      Effect.all([
+        repository.countUnknownAuthorRepairCandidates(),
+        repository.listUnknownAuthorRepairCandidates(10),
+        repository.replaceUnknownAuthorLinks('candidate', ['Jane Austen'])
+      ])
+    ))
+
+    expect(result).toEqual([1, [{ id: 'candidate', isbn: '9781234567890' }], true])
+    const repairedAuthors = await db.select({ name: authors.name })
+      .from(bookAuthors)
+      .innerJoin(authors, eq(bookAuthors.authorId, authors.id))
+      .where(eq(bookAuthors.bookId, 'candidate'))
+    expect(repairedAuthors).toEqual([{ name: 'Jane Austen' }])
+
+    const repeat = await runRepository(db, Effect.flatMap(BookRepository, repository =>
+      repository.replaceUnknownAuthorLinks('candidate', ['Mary Shelley'])
+    ))
+    expect(repeat).toBe(false)
+    const authorsAfterRepeat = await db.select({ name: authors.name })
+      .from(bookAuthors)
+      .innerJoin(authors, eq(bookAuthors.authorId, authors.id))
+      .where(eq(bookAuthors.bookId, 'candidate'))
+    expect(authorsAfterRepeat).toEqual([{ name: 'Jane Austen' }])
   })
 
   it('adds an existing Open Library book and hydrates missing system tags', async () => {
@@ -355,9 +399,7 @@ function runRepository<A, E>(
     Effect.provide(Layer.succeed(HttpClient.HttpClient, {} as never)),
     Effect.provide(Layer.succeed(DbService, {
       db: db as never,
-      executeAtomic: async () => {
-        throw new Error('executeAtomic is not used by BookRepository cover repair')
-      }
+      executeAtomic: build => db.batch(build(db as never)) as never
     }))
   ))
 }

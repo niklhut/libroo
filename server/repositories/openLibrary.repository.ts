@@ -269,11 +269,36 @@ export const OpenLibraryRepositoryLive = Layer.effect(
             'metadata'
           )
 
+          // The details representation is richer for edition metadata, but it
+          // omits authors for a number of otherwise valid editions. Only make
+          // the additional request for those entries so the normal bulk path
+          // remains a single request.
+          const isbnsMissingAuthors = chunk.filter((isbn) => {
+            const entry = response[`ISBN:${isbn}`]
+            const details = entry?.details ?? entry
+            return !details?.authors?.some(author => Boolean(author.name?.trim()))
+          })
+          const authorFallbackByIsbn = isbnsMissingAuthors.length > 0
+            ? yield* fetchJson<OpenLibraryBooksApiResponse>(
+              `${apiBase}/api/books?bibkeys=${isbnsMissingAuthors.map(isbn => `ISBN:${isbn}`).join(',')}&jscmd=data&format=json`,
+              acquireSlot,
+              'metadata'
+            )
+            : null
+
           for (const isbn of chunk) {
             const entry = response[`ISBN:${isbn}`]
             if (!entry) continue
             const details = entry.details ?? entry
-            const authors = details.authors?.map(author => author.name).filter(Boolean) ?? []
+            const fallbackEntry = authorFallbackByIsbn?.[`ISBN:${isbn}`]
+            const normalizeAuthors = (authorEntries?: Array<{ name: string }>) =>
+              (authorEntries ?? [])
+                .map(author => author.name.trim())
+                .filter(Boolean)
+            const primaryAuthors = normalizeAuthors(details.authors)
+            const authors = primaryAuthors.length > 0
+              ? primaryAuthors
+              : normalizeAuthors(fallbackEntry?.authors)
             const publishers = details.publishers?.map(publisher => typeof publisher === 'string' ? publisher : publisher.name)
             const subjects = details.subjects
               ?.map(subject => typeof subject === 'string' ? subject : subject.name)

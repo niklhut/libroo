@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { AdminMetrics } from '~~/shared/types/admin'
+import type { AdminMetrics, RepairUnknownAuthorsResult, UnknownAuthorRepairStatus } from '~~/shared/types/admin'
 import { formatAdminDateTime } from '~/utils/admin-date-format'
 
 usePageTitle('Admin Metrics')
@@ -12,6 +12,39 @@ const { data: metrics, status, error } = await useAsyncData<AdminMetrics>(
 
 const isLoading = computed(() => ['idle', 'pending'].includes(status.value))
 const storageUsage = computed(() => metrics.value?.storage)
+const {
+  data: authorRepairStatus,
+  error: authorRepairStatusError,
+  status: authorRepairStatusRequestStatus,
+  refresh: refreshAuthorRepairStatus
+} = await useAsyncData<UnknownAuthorRepairStatus>(
+  'admin-author-repair-status',
+  () => requestFetch('/api/admin/author-repair')
+)
+const authorRepairResult = ref<RepairUnknownAuthorsResult | null>(null)
+const authorRepairActionError = ref<Error | null>(null)
+const isRepairingAuthors = ref(false)
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : 'Please try again.'
+}
+
+async function repairUnknownAuthors() {
+  if (!confirm('Repair up to 50 Open Library books that currently have only “Unknown Author”? This can safely be run again until no candidates remain.')) return
+
+  isRepairingAuthors.value = true
+  authorRepairResult.value = null
+  authorRepairActionError.value = null
+  try {
+    authorRepairResult.value = await requestFetch('/api/admin/author-repair', { method: 'POST' })
+    await refreshAuthorRepairStatus()
+    if (authorRepairStatusError.value) throw authorRepairStatusError.value
+  } catch (error) {
+    authorRepairActionError.value = error instanceof Error ? error : new Error(getErrorMessage(error))
+  } finally {
+    isRepairingAuthors.value = false
+  }
+}
 
 function formatBytes(totalBytes: number) {
   if (totalBytes >= 1024 * 1024 * 1024) return `${(totalBytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
@@ -145,6 +178,60 @@ function formatBytes(totalBytes: number) {
             <p class="mt-1 text-sm text-muted">
               Last calculated: {{ formatAdminDateTime(storageUsage.lastCalculatedAt) }}
             </p>
+          </UCard>
+        </section>
+
+        <section class="mt-8 space-y-3">
+          <h2 class="text-lg font-semibold">
+            Temporary maintenance
+          </h2>
+          <UCard>
+            <div class="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p class="font-medium">
+                  Repair missing Open Library authors
+                </p>
+                <p
+                  v-if="authorRepairStatusRequestStatus === 'pending'"
+                  class="mt-1 text-sm text-muted"
+                >
+                  Checking pending candidates…
+                </p>
+                <p
+                  v-else-if="!authorRepairStatusError"
+                  class="mt-1 text-sm text-muted"
+                >
+                  {{ authorRepairStatus?.candidateCount ?? 0 }} canonical books currently have only the “Unknown Author” placeholder. Each run checks up to 50 books and is safe to repeat.
+                </p>
+              </div>
+              <UButton
+                color="warning"
+                icon="i-lucide-wrench"
+                :loading="isRepairingAuthors"
+                :disabled="isRepairingAuthors || Boolean(authorRepairStatusError) || !authorRepairStatus?.candidateCount"
+                @click="repairUnknownAuthors"
+              >
+                Repair authors
+              </UButton>
+            </div>
+            <UAlert
+              v-if="authorRepairStatusError || authorRepairActionError"
+              class="mt-4"
+              color="error"
+              variant="subtle"
+              icon="i-lucide-circle-alert"
+              title="Could not repair authors"
+              :description="getErrorMessage(authorRepairActionError ?? authorRepairStatusError)"
+            />
+            <UAlert
+              v-if="authorRepairResult"
+              class="mt-4"
+              color="success"
+              variant="subtle"
+              icon="i-lucide-circle-check"
+              title="Author repair completed"
+              :description="`Scanned ${authorRepairResult.scanned}; repaired ${authorRepairResult.repaired}; still unknown ${authorRepairResult.stillUnknown}; skipped ${authorRepairResult.skipped}; failed ${authorRepairResult.failed}.`"
+            />
           </UCard>
         </section>
       </template>

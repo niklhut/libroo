@@ -13,10 +13,12 @@ import {
 import type { LibraryQueryFilters } from '../../shared/utils/library-query'
 import { detectImageContentType, UNKNOWN_IMAGE_CONTENT_TYPE } from '../../shared/utils/image-content-type'
 import type { BookEnrichmentStatus, BulkBookLookupItem, BulkBookLookupResponse, BookLookupResult, LibraryState, TagWithCount } from '../../shared/types/book'
+import type { RepairUnknownAuthorsResult } from '../../shared/types/admin'
 import { toBookEnrichmentUiStatus } from '../../shared/utils/book-enrichment'
 import type { Book } from '../repositories/book.repository'
 import { normalizeIsbnIdentity } from '../../shared/utils/isbn'
 import { BookEnrichmentRepository } from '../repositories/book-enrichment.repository'
+import { AdminAccessForbiddenError as AdminForbiddenError, requireAdmin } from '../utils/admin-access'
 
 const BULK_COVER_LOOKUP_CONCURRENCY = 16
 
@@ -79,6 +81,11 @@ export interface RepairOpenLibraryCoversResult {
   repaired: number
   skipped: number
   failed: number
+}
+
+interface AdminActor {
+  id: string
+  role?: string | null
 }
 
 export interface BulkAddBookInput {
@@ -160,6 +167,19 @@ export interface BookServiceInterface {
     RepairOpenLibraryCoversResult,
     DatabaseError,
     DbService | StorageService | OpenLibraryRepository | HttpClient.HttpClient
+  >
+
+  getUnknownAuthorRepairCandidateCount: (
+    actor: AdminActor
+  ) => Effect.Effect<number, AdminForbiddenError | DatabaseError, DbService>
+
+  repairUnknownOpenLibraryAuthors: (
+    actor: AdminActor,
+    limit?: number
+  ) => Effect.Effect<
+    RepairUnknownAuthorsResult,
+    AdminForbiddenError | DatabaseError,
+    DbService | OpenLibraryRepository | HttpClient.HttpClient
   >
 
   removeBookFromLibrary: (
@@ -481,6 +501,54 @@ export const BookServiceLive = Layer.effect(
             { concurrency: 1 }
           )
 
+          return result
+        }),
+
+      getUnknownAuthorRepairCandidateCount: actor =>
+        Effect.gen(function* () {
+          yield* requireAdmin(actor, () => new AdminForbiddenError({ message: 'Admin access required' }))
+          return yield* bookRepo.countUnknownAuthorRepairCandidates()
+        }),
+
+      repairUnknownOpenLibraryAuthors: (actor, limit = 20) =>
+        Effect.gen(function* () {
+          yield* requireAdmin(actor, () => new AdminForbiddenError({ message: 'Admin access required' }))
+          const normalizedLimit = Number.isFinite(limit) ? Math.floor(limit) : 20
+          const candidates = yield* bookRepo.listUnknownAuthorRepairCandidates(Math.min(Math.max(1, normalizedLimit), 50))
+          const result: RepairUnknownAuthorsResult = {
+            scanned: candidates.length,
+            repaired: 0,
+            stillUnknown: 0,
+            skipped: 0,
+            failed: 0
+          }
+
+          yield* Effect.forEach(candidates, candidate =>
+            openLibraryRepo.lookupByISBN(candidate.isbn).pipe(
+              Effect.flatMap((data) => {
+                const realAuthors = data.authors.filter(author => author.trim().toLowerCase() !== 'unknown author')
+                if (realAuthors.length === 0) {
+                  result.stillUnknown += 1
+                  return Effect.void
+                }
+                return bookRepo.replaceUnknownAuthorLinks(candidate.id, realAuthors).pipe(
+                  Effect.map((replaced) => {
+                    if (replaced) result.repaired += 1
+                    else result.skipped += 1
+                  })
+                )
+              }),
+              Effect.catchAll(error =>
+                Effect.logWarning(`Failed to repair Open Library author for ISBN ${candidate.isbn}: ${String(error)}`).pipe(
+                  Effect.zipRight(Effect.sync(() => { result.failed += 1 }))
+                )
+              )
+            ),
+          { concurrency: 1 })
+
+          yield* Effect.log('Completed unknown-author repair').pipe(
+            Effect.annotateLogs({ ...result })
+          )
           return result
         }),
 
@@ -834,6 +902,12 @@ export const createManualBook = (userId: string, input: ManualBookCreateSchema) 
 
 export const repairMissingOpenLibraryCovers = (limit?: number) =>
   Effect.flatMap(BookService, service => service.repairMissingOpenLibraryCovers(limit))
+
+export const getUnknownAuthorRepairCandidateCount = (actor: AdminActor) =>
+  Effect.flatMap(BookService, service => service.getUnknownAuthorRepairCandidateCount(actor))
+
+export const repairUnknownOpenLibraryAuthors = (actor: AdminActor, limit?: number) =>
+  Effect.flatMap(BookService, service => service.repairUnknownOpenLibraryAuthors(actor, limit))
 
 export const removeBookFromLibrary = (
   userBookId: string,

@@ -67,6 +67,47 @@ describe('OpenLibraryRepository details lookup', () => {
     expect(requestedUrls.some(url => /\/books\/[^?]+\.json/.test(url))).toBe(false)
   })
 
+  it('falls back to ISBN data when details omits edition authors', async () => {
+    vi.stubGlobal('useRuntimeConfig', () => ({
+      openLibraryRequestTimeoutSeconds: 12,
+      openLibraryCoverTimeoutSeconds: 20,
+      openLibraryContactEmail: ''
+    }))
+    const requestedUrls: string[] = []
+    const httpClient = HttpClient.make((request) => {
+      requestedUrls.push(request.url)
+      const response = request.url.includes('jscmd=data')
+        ? {
+            'ISBN:9780141439518': {
+              title: 'Pride and Prejudice',
+              authors: [{ name: 'Jane Austen' }],
+              key: '/books/OL2M'
+            }
+          }
+        : {
+            'ISBN:9780141439518': {
+              details: { key: '/books/OL2M', title: 'Pride and Prejudice', authors: [{ name: '   ' }], works: [] }
+            }
+          }
+      return Effect.succeed(HttpClientResponse.fromWeb(request, new Response(JSON.stringify(response))))
+    })
+
+    const result = await Effect.runPromise(Effect.flatMap(OpenLibraryRepository, repository =>
+      repository.lookupByISBN('9780141439518')
+    ).pipe(
+      Effect.provide(OpenLibraryRepositoryLive),
+      Effect.provide(Layer.succeed(DbService, { executeAtomic: vi.fn() } as never)),
+      Effect.provide(Layer.succeed(HttpClient.HttpClient, httpClient))
+    ))
+
+    expect(result.authors).toEqual(['Jane Austen'])
+    expect(requestedUrls).toHaveLength(2)
+    expect(requestedUrls).toEqual(expect.arrayContaining([
+      expect.stringContaining('jscmd=details'),
+      expect.stringContaining('jscmd=data')
+    ]))
+  })
+
   it('rejects non-success metadata responses before parsing their JSON body', async () => {
     vi.stubGlobal('useRuntimeConfig', () => ({
       openLibraryRequestTimeoutSeconds: 12,

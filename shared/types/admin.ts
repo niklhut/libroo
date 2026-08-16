@@ -34,6 +34,18 @@ export interface AdminMetrics {
   storage: AdminStorageMetrics
 }
 
+export interface UnknownAuthorRepairStatus {
+  candidateCount: number
+}
+
+export interface RepairUnknownAuthorsResult {
+  scanned: number
+  repaired: number
+  stillUnknown: number
+  skipped: number
+  failed: number
+}
+
 export type AdminStorageMetrics
   = | { state: 'unavailable' }
     | {
