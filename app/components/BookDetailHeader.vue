@@ -31,7 +31,20 @@ const menuItems = computed(() => [
           {{ book.title }}
         </h1>
         <p class="mt-2 text-lg text-muted">
-          {{ book.authors.map(author => author.name).join(', ') || book.author }}
+          <template v-if="book.authors.length">
+            <template
+              v-for="(author, index) in book.authors"
+              :key="author.id"
+            >
+              <ULink
+                :to="`/library/authors/${author.id}`"
+                class="transition-colors hover:text-primary focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >{{ author.name }}</ULink><span v-if="index < book.authors.length - 1">, </span>
+            </template>
+          </template>
+          <template v-else>
+            {{ book.author }}
+          </template>
         </p>
       </div>
       <div class="flex shrink-0 flex-wrap gap-2">
