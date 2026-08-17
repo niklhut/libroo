@@ -125,7 +125,7 @@ const links = computed<NavigationMenuItem[]>(() => {
         variant="link"
       />
 
-      <UColorModeButton />
+      <CustomColorModeButton />
     </template>
 
     <template #body>
