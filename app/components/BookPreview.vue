@@ -24,17 +24,17 @@ defineEmits<{
   <div class="space-y-6">
     <div class="flex gap-6">
       <!-- Cover Preview -->
-      <div class="w-32 max-h-48 flex-shrink-0 rounded-lg overflow-hidden shadow-md">
+      <div class="w-32 aspect-[2/3] flex-shrink-0 overflow-hidden rounded-lg bg-muted shadow-md">
         <NuxtImg
           v-if="book.coverUrl"
           :src="book.coverUrl"
           :alt="book.title || 'Book cover'"
-          class="max-w-full max-h-full object-cover"
+          class="w-full h-full object-cover"
           loading="eager"
         />
         <div
           v-else
-          class="w-full h-full flex items-center justify-center bg-muted aspect-[1/1.5]"
+          class="flex h-full w-full items-center justify-center"
         >
           <UIcon
             name="i-lucide-book"
