@@ -1710,7 +1710,9 @@ export const BookRepositoryLive = Layer.effect(
 
           if (replacementAuthors.length === 0) return false
 
-          const now = new Date()
+          // Raw SQL parameters bypass Drizzle's Date serialization. D1 accepts
+          // the timestamp integer stored by these columns, but not a Date object.
+          const nowTimestamp = Math.floor(Date.now() / 1000)
           const normalizedAuthorNames = replacementAuthors.map(normalizeAuthorName)
           yield* Effect.tryPromise({
             try: () => dbService.executeAtomic((database) => {
@@ -1723,8 +1725,8 @@ export const BookRepositoryLive = Layer.effect(
                       id: sql<string>`${generateId()}`.as('id'),
                       name: sql<string>`${name}`.as('name'),
                       normalizedName: sql<string>`${normalizedName}`.as('normalized_name'),
-                      createdAt: sql<Date>`${now}`.as('created_at'),
-                      updatedAt: sql<Date>`${now}`.as('updated_at')
+                      createdAt: sql<number>`${nowTimestamp}`.as('created_at'),
+                      updatedAt: sql<number>`${nowTimestamp}`.as('updated_at')
                     })
                       .from(books)
                       .where(canReplaceUnknownAuthorLinks(bookId, normalizedAuthorNames))
@@ -1734,7 +1736,7 @@ export const BookRepositoryLive = Layer.effect(
                       bookId: books.id,
                       authorId: sql<string>`(SELECT id FROM authors WHERE normalized_name = ${normalizedName})`.as('author_id'),
                       sortOrder: sql<number>`${sortOrder}`.as('sort_order'),
-                      createdAt: sql<Date>`${now}`.as('created_at')
+                      createdAt: sql<number>`${nowTimestamp}`.as('created_at')
                     })
                       .from(books)
                       .where(canReplaceUnknownAuthorLinks(bookId, normalizedAuthorNames))
