@@ -87,7 +87,6 @@ interface OpenLibraryWorksApiResponse {
 export interface OpenLibraryRepositoryInterface {
   lookupByISBN: (isbn: string) => Effect.Effect<OpenLibraryBookData, OpenLibraryBookNotFoundError | OpenLibraryApiError, HttpClientType.HttpClient>
   lookupByISBNs: (isbns: string[]) => Effect.Effect<Map<string, OpenLibraryBookData>, OpenLibraryApiError, HttpClientType.HttpClient>
-  lookupAuthorNamesByISBNs: (isbns: string[]) => Effect.Effect<Map<string, string[]>, OpenLibraryApiError, HttpClientType.HttpClient>
   downloadCover: (isbn: string, size?: 'S' | 'M' | 'L') => Effect.Effect<string | null, never, HttpClientType.HttpClient | StorageService>
   downloadCovers: (isbns: string[], size?: 'S' | 'M' | 'L') => Effect.Effect<Map<string, string | null>, never, HttpClientType.HttpClient | StorageService>
 }
@@ -110,8 +109,6 @@ const DEFAULT_OPEN_LIBRARY_COVERS_BASE = 'https://covers.openlibrary.org'
 const OPEN_LIBRARY_HTTP_CONCURRENCY = 16
 export const OPEN_LIBRARY_COVER_STORAGE_CONCURRENCY = 4
 const MIN_ENRICHED_SUBJECT_COUNT = 5
-const MAX_REPAIR_AUTHOR_LOOKUP_ATTEMPTS = 2
-export const OPEN_LIBRARY_REPAIR_AUTHOR_BATCH_SIZE = 5
 
 function normalizeBaseUrl(value: string | undefined, fallback: string) {
   const trimmed = value?.trim()
@@ -150,18 +147,6 @@ function getOpenLibraryCoverTimeout() {
     : DEFAULT_OPEN_LIBRARY_COVER_TIMEOUT_SECONDS)
 }
 
-function getOpenLibraryRepairTimeout() {
-  const config = useRuntimeConfig()
-  const rawValue = config.openLibraryRepairTimeoutSeconds
-  const seconds = typeof rawValue === 'number'
-    ? rawValue
-    : Number(String(rawValue ?? '').trim())
-
-  return Duration.seconds(Number.isFinite(seconds) && seconds > 0
-    ? seconds
-    : 30)
-}
-
 function getOpenLibraryContactEmail() {
   const config = useRuntimeConfig()
   const value = config.openLibraryContactEmail || process.env.NUXT_OPEN_LIBRARY_CONTACT_EMAIL
@@ -184,12 +169,6 @@ function extractOpenLibraryText(value: unknown): string | undefined {
     return extractOpenLibraryText(value.value)
   }
   return undefined
-}
-
-function isTransientRepairAuthorError(error: OpenLibraryApiError) {
-  return error.message.includes('TimeoutException')
-    || error.message.includes('HTTP 429')
-    || error.message.includes('HTTP 5')
 }
 
 // Helper to make HTTP GET request with timeout and get JSON response
@@ -378,47 +357,6 @@ export const OpenLibraryRepositoryLive = Layer.effect(
         return booksByIsbn
       })
 
-    // The repair action needs only author names. Avoid work enrichment and
-    // per-edition detail fetches so a bounded remediation run remains fast.
-    const lookupAuthorNamesByISBNs = (isbns: string[]) =>
-      Effect.gen(function* () {
-        const normalized = [...new Set(isbns.map(normalizeISBN))]
-        const authorsByIsbn = new Map<string, string[]>()
-        const apiBase = getOpenLibraryApiBase()
-        const fetchRepairAuthorChunk = (
-          chunk: string[],
-          attempt = 1
-        ): Effect.Effect<OpenLibraryBooksApiResponse, OpenLibraryApiError, HttpClientType.HttpClient> =>
-          fetchJson<OpenLibraryBooksApiResponse>(
-            `${apiBase}/api/books?bibkeys=${chunk.map(isbn => `ISBN:${isbn}`).join(',')}&jscmd=data&format=json`,
-            acquireSlot,
-            'metadata',
-            getOpenLibraryRepairTimeout()
-          ).pipe(
-            Effect.catchAll(error => isTransientRepairAuthorError(error) && attempt < MAX_REPAIR_AUTHOR_LOOKUP_ATTEMPTS
-              ? Effect.logWarning(`Retrying Open Library author repair lookup after transient error: ${error.message}`).pipe(
-                  Effect.zipRight(Effect.sleep(Duration.seconds(attempt))),
-                  Effect.zipRight(fetchRepairAuthorChunk(chunk, attempt + 1))
-                )
-              : Effect.fail(error))
-          )
-
-        for (let start = 0; start < normalized.length; start += OPEN_LIBRARY_REPAIR_AUTHOR_BATCH_SIZE) {
-          const chunk = normalized.slice(start, start + OPEN_LIBRARY_REPAIR_AUTHOR_BATCH_SIZE)
-          const response = yield* fetchRepairAuthorChunk(chunk)
-
-          for (const isbn of chunk) {
-            const authors = response[`ISBN:${isbn}`]?.authors
-              ?.map(author => author.name.trim())
-              .filter(Boolean)
-              ?? []
-            authorsByIsbn.set(isbn, authors)
-          }
-        }
-
-        return authorsByIsbn
-      })
-
     const fetchCoverImage = (isbn: string, size: 'S' | 'M' | 'L') =>
       Effect.gen(function* () {
         const normalizedISBN = normalizeISBN(isbn)
@@ -511,8 +449,6 @@ export const OpenLibraryRepositoryLive = Layer.effect(
           }))
         }),
 
-      lookupAuthorNamesByISBNs,
-
       downloadCovers,
       downloadCover: (isbn, size = 'L') =>
         downloadCovers([isbn], size).pipe(
@@ -528,9 +464,6 @@ export const lookupByISBN = (isbn: string) =>
 
 export const lookupByISBNs = (isbns: string[]) =>
   Effect.flatMap(OpenLibraryRepository, repo => repo.lookupByISBNs(isbns))
-
-export const lookupAuthorNamesByISBNs = (isbns: string[]) =>
-  Effect.flatMap(OpenLibraryRepository, repo => repo.lookupAuthorNamesByISBNs(isbns))
 
 export const downloadCover = (isbn: string, size?: 'S' | 'M' | 'L') =>
   Effect.flatMap(OpenLibraryRepository, repo => repo.downloadCover(isbn, size))

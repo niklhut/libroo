@@ -108,66 +108,6 @@ describe('OpenLibraryRepository details lookup', () => {
     ]))
   })
 
-  it('fetches repair authors from compact ISBN metadata without work enrichment', async () => {
-    vi.stubGlobal('useRuntimeConfig', () => ({
-      openLibraryRequestTimeoutSeconds: 12,
-      openLibraryCoverTimeoutSeconds: 20,
-      openLibraryContactEmail: ''
-    }))
-    const requestedUrls: string[] = []
-    const httpClient = HttpClient.make((request) => {
-      requestedUrls.push(request.url)
-      return Effect.succeed(HttpClientResponse.fromWeb(request, new Response(JSON.stringify({
-        'ISBN:9780141439518': { authors: [{ name: 'Jane Austen' }] },
-        'ISBN:9780439139601': { authors: [{ name: 'J. K. Rowling' }] }
-      }))))
-    })
-
-    const authors = await Effect.runPromise(Effect.flatMap(OpenLibraryRepository, repository =>
-      repository.lookupAuthorNamesByISBNs(['9780141439518', '9780439139601'])
-    ).pipe(
-      Effect.provide(OpenLibraryRepositoryLive),
-      Effect.provide(Layer.succeed(DbService, { executeAtomic: vi.fn() } as never)),
-      Effect.provide(Layer.succeed(HttpClient.HttpClient, httpClient))
-    ))
-
-    expect(authors).toEqual(new Map([
-      ['9780141439518', ['Jane Austen']],
-      ['9780439139601', ['J. K. Rowling']]
-    ]))
-    expect(requestedUrls).toEqual([expect.stringContaining('jscmd=data')])
-    expect(requestedUrls[0]).not.toContain('/works/')
-  })
-
-  it('retries a transient author-repair metadata failure once', async () => {
-    vi.stubGlobal('useRuntimeConfig', () => ({
-      openLibraryRequestTimeoutSeconds: 12,
-      openLibraryCoverTimeoutSeconds: 20,
-      openLibraryContactEmail: ''
-    }))
-    let attempts = 0
-    const httpClient = HttpClient.make((request) => {
-      attempts += 1
-      const response = attempts === 1
-        ? new Response(JSON.stringify({ error: 'rate limited' }), { status: 429 })
-        : new Response(JSON.stringify({
-            'ISBN:9780141439518': { authors: [{ name: 'Jane Austen' }] }
-          }))
-      return Effect.succeed(HttpClientResponse.fromWeb(request, response))
-    })
-
-    const authors = await Effect.runPromise(Effect.flatMap(OpenLibraryRepository, repository =>
-      repository.lookupAuthorNamesByISBNs(['9780141439518'])
-    ).pipe(
-      Effect.provide(OpenLibraryRepositoryLive),
-      Effect.provide(Layer.succeed(DbService, { executeAtomic: vi.fn() } as never)),
-      Effect.provide(Layer.succeed(HttpClient.HttpClient, httpClient))
-    ))
-
-    expect(authors.get('9780141439518')).toEqual(['Jane Austen'])
-    expect(attempts).toBe(2)
-  })
-
   it('rejects non-success metadata responses before parsing their JSON body', async () => {
     vi.stubGlobal('useRuntimeConfig', () => ({
       openLibraryRequestTimeoutSeconds: 12,
