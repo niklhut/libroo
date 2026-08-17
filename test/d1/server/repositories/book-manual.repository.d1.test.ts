@@ -18,7 +18,7 @@ import authFactorsMigration from '../../../../server/db/migrations/sqlite/0013_a
 import recentAuthMigration from '../../../../server/db/migrations/sqlite/0014_recent-auth.sql?raw'
 import libraryIndexesMigration from '../../../../server/db/migrations/sqlite/0004_add_user_books_library_indexes.sql?raw'
 import activeUserBookUniqueMigration from '../../../../server/db/migrations/sqlite/0005_add_active_user_book_unique.sql?raw'
-import { bookAuthors, books, loans, user, userBooks, userBookTags } from '../../../../server/db/schema'
+import { authors, bookAuthors, books, loans, user, userBooks, userBookTags } from '../../../../server/db/schema'
 import { ActiveLoanRemovalError, BookCreateError, BookRepository, BookRepositoryLive } from '../../../../server/repositories/book.repository'
 import { DbService, type DbServiceInterface } from '../../../../server/services/db.service'
 
@@ -307,6 +307,42 @@ describe('BookRepository.createManualBook on D1', () => {
       addedAt: now,
       removedAt: now
     })).resolves.toBeDefined()
+  })
+
+  it('replaces an unknown author link through a D1 batch', async () => {
+    const now = new Date('2026-08-17T19:12:59.000Z')
+    await db.insert(books).values({
+      id: 'book-author-repair',
+      isbn: '9789671809143',
+      title: 'Author Repair Candidate',
+      source: 'open_library',
+      createdAt: now
+    })
+    await db.insert(authors).values({
+      id: 'unknown-author',
+      name: 'Unknown Author',
+      normalizedName: 'unknown author',
+      createdAt: now,
+      updatedAt: now
+    })
+    await db.insert(bookAuthors).values({
+      bookId: 'book-author-repair',
+      authorId: 'unknown-author',
+      sortOrder: 0,
+      createdAt: now
+    })
+
+    const replaced = await runRepository(db, Effect.flatMap(BookRepository, repository =>
+      repository.replaceUnknownAuthorLinks('book-author-repair', ['Maya Tan'])
+    ))
+
+    expect(replaced).toBe(true)
+    await expect(db
+      .select({ name: authors.name })
+      .from(bookAuthors)
+      .innerJoin(authors, eq(bookAuthors.authorId, authors.id))
+      .where(eq(bookAuthors.bookId, 'book-author-repair'))
+    ).resolves.toEqual([{ name: 'Maya Tan' }])
   })
 })
 
