@@ -114,7 +114,6 @@ export default defineNuxtConfig({
     plunkBaseUrl: 'https://next-api.useplunk.com',
     plunkSendTimeoutSeconds: '5',
     openLibraryCoverTimeoutSeconds: '20',
-    openLibraryRepairTimeoutSeconds: '30',
     openLibraryRequestTimeoutSeconds: '12',
     openLibraryContactEmail: '',
     legalMarkdownFetchTimeoutSeconds: '5',

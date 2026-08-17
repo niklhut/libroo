@@ -170,8 +170,6 @@ interface ApiRouteTestGlobals {
   getBookEnrichmentUpdates: (...args: unknown[]) => unknown
   listAdminAuditEntries: (...args: unknown[]) => unknown
   getAdminMetrics: (...args: unknown[]) => unknown
-  getUnknownAuthorRepairCandidateCount: (...args: unknown[]) => unknown
-  repairUnknownOpenLibraryAuthors: (...args: unknown[]) => unknown
   listSignupInvites: (...args: unknown[]) => unknown
   createSignupInvite: (...args: unknown[]) => unknown
   revokeSignupInvite: (...args: unknown[]) => unknown
@@ -255,8 +253,6 @@ export const serviceMocks = {
   getBookEnrichmentUpdates: vi.fn(),
   listAdminAuditEntries: vi.fn(),
   getAdminMetrics: vi.fn(),
-  getUnknownAuthorRepairCandidateCount: vi.fn(),
-  repairUnknownOpenLibraryAuthors: vi.fn(),
   listSignupInvites: vi.fn(),
   createSignupInvite: vi.fn(),
   revokeSignupInvite: vi.fn(),
@@ -325,8 +321,6 @@ const originalGlobals = {
   getBookEnrichmentUpdates: testGlobal.getBookEnrichmentUpdates,
   listAdminAuditEntries: testGlobal.listAdminAuditEntries,
   getAdminMetrics: testGlobal.getAdminMetrics,
-  getUnknownAuthorRepairCandidateCount: testGlobal.getUnknownAuthorRepairCandidateCount,
-  repairUnknownOpenLibraryAuthors: testGlobal.repairUnknownOpenLibraryAuthors,
   listSignupInvites: testGlobal.listSignupInvites,
   createSignupInvite: testGlobal.createSignupInvite,
   revokeSignupInvite: testGlobal.revokeSignupInvite,
@@ -459,8 +453,6 @@ export async function setupApiRouteTest() {
   testGlobal.getBookEnrichmentUpdates = (...args: unknown[]) => serviceMocks.getBookEnrichmentUpdates(...args)
   testGlobal.listAdminAuditEntries = (...args: unknown[]) => serviceMocks.listAdminAuditEntries(...args)
   testGlobal.getAdminMetrics = (...args: unknown[]) => serviceMocks.getAdminMetrics(...args)
-  testGlobal.getUnknownAuthorRepairCandidateCount = (...args: unknown[]) => serviceMocks.getUnknownAuthorRepairCandidateCount(...args)
-  testGlobal.repairUnknownOpenLibraryAuthors = (...args: unknown[]) => serviceMocks.repairUnknownOpenLibraryAuthors(...args)
   testGlobal.listSignupInvites = (...args: unknown[]) => serviceMocks.listSignupInvites(...args)
   testGlobal.createSignupInvite = (...args: unknown[]) => serviceMocks.createSignupInvite(...args)
   testGlobal.revokeSignupInvite = (...args: unknown[]) => serviceMocks.revokeSignupInvite(...args)

@@ -13,13 +13,10 @@ import {
 import type { LibraryQueryFilters } from '../../shared/utils/library-query'
 import { detectImageContentType, UNKNOWN_IMAGE_CONTENT_TYPE } from '../../shared/utils/image-content-type'
 import type { BookEnrichmentStatus, BulkBookLookupItem, BulkBookLookupResponse, BookLookupResult, LibraryState, TagWithCount } from '../../shared/types/book'
-import type { RepairUnknownAuthorsResult } from '../../shared/types/admin'
 import { toBookEnrichmentUiStatus } from '../../shared/utils/book-enrichment'
 import type { Book } from '../repositories/book.repository'
 import { normalizeIsbnIdentity } from '../../shared/utils/isbn'
 import { BookEnrichmentRepository } from '../repositories/book-enrichment.repository'
-import { OPEN_LIBRARY_REPAIR_AUTHOR_BATCH_SIZE } from '../repositories/openLibrary.repository'
-import { AdminAccessForbiddenError as AdminForbiddenError, requireAdmin } from '../utils/admin-access'
 
 const BULK_COVER_LOOKUP_CONCURRENCY = 16
 
@@ -82,11 +79,6 @@ export interface RepairOpenLibraryCoversResult {
   repaired: number
   skipped: number
   failed: number
-}
-
-interface AdminActor {
-  id: string
-  role?: string | null
 }
 
 export interface BulkAddBookInput {
@@ -168,19 +160,6 @@ export interface BookServiceInterface {
     RepairOpenLibraryCoversResult,
     DatabaseError,
     DbService | StorageService | OpenLibraryRepository | HttpClient.HttpClient
-  >
-
-  getUnknownAuthorRepairCandidateCount: (
-    actor: AdminActor
-  ) => Effect.Effect<number, AdminForbiddenError | DatabaseError, DbService>
-
-  repairUnknownOpenLibraryAuthors: (
-    actor: AdminActor,
-    limit?: number
-  ) => Effect.Effect<
-    RepairUnknownAuthorsResult,
-    AdminForbiddenError | DatabaseError,
-    DbService | OpenLibraryRepository | HttpClient.HttpClient
   >
 
   removeBookFromLibrary: (
@@ -502,66 +481,6 @@ export const BookServiceLive = Layer.effect(
             { concurrency: 1 }
           )
 
-          return result
-        }),
-
-      getUnknownAuthorRepairCandidateCount: actor =>
-        Effect.gen(function* () {
-          yield* requireAdmin(actor, () => new AdminForbiddenError({ message: 'Admin access required' }))
-          return yield* bookRepo.countUnknownAuthorRepairCandidates()
-        }),
-
-      repairUnknownOpenLibraryAuthors: (actor, limit = 100) =>
-        Effect.gen(function* () {
-          yield* requireAdmin(actor, () => new AdminForbiddenError({ message: 'Admin access required' }))
-          const normalizedLimit = Number.isFinite(limit) ? Math.floor(limit) : 100
-          const candidates = yield* bookRepo.listUnknownAuthorRepairCandidates(Math.min(Math.max(1, normalizedLimit), 100))
-          const result: RepairUnknownAuthorsResult = {
-            scanned: candidates.length,
-            repaired: 0,
-            stillUnknown: 0,
-            skipped: 0,
-            failed: 0
-          }
-
-          for (let start = 0; start < candidates.length; start += OPEN_LIBRARY_REPAIR_AUTHOR_BATCH_SIZE) {
-            const candidateBatch = candidates.slice(start, start + OPEN_LIBRARY_REPAIR_AUTHOR_BATCH_SIZE)
-            const authorsByIsbn = yield* openLibraryRepo.lookupAuthorNamesByISBNs(
-              candidateBatch.map(candidate => candidate.isbn)
-            ).pipe(
-              Effect.either
-            )
-
-            if (Either.isLeft(authorsByIsbn)) {
-              result.failed += candidateBatch.length
-              yield* Effect.logWarning(`Failed to repair Open Library authors for ${candidateBatch.length} ISBNs: ${String(authorsByIsbn.left)}`)
-              continue
-            }
-
-            yield* Effect.forEach(candidateBatch, candidate =>
-              Effect.gen(function* () {
-                const realAuthors = (authorsByIsbn.right.get(candidate.isbn) ?? [])
-                  .filter(author => author.trim().toLowerCase() !== 'unknown author')
-                if (realAuthors.length === 0) {
-                  result.stillUnknown += 1
-                  return
-                }
-                const replaced = yield* bookRepo.replaceUnknownAuthorLinks(candidate.id, realAuthors)
-                if (replaced) result.repaired += 1
-                else result.skipped += 1
-              }).pipe(
-                Effect.catchAll(error =>
-                  Effect.logWarning(`Failed to repair Open Library author for ISBN ${candidate.isbn}: ${String(error)}`).pipe(
-                    Effect.zipRight(Effect.sync(() => { result.failed += 1 }))
-                  )
-                )
-              ),
-            { concurrency: 1 })
-          }
-
-          yield* Effect.log('Completed unknown-author repair').pipe(
-            Effect.annotateLogs({ ...result })
-          )
           return result
         }),
 
@@ -915,12 +834,6 @@ export const createManualBook = (userId: string, input: ManualBookCreateSchema) 
 
 export const repairMissingOpenLibraryCovers = (limit?: number) =>
   Effect.flatMap(BookService, service => service.repairMissingOpenLibraryCovers(limit))
-
-export const getUnknownAuthorRepairCandidateCount = (actor: AdminActor) =>
-  Effect.flatMap(BookService, service => service.getUnknownAuthorRepairCandidateCount(actor))
-
-export const repairUnknownOpenLibraryAuthors = (actor: AdminActor, limit?: number) =>
-  Effect.flatMap(BookService, service => service.repairUnknownOpenLibraryAuthors(actor, limit))
 
 export const removeBookFromLibrary = (
   userBookId: string,
