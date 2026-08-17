@@ -16,7 +16,7 @@ import borrowerSuggestionsMigration from '../../../../server/db/migrations/sqlit
 import enrichmentMigration from '../../../../server/db/migrations/sqlite/0012_imported_book_enrichment.sql?raw'
 import authFactorsMigration from '../../../../server/db/migrations/sqlite/0013_auth-two-factor-passkeys.sql?raw'
 import recentAuthMigration from '../../../../server/db/migrations/sqlite/0014_recent-auth.sql?raw'
-import canonicalEnrichmentMigration from '../../../../server/db/migrations/sqlite/0015_canonical_book_enrichment.sql?raw'
+import canonicalEnrichmentMigration from '../../../../server/db/migrations/sqlite/0016_canonical_book_enrichment.sql?raw'
 import { bookEnrichmentJobs, books, canonicalBookEnrichmentJobs, user, userBooks } from '../../../../server/db/schema'
 import {
   BookEnrichmentRepository,
