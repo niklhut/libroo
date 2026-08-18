@@ -378,6 +378,8 @@ export const BookServiceLive = Layer.effect(
     const toEnrichmentPatch = (book: Book, status: BookEnrichmentStatus, subjects: string[]): BookEnrichmentPatch => ({
       bookId: book.id,
       isbn: book.isbn || '',
+      author: book.author,
+      authors: book.authors.map(author => author.name),
       coverPath: book.coverPath,
       coverUrl: book.coverPath ? `/api/blob/${book.coverPath}` : null,
       description: book.description ?? undefined,

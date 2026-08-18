@@ -69,6 +69,8 @@ describe('useIsbnLookupStore', () => {
       .mockResolvedValueOnce({
         bookId: 'book-1',
         isbn: '9781234567890',
+        author: 'Updated Author',
+        authors: ['Updated Author'],
         coverPath: 'covers/9781234567890.webp',
         coverUrl: '/api/blob/covers/9781234567890.webp',
         subjects: ['Science fiction'],
@@ -82,7 +84,7 @@ describe('useIsbnLookupStore', () => {
     await vi.waitFor(() => {
       expect(lookup).toMatchObject({
         ok: true,
-        result: { coverUrl: '/api/blob/covers/9781234567890.webp', subjects: ['Science fiction'] }
+        result: { author: 'Updated Author', coverUrl: '/api/blob/covers/9781234567890.webp', subjects: ['Science fiction'] }
       })
     })
     expect(store.activeLookupResult?.coverUrl).toBe('/api/blob/covers/9781234567890.webp')

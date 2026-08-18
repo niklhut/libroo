@@ -97,6 +97,8 @@ export interface BookLookupResult {
 export interface BookEnrichmentPatch {
   bookId: string
   isbn: string
+  author: string
+  authors: string[]
   coverPath: string | null
   coverUrl: string | null
   description?: string

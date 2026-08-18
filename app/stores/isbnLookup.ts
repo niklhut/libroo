@@ -84,6 +84,8 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
         body: { bookId: result.bookId }
       })
       if (!isActiveRequest(requestVersion, requestId) || patch.bookId !== result.bookId) return
+      result.author = patch.author
+      result.authors = patch.authors
       result.coverUrl = patch.coverUrl
       result.description = patch.description
       result.subjects = patch.subjects

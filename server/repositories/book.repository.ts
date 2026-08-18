@@ -132,7 +132,7 @@ export interface BookRepositoryInterface {
   ) => Effect.Effect<Book, BookCreateError | DatabaseError, DbService>
   applyOpenLibraryEnrichment: (
     bookId: string,
-    data: Pick<OpenLibraryBookData, 'description' | 'publishDate' | 'publishers' | 'numberOfPages' | 'openLibraryKey' | 'workKey'>,
+    data: Pick<OpenLibraryBookData, 'authors' | 'description' | 'publishDate' | 'publishers' | 'numberOfPages' | 'openLibraryKey' | 'workKey'>,
     coverPath: string | null
   ) => Effect.Effect<Book, BookNotFoundError | DatabaseError, DbService>
   ensureOpenLibraryBook: (
@@ -555,6 +555,28 @@ export const BookRepositoryLive = Layer.effect(
           const authorId = yield* resolveOrCreateAuthorId(name)
           yield* linkBookAuthor(bookId, authorId, index)
         }
+      })
+
+    const replaceUnknownBookAuthor = (bookId: string, authorNames: string[]) =>
+      Effect.gen(function* () {
+        const providerAuthors = authorNames.filter((name) => {
+          const normalizedName = normalizeAuthorName(name)
+          return Boolean(normalizedName) && normalizedName !== 'unknown author'
+        })
+        if (providerAuthors.length === 0) return
+
+        const authorMap = yield* hydrateAuthorsForBookIds([bookId])
+        const currentAuthors = authorMap.get(bookId) || []
+        if (currentAuthors.length !== 1 || normalizeAuthorName(currentAuthors[0]!.name) !== 'unknown author') return
+
+        yield* Effect.tryPromise({
+          try: () => dbService.db.delete(bookAuthors).where(eq(bookAuthors.bookId, bookId)),
+          catch: error => new DatabaseError({
+            message: `Failed to replace placeholder author: ${error}`,
+            operation: 'replaceUnknownBookAuthor.delete'
+          })
+        })
+        yield* setBookAuthors(bookId, providerAuthors)
       })
 
     const resolveOrCreateTagId = (normalizedTag: { key: string, displayName: string }, client = dbService.db) =>
@@ -1041,7 +1063,7 @@ export const BookRepositoryLive = Layer.effect(
 
     const applyOpenLibraryEnrichment = (
       bookId: string,
-      data: Pick<OpenLibraryBookData, 'description' | 'publishDate' | 'publishers' | 'numberOfPages' | 'openLibraryKey' | 'workKey'>,
+      data: Pick<OpenLibraryBookData, 'authors' | 'description' | 'publishDate' | 'publishers' | 'numberOfPages' | 'openLibraryKey' | 'workKey'>,
       coverPath: string | null
     ) =>
       Effect.gen(function* () {
@@ -1059,6 +1081,7 @@ export const BookRepositoryLive = Layer.effect(
         })
         const book = updated[0]
         if (!book) return yield* Effect.fail(new BookNotFoundError({ bookId }))
+        yield* replaceUnknownBookAuthor(book.id, data.authors)
         const authorMap = yield* hydrateAuthorsForBookIds([book.id])
         return toBookModel(book, authorMap.get(book.id) || [])
       })

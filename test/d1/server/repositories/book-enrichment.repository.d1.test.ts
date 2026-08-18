@@ -262,6 +262,61 @@ describe('BookEnrichmentRepository on D1', () => {
 
     expect(book.authors.map(author => author.name)).toEqual(['Frank Herbert'])
   })
+
+  it('replaces an Unknown Author placeholder when enrichment returns an author', async () => {
+    await db.update(books)
+      .set({ source: 'open_library' })
+      .where(eq(books.id, 'book-1'))
+
+    const coreData: OpenLibraryBookData = {
+      isbn: '9780441172719',
+      title: 'Dune',
+      authors: ['Unknown Author'],
+      openLibraryKey: '/books/OL1M',
+      workKey: '/works/OL1W',
+      coverUrl: null
+    }
+    await runBookRepository(Effect.flatMap(BookRepository, repository =>
+      repository.createCoreOpenLibraryBook(coreData.isbn, coreData)
+    ))
+
+    const enriched = await runBookRepository(Effect.flatMap(BookRepository, repository =>
+      repository.applyOpenLibraryEnrichment('book-1', {
+        ...coreData,
+        authors: ['Frank Herbert']
+      }, null)
+    ))
+
+    expect(enriched.author).toBe('Frank Herbert')
+    expect(enriched.authors.map(author => author.name)).toEqual(['Frank Herbert'])
+  })
+
+  it('preserves a resolved author during enrichment', async () => {
+    await db.update(books)
+      .set({ source: 'open_library' })
+      .where(eq(books.id, 'book-1'))
+
+    const coreData: OpenLibraryBookData = {
+      isbn: '9780441172719',
+      title: 'Dune',
+      authors: ['Frank Herbert'],
+      openLibraryKey: '/books/OL1M',
+      workKey: '/works/OL1W',
+      coverUrl: null
+    }
+    await runBookRepository(Effect.flatMap(BookRepository, repository =>
+      repository.createCoreOpenLibraryBook(coreData.isbn, coreData)
+    ))
+
+    const enriched = await runBookRepository(Effect.flatMap(BookRepository, repository =>
+      repository.applyOpenLibraryEnrichment('book-1', {
+        ...coreData,
+        authors: ['Different Provider Author']
+      }, null)
+    ))
+
+    expect(enriched.authors.map(author => author.name)).toEqual(['Frank Herbert'])
+  })
 })
 
 async function applyMigrations(database: D1Database) {
