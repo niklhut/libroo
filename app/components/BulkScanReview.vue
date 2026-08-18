@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ScannedBook } from '~/stores/isbnScanner'
 import { getBulkScanReviewAction } from '~/utils/bulkScanReviewAction'
+import { isBookEnrichmentInProgress } from '~~/shared/utils/book-enrichment'
 
 const props = defineProps<{
   scannedBooks: ScannedBook[]
@@ -234,12 +235,15 @@ function getStatusText(status: ScannedBook['status']) {
                     loading="lazy"
                   />
                   <div
-                    v-else-if="book.result.enrichment?.status === 'queued' || book.result.enrichment?.status === 'preparing' || book.result.enrichment?.status === 'retrying'"
+                    v-else-if="isBookEnrichmentInProgress(book.result.enrichment?.status)"
                     class="w-full h-full flex items-center justify-center"
+                    role="status"
                   >
+                    <span class="sr-only">Preparing book cover</span>
                     <UIcon
                       name="i-lucide-loader-2"
                       class="animate-spin text-primary text-xl"
+                      aria-hidden="true"
                     />
                   </div>
                   <div

@@ -92,6 +92,26 @@ describe('useIsbnLookupStore', () => {
     })
   })
 
+  it('keeps the newest preview when an earlier lookup resolves later', async () => {
+    const firstResponse = deferred<{ found: true, isbn: string, title: string, author: string }>()
+    const secondResponse = deferred<{ found: true, isbn: string, title: string, author: string }>()
+    const fetchMock = vi.fn()
+      .mockReturnValueOnce(firstResponse.promise)
+      .mockReturnValueOnce(secondResponse.promise)
+    ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
+
+    const store = useIsbnLookupStore()
+    const first = store.lookupIsbn('9781111111111')
+    const second = store.lookupIsbn('9782222222222')
+
+    secondResponse.resolve({ found: true, isbn: '9782222222222', title: 'Second Book', author: 'Second Author' })
+    await expect(second).resolves.toMatchObject({ ok: true, result: { isbn: '9782222222222' } })
+
+    firstResponse.resolve({ found: true, isbn: '9781111111111', title: 'First Book', author: 'First Author' })
+    await expect(first).resolves.toMatchObject({ ok: false })
+    expect(store.activeLookupResult).toMatchObject({ isbn: '9782222222222', title: 'Second Book' })
+  })
+
   it('adds a typed single ISBN through the shared bulk add primitive and marks dashboard sync', async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce({
       added: [{ isbn: '9781234567890' }],

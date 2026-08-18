@@ -1001,7 +1001,13 @@ export const BookRepositoryLive = Layer.effect(
         const normalizedISBN = normalizeISBN(isbn)
         const existing = yield* loadOpenLibraryBookByIsbn(normalizedISBN, 'createCoreOpenLibraryBook.findExisting')
         if (existing) {
-          const authorMap = yield* hydrateAuthorsForBookIds([existing.id])
+          let authorMap = yield* hydrateAuthorsForBookIds([existing.id])
+          if ((authorMap.get(existing.id)?.length ?? 0) === 0) {
+            // A competing core lookup can persist the canonical book before
+            // its author links. Repair that narrow window before responding.
+            yield* setBookAuthors(existing.id, data.authors)
+            authorMap = yield* hydrateAuthorsForBookIds([existing.id])
+          }
           return toBookModel(existing, authorMap.get(existing.id) || [])
         }
 

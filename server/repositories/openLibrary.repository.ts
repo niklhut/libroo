@@ -72,6 +72,9 @@ interface OpenLibraryBooksApiResponse {
   }
 }
 
+type OpenLibraryBooksApiEntry = OpenLibraryBooksApiResponse[string]
+type OpenLibraryEditionDetails = OpenLibraryBookDetails | OpenLibraryBooksApiEntry
+
 // OpenLibrary Works API response
 interface OpenLibraryWorksApiResponse {
   key: string
@@ -171,6 +174,44 @@ function extractOpenLibraryText(value: unknown): string | undefined {
     return extractOpenLibraryText(value.value)
   }
   return undefined
+}
+
+function normalizeAuthors(authors?: Array<{ name: string }>) {
+  return (authors ?? [])
+    .map(author => author.name?.trim())
+    .filter((author): author is string => Boolean(author))
+}
+
+function toOpenLibraryBookData(
+  isbn: string,
+  entry: OpenLibraryBooksApiEntry,
+  details: OpenLibraryEditionDetails,
+  coversBase: string,
+  authors = normalizeAuthors(details.authors)
+): OpenLibraryBookData {
+  const publishers = details.publishers?.map(publisher => typeof publisher === 'string' ? publisher : publisher.name)
+  const subjects = details.subjects
+    ?.map(subject => typeof subject === 'string' ? subject : subject.name)
+    .filter(subject => !subject.startsWith('nyt:'))
+    .slice(0, 20)
+  const workKey = 'works' in details ? details.works?.[0]?.key ?? null : null
+  const hasCover = ('covers' in details && Boolean(details.covers?.length))
+    || Boolean(entry.cover || entry.thumbnail_url)
+
+  return {
+    title: details.title || 'Unknown Title',
+    authors: authors.length > 0 ? authors : ['Unknown Author'],
+    isbn,
+    openLibraryKey: details.key || '',
+    workKey,
+    coverUrl: hasCover ? `${coversBase}/b/isbn/${isbn}-L.jpg?default=false` : null,
+    description: extractOpenLibraryText(details.notes)
+      ?? extractOpenLibraryText(details.excerpts?.[0]?.text),
+    subjects,
+    publishDate: details.publish_date,
+    publishers,
+    numberOfPages: details.number_of_pages
+  }
 }
 
 // Helper to make HTTP GET request with timeout and get JSON response
@@ -294,37 +335,11 @@ export const OpenLibraryRepositoryLive = Layer.effect(
             if (!entry) continue
             const details = entry.details ?? entry
             const fallbackEntry = authorFallbackByIsbn?.[`ISBN:${isbn}`]
-            const normalizeAuthors = (authorEntries?: Array<{ name: string }>) =>
-              (authorEntries ?? [])
-                .map(author => author.name.trim())
-                .filter(Boolean)
             const primaryAuthors = normalizeAuthors(details.authors)
             const authors = primaryAuthors.length > 0
               ? primaryAuthors
               : normalizeAuthors(fallbackEntry?.authors)
-            const publishers = details.publishers?.map(publisher => typeof publisher === 'string' ? publisher : publisher.name)
-            const subjects = details.subjects
-              ?.map(subject => typeof subject === 'string' ? subject : subject.name)
-              .filter(subject => !subject.startsWith('nyt:'))
-              .slice(0, 20)
-            const workKey = 'works' in details ? details.works?.[0]?.key ?? null : null
-            const hasCover = ('covers' in details && Boolean(details.covers?.length))
-              || Boolean(entry.cover || entry.thumbnail_url)
-
-            booksByIsbn.set(isbn, {
-              title: details.title || 'Unknown Title',
-              authors: authors.length > 0 ? authors : ['Unknown Author'],
-              isbn,
-              openLibraryKey: details.key || '',
-              workKey,
-              coverUrl: hasCover ? `${coversBase}/b/isbn/${isbn}-L.jpg?default=false` : null,
-              description: extractOpenLibraryText(details.notes)
-                ?? extractOpenLibraryText(details.excerpts?.[0]?.text),
-              subjects,
-              publishDate: details.publish_date,
-              publishers,
-              numberOfPages: details.number_of_pages
-            })
+            booksByIsbn.set(isbn, toOpenLibraryBookData(isbn, entry, details, coversBase, authors))
           }
         }
 
@@ -377,25 +392,7 @@ export const OpenLibraryRepositoryLive = Layer.effect(
           }))
         }
         const details = entry.details ?? entry
-        const authors = details.authors?.map(author => author.name).filter(Boolean) ?? []
-        const publishers = details.publishers?.map(publisher => typeof publisher === 'string' ? publisher : publisher.name)
-        const workKey = 'works' in details ? details.works?.[0]?.key ?? null : null
-        const hasCover = ('covers' in details && Boolean(details.covers?.length))
-          || Boolean(entry.cover || entry.thumbnail_url)
-        return {
-          title: details.title || 'Unknown Title',
-          authors: authors.length > 0 ? authors : ['Unknown Author'],
-          isbn: normalizedISBN,
-          openLibraryKey: details.key || '',
-          workKey,
-          coverUrl: hasCover ? `${coversBase}/b/isbn/${normalizedISBN}-L.jpg?default=false` : null,
-          // Edition-provided text is cheap and useful for the initial preview;
-          // work details and subjects remain enrichment-only.
-          description: extractOpenLibraryText(details.notes) ?? extractOpenLibraryText(details.excerpts?.[0]?.text),
-          publishDate: details.publish_date,
-          publishers,
-          numberOfPages: details.number_of_pages
-        } satisfies OpenLibraryBookData
+        return toOpenLibraryBookData(normalizedISBN, entry, details, coversBase)
       })
 
     const fetchCoverImage = (isbn: string, size: 'S' | 'M' | 'L') =>

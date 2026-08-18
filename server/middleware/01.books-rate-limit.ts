@@ -2,11 +2,11 @@ import { createError, defineEventHandler, getRequestIP, setHeader } from 'h3'
 import { Effect } from 'effect'
 import { auth, getTrustedIpHeaders, LIBROO_CLIENT_IP_HEADER } from '../utils/auth'
 import { DbService } from '../services/db.service'
-import { getBooksRateLimitConfig, getBulkLookupRateLimitConfig } from '../utils/books-config'
+import { getBooksEnrichmentRateLimitConfig, getBooksRateLimitConfig, getBulkLookupRateLimitConfig } from '../utils/books-config'
 import { DatabaseRateLimiter, redactKey } from '../utils/database-rate-limiter'
 import { runEffect } from '../utils/effect'
 
-const BOOKS_RATE_LIMIT_PATHS = new Set(['/api/books/lookup', '/api/books', '/api/books/bulk-lookup'])
+const BOOKS_RATE_LIMIT_PATHS = new Set(['/api/books/lookup', '/api/books', '/api/books/bulk-lookup', '/api/books/enrichment/run'])
 
 export function shouldEnforceRateLimit(event: { method?: string, path?: string }) {
   return event.method === 'POST' && BOOKS_RATE_LIMIT_PATHS.has(event.path ?? '')
@@ -36,7 +36,9 @@ export default defineEventHandler(async (event) => {
 
   const config = event.path === '/api/books/bulk-lookup'
     ? getBulkLookupRateLimitConfig()
-    : getBooksRateLimitConfig()
+    : event.path === '/api/books/enrichment/run'
+      ? getBooksEnrichmentRateLimitConfig()
+      : getBooksRateLimitConfig()
   if (!config.enabled) return
 
   let userId: string | undefined

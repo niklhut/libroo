@@ -91,6 +91,8 @@ export default defineNuxtConfig({
     booksRateLimitMaxRequests: '30',
     booksBulkLookupRateLimitWindowSeconds: '60',
     booksBulkLookupRateLimitMaxRequests: '10',
+    booksEnrichmentRateLimitWindowSeconds: '60',
+    booksEnrichmentRateLimitMaxRequests: '10',
     booksEnrichmentBatchSize: '20',
     booksEnrichmentConcurrency: '4',
     booksEnrichmentLeaseSeconds: '900',

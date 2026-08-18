@@ -26,6 +26,11 @@ import {
   CanonicalBookEnrichmentRepository,
   CanonicalBookEnrichmentRepositoryLive
 } from '../../../../server/repositories/canonical-book-enrichment.repository'
+import {
+  BookRepository,
+  BookRepositoryLive
+} from '../../../../server/repositories/book.repository'
+import type { OpenLibraryBookData } from '../../../../server/repositories/openLibrary.repository'
 import { DbService, type DbServiceInterface } from '../../../../server/services/db.service'
 
 type D1Db = ReturnType<typeof drizzle>
@@ -43,6 +48,8 @@ describe('BookEnrichmentRepository on D1', () => {
       'book_enrichment_jobs',
       'canonical_book_enrichment_jobs',
       'book_enrichment_locks',
+      'book_authors',
+      'authors',
       'user_books',
       'books',
       'user'
@@ -170,6 +177,52 @@ describe('BookEnrichmentRepository on D1', () => {
     ))
     expect(reclaimed?.attempts).toBe(2)
   })
+
+  it('marks a canonical job failed after its final allowed attempt', async () => {
+    await runCanonicalRepository(Effect.flatMap(CanonicalBookEnrichmentRepository, repository =>
+      repository.ensurePending('book-1', '9780441172719')
+    ))
+    await db.update(canonicalBookEnrichmentJobs)
+      .set({ maxAttempts: 1 })
+      .where(eq(canonicalBookEnrichmentJobs.bookId, 'book-1'))
+
+    const now = new Date('2026-07-26T10:00:00.000Z')
+    const claimed = await runCanonicalRepository(Effect.flatMap(CanonicalBookEnrichmentRepository, repository =>
+      repository.claim('book-1', now, new Date(now.getTime() + 60_000))
+    ))
+    expect(claimed?.attempts).toBe(1)
+
+    await runCanonicalRepository(Effect.flatMap(CanonicalBookEnrichmentRepository, repository =>
+      repository.retry('book-1', claimed!.claimToken!, new Date(now.getTime() + 5_000), 'Temporary failure', now)
+    ))
+    const job = await runCanonicalRepository(Effect.flatMap(CanonicalBookEnrichmentRepository, repository => repository.get('book-1')))
+    expect(job).toMatchObject({ status: 'failed', nextAttemptAt: null })
+
+    const retryClaim = await runCanonicalRepository(Effect.flatMap(CanonicalBookEnrichmentRepository, repository =>
+      repository.claim('book-1', new Date(now.getTime() + 60_001), new Date(now.getTime() + 120_000))
+    ))
+    expect(retryClaim).toBeNull()
+  })
+
+  it('hydrates authors when a competing core lookup already persisted the canonical book', async () => {
+    await db.update(books)
+      .set({ source: 'open_library' })
+      .where(eq(books.id, 'book-1'))
+
+    const data: OpenLibraryBookData = {
+      isbn: '9780441172719',
+      title: 'Dune',
+      authors: ['Frank Herbert'],
+      openLibraryKey: '/books/OL1M',
+      workKey: '/works/OL1W',
+      coverUrl: null
+    }
+    const book = await runBookRepository(Effect.flatMap(BookRepository, repository =>
+      repository.createCoreOpenLibraryBook(data.isbn, data)
+    ))
+
+    expect(book.authors.map(author => author.name)).toEqual(['Frank Herbert'])
+  })
 })
 
 async function applyMigrations(database: D1Database) {
@@ -255,6 +308,19 @@ function runCanonicalRepository<A, E>(
   const typedDatabase = db as unknown as DbServiceInterface['db']
   return Effect.runPromise(effect.pipe(
     Effect.provide(CanonicalBookEnrichmentRepositoryLive),
+    Effect.provide(Layer.succeed(DbService, {
+      db: typedDatabase,
+      executeAtomic: buildStatements => typedDatabase.batch(buildStatements(typedDatabase))
+    }))
+  ))
+}
+
+function runBookRepository<A, E>(
+  effect: Effect.Effect<A, E, BookRepository | DbService>
+) {
+  const typedDatabase = db as unknown as DbServiceInterface['db']
+  return Effect.runPromise(effect.pipe(
+    Effect.provide(BookRepositoryLive),
     Effect.provide(Layer.succeed(DbService, {
       db: typedDatabase,
       executeAtomic: buildStatements => typedDatabase.batch(buildStatements(typedDatabase))

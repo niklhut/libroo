@@ -1,5 +1,5 @@
 import { Context, Effect, Layer } from 'effect'
-import { and, eq, lte, or, sql } from 'drizzle-orm'
+import { and, eq, lt, lte, or, sql } from 'drizzle-orm'
 import { canonicalBookEnrichmentJobs } from 'hub:db:schema'
 import type { BookEnrichmentStatus } from '../../shared/types/book'
 import { DbService } from '../services/db.service'
@@ -96,6 +96,7 @@ export const CanonicalBookEnrichmentRepositoryLive = Layer.effect(
             lastError: null
           }).where(and(
             eq(canonicalBookEnrichmentJobs.bookId, bookId),
+            lt(canonicalBookEnrichmentJobs.attempts, canonicalBookEnrichmentJobs.maxAttempts),
             or(
               eq(canonicalBookEnrichmentJobs.status, 'pending'),
               and(eq(canonicalBookEnrichmentJobs.status, 'retrying'), lte(canonicalBookEnrichmentJobs.nextAttemptAt, now)),
@@ -121,11 +122,12 @@ export const CanonicalBookEnrichmentRepositoryLive = Layer.effect(
       retry: (bookId, claimToken, nextAttemptAt, error, now) =>
         Effect.tryPromise({
           try: () => dbService.db.update(canonicalBookEnrichmentJobs).set({
-            status: 'retrying',
+            status: sql`CASE WHEN ${canonicalBookEnrichmentJobs.attempts} >= ${canonicalBookEnrichmentJobs.maxAttempts} THEN 'failed' ELSE 'retrying' END`,
             lastError: error,
-            nextAttemptAt,
+            nextAttemptAt: sql`CASE WHEN ${canonicalBookEnrichmentJobs.attempts} >= ${canonicalBookEnrichmentJobs.maxAttempts} THEN NULL ELSE ${nextAttemptAt.getTime()} END`,
             claimToken: null,
             leaseExpiresAt: null,
+            completedAt: sql`CASE WHEN ${canonicalBookEnrichmentJobs.attempts} >= ${canonicalBookEnrichmentJobs.maxAttempts} THEN ${now.getTime()} ELSE NULL END`,
             updatedAt: now
           }).where(and(eq(canonicalBookEnrichmentJobs.bookId, bookId), eq(canonicalBookEnrichmentJobs.claimToken, claimToken))),
           catch: error => new DatabaseError({ message: `Failed to retry canonical enrichment: ${error}`, operation: 'canonicalEnrichment.retry' })

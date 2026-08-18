@@ -124,6 +124,7 @@ const errorStatusCodes: Record<string, number> = {
   PasswordResetUnavailableError: 404,
   EmailChangeNotAllowedError: 403,
   BookNotFoundError: 404,
+  BookNotEnrichableError: 400,
   BookNotOwnedError: 409,
   OpenLibraryBookNotFoundError: 404,
   BookAlreadyOwnedError: 409,
