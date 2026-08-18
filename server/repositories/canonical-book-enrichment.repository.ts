@@ -1,5 +1,5 @@
 import { Context, Effect, Layer } from 'effect'
-import { and, eq, lt, lte, or, sql } from 'drizzle-orm'
+import { and, asc, eq, lt, lte, or, sql } from 'drizzle-orm'
 import { canonicalBookEnrichmentJobs } from 'hub:db:schema'
 import type { BookEnrichmentStatus } from '../../shared/types/book'
 import { DbService } from '../services/db.service'
@@ -61,7 +61,19 @@ export const CanonicalBookEnrichmentRepositoryLive = Layer.effect(
             eq(canonicalBookEnrichmentJobs.status, 'pending'),
             and(eq(canonicalBookEnrichmentJobs.status, 'retrying'), lte(canonicalBookEnrichmentJobs.nextAttemptAt, now)),
             and(eq(canonicalBookEnrichmentJobs.status, 'processing'), lte(canonicalBookEnrichmentJobs.leaseExpiresAt, now))
-          )).limit(limit)
+          )).orderBy(
+            sql`CASE
+              WHEN ${canonicalBookEnrichmentJobs.status} = 'retrying' THEN 0
+              WHEN ${canonicalBookEnrichmentJobs.status} = 'processing' THEN 1
+              ELSE 2
+            END`,
+            sql`CASE
+              WHEN ${canonicalBookEnrichmentJobs.status} = 'retrying' THEN ${canonicalBookEnrichmentJobs.nextAttemptAt}
+              WHEN ${canonicalBookEnrichmentJobs.status} = 'processing' THEN ${canonicalBookEnrichmentJobs.leaseExpiresAt}
+              ELSE ${canonicalBookEnrichmentJobs.createdAt}
+            END`,
+            asc(canonicalBookEnrichmentJobs.bookId)
+          ).limit(limit)
           return rows.map(toJob)
         },
         catch: error => new DatabaseError({ message: `Failed to list recoverable canonical enrichment jobs: ${error}`, operation: 'canonicalEnrichment.listRecoverable' })

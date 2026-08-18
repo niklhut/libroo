@@ -204,6 +204,45 @@ describe('BookEnrichmentRepository on D1', () => {
     expect(retryClaim).toBeNull()
   })
 
+  it('prioritizes due retries and expired leases over pending canonical jobs during recovery', async () => {
+    const now = new Date('2026-07-26T10:00:00.000Z')
+    const jobs = [
+      { bookId: 'book-retry-old', isbn: '9780000000001', status: 'retrying' as const, nextAttemptAt: new Date('2026-07-26T09:40:00.000Z') },
+      { bookId: 'book-retry-new', isbn: '9780000000002', status: 'retrying' as const, nextAttemptAt: new Date('2026-07-26T09:50:00.000Z') },
+      { bookId: 'book-expired-processing', isbn: '9780000000003', status: 'processing' as const, leaseExpiresAt: new Date('2026-07-26T09:55:00.000Z') },
+      { bookId: 'book-pending-a', isbn: '9780000000004', status: 'pending' as const },
+      { bookId: 'book-pending-b', isbn: '9780000000005', status: 'pending' as const },
+      { bookId: 'book-pending-c', isbn: '9780000000006', status: 'pending' as const },
+      { bookId: 'book-pending-d', isbn: '9780000000007', status: 'pending' as const }
+    ]
+
+    await db.insert(books).values(jobs.map(job => ({
+      id: job.bookId,
+      isbn: job.isbn,
+      title: job.bookId,
+      source: 'open_library' as const,
+      entrySource: 'isbn_lookup' as const,
+      createdAt: now
+    })))
+    await db.insert(canonicalBookEnrichmentJobs).values(jobs.map(job => ({
+      ...job,
+      attempts: 0,
+      maxAttempts: 5,
+      createdAt: now,
+      updatedAt: now
+    })))
+
+    const recoverable = await runCanonicalRepository(Effect.flatMap(CanonicalBookEnrichmentRepository, repository =>
+      repository.listRecoverable(now, 3)
+    ))
+
+    expect(recoverable.map(job => job.bookId)).toEqual([
+      'book-retry-old',
+      'book-retry-new',
+      'book-expired-processing'
+    ])
+  })
+
   it('hydrates authors when a competing core lookup already persisted the canonical book', async () => {
     await db.update(books)
       .set({ source: 'open_library' })
