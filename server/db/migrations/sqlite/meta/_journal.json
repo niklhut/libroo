@@ -113,6 +113,13 @@
       "when": 1786210241221,
       "tag": "0015_chubby_doomsday",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1787039093465,
+      "tag": "0016_canonical_book_enrichment",
+      "breakpoints": true
     }
   ]
 }
