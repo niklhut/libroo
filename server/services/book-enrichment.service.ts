@@ -275,8 +275,9 @@ export const BookEnrichmentServiceLive = Layer.effect(
         enrichmentRepo.getUpdatesForUserBooks(userId, userBookIds).pipe(
           Effect.map(updates => updates.map(update => ({
             userBookId: update.userBookId,
+            author: update.author,
             coverPath: update.coverPath,
-            status: toBookEnrichmentUiStatus(update.status)
+            status: toBookEnrichmentUiStatus(update.status ?? undefined)
           })))
         ),
 

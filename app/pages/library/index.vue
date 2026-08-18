@@ -28,6 +28,7 @@ interface PreferencesResponse {
 
 interface EnrichmentUpdate {
   userBookId: string
+  author: string
   coverPath: string | null
   status: LibraryBook['enrichmentStatus']
 }
@@ -112,7 +113,7 @@ const isApplyingFilters = ref(false)
 const filterRefreshTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 const preferenceSaveTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 const enrichmentPollTimer = ref<ReturnType<typeof setTimeout> | null>(null)
-const isEnrichmentPollActive = ref(true)
+const isEnrichmentPollActive = ref(import.meta.client && !document.hidden)
 const enrichmentPollFailures = ref(0)
 const shouldPersistLibraryStatePreference = ref(false)
 const suppressFilterWatcher = ref(false)
@@ -191,10 +192,10 @@ const hasPendingEnrichment = computed(() =>
   )
 )
 
-function scheduleEnrichmentPoll() {
+function scheduleEnrichmentPoll(delayOverride?: number) {
   if (!import.meta.client || !isEnrichmentPollActive.value || enrichmentPollTimer.value || !hasPendingEnrichment.value) return
 
-  const delay = Math.min(60_000, 5000 * 2 ** enrichmentPollFailures.value)
+  const delay = delayOverride ?? Math.min(60_000, 5000 * 2 ** enrichmentPollFailures.value)
 
   enrichmentPollTimer.value = setTimeout(async () => {
     enrichmentPollTimer.value = null
@@ -215,13 +216,11 @@ function scheduleEnrichmentPoll() {
         for (const book of allBooks.value) {
           const update = updatesById.get(book.id)
           if (!update) continue
+          book.author = update.author
           book.coverPath = update.coverPath
           book.enrichmentStatus = update.status
         }
       }
-      // Canonical ISBN enrichment is shared before a user_book exists, so its
-      // latest cover/details are read through the normal library projection.
-      await refresh()
       cacheResultsAction(activeResultCacheKey.value)
       enrichmentPollFailures.value = 0
     } catch (error) {
@@ -245,7 +244,21 @@ watch(hasPendingEnrichment, (pending) => {
   }
 }, { immediate: true })
 
+function handleVisibilityChange() {
+  isEnrichmentPollActive.value = !document.hidden
+  if (isEnrichmentPollActive.value) {
+    enrichmentPollFailures.value = 0
+    scheduleEnrichmentPoll(0)
+  } else if (enrichmentPollTimer.value) {
+    clearTimeout(enrichmentPollTimer.value)
+    enrichmentPollTimer.value = null
+  }
+}
+
 onMounted(() => {
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+  handleVisibilityChange()
+
   const syncAndRestore = async () => {
     try {
       if (shouldSync.value) {
@@ -280,6 +293,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
   if (filterRefreshTimer.value) clearTimeout(filterRefreshTimer.value)
   if (preferenceSaveTimer.value) clearTimeout(preferenceSaveTimer.value)
   isEnrichmentPollActive.value = false

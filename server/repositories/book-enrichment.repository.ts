@@ -1,6 +1,6 @@
 import { Context, Effect, Layer } from 'effect'
-import { and, asc, eq, exists, inArray, isNull, lte, not, or, sql } from 'drizzle-orm'
-import { bookEnrichmentJobs, bookEnrichmentLocks, books, loans, userBooks } from 'hub:db:schema'
+import { and, asc, eq, exists, inArray, isNotNull, isNull, lte, not, or, sql } from 'drizzle-orm'
+import { authors, bookAuthors, bookEnrichmentJobs, bookEnrichmentLocks, books, canonicalBookEnrichmentJobs, loans, userBooks } from 'hub:db:schema'
 import type { BookEnrichmentStatus } from '../../shared/types/book'
 import { DatabaseError } from './book.repository'
 import { DbService } from '../services/db.service'
@@ -28,8 +28,9 @@ export interface EnrichmentMetadataPatch {
 
 export interface BookEnrichmentUpdateRecord {
   userBookId: string
+  author: string
   coverPath: string | null
-  status: BookEnrichmentStatus
+  status: BookEnrichmentStatus | null
 }
 
 export interface BookEnrichmentRepositoryInterface {
@@ -530,23 +531,38 @@ export const BookEnrichmentRepositoryLive = Layer.effect(
         Effect.tryPromise({
           try: async () => {
             if (userBookIds.length === 0) return []
-            return dbService.db
+            const rows = await dbService.db
               .select({
                 userBookId: userBooks.id,
+                author: sql<string>`coalesce((
+                  select group_concat(name, ', ') from (
+                    select ${authors.name} as name
+                    from ${bookAuthors}
+                    inner join ${authors} on ${authors.id} = ${bookAuthors.authorId}
+                    where ${bookAuthors.bookId} = ${books.id}
+                    order by ${bookAuthors.sortOrder} asc, ${authors.name} asc
+                  )
+                ), 'Unknown Author')`,
                 coverPath: books.coverPath,
-                status: bookEnrichmentJobs.status
+                status: sql<string | null>`coalesce(${bookEnrichmentJobs.status}, ${canonicalBookEnrichmentJobs.status})`
               })
               .from(userBooks)
               .innerJoin(books, eq(books.id, userBooks.bookId))
-              .innerJoin(bookEnrichmentJobs, and(
+              .leftJoin(bookEnrichmentJobs, and(
                 eq(bookEnrichmentJobs.bookId, books.id),
                 eq(bookEnrichmentJobs.userId, userId)
               ))
+              .leftJoin(canonicalBookEnrichmentJobs, eq(canonicalBookEnrichmentJobs.bookId, books.id))
               .where(and(
                 inArray(userBooks.id, userBookIds),
                 eq(userBooks.userId, userId),
-                isNull(userBooks.removedAt)
+                isNull(userBooks.removedAt),
+                or(isNotNull(bookEnrichmentJobs.bookId), isNotNull(canonicalBookEnrichmentJobs.bookId))
               ))
+            return rows.map(row => ({
+              ...row,
+              status: row.status as BookEnrichmentStatus | null
+            }))
           },
           catch: error => new DatabaseError({
             message: `Failed to load enrichment updates: ${error}`,

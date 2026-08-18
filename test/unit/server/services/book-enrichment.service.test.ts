@@ -135,8 +135,8 @@ describe('BookEnrichmentService', () => {
 
   it('maps internal job states to silent card updates', async () => {
     vi.mocked(enrichmentRepository.getUpdatesForUserBooks).mockReturnValueOnce(Effect.succeed([
-      { userBookId: 'ub-1', coverPath: 'covers/9780441172719.webp', status: 'completed' },
-      { userBookId: 'ub-2', coverPath: null, status: 'retrying' }
+      { userBookId: 'ub-1', author: 'Frank Herbert', coverPath: 'covers/9780441172719.webp', status: 'completed' },
+      { userBookId: 'ub-2', author: 'Frank Herbert', coverPath: null, status: 'retrying' }
     ]))
     const effect = getBookEnrichmentUpdates('user-1', ['ub-1', 'ub-2']).pipe(
       Effect.provide(BookEnrichmentServiceLive),
@@ -146,8 +146,8 @@ describe('BookEnrichmentService', () => {
     )
 
     await expect(Effect.runPromise(effect as Effect.Effect<unknown, never, never>)).resolves.toEqual([
-      { userBookId: 'ub-1', coverPath: 'covers/9780441172719.webp', status: null },
-      { userBookId: 'ub-2', coverPath: null, status: 'retrying' }
+      { userBookId: 'ub-1', author: 'Frank Herbert', coverPath: 'covers/9780441172719.webp', status: null },
+      { userBookId: 'ub-2', author: 'Frank Herbert', coverPath: null, status: 'retrying' }
     ])
   })
 

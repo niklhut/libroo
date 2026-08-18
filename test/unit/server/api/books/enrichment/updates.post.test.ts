@@ -23,7 +23,7 @@ describe('server/api/books/enrichment/updates.post', () => {
 
   it('forwards the authenticated user and requested ids to the enrichment service', async () => {
     mockLoggedInUser({ id: 'session-user', name: 'Ada', email: 'ada@example.com' })
-    const updates = [{ userBookId: 'user-book-1', coverPath: 'covers/book.webp', status: null }]
+    const updates = [{ userBookId: 'user-book-1', author: 'Ada Lovelace', coverPath: 'covers/book.webp', status: null }]
     serviceMocks.getBookEnrichmentUpdates.mockReturnValueOnce(Effect.succeed(updates))
     const handler = await importRoute(route)
 

@@ -1,9 +1,12 @@
 <script setup lang="ts">
+import { isBookEnrichmentInProgress } from '~~/shared/utils/book-enrichment'
+
 const props = defineProps<{
   book: BookDetails
 }>()
 
 const coverUrl = computed(() => props.book.coverPath ? `/api/blob/${props.book.coverPath}` : null)
+const isCoverEnrichmentInProgress = computed(() => isBookEnrichmentInProgress(props.book.enrichmentStatus))
 const isOwnedBook = computed(() => props.book.libraryState === 'owned')
 const statusLabel = computed(() => {
   if (!isOwnedBook.value) return props.book.libraryState === 'wishlisted' ? 'Wishlist' : 'Previously owned'
@@ -26,6 +29,18 @@ const readingSummary = computed(() => useReadingSummary(
           width="280"
           class="block h-auto w-full shadow-md"
         />
+        <div
+          v-else-if="isCoverEnrichmentInProgress"
+          class="flex aspect-2/3 items-center justify-center bg-muted"
+          role="status"
+        >
+          <span class="sr-only">Preparing book cover</span>
+          <UIcon
+            name="i-lucide-loader-2"
+            class="animate-spin text-4xl text-primary"
+            aria-hidden="true"
+          />
+        </div>
         <div
           v-else
           class="flex aspect-2/3 items-center justify-center bg-muted"

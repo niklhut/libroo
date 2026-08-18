@@ -152,8 +152,39 @@ describe('BookEnrichmentRepository on D1', () => {
 
     expect(updates).toEqual([{
       userBookId: 'ub-1',
+      author: 'Unknown Author',
       coverPath: null,
       status: 'pending'
+    }])
+  })
+
+  it('returns canonical enrichment updates for a user-owned book', async () => {
+    const now = new Date('2026-07-26T10:00:00.000Z')
+    await db.delete(bookEnrichmentJobs)
+    await db.update(books)
+      .set({ coverPath: 'covers/9780441172719.webp', source: 'open_library' })
+      .where(eq(books.id, 'book-1'))
+    await db.insert(canonicalBookEnrichmentJobs).values({
+      bookId: 'book-1',
+      isbn: '9780441172719',
+      status: 'processing',
+      attempts: 1,
+      maxAttempts: 5,
+      claimToken: 'claim-1',
+      leaseExpiresAt: new Date(now.getTime() + 60_000),
+      createdAt: now,
+      updatedAt: now
+    })
+
+    const updates = await runRepository(Effect.flatMap(BookEnrichmentRepository, repository =>
+      repository.getUpdatesForUserBooks('user-1', ['ub-1'])
+    ))
+
+    expect(updates).toEqual([{
+      userBookId: 'ub-1',
+      author: 'Unknown Author',
+      coverPath: 'covers/9780441172719.webp',
+      status: 'processing'
     }])
   })
 
