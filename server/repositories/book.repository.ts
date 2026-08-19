@@ -559,9 +559,12 @@ export const BookRepositoryLive = Layer.effect(
 
     const replaceUnknownBookAuthor = (bookId: string, authorNames: string[]) =>
       Effect.gen(function* () {
+        const seenAuthors = new Set<string>()
         const providerAuthors = authorNames.filter((name) => {
           const normalizedName = normalizeAuthorName(name)
-          return Boolean(normalizedName) && normalizedName !== 'unknown author'
+          if (!normalizedName || normalizedName === 'unknown author' || seenAuthors.has(normalizedName)) return false
+          seenAuthors.add(normalizedName)
+          return true
         })
         if (providerAuthors.length === 0) return
 
@@ -569,14 +572,32 @@ export const BookRepositoryLive = Layer.effect(
         const currentAuthors = authorMap.get(bookId) || []
         if (currentAuthors.length !== 1 || normalizeAuthorName(currentAuthors[0]!.name) !== 'unknown author') return
 
+        const authorIds = yield* Effect.forEach(providerAuthors, name => resolveOrCreateAuthorId(name), { concurrency: 1 })
+        const now = new Date()
+
         yield* Effect.tryPromise({
-          try: () => dbService.db.delete(bookAuthors).where(eq(bookAuthors.bookId, bookId)),
+          try: () => dbService.executeAtomic((database) => {
+            const statements: AtomicDbStatement[] = [
+              database.delete(bookAuthors).where(and(
+                eq(bookAuthors.bookId, bookId),
+                eq(bookAuthors.authorId, currentAuthors[0]!.id)
+              ))
+            ]
+            for (const [index, authorId] of authorIds.entries()) {
+              statements.push(database.insert(bookAuthors).values({
+                bookId,
+                authorId,
+                sortOrder: index,
+                createdAt: now
+              }).onConflictDoNothing())
+            }
+            return [statements[0]!, ...statements.slice(1)] as AtomicDbStatements
+          }),
           catch: error => new DatabaseError({
             message: `Failed to replace placeholder author: ${error}`,
-            operation: 'replaceUnknownBookAuthor.delete'
+            operation: 'replaceUnknownBookAuthor.replace'
           })
         })
-        yield* setBookAuthors(bookId, providerAuthors)
       })
 
     const resolveOrCreateTagId = (normalizedTag: { key: string, displayName: string }, client = dbService.db) =>

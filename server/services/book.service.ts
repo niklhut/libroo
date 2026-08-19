@@ -18,6 +18,7 @@ import type { Book } from '../repositories/book.repository'
 import { normalizeIsbnIdentity } from '../../shared/utils/isbn'
 import { BookEnrichmentRepository } from '../repositories/book-enrichment.repository'
 import { CanonicalBookEnrichmentRepository } from '../repositories/canonical-book-enrichment.repository'
+import { OpenLibraryBookNotFoundError } from '../repositories/openLibrary.repository'
 import { getBooksEnrichmentConfig } from '../utils/books-config'
 
 const BULK_COVER_LOOKUP_CONCURRENCY = 16
@@ -427,6 +428,11 @@ export const BookServiceLive = Layer.effect(
           return toEnrichmentPatch(book, status, tags.map(tag => tag.name))
         }))
         if (Either.isRight(enrichment)) return enrichment.right
+        if (enrichment.left instanceof OpenLibraryBookNotFoundError) {
+          yield* canonicalEnrichmentRepo.complete(current.id, claimed.claimToken!, 'not_found', enrichment.left.message, new Date())
+          const tags = yield* bookRepo.getSystemTagsByBookId(current.id)
+          return toEnrichmentPatch(current, 'not_found', tags.map(tag => tag.name))
+        }
         const retryAt = new Date(Date.now() + Math.min(300_000, 5_000 * 2 ** Math.max(0, claimed.attempts - 1)))
         yield* canonicalEnrichmentRepo.retry(current.id, claimed.claimToken!, retryAt, String(enrichment.left), new Date())
         const tags = yield* bookRepo.getSystemTagsByBookId(current.id)

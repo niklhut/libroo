@@ -21,7 +21,7 @@ const isMoveToLibraryDialogOpen = ref(false)
 const bookNoteDraft = ref('')
 const loanNoteDraft = ref('')
 
-const { data: book, status, refresh } = await useFetch<BookDetails>(`/api/books/${userBookId}`, {
+const { data: book, error, status, refresh } = await useFetch<BookDetails>(`/api/books/${userBookId}`, {
   headers: useRequestHeaders(['cookie'])
 })
 
@@ -38,7 +38,12 @@ function scheduleEnrichmentPoll(delayOverride?: number) {
     enrichmentPollTimer.value = null
     try {
       await refresh()
-      enrichmentPollFailures.value = 0
+      if (error.value) {
+        enrichmentPollFailures.value = Math.min(enrichmentPollFailures.value + 1, 4)
+        console.error('Failed to refresh book enrichment status', error.value)
+      } else {
+        enrichmentPollFailures.value = 0
+      }
     } catch (error) {
       enrichmentPollFailures.value = Math.min(enrichmentPollFailures.value + 1, 4)
       console.error('Failed to refresh book enrichment status', error)

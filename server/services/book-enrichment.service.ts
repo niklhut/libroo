@@ -20,6 +20,7 @@ export interface EnrichImportedBooksResult {
 
 export interface BookEnrichmentUpdate {
   userBookId: string
+  author: string
   coverPath: string | null
   status: 'queued' | 'preparing' | 'retrying' | 'no_cover' | 'not_found' | 'failed' | null
 }

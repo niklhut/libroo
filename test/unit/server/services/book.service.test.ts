@@ -9,9 +9,9 @@ import { BookRepository, DatabaseError, type BookRepositoryInterface } from '../
 import { BookEnrichmentRepository, type BookEnrichmentRepositoryInterface } from '../../../../server/repositories/book-enrichment.repository'
 import { CanonicalBookEnrichmentRepository, type CanonicalBookEnrichmentRepository as CanonicalBookEnrichmentRepositoryService } from '../../../../server/repositories/canonical-book-enrichment.repository'
 import { LocationRepository, type LocationRepositoryInterface } from '../../../../server/repositories/location.repository'
-import { OpenLibraryApiError, OpenLibraryRepository, type OpenLibraryRepositoryInterface } from '../../../../server/repositories/openLibrary.repository'
+import { OpenLibraryApiError, OpenLibraryBookNotFoundError, OpenLibraryRepository, type OpenLibraryRepositoryInterface } from '../../../../server/repositories/openLibrary.repository'
 import type { BookService } from '../../../../server/services/book.service'
-import { BookServiceLive, bulkLookupBooks, createManualBook, decodeCoverImage, getBookDetails, getUserLibrary, InvalidManualCoverError } from '../../../../server/services/book.service'
+import { BookServiceLive, bulkLookupBooks, createManualBook, decodeCoverImage, enrichOpenLibraryBook, getBookDetails, getUserLibrary, InvalidManualCoverError } from '../../../../server/services/book.service'
 import { putCoverImage, StorageService, type StorageServiceInterface } from '../../../../server/services/storage.service'
 
 Object.assign(globalThis, { BookRepository, OpenLibraryRepository, LocationRepository, putCoverImage })
@@ -189,6 +189,56 @@ describe('optional enrichment status decoration', () => {
     expect(library.items[0]?.enrichmentStatus).toBeNull()
     expect(bookDetails.enrichmentStatus).toBeNull()
     expect(enrichmentRepository.getStatusesForUserBooks).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('canonical ISBN enrichment', () => {
+  it('marks a missing Open Library record as terminal not_found', async () => {
+    const complete = vi.fn(() => Effect.void)
+    const bookRepository = {
+      getBookById: vi.fn(() => Effect.succeed({
+        id: 'book-1',
+        isbn: '9780441172719',
+        title: 'Dune',
+        author: 'Frank Herbert',
+        authors: [{ id: 'author-1', name: 'Frank Herbert' }],
+        coverPath: null,
+        openLibraryKey: '/books/OL1M',
+        createdAt: new Date(),
+        source: 'open_library' as const,
+        createdByUserId: null
+      })),
+      getSystemTagsByBookId: vi.fn(() => Effect.succeed([]))
+    } as unknown as BookRepositoryInterface
+    const canonicalRepository = {
+      ensurePending: vi.fn(() => Effect.succeed({ status: 'pending', attempts: 0, maxAttempts: 5 })),
+      claim: vi.fn(() => Effect.succeed({ claimToken: 'claim-1', attempts: 1, maxAttempts: 5 })),
+      complete
+    } as unknown as CanonicalBookEnrichmentRepositoryService['Service']
+    const openLibraryRepository = {
+      lookupByISBN: vi.fn(() => Effect.fail(new OpenLibraryBookNotFoundError({
+        isbn: '9780441172719',
+        message: 'Open Library has no record for this ISBN'
+      })))
+    } as unknown as OpenLibraryRepositoryInterface
+
+    const patch = await Effect.runPromise(enrichOpenLibraryBook('book-1').pipe(
+      Effect.provide(BookServiceLive),
+      Effect.provide(Layer.succeed(BookRepository, bookRepository)),
+      Effect.provide(Layer.succeed(BookEnrichmentRepository, {} as BookEnrichmentRepositoryInterface)),
+      Effect.provide(Layer.succeed(CanonicalBookEnrichmentRepository, canonicalRepository)),
+      Effect.provide(Layer.succeed(OpenLibraryRepository, openLibraryRepository)),
+      Effect.provide(Layer.succeed(LocationRepository, {} as LocationRepositoryInterface))
+    ))
+
+    expect(patch.status).toBe('not_found')
+    expect(complete).toHaveBeenCalledWith(
+      'book-1',
+      'claim-1',
+      'not_found',
+      'Open Library has no record for this ISBN',
+      expect.any(Date)
+    )
   })
 })
 

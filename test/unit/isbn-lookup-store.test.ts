@@ -88,9 +88,66 @@ describe('useIsbnLookupStore', () => {
       })
     })
     expect(store.activeLookupResult?.coverUrl).toBe('/api/blob/covers/9781234567890.webp')
-    expect(fetchMock).toHaveBeenLastCalledWith('/api/books/enrichment/run', {
+    expect(fetchMock).toHaveBeenLastCalledWith('/api/books/enrichment/run', expect.objectContaining({
       method: 'POST',
-      body: { bookId: 'book-1' }
+      body: { bookId: 'book-1' },
+      signal: expect.any(AbortSignal)
+    }))
+  })
+
+  it('keeps enrichment pending after a transport failure', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        found: true,
+        bookId: 'book-1',
+        isbn: '9781234567890',
+        title: 'Book A',
+        author: 'Author A',
+        enrichment: { status: 'preparing' }
+      })
+      .mockRejectedValueOnce(new Error('Network unavailable'))
+    ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
+
+    const store = useIsbnLookupStore()
+    await store.lookupIsbn('9781234567890')
+
+    await vi.waitFor(() => {
+      expect(store.enrichmentError).toBe('Network unavailable')
+    })
+    expect(store.activeLookupResult?.enrichment?.status).toBe('preparing')
+  })
+
+  it('aborts enrichment requests and resets their counter', async () => {
+    let enrichmentSignal: AbortSignal | undefined
+    const enrichmentResponse = deferred<never>()
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        found: true,
+        bookId: 'book-1',
+        isbn: '9781234567890',
+        title: 'Book A',
+        author: 'Author A',
+        enrichment: { status: 'preparing' }
+      })
+      .mockImplementationOnce((_url: string, options: { signal: AbortSignal }) => {
+        enrichmentSignal = options.signal
+        return enrichmentResponse.promise
+      })
+    ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
+
+    const store = useIsbnLookupStore()
+    await store.lookupIsbn('9781234567890')
+    await vi.waitFor(() => {
+      expect(store.isEnriching).toBe(true)
+    })
+
+    store.reset()
+
+    expect(enrichmentSignal?.aborted).toBe(true)
+    expect(store.isEnriching).toBe(false)
+    enrichmentResponse.resolve(undefined as never)
+    await vi.waitFor(() => {
+      expect(store.isEnriching).toBe(false)
     })
   })
 

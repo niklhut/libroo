@@ -46,6 +46,7 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
   let resetVersion = 0
   let activeLookupRequest = 0
   const activeLookupControllers = new Set<AbortController>()
+  const activeEnrichmentControllers = new Map<number, Set<AbortController>>()
 
   const isLookingUp = computed(() => pendingLookups.value > 0)
   const isAdding = computed(() => pendingAdds.value > 0)
@@ -55,8 +56,13 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
     resetVersion += 1
     for (const controller of activeLookupControllers) controller.abort()
     activeLookupControllers.clear()
+    for (const controllers of activeEnrichmentControllers.values()) {
+      for (const controller of controllers) controller.abort()
+    }
+    activeEnrichmentControllers.clear()
     pendingLookups.value = 0
     pendingAdds.value = 0
+    pendingEnrichments.value = 0
     lookupError.value = null
     addError.value = null
     enrichmentError.value = null
@@ -75,13 +81,29 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
     return requestVersion === resetVersion && requestId === activeLookupRequest
   }
 
+  function registerEnrichmentController(requestVersion: number, controller: AbortController) {
+    const controllers = activeEnrichmentControllers.get(requestVersion) ?? new Set<AbortController>()
+    controllers.add(controller)
+    activeEnrichmentControllers.set(requestVersion, controllers)
+  }
+
+  function unregisterEnrichmentController(requestVersion: number, controller: AbortController) {
+    const controllers = activeEnrichmentControllers.get(requestVersion)
+    if (!controllers) return
+    controllers.delete(controller)
+    if (controllers.size === 0) activeEnrichmentControllers.delete(requestVersion)
+  }
+
   async function enrichResult(result: BookLookupResult, requestVersion: number, requestId: number, attempt = 0): Promise<void> {
     if (!result.bookId || !isPending(result.enrichment) || !isActiveRequest(requestVersion, requestId)) return
+    const controller = new AbortController()
+    registerEnrichmentController(requestVersion, controller)
     pendingEnrichments.value += 1
     try {
       const patch = await $fetch<BookEnrichmentPatch>('/api/books/enrichment/run', {
         method: 'POST',
-        body: { bookId: result.bookId }
+        body: { bookId: result.bookId },
+        signal: controller.signal
       })
       if (!isActiveRequest(requestVersion, requestId) || patch.bookId !== result.bookId) return
       result.author = patch.author
@@ -101,10 +123,12 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
     } catch (err: unknown) {
       if (isActiveRequest(requestVersion, requestId)) {
         enrichmentError.value = getErrorMessage(err, 'Book details are still being prepared')
-        result.enrichment = { status: 'failed' }
       }
     } finally {
-      pendingEnrichments.value = Math.max(0, pendingEnrichments.value - 1)
+      unregisterEnrichmentController(requestVersion, controller)
+      if (requestVersion === resetVersion) {
+        pendingEnrichments.value = Math.max(0, pendingEnrichments.value - 1)
+      }
     }
   }
 
