@@ -17,7 +17,7 @@ import enrichmentMigration from '../../../../server/db/migrations/sqlite/0012_im
 import authFactorsMigration from '../../../../server/db/migrations/sqlite/0013_auth-two-factor-passkeys.sql?raw'
 import recentAuthMigration from '../../../../server/db/migrations/sqlite/0014_recent-auth.sql?raw'
 import canonicalEnrichmentMigration from '../../../../server/db/migrations/sqlite/0016_canonical_book_enrichment.sql?raw'
-import { bookEnrichmentJobs, books, canonicalBookEnrichmentJobs, user, userBooks } from '../../../../server/db/schema'
+import { authors, bookAuthors, bookEnrichmentJobs, books, canonicalBookEnrichmentJobs, user, userBooks } from '../../../../server/db/schema'
 import {
   BookEnrichmentRepository,
   BookEnrichmentRepositoryLive
@@ -292,6 +292,31 @@ describe('BookEnrichmentRepository on D1', () => {
     ))
 
     expect(book.authors.map(author => author.name)).toEqual(['Frank Herbert'])
+  })
+
+  it('persists core books and author links atomically for competing lookups', async () => {
+    const data: OpenLibraryBookData = {
+      isbn: '9780306406157',
+      title: 'Nuclear Physics',
+      authors: [' George  Green ', 'George Green'],
+      openLibraryKey: '/books/OL2M',
+      workKey: '/works/OL2W',
+      coverUrl: null
+    }
+    const create = () => runBookRepository(Effect.flatMap(BookRepository, repository =>
+      repository.createCoreOpenLibraryBook(data.isbn, data)
+    ))
+
+    const [first, second] = await Promise.all([create(), create()])
+    const persistedAuthors = await db.select({ name: authors.name })
+      .from(bookAuthors)
+      .innerJoin(authors, eq(bookAuthors.authorId, authors.id))
+      .where(eq(bookAuthors.bookId, first.id))
+
+    expect(first.id).toBe(second.id)
+    expect(first.authors.map(author => author.name)).toEqual(['George Green'])
+    expect(second.authors.map(author => author.name)).toEqual(['George Green'])
+    expect(persistedAuthors).toEqual([{ name: 'George Green' }])
   })
 
   it('replaces an Unknown Author placeholder when enrichment returns an author', async () => {

@@ -20,6 +20,7 @@ import { BookEnrichmentRepository } from '../repositories/book-enrichment.reposi
 import { CanonicalBookEnrichmentRepository } from '../repositories/canonical-book-enrichment.repository'
 import { OpenLibraryBookNotFoundError } from '../repositories/openLibrary.repository'
 import { getBooksEnrichmentConfig } from '../utils/books-config'
+import { deleteBlob } from './storage.service'
 
 const BULK_COVER_LOOKUP_CONCURRENCY = 16
 
@@ -412,14 +413,20 @@ export const BookServiceLive = Layer.effect(
           return toEnrichmentPatch(current, job?.status ?? 'pending', tags.map(tag => tag.name))
         }
 
+        let downloadedCoverPath: string | null = null
         const enrichment = yield* Effect.either(Effect.gen(function* () {
           const data = yield* withDebugTiming('enrichment.workMetadata', current.isbn!, openLibraryRepo.lookupByISBN(current.isbn!))
           const storedCover = data.coverUrl
             ? yield* bookRepo.findStoredOpenLibraryCover(current.isbn!)
             : null
-          const coverPath = storedCover ?? (data.coverUrl
-            ? yield* withDebugTiming('enrichment.coverDownload', current.isbn!, openLibraryRepo.downloadCover(current.isbn!, 'L'))
-            : null)
+          if (!storedCover && data.coverUrl) {
+            downloadedCoverPath = yield* withDebugTiming(
+              'enrichment.coverDownload',
+              current.isbn!,
+              openLibraryRepo.downloadCover(current.isbn!, 'L')
+            )
+          }
+          const coverPath = storedCover ?? downloadedCoverPath
           const book = yield* bookRepo.applyOpenLibraryEnrichment(current.id, data, coverPath)
           yield* bookRepo.addSystemTagsToBook(book.id, data.subjects ?? [])
           const status = coverPath || book.coverPath ? 'completed' as const : 'no_cover' as const
@@ -428,6 +435,14 @@ export const BookServiceLive = Layer.effect(
           return toEnrichmentPatch(book, status, tags.map(tag => tag.name))
         }))
         if (Either.isRight(enrichment)) return enrichment.right
+        if (downloadedCoverPath) {
+          yield* enrichmentRepo.isCoverReferenced(downloadedCoverPath).pipe(
+            Effect.flatMap(referenced => referenced ? Effect.void : deleteBlob(downloadedCoverPath!)),
+            Effect.catchAll(error =>
+              Effect.logWarning(`Failed to clean up unreferenced enrichment cover ${downloadedCoverPath}: ${String(error)}`)
+            )
+          )
+        }
         if (enrichment.left instanceof OpenLibraryBookNotFoundError) {
           yield* canonicalEnrichmentRepo.complete(current.id, claimed.claimToken!, 'not_found', enrichment.left.message, new Date())
           const tags = yield* bookRepo.getSystemTagsByBookId(current.id)

@@ -1056,29 +1056,68 @@ export const BookRepositoryLive = Layer.effect(
 
         const now = new Date()
         const bookId = generateId()
+        const normalizedSeen = new Set<string>()
+        const authorNames = data.authors
+          .map(name => name.trim().replace(/\s+/g, ' '))
+          .filter((name) => {
+            const normalized = normalizeAuthorName(name)
+            if (!normalized || normalizedSeen.has(normalized)) return false
+            normalizedSeen.add(normalized)
+            return true
+          })
+        const names = authorNames.length > 0 ? authorNames : ['Unknown Author']
+        const authorIds = yield* Effect.forEach(names, name => resolveOrCreateAuthorId(name), { concurrency: 1 })
+
         yield* Effect.tryPromise({
-          try: () => dbService.db.insert(books).values({
-            id: bookId,
-            isbn: normalizedISBN,
-            title: data.title,
-            coverPath: null,
-            openLibraryKey: data.openLibraryKey,
-            workKey: data.workKey,
-            description: data.description || null,
-            publishDate: data.publishDate || null,
-            publishers: data.publishers?.join(', ') || null,
-            numberOfPages: data.numberOfPages || null,
-            source: 'open_library',
-            entrySource: 'isbn_lookup',
-            createdByUserId: null,
-            createdAt: now
-          }).onConflictDoNothing(),
+          try: () => dbService.executeAtomic((database) => {
+            const statements: AtomicDbStatement[] = [
+              database.insert(books).values({
+                id: bookId,
+                isbn: normalizedISBN,
+                title: data.title,
+                coverPath: null,
+                openLibraryKey: data.openLibraryKey,
+                workKey: data.workKey,
+                description: data.description || null,
+                publishDate: data.publishDate || null,
+                publishers: data.publishers?.join(', ') || null,
+                numberOfPages: data.numberOfPages || null,
+                source: 'open_library',
+                entrySource: 'isbn_lookup',
+                createdByUserId: null,
+                createdAt: now
+              }).onConflictDoNothing()
+            ]
+            for (const [index, authorId] of authorIds.entries()) {
+              // Resolve the canonical row inside the batch. If another request
+              // won the ISBN insert, its row receives these links atomically too.
+              // The SELECT also avoids creating a link when a manual book owns
+              // this ISBN, preserving the original conflict failure behavior.
+              statements.push(database.insert(bookAuthors).select(
+                database.select({
+                  bookId: books.id,
+                  authorId: sql<string>`${authorId}`.as('authorId'),
+                  sortOrder: sql<number>`${index}`.as('sortOrder'),
+                  createdAt: sql<Date>`${now.toISOString()}`.as('createdAt')
+                }).from(books).where(and(
+                  eq(books.isbn, normalizedISBN),
+                  eq(books.source, 'open_library')
+                ))
+              ).onConflictDoNothing())
+            }
+            return [statements[0]!, ...statements.slice(1)] as AtomicDbStatements
+          }),
           catch: error => new BookCreateError({ message: `Failed to persist core Open Library book: ${error}` })
         })
         const book = yield* loadOpenLibraryBookByIsbn(normalizedISBN, 'createCoreOpenLibraryBook.reselect')
         if (!book) return yield* Effect.fail(new BookCreateError({ message: `Failed to resolve persisted core book for ISBN ${normalizedISBN}` }))
-        yield* setBookAuthors(book.id, data.authors)
-        const authorMap = yield* hydrateAuthorsForBookIds([book.id])
+        let authorMap = yield* hydrateAuthorsForBookIds([book.id])
+        if ((authorMap.get(book.id)?.length ?? 0) === 0) {
+          // Repair legacy/inconsistent rows should the ISBN conflict winner not
+          // have author links yet.
+          yield* setBookAuthors(book.id, data.authors)
+          authorMap = yield* hydrateAuthorsForBookIds([book.id])
+        }
         return toBookModel(book, authorMap.get(book.id) || [])
       })
 
