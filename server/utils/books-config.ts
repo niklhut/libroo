@@ -1,5 +1,9 @@
 import { MAX_BULK_ISBN_COUNT } from '~~/shared/utils/schemas'
 
+// A recovery attempt can use the 12-second metadata timeout followed by the
+// 20-second cover timeout. Leave a small buffer for persistence and cleanup.
+const MIN_RECOVERY_SAFETY_SECONDS = 35
+
 type BooksRuntimeConfig = {
   booksBulkAddMaxCount?: unknown
   booksRateLimitEnabled?: unknown
@@ -84,9 +88,16 @@ export function getBooksEnrichmentRateLimitConfig() {
 }
 
 export function getBooksEnrichmentConfig() {
-  const recoveryTimeBudgetSeconds = positiveInteger(
-    runtimeValue('booksEnrichmentRecoveryTimeBudgetSeconds') ?? process.env.NUXT_BOOKS_ENRICHMENT_RECOVERY_TIME_BUDGET_SECONDS,
-    840
+  const recoveryTimeBudgetSeconds = Math.max(
+    positiveInteger(
+      runtimeValue('booksEnrichmentRecoveryTimeBudgetSeconds') ?? process.env.NUXT_BOOKS_ENRICHMENT_RECOVERY_TIME_BUDGET_SECONDS,
+      840
+    ),
+    MIN_RECOVERY_SAFETY_SECONDS + 1
+  )
+  const configuredRecoverySafetySeconds = positiveInteger(
+    runtimeValue('booksEnrichmentRecoverySafetySeconds') ?? process.env.NUXT_BOOKS_ENRICHMENT_RECOVERY_SAFETY_SECONDS,
+    MIN_RECOVERY_SAFETY_SECONDS
   )
 
   return {
@@ -112,10 +123,7 @@ export function getBooksEnrichmentConfig() {
     ),
     recoveryTimeBudgetSeconds,
     recoverySafetySeconds: Math.min(
-      positiveInteger(
-        runtimeValue('booksEnrichmentRecoverySafetySeconds') ?? process.env.NUXT_BOOKS_ENRICHMENT_RECOVERY_SAFETY_SECONDS,
-        30
-      ),
+      Math.max(configuredRecoverySafetySeconds, MIN_RECOVERY_SAFETY_SECONDS),
       recoveryTimeBudgetSeconds - 1
     )
   }

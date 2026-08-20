@@ -104,7 +104,7 @@ Optional email and registration settings:
 | `NUXT_BOOKS_ENRICHMENT_BATCH_SIZE` / `NUXT_BOOKS_ENRICHMENT_CONCURRENCY` | `20` / `4` | Bounds each opted-in CSV import enrichment sweep and its parallel cover/storage checks. |
 | `NUXT_BOOKS_ENRICHMENT_LEASE_SECONDS` | `900` | Claim and per-ISBN lock duration. Expired work can be safely reclaimed; stale workers cannot complete another worker's claim. |
 | `NUXT_BOOKS_ENRICHMENT_MAX_ATTEMPTS` / `NUXT_BOOKS_ENRICHMENT_BACKOFF_SECONDS` | `5` / `60` | Maximum attempts and exponential-backoff base for transient Open Library failures. |
-| `NUXT_BOOKS_ENRICHMENT_RECOVERY_TIME_BUDGET_SECONDS` / `NUXT_BOOKS_ENRICHMENT_RECOVERY_SAFETY_SECONDS` | `840` / `30` | Stops a scheduled canonical-recovery sweep before its invocation deadline, leaving time for in-flight work to finish safely. |
+| `NUXT_BOOKS_ENRICHMENT_RECOVERY_TIME_BUDGET_SECONDS` / `NUXT_BOOKS_ENRICHMENT_RECOVERY_SAFETY_SECONDS` | `840` / `35` | Stops a scheduled canonical-recovery sweep before its invocation deadline, reserving metadata, cover-download, and persistence time for an attempted book. |
 | `NUXT_LEGAL_MARKDOWN_FETCH_TIMEOUT_SECONDS` | `5` | Timeout for fetching configured legal Markdown source documents. |
 | `NUXT_PLUNK_SEND_TIMEOUT_SECONDS` | `5` | Timeout for Plunk email delivery requests. |
 | `NUXT_EMAIL_PROVIDER` | `smtp` | Self-host supports `smtp` or `plunk`. |
@@ -598,7 +598,7 @@ Repository or environment variables:
 | `NUXT_BOOKS_ENRICHMENT_BATCH_SIZE` / `NUXT_BOOKS_ENRICHMENT_CONCURRENCY` | `20` / `4` |
 | `NUXT_BOOKS_ENRICHMENT_LEASE_SECONDS` | `900` |
 | `NUXT_BOOKS_ENRICHMENT_MAX_ATTEMPTS` / `NUXT_BOOKS_ENRICHMENT_BACKOFF_SECONDS` | `5` / `60` |
-| `NUXT_BOOKS_ENRICHMENT_RECOVERY_TIME_BUDGET_SECONDS` / `NUXT_BOOKS_ENRICHMENT_RECOVERY_SAFETY_SECONDS` | `840` / `30` |
+| `NUXT_BOOKS_ENRICHMENT_RECOVERY_TIME_BUDGET_SECONDS` / `NUXT_BOOKS_ENRICHMENT_RECOVERY_SAFETY_SECONDS` | `840` / `35` |
 | `NUXT_LEGAL_MARKDOWN_FETCH_TIMEOUT_SECONDS` | `5` |
 | `NUXT_PLUNK_SEND_TIMEOUT_SECONDS` | `5` |
 | `NUXT_PUBLIC_LEGAL_PRIVACY_POLICY_URL` / `NUXT_PUBLIC_LEGAL_IMPRINT_URL` / `NUXT_PUBLIC_LEGAL_TERMS_URL` | Optional canonical hosted legal page URLs. |
