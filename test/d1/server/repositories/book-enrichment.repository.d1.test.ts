@@ -308,7 +308,7 @@ describe('BookEnrichmentRepository on D1', () => {
     ))
 
     const [first, second] = await Promise.all([create(), create()])
-    const persistedAuthors = await db.select({ name: authors.name })
+    const persistedAuthors = await db.select({ name: authors.name, createdAt: bookAuthors.createdAt })
       .from(bookAuthors)
       .innerJoin(authors, eq(bookAuthors.authorId, authors.id))
       .where(eq(bookAuthors.bookId, first.id))
@@ -316,7 +316,9 @@ describe('BookEnrichmentRepository on D1', () => {
     expect(first.id).toBe(second.id)
     expect(first.authors.map(author => author.name)).toEqual(['George Green'])
     expect(second.authors.map(author => author.name)).toEqual(['George Green'])
-    expect(persistedAuthors).toEqual([{ name: 'George Green' }])
+    expect(persistedAuthors).toHaveLength(1)
+    expect(persistedAuthors[0]?.name).toBe('George Green')
+    expect(persistedAuthors[0]?.createdAt).toBeInstanceOf(Date)
   })
 
   it('replaces an Unknown Author placeholder when enrichment returns an author', async () => {

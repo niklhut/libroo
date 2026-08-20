@@ -1098,7 +1098,7 @@ export const BookRepositoryLive = Layer.effect(
                   bookId: books.id,
                   authorId: sql<string>`${authorId}`.as('authorId'),
                   sortOrder: sql<number>`${index}`.as('sortOrder'),
-                  createdAt: sql<Date>`${now.toISOString()}`.as('createdAt')
+                  createdAt: sql<number>`${Math.floor(now.getTime() / 1000)}`.as('createdAt')
                 }).from(books).where(and(
                   eq(books.isbn, normalizedISBN),
                   eq(books.source, 'open_library')

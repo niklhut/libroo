@@ -703,9 +703,15 @@ export const BookServiceLive = Layer.effect(
 
       recoverCanonicalEnrichment(limit = 20) {
         return Effect.gen(function* () {
+          const config = getBooksEnrichmentConfig()
+          const deadline = Date.now() + config.recoveryTimeBudgetSeconds * 1000
+          const safetyThreshold = config.recoverySafetySeconds * 1000
           const jobs = yield* canonicalEnrichmentRepo.listRecoverable(new Date(), limit)
           let completed = 0
+          let attempted = 0
           for (const job of jobs) {
+            if (deadline - Date.now() <= safetyThreshold) break
+            attempted++
             yield* enrichOpenLibraryBookImpl(job.bookId).pipe(
               Effect.catchAll(error => Effect.logWarning(`Canonical enrichment recovery failed: ${String(error)}`).pipe(Effect.as(null)))
             )
@@ -714,7 +720,7 @@ export const BookServiceLive = Layer.effect(
             )
             if (recovered?.status === 'completed') completed++
           }
-          return { attempted: jobs.length, completed }
+          return { attempted, completed }
         })
       },
 

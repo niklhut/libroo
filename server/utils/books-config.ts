@@ -14,6 +14,8 @@ type BooksRuntimeConfig = {
   booksEnrichmentLeaseSeconds?: unknown
   booksEnrichmentMaxAttempts?: unknown
   booksEnrichmentBackoffSeconds?: unknown
+  booksEnrichmentRecoveryTimeBudgetSeconds?: unknown
+  booksEnrichmentRecoverySafetySeconds?: unknown
 }
 
 function runtimeValue(key: keyof BooksRuntimeConfig): unknown {
@@ -82,6 +84,11 @@ export function getBooksEnrichmentRateLimitConfig() {
 }
 
 export function getBooksEnrichmentConfig() {
+  const recoveryTimeBudgetSeconds = positiveInteger(
+    runtimeValue('booksEnrichmentRecoveryTimeBudgetSeconds') ?? process.env.NUXT_BOOKS_ENRICHMENT_RECOVERY_TIME_BUDGET_SECONDS,
+    840
+  )
+
   return {
     batchSize: positiveInteger(
       runtimeValue('booksEnrichmentBatchSize') ?? process.env.NUXT_BOOKS_ENRICHMENT_BATCH_SIZE,
@@ -102,6 +109,14 @@ export function getBooksEnrichmentConfig() {
     backoffSeconds: positiveInteger(
       runtimeValue('booksEnrichmentBackoffSeconds') ?? process.env.NUXT_BOOKS_ENRICHMENT_BACKOFF_SECONDS,
       60
+    ),
+    recoveryTimeBudgetSeconds,
+    recoverySafetySeconds: Math.min(
+      positiveInteger(
+        runtimeValue('booksEnrichmentRecoverySafetySeconds') ?? process.env.NUXT_BOOKS_ENRICHMENT_RECOVERY_SAFETY_SECONDS,
+        30
+      ),
+      recoveryTimeBudgetSeconds - 1
     )
   }
 }
