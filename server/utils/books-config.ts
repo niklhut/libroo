@@ -1,5 +1,9 @@
 import { MAX_BULK_ISBN_COUNT } from '~~/shared/utils/schemas'
 
+// A recovery attempt can use the 12-second metadata timeout followed by the
+// 20-second cover timeout. Leave a small buffer for persistence and cleanup.
+const MIN_RECOVERY_SAFETY_SECONDS = 35
+
 type BooksRuntimeConfig = {
   booksBulkAddMaxCount?: unknown
   booksRateLimitEnabled?: unknown
@@ -7,11 +11,15 @@ type BooksRuntimeConfig = {
   booksRateLimitMaxRequests?: unknown
   booksBulkLookupRateLimitWindowSeconds?: unknown
   booksBulkLookupRateLimitMaxRequests?: unknown
+  booksEnrichmentRateLimitWindowSeconds?: unknown
+  booksEnrichmentRateLimitMaxRequests?: unknown
   booksEnrichmentBatchSize?: unknown
   booksEnrichmentConcurrency?: unknown
   booksEnrichmentLeaseSeconds?: unknown
   booksEnrichmentMaxAttempts?: unknown
   booksEnrichmentBackoffSeconds?: unknown
+  booksEnrichmentRecoveryTimeBudgetSeconds?: unknown
+  booksEnrichmentRecoverySafetySeconds?: unknown
 }
 
 function runtimeValue(key: keyof BooksRuntimeConfig): unknown {
@@ -64,7 +72,34 @@ export function getBulkLookupRateLimitConfig() {
   }
 }
 
+export function getBooksEnrichmentRateLimitConfig() {
+  const base = getBooksRateLimitConfig()
+  return {
+    enabled: base.enabled,
+    windowSeconds: positiveInteger(
+      runtimeValue('booksEnrichmentRateLimitWindowSeconds') ?? process.env.NUXT_BOOKS_ENRICHMENT_RATE_LIMIT_WINDOW_SECONDS,
+      60
+    ),
+    maxRequests: positiveInteger(
+      runtimeValue('booksEnrichmentRateLimitMaxRequests') ?? process.env.NUXT_BOOKS_ENRICHMENT_RATE_LIMIT_MAX_REQUESTS,
+      10
+    )
+  }
+}
+
 export function getBooksEnrichmentConfig() {
+  const recoveryTimeBudgetSeconds = Math.max(
+    positiveInteger(
+      runtimeValue('booksEnrichmentRecoveryTimeBudgetSeconds') ?? process.env.NUXT_BOOKS_ENRICHMENT_RECOVERY_TIME_BUDGET_SECONDS,
+      840
+    ),
+    MIN_RECOVERY_SAFETY_SECONDS + 1
+  )
+  const configuredRecoverySafetySeconds = positiveInteger(
+    runtimeValue('booksEnrichmentRecoverySafetySeconds') ?? process.env.NUXT_BOOKS_ENRICHMENT_RECOVERY_SAFETY_SECONDS,
+    MIN_RECOVERY_SAFETY_SECONDS
+  )
+
   return {
     batchSize: positiveInteger(
       runtimeValue('booksEnrichmentBatchSize') ?? process.env.NUXT_BOOKS_ENRICHMENT_BATCH_SIZE,
@@ -85,6 +120,11 @@ export function getBooksEnrichmentConfig() {
     backoffSeconds: positiveInteger(
       runtimeValue('booksEnrichmentBackoffSeconds') ?? process.env.NUXT_BOOKS_ENRICHMENT_BACKOFF_SECONDS,
       60
+    ),
+    recoveryTimeBudgetSeconds,
+    recoverySafetySeconds: Math.min(
+      Math.max(configuredRecoverySafetySeconds, MIN_RECOVERY_SAFETY_SECONDS),
+      recoveryTimeBudgetSeconds - 1
     )
   }
 }

@@ -9,3 +9,9 @@ export function toBookEnrichmentUiStatus(
   if (status === 'no_cover' || status === 'not_found' || status === 'failed') return status
   return null
 }
+
+export function isBookEnrichmentInProgress(
+  status: BookEnrichmentUiStatus | null | undefined
+): boolean {
+  return status === 'queued' || status === 'preparing' || status === 'retrying'
+}

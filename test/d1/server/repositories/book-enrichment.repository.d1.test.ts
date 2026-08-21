@@ -16,11 +16,21 @@ import borrowerSuggestionsMigration from '../../../../server/db/migrations/sqlit
 import enrichmentMigration from '../../../../server/db/migrations/sqlite/0012_imported_book_enrichment.sql?raw'
 import authFactorsMigration from '../../../../server/db/migrations/sqlite/0013_auth-two-factor-passkeys.sql?raw'
 import recentAuthMigration from '../../../../server/db/migrations/sqlite/0014_recent-auth.sql?raw'
-import { bookEnrichmentJobs, books, user, userBooks } from '../../../../server/db/schema'
+import canonicalEnrichmentMigration from '../../../../server/db/migrations/sqlite/0016_canonical_book_enrichment.sql?raw'
+import { authors, bookAuthors, bookEnrichmentJobs, books, canonicalBookEnrichmentJobs, user, userBooks } from '../../../../server/db/schema'
 import {
   BookEnrichmentRepository,
   BookEnrichmentRepositoryLive
 } from '../../../../server/repositories/book-enrichment.repository'
+import {
+  CanonicalBookEnrichmentRepository,
+  CanonicalBookEnrichmentRepositoryLive
+} from '../../../../server/repositories/canonical-book-enrichment.repository'
+import {
+  BookRepository,
+  BookRepositoryLive
+} from '../../../../server/repositories/book.repository'
+import type { OpenLibraryBookData } from '../../../../server/repositories/openLibrary.repository'
 import { DbService, type DbServiceInterface } from '../../../../server/services/db.service'
 
 type D1Db = ReturnType<typeof drizzle>
@@ -36,7 +46,10 @@ describe('BookEnrichmentRepository on D1', () => {
   beforeEach(async () => {
     for (const table of [
       'book_enrichment_jobs',
+      'canonical_book_enrichment_jobs',
       'book_enrichment_locks',
+      'book_authors',
+      'authors',
       'user_books',
       'books',
       'user'
@@ -139,9 +152,228 @@ describe('BookEnrichmentRepository on D1', () => {
 
     expect(updates).toEqual([{
       userBookId: 'ub-1',
+      author: 'Unknown Author',
       coverPath: null,
       status: 'pending'
     }])
+  })
+
+  it('returns canonical enrichment updates for a user-owned book', async () => {
+    const now = new Date('2026-07-26T10:00:00.000Z')
+    await db.delete(bookEnrichmentJobs)
+    await db.update(books)
+      .set({ coverPath: 'covers/9780441172719.webp', source: 'open_library' })
+      .where(eq(books.id, 'book-1'))
+    await db.insert(canonicalBookEnrichmentJobs).values({
+      bookId: 'book-1',
+      isbn: '9780441172719',
+      status: 'processing',
+      attempts: 1,
+      maxAttempts: 5,
+      claimToken: 'claim-1',
+      leaseExpiresAt: new Date(now.getTime() + 60_000),
+      createdAt: now,
+      updatedAt: now
+    })
+
+    const updates = await runRepository(Effect.flatMap(BookEnrichmentRepository, repository =>
+      repository.getUpdatesForUserBooks('user-1', ['ub-1'])
+    ))
+
+    expect(updates).toEqual([{
+      userBookId: 'ub-1',
+      author: 'Unknown Author',
+      coverPath: 'covers/9780441172719.webp',
+      status: 'processing'
+    }])
+  })
+
+  it('persists one canonical pending job and atomically grants a single claim', async () => {
+    await db.update(books).set({ source: 'open_library' }).where(eq(books.id, 'book-1'))
+    const ensure = () => runCanonicalRepository(Effect.flatMap(CanonicalBookEnrichmentRepository, repository =>
+      repository.ensurePending('book-1', '9780441172719')
+    ))
+    await Promise.all([ensure(), ensure()])
+    await expect(db.select().from(canonicalBookEnrichmentJobs)).resolves.toHaveLength(1)
+
+    const now = new Date('2026-07-26T10:00:00.000Z')
+    const claim = () => runCanonicalRepository(Effect.flatMap(CanonicalBookEnrichmentRepository, repository =>
+      repository.claim('book-1', now, new Date(now.getTime() + 60_000))
+    ))
+    const claims = await Promise.all([claim(), claim()])
+    expect(claims.filter(Boolean)).toHaveLength(1)
+
+    const reclaimed = await runCanonicalRepository(Effect.flatMap(CanonicalBookEnrichmentRepository, repository =>
+      repository.claim('book-1', new Date(now.getTime() + 60_001), new Date(now.getTime() + 120_000))
+    ))
+    expect(reclaimed?.attempts).toBe(2)
+  })
+
+  it('marks a canonical job failed after its final allowed attempt', async () => {
+    await runCanonicalRepository(Effect.flatMap(CanonicalBookEnrichmentRepository, repository =>
+      repository.ensurePending('book-1', '9780441172719')
+    ))
+    await db.update(canonicalBookEnrichmentJobs)
+      .set({ maxAttempts: 1 })
+      .where(eq(canonicalBookEnrichmentJobs.bookId, 'book-1'))
+
+    const now = new Date('2026-07-26T10:00:00.000Z')
+    const claimed = await runCanonicalRepository(Effect.flatMap(CanonicalBookEnrichmentRepository, repository =>
+      repository.claim('book-1', now, new Date(now.getTime() + 60_000))
+    ))
+    expect(claimed?.attempts).toBe(1)
+
+    await runCanonicalRepository(Effect.flatMap(CanonicalBookEnrichmentRepository, repository =>
+      repository.retry('book-1', claimed!.claimToken!, new Date(now.getTime() + 5_000), 'Temporary failure', now)
+    ))
+    const job = await runCanonicalRepository(Effect.flatMap(CanonicalBookEnrichmentRepository, repository => repository.get('book-1')))
+    expect(job).toMatchObject({ status: 'failed', nextAttemptAt: null })
+
+    const retryClaim = await runCanonicalRepository(Effect.flatMap(CanonicalBookEnrichmentRepository, repository =>
+      repository.claim('book-1', new Date(now.getTime() + 60_001), new Date(now.getTime() + 120_000))
+    ))
+    expect(retryClaim).toBeNull()
+  })
+
+  it('prioritizes due retries and expired leases over pending canonical jobs during recovery', async () => {
+    const now = new Date('2026-07-26T10:00:00.000Z')
+    const jobs = [
+      { bookId: 'book-retry-old', isbn: '9780000000001', status: 'retrying' as const, nextAttemptAt: new Date('2026-07-26T09:40:00.000Z') },
+      { bookId: 'book-retry-new', isbn: '9780000000002', status: 'retrying' as const, nextAttemptAt: new Date('2026-07-26T09:50:00.000Z') },
+      { bookId: 'book-expired-processing', isbn: '9780000000003', status: 'processing' as const, leaseExpiresAt: new Date('2026-07-26T09:55:00.000Z') },
+      { bookId: 'book-pending-a', isbn: '9780000000004', status: 'pending' as const },
+      { bookId: 'book-pending-b', isbn: '9780000000005', status: 'pending' as const },
+      { bookId: 'book-pending-c', isbn: '9780000000006', status: 'pending' as const },
+      { bookId: 'book-pending-d', isbn: '9780000000007', status: 'pending' as const }
+    ]
+
+    await db.insert(books).values(jobs.map(job => ({
+      id: job.bookId,
+      isbn: job.isbn,
+      title: job.bookId,
+      source: 'open_library' as const,
+      entrySource: 'isbn_lookup' as const,
+      createdAt: now
+    })))
+    await db.insert(canonicalBookEnrichmentJobs).values(jobs.map(job => ({
+      ...job,
+      attempts: 0,
+      maxAttempts: 5,
+      createdAt: now,
+      updatedAt: now
+    })))
+
+    const recoverable = await runCanonicalRepository(Effect.flatMap(CanonicalBookEnrichmentRepository, repository =>
+      repository.listRecoverable(now, 3)
+    ))
+
+    expect(recoverable.map(job => job.bookId)).toEqual([
+      'book-retry-old',
+      'book-retry-new',
+      'book-expired-processing'
+    ])
+  })
+
+  it('hydrates authors when a competing core lookup already persisted the canonical book', async () => {
+    await db.update(books)
+      .set({ source: 'open_library' })
+      .where(eq(books.id, 'book-1'))
+
+    const data: OpenLibraryBookData = {
+      isbn: '9780441172719',
+      title: 'Dune',
+      authors: ['Frank Herbert'],
+      openLibraryKey: '/books/OL1M',
+      workKey: '/works/OL1W',
+      coverUrl: null
+    }
+    const book = await runBookRepository(Effect.flatMap(BookRepository, repository =>
+      repository.createCoreOpenLibraryBook(data.isbn, data)
+    ))
+
+    expect(book.authors.map(author => author.name)).toEqual(['Frank Herbert'])
+  })
+
+  it('persists core books and author links atomically for competing lookups', async () => {
+    const data: OpenLibraryBookData = {
+      isbn: '9780306406157',
+      title: 'Nuclear Physics',
+      authors: [' George  Green ', 'George Green'],
+      openLibraryKey: '/books/OL2M',
+      workKey: '/works/OL2W',
+      coverUrl: null
+    }
+    const create = () => runBookRepository(Effect.flatMap(BookRepository, repository =>
+      repository.createCoreOpenLibraryBook(data.isbn, data)
+    ))
+
+    const [first, second] = await Promise.all([create(), create()])
+    const persistedAuthors = await db.select({ name: authors.name, createdAt: bookAuthors.createdAt })
+      .from(bookAuthors)
+      .innerJoin(authors, eq(bookAuthors.authorId, authors.id))
+      .where(eq(bookAuthors.bookId, first.id))
+
+    expect(first.id).toBe(second.id)
+    expect(first.authors.map(author => author.name)).toEqual(['George Green'])
+    expect(second.authors.map(author => author.name)).toEqual(['George Green'])
+    expect(persistedAuthors).toHaveLength(1)
+    expect(persistedAuthors[0]?.name).toBe('George Green')
+    expect(persistedAuthors[0]?.createdAt).toBeInstanceOf(Date)
+  })
+
+  it('replaces an Unknown Author placeholder when enrichment returns an author', async () => {
+    await db.update(books)
+      .set({ source: 'open_library' })
+      .where(eq(books.id, 'book-1'))
+
+    const coreData: OpenLibraryBookData = {
+      isbn: '9780441172719',
+      title: 'Dune',
+      authors: ['Unknown Author'],
+      openLibraryKey: '/books/OL1M',
+      workKey: '/works/OL1W',
+      coverUrl: null
+    }
+    await runBookRepository(Effect.flatMap(BookRepository, repository =>
+      repository.createCoreOpenLibraryBook(coreData.isbn, coreData)
+    ))
+
+    const enriched = await runBookRepository(Effect.flatMap(BookRepository, repository =>
+      repository.applyOpenLibraryEnrichment('book-1', {
+        ...coreData,
+        authors: ['Frank Herbert']
+      }, null)
+    ))
+
+    expect(enriched.author).toBe('Frank Herbert')
+    expect(enriched.authors.map(author => author.name)).toEqual(['Frank Herbert'])
+  })
+
+  it('preserves a resolved author during enrichment', async () => {
+    await db.update(books)
+      .set({ source: 'open_library' })
+      .where(eq(books.id, 'book-1'))
+
+    const coreData: OpenLibraryBookData = {
+      isbn: '9780441172719',
+      title: 'Dune',
+      authors: ['Frank Herbert'],
+      openLibraryKey: '/books/OL1M',
+      workKey: '/works/OL1W',
+      coverUrl: null
+    }
+    await runBookRepository(Effect.flatMap(BookRepository, repository =>
+      repository.createCoreOpenLibraryBook(coreData.isbn, coreData)
+    ))
+
+    const enriched = await runBookRepository(Effect.flatMap(BookRepository, repository =>
+      repository.applyOpenLibraryEnrichment('book-1', {
+        ...coreData,
+        authors: ['Different Provider Author']
+      }, null)
+    ))
+
+    expect(enriched.authors.map(author => author.name)).toEqual(['Frank Herbert'])
   })
 })
 
@@ -157,7 +389,8 @@ async function applyMigrations(database: D1Database) {
     borrowerSuggestionsMigration,
     enrichmentMigration,
     authFactorsMigration,
-    recentAuthMigration
+    recentAuthMigration,
+    canonicalEnrichmentMigration
   ]) {
     for (const statement of migration.split('--> statement-breakpoint')) {
       const migrationStatement = statement.trim()
@@ -214,6 +447,32 @@ function runRepository<A, E>(
   const typedDatabase = db as unknown as DbServiceInterface['db']
   return Effect.runPromise(effect.pipe(
     Effect.provide(BookEnrichmentRepositoryLive),
+    Effect.provide(Layer.succeed(DbService, {
+      db: typedDatabase,
+      executeAtomic: buildStatements => typedDatabase.batch(buildStatements(typedDatabase))
+    }))
+  ))
+}
+
+function runCanonicalRepository<A, E>(
+  effect: Effect.Effect<A, E, CanonicalBookEnrichmentRepository | DbService>
+) {
+  const typedDatabase = db as unknown as DbServiceInterface['db']
+  return Effect.runPromise(effect.pipe(
+    Effect.provide(CanonicalBookEnrichmentRepositoryLive),
+    Effect.provide(Layer.succeed(DbService, {
+      db: typedDatabase,
+      executeAtomic: buildStatements => typedDatabase.batch(buildStatements(typedDatabase))
+    }))
+  ))
+}
+
+function runBookRepository<A, E>(
+  effect: Effect.Effect<A, E, BookRepository | DbService>
+) {
+  const typedDatabase = db as unknown as DbServiceInterface['db']
+  return Effect.runPromise(effect.pipe(
+    Effect.provide(BookRepositoryLive),
     Effect.provide(Layer.succeed(DbService, {
       db: typedDatabase,
       executeAtomic: buildStatements => typedDatabase.batch(buildStatements(typedDatabase))

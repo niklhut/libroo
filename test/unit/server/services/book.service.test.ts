@@ -7,13 +7,18 @@ import {
 } from '../../../../shared/utils/schemas'
 import { BookRepository, DatabaseError, type BookRepositoryInterface } from '../../../../server/repositories/book.repository'
 import { BookEnrichmentRepository, type BookEnrichmentRepositoryInterface } from '../../../../server/repositories/book-enrichment.repository'
+import { CanonicalBookEnrichmentRepository, type CanonicalBookEnrichmentRepository as CanonicalBookEnrichmentRepositoryService } from '../../../../server/repositories/canonical-book-enrichment.repository'
 import { LocationRepository, type LocationRepositoryInterface } from '../../../../server/repositories/location.repository'
-import { OpenLibraryApiError, OpenLibraryRepository, type OpenLibraryRepositoryInterface } from '../../../../server/repositories/openLibrary.repository'
+import { OpenLibraryApiError, OpenLibraryBookNotFoundError, OpenLibraryRepository, type OpenLibraryRepositoryInterface } from '../../../../server/repositories/openLibrary.repository'
 import type { BookService } from '../../../../server/services/book.service'
-import { BookServiceLive, bulkLookupBooks, createManualBook, decodeCoverImage, getBookDetails, getUserLibrary, InvalidManualCoverError } from '../../../../server/services/book.service'
+import { BookServiceLive, bulkLookupBooks, createManualBook, decodeCoverImage, enrichOpenLibraryBook, getBookDetails, getUserLibrary, InvalidManualCoverError, recoverCanonicalEnrichment } from '../../../../server/services/book.service'
 import { putCoverImage, StorageService, type StorageServiceInterface } from '../../../../server/services/storage.service'
 
 Object.assign(globalThis, { BookRepository, OpenLibraryRepository, LocationRepository, putCoverImage })
+
+const canonicalEnrichmentRepository = {
+  get: () => Effect.succeed(null)
+} as unknown as CanonicalBookEnrichmentRepositoryService['Service']
 
 describe('manual cover validation', () => {
   const pngFixture = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00])
@@ -91,6 +96,7 @@ describe('manual cover validation', () => {
       Effect.provide(BookServiceLive),
       Effect.provide(Layer.succeed(BookRepository, bookRepository as BookRepositoryInterface)),
       Effect.provide(Layer.succeed(BookEnrichmentRepository, {} as BookEnrichmentRepositoryInterface)),
+      Effect.provide(Layer.succeed(CanonicalBookEnrichmentRepository, canonicalEnrichmentRepository)),
       Effect.provide(Layer.succeed(OpenLibraryRepository, {} as OpenLibraryRepositoryInterface)),
       Effect.provide(Layer.succeed(LocationRepository, {} as LocationRepositoryInterface)),
       Effect.provide(Layer.succeed(StorageService, storageService as StorageServiceInterface))
@@ -168,6 +174,7 @@ describe('optional enrichment status decoration', () => {
         Effect.provide(BookServiceLive),
         Effect.provide(Layer.succeed(BookRepository, bookRepository)),
         Effect.provide(Layer.succeed(BookEnrichmentRepository, enrichmentRepository)),
+        Effect.provide(Layer.succeed(CanonicalBookEnrichmentRepository, canonicalEnrichmentRepository)),
         Effect.provide(Layer.succeed(OpenLibraryRepository, {} as OpenLibraryRepositoryInterface)),
         Effect.provide(Layer.succeed(LocationRepository, {} as LocationRepositoryInterface))
       )
@@ -182,6 +189,182 @@ describe('optional enrichment status decoration', () => {
     expect(library.items[0]?.enrichmentStatus).toBeNull()
     expect(bookDetails.enrichmentStatus).toBeNull()
     expect(enrichmentRepository.getStatusesForUserBooks).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('canonical ISBN enrichment', () => {
+  it('cleans up a newly downloaded cover when metadata persistence fails', async () => {
+    const retry = vi.fn(() => Effect.void)
+    const isCoverReferenced = vi.fn(() => Effect.succeed(false))
+    const deleteCover = vi.fn(() => Effect.void)
+    const bookRepository = {
+      getBookById: vi.fn(() => Effect.succeed({
+        id: 'book-1',
+        isbn: '9780441172719',
+        title: 'Dune',
+        author: 'Frank Herbert',
+        authors: [{ id: 'author-1', name: 'Frank Herbert' }],
+        coverPath: null,
+        openLibraryKey: '/books/OL1M',
+        createdAt: new Date(),
+        source: 'open_library' as const,
+        createdByUserId: null
+      })),
+      findStoredOpenLibraryCover: vi.fn(() => Effect.succeed(null)),
+      applyOpenLibraryEnrichment: vi.fn(() => Effect.fail(new DatabaseError({
+        message: 'write failed',
+        operation: 'applyOpenLibraryEnrichment'
+      }))),
+      getSystemTagsByBookId: vi.fn(() => Effect.succeed([]))
+    } as unknown as BookRepositoryInterface
+    const canonicalRepository = {
+      ensurePending: vi.fn(() => Effect.succeed({ status: 'pending', attempts: 0, maxAttempts: 5 })),
+      claim: vi.fn(() => Effect.succeed({ claimToken: 'claim-1', attempts: 1, maxAttempts: 5 })),
+      retry
+    } as unknown as CanonicalBookEnrichmentRepositoryService['Service']
+    const openLibraryRepository = {
+      lookupByISBN: vi.fn(() => Effect.succeed({
+        isbn: '9780441172719',
+        title: 'Dune',
+        authors: ['Frank Herbert'],
+        openLibraryKey: '/books/OL1M',
+        coverUrl: 'https://covers.openlibrary.org/b/isbn/9780441172719-L.jpg'
+      })),
+      downloadCover: vi.fn(() => Effect.succeed('covers/9780441172719.webp'))
+    } as unknown as OpenLibraryRepositoryInterface
+    const enrichmentRepository = {
+      isCoverReferenced
+    } as unknown as BookEnrichmentRepositoryInterface
+
+    const patch = await Effect.runPromise(enrichOpenLibraryBook('book-1').pipe(
+      Effect.provide(BookServiceLive),
+      Effect.provide(Layer.succeed(BookRepository, bookRepository)),
+      Effect.provide(Layer.succeed(BookEnrichmentRepository, enrichmentRepository)),
+      Effect.provide(Layer.succeed(CanonicalBookEnrichmentRepository, canonicalRepository)),
+      Effect.provide(Layer.succeed(OpenLibraryRepository, openLibraryRepository)),
+      Effect.provide(Layer.succeed(LocationRepository, {} as LocationRepositoryInterface)),
+      Effect.provide(Layer.succeed(StorageService, { delete: deleteCover } as StorageServiceInterface))
+    ))
+
+    expect(patch.status).toBe('retrying')
+    expect(isCoverReferenced).toHaveBeenCalledWith('covers/9780441172719.webp')
+    expect(deleteCover).toHaveBeenCalledWith('covers/9780441172719.webp')
+    expect(retry).toHaveBeenCalledWith(
+      'book-1',
+      'claim-1',
+      expect.any(Date),
+      expect.any(String),
+      expect.any(Date)
+    )
+  })
+
+  it('marks a missing Open Library record as terminal not_found', async () => {
+    const complete = vi.fn(() => Effect.void)
+    const bookRepository = {
+      getBookById: vi.fn(() => Effect.succeed({
+        id: 'book-1',
+        isbn: '9780441172719',
+        title: 'Dune',
+        author: 'Frank Herbert',
+        authors: [{ id: 'author-1', name: 'Frank Herbert' }],
+        coverPath: null,
+        openLibraryKey: '/books/OL1M',
+        createdAt: new Date(),
+        source: 'open_library' as const,
+        createdByUserId: null
+      })),
+      getSystemTagsByBookId: vi.fn(() => Effect.succeed([]))
+    } as unknown as BookRepositoryInterface
+    const canonicalRepository = {
+      ensurePending: vi.fn(() => Effect.succeed({ status: 'pending', attempts: 0, maxAttempts: 5 })),
+      claim: vi.fn(() => Effect.succeed({ claimToken: 'claim-1', attempts: 1, maxAttempts: 5 })),
+      complete
+    } as unknown as CanonicalBookEnrichmentRepositoryService['Service']
+    const openLibraryRepository = {
+      lookupByISBN: vi.fn(() => Effect.fail(new OpenLibraryBookNotFoundError({
+        isbn: '9780441172719',
+        message: 'Open Library has no record for this ISBN'
+      })))
+    } as unknown as OpenLibraryRepositoryInterface
+
+    const patch = await Effect.runPromise(enrichOpenLibraryBook('book-1').pipe(
+      Effect.provide(BookServiceLive),
+      Effect.provide(Layer.succeed(BookRepository, bookRepository)),
+      Effect.provide(Layer.succeed(BookEnrichmentRepository, {} as BookEnrichmentRepositoryInterface)),
+      Effect.provide(Layer.succeed(CanonicalBookEnrichmentRepository, canonicalRepository)),
+      Effect.provide(Layer.succeed(OpenLibraryRepository, openLibraryRepository)),
+      Effect.provide(Layer.succeed(LocationRepository, {} as LocationRepositoryInterface)),
+      Effect.provide(Layer.succeed(StorageService, { delete: vi.fn(() => Effect.void) } as StorageServiceInterface))
+    ))
+
+    expect(patch.status).toBe('not_found')
+    expect(complete).toHaveBeenCalledWith(
+      'book-1',
+      'claim-1',
+      'not_found',
+      'Open Library has no record for this ISBN',
+      expect.any(Date)
+    )
+  })
+
+  it('stops recovery before its safety threshold and reports only processed jobs', async () => {
+    const getBookById = vi.fn(() => Effect.succeed({
+      id: 'book-1',
+      isbn: '9780441172719',
+      title: 'Dune',
+      author: 'Frank Herbert',
+      authors: [{ id: 'author-1', name: 'Frank Herbert' }],
+      coverPath: 'covers/existing.webp',
+      openLibraryKey: '/books/OL1M',
+      createdAt: new Date(),
+      source: 'open_library' as const,
+      createdByUserId: null
+    }))
+    const bookRepository = {
+      getBookById,
+      applyOpenLibraryEnrichment: vi.fn(() => getBookById()),
+      addSystemTagsToBook: vi.fn(() => Effect.void),
+      getSystemTagsByBookId: vi.fn(() => Effect.succeed([]))
+    } as unknown as BookRepositoryInterface
+    const canonicalRepository = {
+      listRecoverable: vi.fn(() => Effect.succeed([{ bookId: 'book-1' }, { bookId: 'book-2' }])),
+      ensurePending: vi.fn(() => Effect.succeed({ status: 'pending', attempts: 0, maxAttempts: 5 })),
+      claim: vi.fn(() => Effect.succeed({ claimToken: 'claim-1', attempts: 1, maxAttempts: 5 })),
+      complete: vi.fn(() => Effect.void),
+      get: vi.fn(() => Effect.succeed({ status: 'completed' }))
+    } as unknown as CanonicalBookEnrichmentRepositoryService['Service']
+    const openLibraryRepository = {
+      lookupByISBN: vi.fn(() => Effect.succeed({
+        isbn: '9780441172719',
+        title: 'Dune',
+        authors: ['Frank Herbert'],
+        openLibraryKey: '/books/OL1M',
+        coverUrl: null
+      }))
+    } as unknown as OpenLibraryRepositoryInterface
+    const now = vi.spyOn(Date, 'now')
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(0)
+      .mockReturnValue(840_000)
+
+    try {
+      const result = await Effect.runPromise(recoverCanonicalEnrichment(2).pipe(
+        Effect.provide(BookServiceLive),
+        Effect.provide(Layer.succeed(BookRepository, bookRepository)),
+        Effect.provide(Layer.succeed(BookEnrichmentRepository, {} as BookEnrichmentRepositoryInterface)),
+        Effect.provide(Layer.succeed(CanonicalBookEnrichmentRepository, canonicalRepository)),
+        Effect.provide(Layer.succeed(OpenLibraryRepository, openLibraryRepository)),
+        Effect.provide(Layer.succeed(LocationRepository, {} as LocationRepositoryInterface)),
+        Effect.provide(Layer.succeed(StorageService, { delete: vi.fn(() => Effect.void) } as StorageServiceInterface))
+      ))
+
+      expect(result).toEqual({ attempted: 1, completed: 1 })
+      expect(getBookById).toHaveBeenCalledTimes(2)
+      expect(getBookById).toHaveBeenCalledWith('book-1')
+    } finally {
+      now.mockRestore()
+    }
   })
 })
 
@@ -223,6 +406,7 @@ describe('bulk ISBN lookup', () => {
       Effect.provide(BookServiceLive),
       Effect.provide(Layer.succeed(BookRepository, bookRepository)),
       Effect.provide(Layer.succeed(BookEnrichmentRepository, {} as BookEnrichmentRepositoryInterface)),
+      Effect.provide(Layer.succeed(CanonicalBookEnrichmentRepository, canonicalEnrichmentRepository)),
       Effect.provide(Layer.succeed(OpenLibraryRepository, openLibraryRepository)),
       Effect.provide(Layer.succeed(LocationRepository, {} as LocationRepositoryInterface))
     ))
@@ -252,6 +436,7 @@ describe('bulk ISBN lookup', () => {
       Effect.provide(BookServiceLive),
       Effect.provide(Layer.succeed(BookRepository, bookRepository)),
       Effect.provide(Layer.succeed(BookEnrichmentRepository, {} as BookEnrichmentRepositoryInterface)),
+      Effect.provide(Layer.succeed(CanonicalBookEnrichmentRepository, canonicalEnrichmentRepository)),
       Effect.provide(Layer.succeed(OpenLibraryRepository, openLibraryRepository)),
       Effect.provide(Layer.succeed(LocationRepository, {} as LocationRepositoryInterface))
     ))
@@ -293,6 +478,7 @@ describe('bulk ISBN lookup', () => {
       Effect.provide(BookServiceLive),
       Effect.provide(Layer.succeed(BookRepository, bookRepository)),
       Effect.provide(Layer.succeed(BookEnrichmentRepository, {} as BookEnrichmentRepositoryInterface)),
+      Effect.provide(Layer.succeed(CanonicalBookEnrichmentRepository, canonicalEnrichmentRepository)),
       Effect.provide(Layer.succeed(OpenLibraryRepository, openLibraryRepository)),
       Effect.provide(Layer.succeed(LocationRepository, {} as LocationRepositoryInterface))
     ))
@@ -341,6 +527,7 @@ describe('bulk ISBN lookup', () => {
       Effect.provide(BookServiceLive),
       Effect.provide(Layer.succeed(BookRepository, bookRepository)),
       Effect.provide(Layer.succeed(BookEnrichmentRepository, {} as BookEnrichmentRepositoryInterface)),
+      Effect.provide(Layer.succeed(CanonicalBookEnrichmentRepository, canonicalEnrichmentRepository)),
       Effect.provide(Layer.succeed(OpenLibraryRepository, openLibraryRepository)),
       Effect.provide(Layer.succeed(LocationRepository, {} as LocationRepositoryInterface))
     ))

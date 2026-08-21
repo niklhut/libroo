@@ -1,4 +1,4 @@
-import type { BookLookupResult, BulkBookLookupItem, BulkBookLookupResponse, LibraryState } from '~~/shared/types/book'
+import type { BookEnrichmentPatch, BookLookupResult, BulkBookLookupItem, BulkBookLookupResponse, LibraryState } from '~~/shared/types/book'
 import { getApiErrorMessage } from '~~/shared/utils/api-error'
 import { MAX_BULK_ISBN_COUNT } from '~~/shared/utils/schemas'
 import { defineStore } from 'pinia'
@@ -38,24 +38,98 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
   const pendingAdds = ref(0)
   const lookupError = ref<string | null>(null)
   const addError = ref<string | null>(null)
+  const enrichmentError = ref<string | null>(null)
+  const pendingEnrichments = ref(0)
+  // Keep the reactive object that receives asynchronous enrichment patches.
+  // Consumers get this same proxy, rather than a raw $fetch object.
+  const activeLookupResult = ref<BookLookupResult | null>(null)
   let resetVersion = 0
+  let activeLookupRequest = 0
   const activeLookupControllers = new Set<AbortController>()
+  const activeEnrichmentControllers = new Map<number, Set<AbortController>>()
 
   const isLookingUp = computed(() => pendingLookups.value > 0)
   const isAdding = computed(() => pendingAdds.value > 0)
+  const isEnriching = computed(() => pendingEnrichments.value > 0)
 
   function reset() {
     resetVersion += 1
     for (const controller of activeLookupControllers) controller.abort()
     activeLookupControllers.clear()
+    for (const controllers of activeEnrichmentControllers.values()) {
+      for (const controller of controllers) controller.abort()
+    }
+    activeEnrichmentControllers.clear()
     pendingLookups.value = 0
     pendingAdds.value = 0
+    pendingEnrichments.value = 0
     lookupError.value = null
     addError.value = null
+    enrichmentError.value = null
+    activeLookupResult.value = null
   }
 
   function getErrorMessage(err: unknown, fallback: string): string {
     return getApiErrorMessage(err, fallback)
+  }
+
+  function isPending(enrichment: BookLookupResult['enrichment']) {
+    return enrichment?.status === 'queued' || enrichment?.status === 'preparing' || enrichment?.status === 'retrying'
+  }
+
+  function isActiveRequest(requestVersion: number, requestId: number) {
+    return requestVersion === resetVersion && requestId === activeLookupRequest
+  }
+
+  function registerEnrichmentController(requestVersion: number, controller: AbortController) {
+    const controllers = activeEnrichmentControllers.get(requestVersion) ?? new Set<AbortController>()
+    controllers.add(controller)
+    activeEnrichmentControllers.set(requestVersion, controllers)
+  }
+
+  function unregisterEnrichmentController(requestVersion: number, controller: AbortController) {
+    const controllers = activeEnrichmentControllers.get(requestVersion)
+    if (!controllers) return
+    controllers.delete(controller)
+    if (controllers.size === 0) activeEnrichmentControllers.delete(requestVersion)
+  }
+
+  async function enrichResult(result: BookLookupResult, requestVersion: number, requestId: number, attempt = 0): Promise<void> {
+    if (!result.bookId || !isPending(result.enrichment) || !isActiveRequest(requestVersion, requestId)) return
+    const controller = new AbortController()
+    registerEnrichmentController(requestVersion, controller)
+    pendingEnrichments.value += 1
+    try {
+      const patch = await $fetch<BookEnrichmentPatch>('/api/books/enrichment/run', {
+        method: 'POST',
+        body: { bookId: result.bookId },
+        signal: controller.signal
+      })
+      if (!isActiveRequest(requestVersion, requestId) || patch.bookId !== result.bookId) return
+      result.author = patch.author
+      result.authors = patch.authors
+      result.coverUrl = patch.coverUrl
+      result.description = patch.description
+      result.subjects = patch.subjects
+      result.publishDate = patch.publishDate
+      result.publishers = patch.publishers
+      result.numberOfPages = patch.numberOfPages
+      result.enrichment = { status: patch.status }
+      if (isPending(result.enrichment) && attempt < 4) {
+        window.setTimeout(() => {
+          void enrichResult(result, requestVersion, requestId, attempt + 1)
+        }, 1500 * (attempt + 1))
+      }
+    } catch (err: unknown) {
+      if (isActiveRequest(requestVersion, requestId)) {
+        enrichmentError.value = getErrorMessage(err, 'Book details are still being prepared')
+      }
+    } finally {
+      unregisterEnrichmentController(requestVersion, controller)
+      if (requestVersion === resetVersion) {
+        pendingEnrichments.value = Math.max(0, pendingEnrichments.value - 1)
+      }
+    }
   }
 
   async function lookupIsbn(
@@ -63,26 +137,31 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
     options: { fallbackMessage?: string } = {}
   ): Promise<IsbnLookupSuccess | IsbnLookupFailure> {
     const requestVersion = resetVersion
+    const requestId = ++activeLookupRequest
     pendingLookups.value += 1
     lookupError.value = null
 
     try {
-      const result = await $fetch<BookLookupResult>('/api/books/lookup', {
+      const response = await $fetch<BookLookupResult>('/api/books/lookup', {
         method: 'POST',
         body: { isbn }
       })
+      if (!isActiveRequest(requestVersion, requestId)) {
+        return { ok: false, message: options.fallbackMessage || 'Failed to lookup book' }
+      }
+      activeLookupResult.value = response
+      const result = activeLookupResult.value!
 
-      return requestVersion === resetVersion
-        ? { ok: true, result }
-        : { ok: false, message: options.fallbackMessage || 'Failed to lookup book' }
+      if (result.found && result.enrichment && isPending(result.enrichment)) {
+        void enrichResult(result, requestVersion, requestId)
+      }
+      return { ok: true, result }
     } catch (err: unknown) {
       const message = getErrorMessage(err, options.fallbackMessage || 'Failed to lookup book')
-      if (requestVersion === resetVersion) lookupError.value = message
+      if (isActiveRequest(requestVersion, requestId)) lookupError.value = message
       return { ok: false, message }
     } finally {
-      if (requestVersion === resetVersion) {
-        pendingLookups.value = Math.max(0, pendingLookups.value - 1)
-      }
+      pendingLookups.value = Math.max(0, pendingLookups.value - 1)
     }
   }
 
@@ -197,10 +276,13 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
   return {
     isLookingUp,
     isAdding,
+    isEnriching,
     pendingLookups,
     pendingAdds,
     lookupError,
     addError,
+    enrichmentError,
+    activeLookupResult,
     getErrorMessage,
     lookupIsbn,
     bulkLookupIsbns,

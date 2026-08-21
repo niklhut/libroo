@@ -55,6 +55,122 @@ describe('useIsbnLookupStore', () => {
     })
   })
 
+  it('merges an immediate enrichment patch into the reactive preview result', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        found: true,
+        bookId: 'book-1',
+        isbn: '9781234567890',
+        title: 'Book A',
+        author: 'Author A',
+        coverUrl: null,
+        enrichment: { status: 'preparing' }
+      })
+      .mockResolvedValueOnce({
+        bookId: 'book-1',
+        isbn: '9781234567890',
+        author: 'Updated Author',
+        authors: ['Updated Author'],
+        coverPath: 'covers/9781234567890.webp',
+        coverUrl: '/api/blob/covers/9781234567890.webp',
+        subjects: ['Science fiction'],
+        status: null
+      })
+    ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
+
+    const store = useIsbnLookupStore()
+    const lookup = await store.lookupIsbn('9781234567890')
+
+    await vi.waitFor(() => {
+      expect(lookup).toMatchObject({
+        ok: true,
+        result: { author: 'Updated Author', coverUrl: '/api/blob/covers/9781234567890.webp', subjects: ['Science fiction'] }
+      })
+    })
+    expect(store.activeLookupResult?.coverUrl).toBe('/api/blob/covers/9781234567890.webp')
+    expect(fetchMock).toHaveBeenLastCalledWith('/api/books/enrichment/run', expect.objectContaining({
+      method: 'POST',
+      body: { bookId: 'book-1' },
+      signal: expect.any(AbortSignal)
+    }))
+  })
+
+  it('keeps enrichment pending after a transport failure', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        found: true,
+        bookId: 'book-1',
+        isbn: '9781234567890',
+        title: 'Book A',
+        author: 'Author A',
+        enrichment: { status: 'preparing' }
+      })
+      .mockRejectedValueOnce(new Error('Network unavailable'))
+    ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
+
+    const store = useIsbnLookupStore()
+    await store.lookupIsbn('9781234567890')
+
+    await vi.waitFor(() => {
+      expect(store.enrichmentError).toBe('Network unavailable')
+    })
+    expect(store.activeLookupResult?.enrichment?.status).toBe('preparing')
+  })
+
+  it('aborts enrichment requests and resets their counter', async () => {
+    let enrichmentSignal: AbortSignal | undefined
+    const enrichmentResponse = deferred<never>()
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        found: true,
+        bookId: 'book-1',
+        isbn: '9781234567890',
+        title: 'Book A',
+        author: 'Author A',
+        enrichment: { status: 'preparing' }
+      })
+      .mockImplementationOnce((_url: string, options: { signal: AbortSignal }) => {
+        enrichmentSignal = options.signal
+        return enrichmentResponse.promise
+      })
+    ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
+
+    const store = useIsbnLookupStore()
+    await store.lookupIsbn('9781234567890')
+    await vi.waitFor(() => {
+      expect(store.isEnriching).toBe(true)
+    })
+
+    store.reset()
+
+    expect(enrichmentSignal?.aborted).toBe(true)
+    expect(store.isEnriching).toBe(false)
+    enrichmentResponse.resolve(undefined as never)
+    await vi.waitFor(() => {
+      expect(store.isEnriching).toBe(false)
+    })
+  })
+
+  it('keeps the newest preview when an earlier lookup resolves later', async () => {
+    const firstResponse = deferred<{ found: true, isbn: string, title: string, author: string }>()
+    const secondResponse = deferred<{ found: true, isbn: string, title: string, author: string }>()
+    const fetchMock = vi.fn()
+      .mockReturnValueOnce(firstResponse.promise)
+      .mockReturnValueOnce(secondResponse.promise)
+    ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
+
+    const store = useIsbnLookupStore()
+    const first = store.lookupIsbn('9781111111111')
+    const second = store.lookupIsbn('9782222222222')
+
+    secondResponse.resolve({ found: true, isbn: '9782222222222', title: 'Second Book', author: 'Second Author' })
+    await expect(second).resolves.toMatchObject({ ok: true, result: { isbn: '9782222222222' } })
+
+    firstResponse.resolve({ found: true, isbn: '9781111111111', title: 'First Book', author: 'First Author' })
+    await expect(first).resolves.toMatchObject({ ok: false })
+    expect(store.activeLookupResult).toMatchObject({ isbn: '9782222222222', title: 'Second Book' })
+  })
+
   it('adds a typed single ISBN through the shared bulk add primitive and marks dashboard sync', async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce({
       added: [{ isbn: '9781234567890' }],

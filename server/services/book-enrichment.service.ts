@@ -20,6 +20,7 @@ export interface EnrichImportedBooksResult {
 
 export interface BookEnrichmentUpdate {
   userBookId: string
+  author: string
   coverPath: string | null
   status: 'queued' | 'preparing' | 'retrying' | 'no_cover' | 'not_found' | 'failed' | null
 }
@@ -275,8 +276,9 @@ export const BookEnrichmentServiceLive = Layer.effect(
         enrichmentRepo.getUpdatesForUserBooks(userId, userBookIds).pipe(
           Effect.map(updates => updates.map(update => ({
             userBookId: update.userBookId,
+            author: update.author,
             coverPath: update.coverPath,
-            status: toBookEnrichmentUiStatus(update.status)
+            status: toBookEnrichmentUiStatus(update.status ?? undefined)
           })))
         ),
 

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { isBookEnrichmentInProgress } from '~~/shared/utils/book-enrichment'
+
 /**
  * Reusable book preview component showing cover, details, and action buttons
  */
@@ -32,6 +34,18 @@ defineEmits<{
           class="w-full h-full object-cover"
           loading="eager"
         />
+        <div
+          v-else-if="isBookEnrichmentInProgress(book.enrichment?.status)"
+          class="w-full h-full flex items-center justify-center bg-muted aspect-[1/1.5]"
+          role="status"
+        >
+          <span class="sr-only">Preparing book cover</span>
+          <UIcon
+            name="i-lucide-loader-2"
+            class="animate-spin text-3xl text-primary"
+            aria-hidden="true"
+          />
+        </div>
         <div
           v-else
           class="flex h-full w-full items-center justify-center"
@@ -100,6 +114,12 @@ defineEmits<{
     >
       {{ book.description }}
     </div>
+    <p
+      v-else-if="book.enrichment?.status === 'failed' || book.enrichment?.status === 'no_cover' || book.enrichment?.status === 'not_found'"
+      class="text-sm text-muted"
+    >
+      Extra book details could not be loaded. You can still add this book.
+    </p>
 
     <USeparator />
 

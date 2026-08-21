@@ -46,6 +46,10 @@ vi.mock('../../../../server/repositories/rate-limit.repository', () => ({
   RateLimitRepositoryLive: Layer.empty
 }))
 
+vi.mock('../../../../server/repositories/canonical-book-enrichment.repository', () => ({
+  CanonicalBookEnrichmentRepositoryLive: Layer.empty
+}))
+
 vi.mock('../../../../server/services/rate-limit.service', () => ({
   RateLimitServiceLive: Layer.empty
 }))

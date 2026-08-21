@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { booleanConfigValue } from '~~/shared/utils/runtime-config'
+import { isBookEnrichmentInProgress } from '~~/shared/utils/book-enrichment'
 
 const route = useRoute()
 const config = useRuntimeConfig()
@@ -20,8 +21,69 @@ const isMoveToLibraryDialogOpen = ref(false)
 const bookNoteDraft = ref('')
 const loanNoteDraft = ref('')
 
-const { data: book, status, refresh } = await useFetch<BookDetails>(`/api/books/${userBookId}`, {
+const { data: book, error, status, refresh } = await useFetch<BookDetails>(`/api/books/${userBookId}`, {
   headers: useRequestHeaders(['cookie'])
+})
+
+const enrichmentPollTimer = ref<ReturnType<typeof setTimeout> | null>(null)
+const enrichmentPollFailures = ref(0)
+const isEnrichmentPollActive = ref(import.meta.client && !document.hidden)
+const hasPendingEnrichment = computed(() => isBookEnrichmentInProgress(book.value?.enrichmentStatus))
+
+function scheduleEnrichmentPoll(delayOverride?: number) {
+  if (!import.meta.client || !isEnrichmentPollActive.value || enrichmentPollTimer.value || !hasPendingEnrichment.value) return
+
+  const delay = delayOverride ?? Math.min(60_000, 5000 * 2 ** enrichmentPollFailures.value)
+  enrichmentPollTimer.value = setTimeout(async () => {
+    enrichmentPollTimer.value = null
+    try {
+      await refresh()
+      if (error.value) {
+        enrichmentPollFailures.value = Math.min(enrichmentPollFailures.value + 1, 4)
+        console.error('Failed to refresh book enrichment status', error.value)
+      } else {
+        enrichmentPollFailures.value = 0
+      }
+    } catch (error) {
+      enrichmentPollFailures.value = Math.min(enrichmentPollFailures.value + 1, 4)
+      console.error('Failed to refresh book enrichment status', error)
+    } finally {
+      scheduleEnrichmentPoll()
+    }
+  }, delay)
+}
+
+function handleVisibilityChange() {
+  isEnrichmentPollActive.value = !document.hidden
+  if (isEnrichmentPollActive.value) {
+    enrichmentPollFailures.value = 0
+    scheduleEnrichmentPoll(0)
+  } else if (enrichmentPollTimer.value) {
+    clearTimeout(enrichmentPollTimer.value)
+    enrichmentPollTimer.value = null
+  }
+}
+
+watch(hasPendingEnrichment, (pending) => {
+  if (pending) {
+    scheduleEnrichmentPoll()
+  } else {
+    enrichmentPollFailures.value = 0
+    if (enrichmentPollTimer.value) {
+      clearTimeout(enrichmentPollTimer.value)
+      enrichmentPollTimer.value = null
+    }
+  }
+}, { immediate: true })
+
+onMounted(() => {
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+  handleVisibilityChange()
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
+  if (enrichmentPollTimer.value) clearTimeout(enrichmentPollTimer.value)
 })
 
 usePageTitle(computed(() => book.value?.title ?? 'Book'))

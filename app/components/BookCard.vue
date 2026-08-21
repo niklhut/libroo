@@ -14,6 +14,7 @@ interface Props {
   addedAt?: string | Date
   activeLoan?: ActiveLoanSummary | null
   tags?: string[]
+  enrichmentStatus?: BookEnrichmentUiStatus | null
 }
 
 const props = defineProps<Props>()
@@ -58,6 +59,15 @@ const coverUrl = computed(() => {
             class="w-full object-cover"
             loading="lazy"
           />
+          <div
+            v-else-if="enrichmentStatus === 'queued' || enrichmentStatus === 'preparing' || enrichmentStatus === 'retrying'"
+            class="w-full h-full flex items-center justify-center bg-muted aspect-[1/1.5]"
+          >
+            <UIcon
+              name="i-lucide-loader-2"
+              class="animate-spin text-3xl text-primary"
+            />
+          </div>
           <div
             v-else
             class="w-full h-full flex items-center justify-center bg-muted aspect-[1/1.5]"

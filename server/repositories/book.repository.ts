@@ -126,6 +126,15 @@ export interface BookLibraryFilters extends LibraryQueryFilters {
 
 // Service interface
 export interface BookRepositoryInterface {
+  createCoreOpenLibraryBook: (
+    isbn: string,
+    data: OpenLibraryBookData
+  ) => Effect.Effect<Book, BookCreateError | DatabaseError, DbService>
+  applyOpenLibraryEnrichment: (
+    bookId: string,
+    data: Pick<OpenLibraryBookData, 'authors' | 'description' | 'publishDate' | 'publishers' | 'numberOfPages' | 'openLibraryKey' | 'workKey'>,
+    coverPath: string | null
+  ) => Effect.Effect<Book, BookNotFoundError | DatabaseError, DbService>
   ensureOpenLibraryBook: (
     isbn: string,
     prefetchedData?: OpenLibraryBookData,
@@ -139,7 +148,8 @@ export interface BookRepositoryInterface {
   addBookByISBN: (
     userId: string,
     isbn: string,
-    libraryState?: LibraryState
+    libraryState?: LibraryState,
+    options?: { coreOnly?: boolean }
   ) => Effect.Effect<
     UserBook,
     BookCreateError | BookAlreadyOwnedError | OpenLibraryBookNotFoundError | OpenLibraryApiError | DatabaseError,
@@ -545,6 +555,49 @@ export const BookRepositoryLive = Layer.effect(
           const authorId = yield* resolveOrCreateAuthorId(name)
           yield* linkBookAuthor(bookId, authorId, index)
         }
+      })
+
+    const replaceUnknownBookAuthor = (bookId: string, authorNames: string[]) =>
+      Effect.gen(function* () {
+        const seenAuthors = new Set<string>()
+        const providerAuthors = authorNames.filter((name) => {
+          const normalizedName = normalizeAuthorName(name)
+          if (!normalizedName || normalizedName === 'unknown author' || seenAuthors.has(normalizedName)) return false
+          seenAuthors.add(normalizedName)
+          return true
+        })
+        if (providerAuthors.length === 0) return
+
+        const authorMap = yield* hydrateAuthorsForBookIds([bookId])
+        const currentAuthors = authorMap.get(bookId) || []
+        if (currentAuthors.length !== 1 || normalizeAuthorName(currentAuthors[0]!.name) !== 'unknown author') return
+
+        const authorIds = yield* Effect.forEach(providerAuthors, name => resolveOrCreateAuthorId(name), { concurrency: 1 })
+        const now = new Date()
+
+        yield* Effect.tryPromise({
+          try: () => dbService.executeAtomic((database) => {
+            const statements: AtomicDbStatement[] = [
+              database.delete(bookAuthors).where(and(
+                eq(bookAuthors.bookId, bookId),
+                eq(bookAuthors.authorId, currentAuthors[0]!.id)
+              ))
+            ]
+            for (const [index, authorId] of authorIds.entries()) {
+              statements.push(database.insert(bookAuthors).values({
+                bookId,
+                authorId,
+                sortOrder: index,
+                createdAt: now
+              }).onConflictDoNothing())
+            }
+            return [statements[0]!, ...statements.slice(1)] as AtomicDbStatements
+          }),
+          catch: error => new DatabaseError({
+            message: `Failed to replace placeholder author: ${error}`,
+            operation: 'replaceUnknownBookAuthor.replace'
+          })
+        })
       })
 
     const resolveOrCreateTagId = (normalizedTag: { key: string, displayName: string }, client = dbService.db) =>
@@ -986,12 +1039,121 @@ export const BookRepositoryLive = Layer.effect(
         return toBookModel(book, authorMap.get(book.id) || [])
       })
 
+    const createCoreOpenLibraryBook = (isbn: string, data: OpenLibraryBookData) =>
+      Effect.gen(function* () {
+        const normalizedISBN = normalizeISBN(isbn)
+        const existing = yield* loadOpenLibraryBookByIsbn(normalizedISBN, 'createCoreOpenLibraryBook.findExisting')
+        if (existing) {
+          let authorMap = yield* hydrateAuthorsForBookIds([existing.id])
+          if ((authorMap.get(existing.id)?.length ?? 0) === 0) {
+            // A competing core lookup can persist the canonical book before
+            // its author links. Repair that narrow window before responding.
+            yield* setBookAuthors(existing.id, data.authors)
+            authorMap = yield* hydrateAuthorsForBookIds([existing.id])
+          }
+          return toBookModel(existing, authorMap.get(existing.id) || [])
+        }
+
+        const now = new Date()
+        const bookId = generateId()
+        const normalizedSeen = new Set<string>()
+        const authorNames = data.authors
+          .map(name => name.trim().replace(/\s+/g, ' '))
+          .filter((name) => {
+            const normalized = normalizeAuthorName(name)
+            if (!normalized || normalizedSeen.has(normalized)) return false
+            normalizedSeen.add(normalized)
+            return true
+          })
+        const names = authorNames.length > 0 ? authorNames : ['Unknown Author']
+        const authorIds = yield* Effect.forEach(names, name => resolveOrCreateAuthorId(name), { concurrency: 1 })
+
+        yield* Effect.tryPromise({
+          try: () => dbService.executeAtomic((database) => {
+            const statements: AtomicDbStatement[] = [
+              database.insert(books).values({
+                id: bookId,
+                isbn: normalizedISBN,
+                title: data.title,
+                coverPath: null,
+                openLibraryKey: data.openLibraryKey,
+                workKey: data.workKey,
+                description: data.description || null,
+                publishDate: data.publishDate || null,
+                publishers: data.publishers?.join(', ') || null,
+                numberOfPages: data.numberOfPages || null,
+                source: 'open_library',
+                entrySource: 'isbn_lookup',
+                createdByUserId: null,
+                createdAt: now
+              }).onConflictDoNothing()
+            ]
+            for (const [index, authorId] of authorIds.entries()) {
+              // Resolve the canonical row inside the batch. If another request
+              // won the ISBN insert, its row receives these links atomically too.
+              // The SELECT also avoids creating a link when a manual book owns
+              // this ISBN, preserving the original conflict failure behavior.
+              statements.push(database.insert(bookAuthors).select(
+                database.select({
+                  bookId: books.id,
+                  authorId: sql<string>`${authorId}`.as('authorId'),
+                  sortOrder: sql<number>`${index}`.as('sortOrder'),
+                  createdAt: sql<number>`${Math.floor(now.getTime() / 1000)}`.as('createdAt')
+                }).from(books).where(and(
+                  eq(books.isbn, normalizedISBN),
+                  eq(books.source, 'open_library')
+                ))
+              ).onConflictDoNothing())
+            }
+            return [statements[0]!, ...statements.slice(1)] as AtomicDbStatements
+          }),
+          catch: error => new BookCreateError({ message: `Failed to persist core Open Library book: ${error}` })
+        })
+        const book = yield* loadOpenLibraryBookByIsbn(normalizedISBN, 'createCoreOpenLibraryBook.reselect')
+        if (!book) return yield* Effect.fail(new BookCreateError({ message: `Failed to resolve persisted core book for ISBN ${normalizedISBN}` }))
+        let authorMap = yield* hydrateAuthorsForBookIds([book.id])
+        if ((authorMap.get(book.id)?.length ?? 0) === 0) {
+          // Repair legacy/inconsistent rows should the ISBN conflict winner not
+          // have author links yet.
+          yield* setBookAuthors(book.id, data.authors)
+          authorMap = yield* hydrateAuthorsForBookIds([book.id])
+        }
+        return toBookModel(book, authorMap.get(book.id) || [])
+      })
+
+    const applyOpenLibraryEnrichment = (
+      bookId: string,
+      data: Pick<OpenLibraryBookData, 'authors' | 'description' | 'publishDate' | 'publishers' | 'numberOfPages' | 'openLibraryKey' | 'workKey'>,
+      coverPath: string | null
+    ) =>
+      Effect.gen(function* () {
+        const updated = yield* Effect.tryPromise({
+          try: () => dbService.db.update(books).set({
+            coverPath: sql`coalesce(${books.coverPath}, ${coverPath})`,
+            description: sql`coalesce(${books.description}, ${data.description ?? null})`,
+            publishDate: sql`coalesce(${books.publishDate}, ${data.publishDate ?? null})`,
+            publishers: sql`coalesce(${books.publishers}, ${data.publishers?.join(', ') ?? null})`,
+            numberOfPages: sql`coalesce(${books.numberOfPages}, ${data.numberOfPages ?? null})`,
+            openLibraryKey: sql`coalesce(${books.openLibraryKey}, ${data.openLibraryKey ?? null})`,
+            workKey: sql`coalesce(${books.workKey}, ${data.workKey ?? null})`
+          }).where(and(eq(books.id, bookId), eq(books.source, 'open_library'))).returning(),
+          catch: error => new DatabaseError({ message: `Failed to apply Open Library enrichment: ${error}`, operation: 'applyOpenLibraryEnrichment' })
+        })
+        const book = updated[0]
+        if (!book) return yield* Effect.fail(new BookNotFoundError({ bookId }))
+        yield* replaceUnknownBookAuthor(book.id, data.authors)
+        const authorMap = yield* hydrateAuthorsForBookIds([book.id])
+        return toBookModel(book, authorMap.get(book.id) || [])
+      })
+
     return {
+      createCoreOpenLibraryBook,
+      applyOpenLibraryEnrichment,
       ensureOpenLibraryBook,
       findStoredOpenLibraryCover,
       addSystemTagsToBook: (bookId, subjects) => hydrateSystemTagsForBook(bookId, subjects),
 
-      addBookByISBN: (userId, isbn, libraryState = 'owned') =>
+      addBookByISBN: (userId, isbn, libraryState = 'owned', options = {}) =>
         Effect.gen(function* () {
           const normalizedISBN = normalizeISBN(isbn)
 
@@ -1026,7 +1188,18 @@ export const BookRepositoryLive = Layer.effect(
             }))
           }
 
-          const book = yield* ensureOpenLibraryBook(normalizedISBN)
+          // Interactive callers opt into the durable core-only path. Retain
+          // legacy repository behaviour for maintenance/import callers.
+          const storedBook = options.coreOnly
+            ? yield* loadOpenLibraryBookByIsbn(normalizedISBN, 'addBookByISBN.findCore')
+            : null
+          if (options.coreOnly && !storedBook) {
+            return yield* Effect.fail(new BookCreateError({ message: 'Look up this ISBN before adding it to the library' }))
+          }
+          const authorMap = storedBook ? yield* hydrateAuthorsForBookIds([storedBook.id]) : null
+          const book = storedBook
+            ? toBookModel(storedBook, authorMap?.get(storedBook.id) || [])
+            : yield* ensureOpenLibraryBook(normalizedISBN)
 
           // Create userBooks entry
           const userBookId = generateId()

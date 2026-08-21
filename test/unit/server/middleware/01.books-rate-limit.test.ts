@@ -34,7 +34,8 @@ vi.mock('../../../../server/utils/database-rate-limiter', () => ({
 
 vi.mock('../../../../server/utils/books-config', () => ({
   getBooksRateLimitConfig: () => mocks.config,
-  getBulkLookupRateLimitConfig: () => ({ ...mocks.config, maxRequests: 1 })
+  getBulkLookupRateLimitConfig: () => ({ ...mocks.config, maxRequests: 1 }),
+  getBooksEnrichmentRateLimitConfig: () => ({ ...mocks.config, maxRequests: 10 })
 }))
 
 describe('server/middleware/01.books-rate-limit', () => {
@@ -46,12 +47,13 @@ describe('server/middleware/01.books-rate-limit', () => {
     mocks.config = { enabled: true, maxRequests: 2, windowSeconds: 60 }
   })
 
-  it('only applies to book lookup and add routes', async () => {
+  it('only applies to ISBN lookup, mutation, and enrichment routes', async () => {
     const middleware = await import('../../../../server/middleware/01.books-rate-limit')
 
     expect(middleware.shouldEnforceRateLimit(makeEvent('/api/books/lookup'))).toBe(true)
     expect(middleware.shouldEnforceRateLimit(makeEvent('/api/books'))).toBe(true)
     expect(middleware.shouldEnforceRateLimit(makeEvent('/api/books/bulk-lookup'))).toBe(true)
+    expect(middleware.shouldEnforceRateLimit(makeEvent('/api/books/enrichment/run'))).toBe(true)
     expect(middleware.shouldEnforceRateLimit(makeEvent('/api/books/bulk-add'))).toBe(false)
     expect(middleware.shouldEnforceRateLimit(makeEvent('/api/books/lookup', 'GET'))).toBe(false)
   })

@@ -104,6 +104,7 @@ Optional email and registration settings:
 | `NUXT_BOOKS_ENRICHMENT_BATCH_SIZE` / `NUXT_BOOKS_ENRICHMENT_CONCURRENCY` | `20` / `4` | Bounds each opted-in CSV import enrichment sweep and its parallel cover/storage checks. |
 | `NUXT_BOOKS_ENRICHMENT_LEASE_SECONDS` | `900` | Claim and per-ISBN lock duration. Expired work can be safely reclaimed; stale workers cannot complete another worker's claim. |
 | `NUXT_BOOKS_ENRICHMENT_MAX_ATTEMPTS` / `NUXT_BOOKS_ENRICHMENT_BACKOFF_SECONDS` | `5` / `60` | Maximum attempts and exponential-backoff base for transient Open Library failures. |
+| `NUXT_BOOKS_ENRICHMENT_RECOVERY_TIME_BUDGET_SECONDS` / `NUXT_BOOKS_ENRICHMENT_RECOVERY_SAFETY_SECONDS` | `840` / `35` | Stops a scheduled canonical-recovery sweep before its invocation deadline, reserving metadata, cover-download, and persistence time for an attempted book. |
 | `NUXT_LEGAL_MARKDOWN_FETCH_TIMEOUT_SECONDS` | `5` | Timeout for fetching configured legal Markdown source documents. |
 | `NUXT_PLUNK_SEND_TIMEOUT_SECONDS` | `5` | Timeout for Plunk email delivery requests. |
 | `NUXT_EMAIL_PROVIDER` | `smtp` | Self-host supports `smtp` or `plunk`. |
@@ -264,6 +265,8 @@ Secrets should be injected through the orchestrator, an env file outside source 
 ### Scheduled Tasks
 
 Libroo runs an opted-in CSV import enrichment sweep every five minutes, a daily audit cleanup task at 03:00, and a daily Open Library cover repair task at 03:30. The sweep processes bounded batches and recovers deferred, retried, or interrupted work without attaching enrichment to an interactive request. Enrichment jobs use expiring claims and per-ISBN locks, apply provider fields additively, and stop when their imported record changes or is removed. Cloudflare preview Workers intentionally omit cron triggers, so queued enrichment remains pending in previews. The cover repair task checks a small random batch of Open Library books that were saved without a generated cover image, retries the cover download, and fills `cover_path` only when a cover is successfully stored.
+
+Interactive ISBN lookup has a separate canonical enrichment job. The initial request waits only for the edition metadata, canonical book, authors, and durable pending job; the browser then calls the foreground enrichment endpoint for work details, tags, and cover storage. Claims use a short lease, so a disconnected tab or interrupted Worker leaves work reclaimable on the next lookup, Add, or foreground request. `waitUntil()` is not used as a delivery guarantee: its post-disconnect allowance is limited, and preview deployments may have no cron. The scheduled sweep remains fallback recovery rather than the normal interactive path.
 
 ### Account Deletion Operations
 
@@ -595,6 +598,7 @@ Repository or environment variables:
 | `NUXT_BOOKS_ENRICHMENT_BATCH_SIZE` / `NUXT_BOOKS_ENRICHMENT_CONCURRENCY` | `20` / `4` |
 | `NUXT_BOOKS_ENRICHMENT_LEASE_SECONDS` | `900` |
 | `NUXT_BOOKS_ENRICHMENT_MAX_ATTEMPTS` / `NUXT_BOOKS_ENRICHMENT_BACKOFF_SECONDS` | `5` / `60` |
+| `NUXT_BOOKS_ENRICHMENT_RECOVERY_TIME_BUDGET_SECONDS` / `NUXT_BOOKS_ENRICHMENT_RECOVERY_SAFETY_SECONDS` | `840` / `35` |
 | `NUXT_LEGAL_MARKDOWN_FETCH_TIMEOUT_SECONDS` | `5` |
 | `NUXT_PLUNK_SEND_TIMEOUT_SECONDS` | `5` |
 | `NUXT_PUBLIC_LEGAL_PRIVACY_POLICY_URL` / `NUXT_PUBLIC_LEGAL_IMPRINT_URL` / `NUXT_PUBLIC_LEGAL_TERMS_URL` | Optional canonical hosted legal page URLs. |
