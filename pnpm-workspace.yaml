@@ -1,4 +1,4 @@
-shamefully-hoist: true
+shamefullyHoist: true
 minimumReleaseAge: 1500
 
 overrides:
@@ -7,7 +7,6 @@ overrides:
 allowBuilds:
   '@parcel/watcher': true
   esbuild: true
-  msgpackr-extract: true
   sharp: true
   unrs-resolver: true
   vue-demi: true
