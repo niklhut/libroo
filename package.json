@@ -53,13 +53,13 @@
     "pinia": "^4.0.3",
     "qrcode": "^1.5.4",
     "reflect-metadata": "^0.2.2",
-    "sharp": "^0.35.3",
+    "sharp": "^0.35.4",
     "vue": "^3.5.41",
     "vue-qrcode-reader": "^5.7.3",
     "zod": "^4.4.3"
   },
   "optionalDependencies": {
-    "@img/sharp-wasm32": "0.35.3",
+    "@img/sharp-wasm32": "0.35.4",
     "@libsql/linux-arm64-musl": "0.5.29",
     "@libsql/linux-x64-musl": "0.5.29"
   },
