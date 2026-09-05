@@ -2,6 +2,30 @@ export type ImageContentType = 'image/jpeg' | 'image/png' | 'image/webp' | 'imag
 
 export const UNKNOWN_IMAGE_CONTENT_TYPE = 'application/octet-stream' as const
 
+export function extensionForImageContentType(contentType: ImageContentType) {
+  switch (contentType) {
+    case 'image/jpeg':
+      return '.jpg'
+    case 'image/png':
+      return '.png'
+    case 'image/webp':
+      return '.webp'
+    case 'image/gif':
+      return '.gif'
+  }
+}
+
+export function pathnameForImageContentType(pathname: string, contentType: ImageContentType) {
+  const extension = extensionForImageContentType(contentType)
+  const lastSlash = pathname.lastIndexOf('/')
+  const lastDot = pathname.lastIndexOf('.')
+
+  if (lastDot > lastSlash) {
+    return `${pathname.slice(0, lastDot)}${extension}`
+  }
+  return `${pathname}${extension}`
+}
+
 export function detectImageContentType(data: Buffer | ArrayBuffer): ImageContentType | typeof UNKNOWN_IMAGE_CONTENT_TYPE {
   const bytes = Buffer.isBuffer(data)
     ? data
