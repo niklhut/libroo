@@ -180,20 +180,19 @@ export const StorageServiceLocalSharpLive = Layer.succeed(StorageService, {
   putCoverImage: (pathname, data) =>
     Effect.gen(function* () {
       const inputBuffer = Buffer.isBuffer(data) ? data : Buffer.from(new Uint8Array(data))
-      const contentType = detectImageContentType(inputBuffer)
-
-      if (contentType === UNKNOWN_IMAGE_CONTENT_TYPE) {
-        return yield* Effect.fail(new StorageError({
-          message: 'Unsupported cover image format',
-          operation: 'convertCoverImage'
-        }))
-      }
-
       const sharp = yield* Effect.promise(() => loadSharp())
-      if (!sharp) {
-        const storedPathname = pathnameForImageContentType(pathname, contentType)
+
+      if (sharp) {
+        const webpBuffer = yield* Effect.tryPromise({
+          try: () => sharp(inputBuffer).webp({ quality: 85 }).toBuffer(),
+          catch: error => new StorageError({
+            message: `Failed to convert cover image to WebP: ${error}`,
+            operation: 'convertCoverImage'
+          })
+        })
+
         return yield* Effect.tryPromise({
-          try: () => writeBlob(storedPathname, inputBuffer, { contentType }),
+          try: () => writeBlob(pathname, webpBuffer, { contentType: 'image/webp' }),
           catch: error => new StorageError({
             message: `Failed to put local cover image blob: ${error}`,
             operation: 'putCoverImage'
@@ -201,16 +200,17 @@ export const StorageServiceLocalSharpLive = Layer.succeed(StorageService, {
         })
       }
 
-      const webpBuffer = yield* Effect.tryPromise({
-        try: () => sharp(inputBuffer).webp({ quality: 85 }).toBuffer(),
-        catch: error => new StorageError({
-          message: `Failed to convert cover image to WebP: ${error}`,
+      const contentType = detectImageContentType(inputBuffer)
+      if (contentType === UNKNOWN_IMAGE_CONTENT_TYPE) {
+        return yield* Effect.fail(new StorageError({
+          message: 'Unsupported cover image format',
           operation: 'convertCoverImage'
-        })
-      })
+        }))
+      }
 
+      const storedPathname = pathnameForImageContentType(pathname, contentType)
       return yield* Effect.tryPromise({
-        try: () => writeBlob(pathname, webpBuffer, { contentType: 'image/webp' }),
+        try: () => writeBlob(storedPathname, inputBuffer, { contentType }),
         catch: error => new StorageError({
           message: `Failed to put local cover image blob: ${error}`,
           operation: 'putCoverImage'
