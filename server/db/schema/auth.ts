@@ -21,6 +21,13 @@ export const user = sqliteTable('user', {
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
 })
 
+// Serializes the one-time first-user bootstrap when public registration is
+// disabled. A stale claim can be replaced if account creation never completes.
+export const authBootstrapClaim = sqliteTable('auth_bootstrap_claim', {
+  id: integer('id').primaryKey(),
+  claimedAt: integer('claimed_at', { mode: 'timestamp' }).notNull()
+})
+
 export const session = sqliteTable('session', {
   id: text('id').primaryKey(),
   expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
@@ -37,6 +44,7 @@ export const session = sqliteTable('session', {
 export const account = sqliteTable('account', {
   id: text('id').primaryKey(),
   accountId: text('account_id').notNull(),
+  issuer: text('issuer').notNull(),
   providerId: text('provider_id').notNull(),
   userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
   accessToken: text('access_token'),
@@ -48,7 +56,10 @@ export const account = sqliteTable('account', {
   password: text('password'),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
-})
+}, table => [
+  uniqueIndex('account_issuer_accountId_uidx').on(table.issuer, table.accountId),
+  index('account_userId_idx').on(table.userId)
+])
 
 export const verification = sqliteTable('verification', {
   id: text('id').primaryKey(),

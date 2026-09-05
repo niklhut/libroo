@@ -24,6 +24,18 @@ jobs:
       NUXT_CLOUDFLARE_CUSTOM_DOMAIN: ${{ vars.NUXT_CLOUDFLARE_CUSTOM_DOMAIN }}
       NUXT_BETTER_AUTH_SECRET: ${{ secrets.NUXT_BETTER_AUTH_SECRET }}
       NUXT_BETTER_AUTH_URL: ${{ vars.NUXT_BETTER_AUTH_URL }}
+      NUXT_OIDC_CLIENT_SECRET: ${{ secrets.NUXT_OIDC_CLIENT_SECRET }}
+      NUXT_OIDC_CLIENT_ID: ${{ vars.NUXT_OIDC_CLIENT_ID }}
+      NUXT_OIDC_DISCOVERY_URL: ${{ vars.NUXT_OIDC_DISCOVERY_URL }}
+      NUXT_OIDC_AUTHORIZATION_URL: ${{ vars.NUXT_OIDC_AUTHORIZATION_URL }}
+      NUXT_OIDC_TOKEN_URL: ${{ vars.NUXT_OIDC_TOKEN_URL }}
+      NUXT_OIDC_USER_INFO_URL: ${{ vars.NUXT_OIDC_USER_INFO_URL }}
+      NUXT_OIDC_SCOPES: ${{ vars.NUXT_OIDC_SCOPES }}
+      NUXT_OIDC_TRUST_PROVIDER: ${{ vars.NUXT_OIDC_TRUST_PROVIDER || 'false' }}
+      NUXT_EMAIL_PASSWORD_ENABLED: ${{ vars.NUXT_EMAIL_PASSWORD_ENABLED || 'true' }}
+      NUXT_PUBLIC_OIDC_ENABLED: ${{ vars.NUXT_PUBLIC_OIDC_ENABLED || 'false' }}
+      NUXT_PUBLIC_OIDC_DISPLAY_NAME: ${{ vars.NUXT_PUBLIC_OIDC_DISPLAY_NAME }}
+      NUXT_PUBLIC_OIDC_ICON: ${{ vars.NUXT_PUBLIC_OIDC_ICON }}
       NUXT_PLUNK_API_KEY: ${{ secrets.NUXT_PLUNK_API_KEY }}
       NUXT_EMAIL_FROM: ${{ vars.NUXT_EMAIL_FROM }}
       NUXT_EMAIL_REPLY_TO: ${{ vars.NUXT_EMAIL_REPLY_TO }}
@@ -210,14 +222,21 @@ jobs:
           if (process.env.NUXT_PUBLIC_TURNSTILE_ENABLED === 'true') {
             secretNames.push('NUXT_TURNSTILE_SECRET_KEY')
           }
+          if (process.env.NUXT_PUBLIC_OIDC_ENABLED === 'true') {
+            secretNames.push('NUXT_OIDC_CLIENT_SECRET')
+          }
           const missing = secretNames.filter(name => !process.env[name])
           if (missing.length) {
             console.error(`Missing required Worker secrets: ${missing.join(', ')}`)
             process.exit(1)
           }
-          process.stdout.write(JSON.stringify(Object.fromEntries(
+          const secrets = Object.fromEntries(
             secretNames.map(name => [name, process.env[name]])
-          )))
+          )
+          if (process.env.NUXT_PUBLIC_OIDC_ENABLED !== 'true') {
+            secrets.NUXT_OIDC_CLIENT_SECRET = null
+          }
+          process.stdout.write(JSON.stringify(secrets))
           NODE
 
       - name: Deploy production worker

@@ -1,1 +1,1 @@
-export { db, schema, user } from './auth-db.cloudflare'
+export { authAdapterDb, db, schema, user } from './auth-db.cloudflare'
