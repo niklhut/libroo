@@ -285,6 +285,11 @@ async function enableTwoFactor() {
   try {
     const result = await authClient.twoFactor.enable({ password: recentAuthPassword.value })
     if (result.error || !result.data) throw new Error(result.error?.message || 'Unable to start two-factor setup')
+    // Better Auth 1.7 returns the enrollment method. Libroo currently offers
+    // TOTP setup only, so never assume an OTP response has TOTP fields.
+    if (result.data.method !== 'totp') {
+      throw new Error('This deployment returned an unsupported two-factor enrollment method')
+    }
     totpUri.value = result.data.totpURI
     backupCodes.value = result.data.backupCodes
     const { default: QRCode } = await import('qrcode')

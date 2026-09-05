@@ -2,7 +2,7 @@
 import * as z from 'zod'
 import type { FormSubmitEvent, AuthFormField } from '@nuxt/ui'
 import { canShowForgotPasswordAction } from '~~/shared/utils/email-capability-ui'
-import { canShowPasskeySignIn } from '~~/shared/utils/auth-capability-ui'
+import { canShowOAuthSignIn, canShowPasskeySignIn, canShowPasswordForm, getOAuthProviderLabel } from '~~/shared/utils/auth-capability-ui'
 import { authClient } from '~/utils/auth-client'
 
 definePageMeta({
@@ -25,10 +25,14 @@ const showPassword = ref(false)
 const showForgotPassword = computed(() => canShowForgotPasswordAction(emailCapabilities.value))
 const browserSupportsPasskeys = ref(false)
 const showPasskeySignIn = computed(() => browserSupportsPasskeys.value && canShowPasskeySignIn(authCapabilities.value))
+const showPasswordForm = computed(() => canShowPasswordForm(authCapabilities.value))
+const showOAuthSignIn = computed(() => canShowOAuthSignIn(authCapabilities.value))
+const oauthProviderLabel = computed(() => getOAuthProviderLabel(authCapabilities.value))
 const mfaCode = ref('')
 const useBackupCode = ref(false)
 const isVerifyingMfa = ref(false)
 const isPasskeyLoading = ref(false)
+const isOAuthLoading = ref(false)
 
 onMounted(() => {
   browserSupportsPasskeys.value = typeof PublicKeyCredential !== 'undefined'
@@ -195,6 +199,36 @@ async function signInWithPasskey() {
     isPasskeyLoading.value = false
   }
 }
+
+async function signInWithOAuth() {
+  const provider = authCapabilities.value.oauthProvider
+  if (!provider) return
+
+  isOAuthLoading.value = true
+  error.value = ''
+  try {
+    const result = await authClient.signIn.social({
+      provider: provider.providerId,
+      callbackURL: redirectPath.value
+    })
+    if (result.error) {
+      error.value = result.error.message || 'Single sign-on failed'
+      return
+    }
+    const requiresSecondFactor = Boolean((result.data as { twoFactorRedirect?: boolean } | null)?.twoFactorRedirect)
+    if (requiresSecondFactor) {
+      authStore.beginPendingMfa()
+      return
+    }
+    authStore.clearPendingMfa()
+    isFromSignout.value = false
+    await authStore.refresh()
+  } catch (cause: unknown) {
+    error.value = cause instanceof Error ? cause.message : 'Single sign-on failed'
+  } finally {
+    isOAuthLoading.value = false
+  }
+}
 </script>
 
 <template>
@@ -266,7 +300,14 @@ async function signInWithPasskey() {
       </div>
     </UPageCard>
 
-    <UPageCard v-else>
+    <AuthStateCard
+      v-else-if="!showPasswordForm && !showOAuthSignIn"
+      title="Sign-in unavailable"
+      description="This Libroo deployment has no enabled sign-in method. Contact an administrator."
+      icon="i-lucide-lock-keyhole"
+    />
+
+    <UPageCard v-else-if="showPasswordForm">
       <UAuthForm
         novalidate
         :schema="schema"
@@ -343,12 +384,54 @@ async function signInWithPasskey() {
             >
               Sign in with passkey
             </UButton>
+            <UButton
+              v-if="showOAuthSignIn"
+              block
+              color="neutral"
+              variant="outline"
+              :icon="authCapabilities.oauthProvider?.icon || 'i-lucide-log-in'"
+              :loading="isOAuthLoading"
+              @click="signInWithOAuth"
+            >
+              {{ oauthProviderLabel }}
+            </UButton>
             <p class="text-center text-sm text-muted">
               Libroo - Your Library, Managed
             </p>
           </div>
         </template>
       </UAuthForm>
+    </UPageCard>
+
+    <UPageCard v-else>
+      <div class="space-y-5 text-center">
+        <div class="space-y-1">
+          <UIcon
+            name="i-lucide-log-in"
+            class="mx-auto size-8 text-primary"
+          />
+          <h1 class="text-xl font-semibold">
+            Welcome back!
+          </h1>
+        </div>
+        <UButton
+          block
+          color="neutral"
+          variant="outline"
+          :icon="authCapabilities.oauthProvider?.icon || 'i-lucide-log-in'"
+          :loading="isOAuthLoading"
+          @click="signInWithOAuth"
+        >
+          {{ oauthProviderLabel }}
+        </UButton>
+        <UAlert
+          v-if="error"
+          color="error"
+          variant="subtle"
+          icon="i-lucide-alert-circle"
+          :title="error"
+        />
+      </div>
     </UPageCard>
   </UContainer>
 </template>

@@ -6,6 +6,7 @@ import type { SignupInvitePreview } from '~~/shared/types/signup-invite'
 import { getRegistrationSuccessDescription } from '~~/shared/utils/email-capability-ui'
 import { newPasswordSchema } from '~~/shared/utils/password'
 import { booleanConfigValue } from '~~/shared/utils/runtime-config'
+import { canShowOAuthSignIn, canShowPasswordForm } from '~~/shared/utils/auth-capability-ui'
 
 definePageMeta({
   auth: false
@@ -20,6 +21,7 @@ const { user } = storeToRefs(authStore)
 const { signUp } = authStore
 const toast = useToast()
 const { data: emailCapabilities } = await useEmailCapabilities()
+const { data: authCapabilities } = await useAuthCapabilities()
 const { data: legalStatus, error: legalStatusError } = await useFetch<LegalStatus>('/api/legal/status')
 
 const isLoading = ref(false)
@@ -35,6 +37,8 @@ const inviteToken = computed(() => {
   return typeof invite === 'string' && invite.trim() ? invite.trim() : null
 })
 const registrationEnabled = computed(() => booleanConfigValue(config.public.registrationEnabled, true))
+const showPasswordForm = computed(() => canShowPasswordForm(authCapabilities.value))
+const showOAuthSignIn = computed(() => canShowOAuthSignIn(authCapabilities.value))
 const registrationRequiresInvite = computed(() => !registrationEnabled.value && !inviteToken.value)
 const turnstileEnabled = computed(() => booleanConfigValue(config.public.turnstile?.enabled, false))
 const turnstileSiteKey = computed(() => typeof config.public.turnstile?.siteKey === 'string' ? config.public.turnstile.siteKey.trim() : '')
@@ -294,6 +298,18 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
       action-label="Sign in"
       :action-to="{ path: '/login', query: route.query.redirect ? { redirect: route.query.redirect } : undefined }"
       action-icon="i-lucide-log-in"
+    />
+
+    <AuthStateCard
+      v-else-if="!showPasswordForm"
+      :title="showOAuthSignIn ? 'Create an account with single sign-on' : 'Sign-in unavailable'"
+      :description="showOAuthSignIn
+        ? 'Local password registration is disabled. Continue through the configured sign-in provider.'
+        : 'This Libroo deployment has no enabled sign-in method. Contact an administrator.'"
+      :action-label="showOAuthSignIn ? 'Go to sign in' : undefined"
+      :action-to="showOAuthSignIn ? { path: '/login', query: route.query.redirect ? { redirect: route.query.redirect } : undefined } : undefined"
+      icon="i-lucide-lock-keyhole"
+      :action-icon="showOAuthSignIn ? 'i-lucide-log-in' : undefined"
     />
 
     <UPageCard v-else>

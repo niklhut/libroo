@@ -120,6 +120,13 @@
       "when": 1787039093465,
       "tag": "0016_canonical_book_enrichment",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1788621151176,
+      "tag": "0017_better_auth_account_issuer",
+      "breakpoints": true
     }
   ]
 }

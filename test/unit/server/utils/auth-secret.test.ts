@@ -2,6 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { parseUserInput } from 'better-auth/db'
 
 const betterAuthMock = vi.hoisted(() => vi.fn(options => ({ options })))
+const authDbMocks = vi.hoisted(() => ({
+  select: vi.fn()
+}))
 
 vi.mock('better-auth/minimal', () => ({
   betterAuth: betterAuthMock
@@ -13,6 +16,7 @@ vi.mock('better-auth/adapters/drizzle', () => ({
 
 vi.mock('better-auth/plugins', () => ({
   admin: vi.fn(() => ({ id: 'admin' })),
+  genericOAuth: vi.fn(() => ({ id: 'generic-oauth' })),
   twoFactor: vi.fn(() => ({ id: 'two-factor' }))
 }))
 
@@ -24,6 +28,7 @@ vi.mock('better-auth/plugins/admin/access', () => ({
 
 vi.mock('@nuxthub/db', () => ({
   db: {
+    select: authDbMocks.select,
     update: vi.fn(() => ({
       set: vi.fn(() => ({
         where: vi.fn()
@@ -78,6 +83,7 @@ async function loadAuthModule() {
 describe('auth secret runtime config', () => {
   afterEach(() => {
     process.env = { ...originalEnv }
+    authDbMocks.select.mockReset()
     vi.unstubAllGlobals()
   })
 
@@ -142,6 +148,49 @@ describe('auth secret runtime config', () => {
     expect(options.user.additionalFields).not.toHaveProperty('banned')
     expect(options.user.additionalFields).not.toHaveProperty('banReason')
     expect(options.user.additionalFields).not.toHaveProperty('banExpires')
+  })
+
+  it('only allows implicit OIDC account linking when the provider is explicitly trusted', async () => {
+    process.env.NUXT_PUBLIC_OIDC_ENABLED = 'true'
+    process.env.NUXT_OIDC_DISCOVERY_URL = 'https://id.example.com/.well-known/openid-configuration'
+    process.env.NUXT_OIDC_CLIENT_ID = 'libroo'
+    process.env.NUXT_OIDC_CLIENT_SECRET = 'secret'
+    process.env.NUXT_OIDC_TRUST_PROVIDER = 'false'
+
+    await loadAuthModule()
+    expect(getBetterAuthOptions().account.accountLinking).toEqual({
+      enabled: true,
+      allowDifferentEmails: false,
+      trustedProviders: [],
+      disableImplicitLinking: true
+    })
+
+    process.env.NUXT_OIDC_TRUST_PROVIDER = 'true'
+    await loadAuthModule()
+    expect(getBetterAuthOptions().account.accountLinking).toEqual({
+      enabled: true,
+      allowDifferentEmails: false,
+      trustedProviders: ['oidc'],
+      disableImplicitLinking: false
+    })
+  })
+
+  it('does not let an OIDC callback borrow an email signup invite reservation', async () => {
+    process.env.NUXT_PUBLIC_REGISTRATION_ENABLED = 'false'
+    authDbMocks.select.mockReturnValueOnce({
+      from: vi.fn(() => ({
+        limit: vi.fn(async () => [{ id: 'existing-user' }])
+      }))
+    })
+
+    await loadAuthModule()
+    const beforeCreate = getBetterAuthOptions().databaseHooks.user.create.before
+
+    await expect(beforeCreate(
+      { email: 'oidc-user@example.com' },
+      { path: '/callback/oidc' }
+    )).resolves.toBe(false)
+    expect(authDbMocks.select).toHaveBeenCalledTimes(1)
   })
 
   it('rejects attempts to set Libroo server-owned fields through signup and profile-update input', async () => {

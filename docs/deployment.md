@@ -93,6 +93,8 @@ Optional email and registration settings:
 | `NUXT_EMAIL_VERIFICATION_ENABLED` | `false` | Set `true` for public installs. |
 | `NUXT_PUBLIC_REGISTRATION_ENABLED` | `true` | Set `false` after creating the first admin for invite-only operation. |
 | `NUXT_PUBLIC_PASSKEYS_ENABLED` | `false` | Enables WebAuthn passkeys only when the configured Better Auth origin is HTTPS (or localhost). Keep disabled unless the deployment origin and TLS termination are configured correctly. |
+| `NUXT_PUBLIC_OIDC_ENABLED` / `NUXT_OIDC_DISCOVERY_URL` | `false` / empty | Enables optional OpenID Connect sign-in. Discovery is preferred; see [OAuth / OIDC Sign-In](#oauth--oidc-sign-in). |
+| `NUXT_EMAIL_PASSWORD_ENABLED` | `true` | Enables local email/password login and registration. Set `false` only when another sign-in method is configured. |
 | `NUXT_PUBLIC_TURNSTILE_ENABLED` | `false` | Enables Cloudflare Turnstile server enforcement and client widget rendering for signup and password-reset email requests. Public installs should set it to `true`; private LAN, VPN/Tailscale, Cloudflare Access, or otherwise access-controlled installs may leave it `false` intentionally. |
 | `NUXT_PUBLIC_TURNSTILE_SITE_KEY` / `NUXT_TURNSTILE_SECRET_KEY` | empty | Cloudflare Turnstile site key and secret key. Required when Turnstile is enabled. |
 | `NUXT_TURNSTILE_ALLOWED_HOSTNAMES` | empty | Optional comma-separated hostname allow-list for Turnstile token responses, such as `libroo.example.com,app.libroo.example.com`. |
@@ -190,6 +192,48 @@ Libroo only registers the WebAuthn plugin when this flag is true and `NUXT_BETTE
 For self-hosting behind a reverse proxy, terminate TLS at the public hostname and set `NUXT_BETTER_AUTH_URL` to that exact HTTPS origin (for example `https://libroo.example.com`), not the internal HTTP container URL. Do not enable passkeys on plain HTTP LAN deployments: browsers will reject WebAuthn there. Self-hosted deployments can opt out by keeping `NUXT_PUBLIC_PASSKEYS_ENABLED=false`, which is the image default.
 
 For recovery-code handling and the sole-admin last-factor safeguard, see [MFA recovery](./mfa-recovery.md).
+
+### OAuth / OIDC Sign-In
+
+Libroo can use one OpenID Connect provider as a sign-in method. Configure the
+provider's redirect URI exactly as `https://libroo.example.com/api/auth/callback/oidc`
+(use your own public origin); this is Better Auth 1.7's callback path.
+
+Discovery is preferred because Better Auth validates the provider issuer and
+identity token automatically. If discovery is unavailable, set all three
+explicit endpoint URLs instead.
+
+```bash
+NUXT_PUBLIC_OIDC_ENABLED=true
+NUXT_OIDC_DISCOVERY_URL=https://id.example.com/application/o/libroo/.well-known/openid-configuration
+# Or: NUXT_OIDC_AUTHORIZATION_URL=..., NUXT_OIDC_TOKEN_URL=..., NUXT_OIDC_USER_INFO_URL=...
+NUXT_OIDC_CLIENT_ID=libroo
+NUXT_OIDC_CLIENT_SECRET=replace-with-a-secret
+NUXT_OIDC_SCOPES="openid email profile"
+NUXT_PUBLIC_OIDC_DISPLAY_NAME="Single sign-on"
+NUXT_PUBLIC_OIDC_ICON=
+NUXT_OIDC_TRUST_PROVIDER=false
+NUXT_EMAIL_PASSWORD_ENABLED=true
+```
+
+OIDC account linking never merges different email addresses. A provider must
+report a verified email before a matching local account can be linked. With
+`NUXT_OIDC_TRUST_PROVIDER=false` (the default), implicit linking is disabled:
+an existing user must explicitly link the provider. Set it to `true` only for a
+provider whose verified-email claim you trust; that permits verified,
+same-email implicit linking. New OIDC users can still sign up when public
+registration is open (or during first-admin bootstrap). Set
+`NUXT_EMAIL_PASSWORD_ENABLED=false` to hide and disable local password flows;
+do not do so unless OIDC is enabled and tested.
+
+- **Authentik:** use the provider's OpenID Connect discovery URL from its
+  application/provider configuration and register the callback above.
+- **Keycloak:** use the realm discovery URL, normally
+  `https://host/realms/<realm>/.well-known/openid-configuration`; make sure the
+  client has the `openid`, `email`, and `profile` scopes.
+- **Authelia:** create an OIDC confidential client, register the callback, and
+  use its issuer discovery URL. Confirm Authelia returns verified email claims
+  before enabling provider trust.
 
 ### Client IP Handling And Rate Limiting
 
@@ -521,6 +565,7 @@ Repository or environment secrets:
 | `NUXT_HUB_CLOUDFLARE_DATABASE_ID` | D1 database ID used during the Cloudflare build. |
 | `NUXT_HUB_CLOUDFLARE_BUCKET_NAME` | R2 bucket name used during the Cloudflare build. |
 | `NUXT_BETTER_AUTH_SECRET` | Hosted auth secret. |
+| `NUXT_OIDC_CLIENT_SECRET` | OIDC client secret when `NUXT_PUBLIC_OIDC_ENABLED=true`. |
 | `NUXT_PLUNK_API_KEY` | Hosted email delivery. |
 | `NUXT_OPEN_LIBRARY_CONTACT_EMAIL` | Contact address sent in Open Library requests so hosted Workers are identified and receive the documented identified-client limit. Configure this separately in both the `production` and `preview` GitHub Environments. |
 | `NUXT_TURNSTILE_SECRET_KEY` | Hosted Turnstile server-side verification secret. |
@@ -539,6 +584,7 @@ Move these secrets from repository scope to the `production` Environment:
 - `NUXT_HUB_CLOUDFLARE_DATABASE_ID`
 - `NUXT_HUB_CLOUDFLARE_BUCKET_NAME`
 - `NUXT_BETTER_AUTH_SECRET`
+- `NUXT_OIDC_CLIENT_SECRET` when OIDC is enabled
 - `NUXT_PLUNK_API_KEY`
 - `NUXT_OPEN_LIBRARY_CONTACT_EMAIL`
 - `NUXT_TURNSTILE_SECRET_KEY`
@@ -572,7 +618,7 @@ documented above. Do not put `NUXT_PLUNK_API_KEY`, the production Better Auth
 secret, or production resource IDs in the preview Environment. No preview
 workflow may reference the `production` Environment.
 
-The Cloudflare deploy workflow syncs `NUXT_BETTER_AUTH_SECRET`, `NUXT_PLUNK_API_KEY`,
+The Cloudflare deploy workflow syncs `NUXT_BETTER_AUTH_SECRET`, `NUXT_OIDC_CLIENT_SECRET` when enabled, `NUXT_PLUNK_API_KEY`,
 `NUXT_OPEN_LIBRARY_CONTACT_EMAIL`, and, when Turnstile is enabled,
 `NUXT_TURNSTILE_SECRET_KEY` with `wrangler secret bulk`. Do not configure these
 values as plain GitHub variables or Wrangler vars.
@@ -586,6 +632,14 @@ Repository or environment variables:
 | `NUXT_EMAIL_FROM` | Hosted sender address. Must be on a verified Plunk sender domain. |
 | `NUXT_EMAIL_REPLY_TO` | Optional hosted reply-to address. |
 | `NUXT_EMAIL_VERIFICATION_ENABLED` | `true` |
+| `NUXT_PUBLIC_OIDC_ENABLED` | `true` only after the OIDC callback and discovery configuration have been tested. |
+| `NUXT_OIDC_CLIENT_ID` | OIDC client ID; keep the matching `NUXT_OIDC_CLIENT_SECRET` in GitHub Secrets. |
+| `NUXT_OIDC_DISCOVERY_URL` | Provider discovery URL, preferred over explicit endpoint variables. |
+| `NUXT_OIDC_AUTHORIZATION_URL` / `NUXT_OIDC_TOKEN_URL` / `NUXT_OIDC_USER_INFO_URL` | Set all three only when discovery is unavailable. |
+| `NUXT_OIDC_SCOPES` | `openid email profile` unless the provider requires additional scopes. |
+| `NUXT_OIDC_TRUST_PROVIDER` | `false` by default; set `true` only for a provider with trustworthy verified-email claims. |
+| `NUXT_PUBLIC_OIDC_DISPLAY_NAME` / `NUXT_PUBLIC_OIDC_ICON` | Optional client-visible provider label and icon. |
+| `NUXT_EMAIL_PASSWORD_ENABLED` | `true`; set `false` only after validating OIDC sign-in. |
 | `NUXT_PUBLIC_REGISTRATION_ENABLED` | `false` after the first admin exists. |
 | `NUXT_PUBLIC_PASSKEYS_ENABLED` | `true` only for an HTTPS origin that matches `NUXT_BETTER_AUTH_URL`; otherwise `false`. |
 | `NUXT_PUBLIC_TURNSTILE_ENABLED` | `true` for hosted public deployments. |

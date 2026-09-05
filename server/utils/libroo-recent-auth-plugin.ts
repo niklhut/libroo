@@ -13,6 +13,11 @@ const RECENT_AUTH_PATHS = new Set([
   '/passkey/update-passkey'
 ])
 const RECENT_AUTH_SESSION_ROTATION_PATHS = new Set([
+  // Better Auth replaces the current session when changePassword is called
+  // with revokeOtherSessions. Preserve the fresh-password confirmation on
+  // that replacement so a following security action (for example 2FA setup)
+  // does not see a stale client-side recent-auth state.
+  '/change-password',
   '/two-factor/disable',
   '/two-factor/verify-totp'
 ])

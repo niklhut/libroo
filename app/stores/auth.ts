@@ -47,6 +47,12 @@ export const useAuthStore = defineStore('auth', () => {
     return result
   }
 
+  async function signInWithSocial(provider: string, callbackURL: string) {
+    const result = await authClient.signIn.social({ provider, callbackURL })
+    pendingMfa.value = Boolean((result.data as { twoFactorRedirect?: boolean } | null)?.twoFactorRedirect)
+    return result
+  }
+
   function clearPendingMfa() {
     pendingMfa.value = false
   }
@@ -98,6 +104,7 @@ export const useAuthStore = defineStore('auth', () => {
     error,
     pendingMfa,
     signIn,
+    signInWithSocial,
     signUp,
     signOut,
     refresh,
