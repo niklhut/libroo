@@ -3,8 +3,7 @@ import { newPasswordSchema } from './password'
 
 export const accountEmailChangeSchema = z.object({
   email: z.email({ error: 'Please enter a valid email address' }),
-  currentPassword: z.string({ error: 'Current password is required' })
-    .min(1, { error: 'Current password is required' })
+  currentPassword: z.string().optional().default('')
 })
 
 export type AccountEmailChangeSchema = z.infer<typeof accountEmailChangeSchema>
@@ -27,8 +26,7 @@ export type AccountPasswordChangeSchema = z.infer<typeof accountPasswordChangeSc
 export const ACCOUNT_DELETION_CONFIRMATION_TEXT = 'DELETE MY ACCOUNT'
 
 export const accountDeletionSchema = z.object({
-  currentPassword: z.string({ error: 'Current password is required' })
-    .min(1, { error: 'Current password is required' }),
+  currentPassword: z.string().optional().default(''),
   confirmation: z.string({ error: `Type ${ACCOUNT_DELETION_CONFIRMATION_TEXT} to confirm account deletion` })
     .refine(value => value === ACCOUNT_DELETION_CONFIRMATION_TEXT, {
       error: `Type ${ACCOUNT_DELETION_CONFIRMATION_TEXT} to confirm account deletion`

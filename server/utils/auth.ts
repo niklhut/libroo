@@ -3,9 +3,9 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { admin, genericOAuth, twoFactor } from 'better-auth/plugins'
 import { passkey } from '@better-auth/passkey'
 import { defaultAc } from 'better-auth/plugins/admin/access'
-import { and, eq, gt, isNotNull, isNull, or } from 'drizzle-orm'
+import { and, eq, gt, isNotNull, isNull, or, sql } from 'drizzle-orm'
 import { PASSWORD_MIN_LENGTH } from '~~/shared/utils/password'
-import { db, schema } from '../runtime/auth-db.active'
+import { authAdapterDb, db, schema } from '../runtime/auth-db.active'
 import { librooAdminPolicyPlugin } from './libroo-admin-auth-plugin'
 import { librooAdminAuditPlugin } from './libroo-admin-audit-plugin'
 import { librooSecurityNotificationPlugin } from './libroo-security-notification-plugin'
@@ -33,6 +33,8 @@ interface EnvSecretOptions {
 }
 
 export const LIBROO_CLIENT_IP_HEADER = 'x-libroo-client-ip'
+const BOOTSTRAP_CLAIM_ID = 1
+const BOOTSTRAP_CLAIM_TTL_MS = 5 * 60 * 1000
 
 /**
  * Unified helper to load secrets/config from env vars or Nuxt runtime config.
@@ -195,8 +197,10 @@ async function canCreateUserWhenRegistrationIsClosed(userEmail: unknown, context
 
   // Preserve bootstrap: the first account becomes an admin in
   // librooAdminPolicyPlugin's atomic after-create hook regardless of method.
+  // The claim is a database-enforced mutex so two simultaneous requests cannot
+  // both observe an empty user table and pass this hook.
   const existingUser = await db.select({ id: schema.user.id }).from(schema.user).limit(1)
-  if (existingUser.length === 0) return true
+  if (existingUser.length === 0) return await claimFirstUserBootstrap()
 
   // Invite reservations belong exclusively to the intercepted email/password
   // signup request. Never let an unrelated OAuth callback borrow a concurrent
@@ -225,10 +229,35 @@ async function canCreateUserWhenRegistrationIsClosed(userEmail: unknown, context
   return reservation.length > 0
 }
 
+async function claimFirstUserBootstrap() {
+  const now = new Date()
+  const staleBefore = new Date(now.getTime() - BOOTSTRAP_CLAIM_TTL_MS)
+  const result = await db.run(sql`
+    INSERT INTO ${schema.authBootstrapClaim} (id, claimed_at)
+    VALUES (${BOOTSTRAP_CLAIM_ID}, ${now.getTime()})
+    ON CONFLICT(id) DO UPDATE SET claimed_at = excluded.claimed_at
+    WHERE ${schema.authBootstrapClaim.claimedAt} <= ${staleBefore.getTime()}
+  `) as unknown
+
+  return affectedRowCount(result) === 1
+}
+
+function affectedRowCount(result: unknown) {
+  if (!result || typeof result !== 'object') return 0
+  const record = result as Record<string, unknown>
+  if (typeof record.changes === 'number') return record.changes
+  if (typeof record.rowsAffected === 'number') return record.rowsAffected
+  if (typeof record.rowCount === 'number') return record.rowCount
+  const meta = record.meta
+  return meta && typeof meta === 'object' && typeof (meta as Record<string, unknown>).changes === 'number'
+    ? (meta as Record<string, number>).changes
+    : 0
+}
+
 export const auth = betterAuth({
   baseURL: getAuthUrl(),
   secret: getAuthSecret(),
-  database: drizzleAdapter(db, {
+  database: drizzleAdapter(authAdapterDb, {
     provider: 'sqlite',
     schema
   }),
@@ -350,7 +379,10 @@ export const auth = betterAuth({
   plugins: [
     ...createTurnstileCaptchaPlugins(),
     twoFactor({
-      issuer: 'Libroo'
+      issuer: 'Libroo',
+      // Password accounts still have to provide their password. This lets
+      // OIDC-only accounts rely on Libroo's recent-authentication gate.
+      allowPasswordless: true
     }),
     ...(oidcProviderConfigured(oidcConfig) && oidcConfig.provider
       ? [genericOAuth({

@@ -3,7 +3,8 @@ import { parseUserInput } from 'better-auth/db'
 
 const betterAuthMock = vi.hoisted(() => vi.fn(options => ({ options })))
 const authDbMocks = vi.hoisted(() => ({
-  select: vi.fn()
+  select: vi.fn(),
+  run: vi.fn()
 }))
 
 vi.mock('better-auth/minimal', () => ({
@@ -29,6 +30,7 @@ vi.mock('better-auth/plugins/admin/access', () => ({
 vi.mock('@nuxthub/db', () => ({
   db: {
     select: authDbMocks.select,
+    run: authDbMocks.run,
     update: vi.fn(() => ({
       set: vi.fn(() => ({
         where: vi.fn()
@@ -84,6 +86,7 @@ describe('auth secret runtime config', () => {
   afterEach(() => {
     process.env = { ...originalEnv }
     authDbMocks.select.mockReset()
+    authDbMocks.run.mockReset()
     vi.unstubAllGlobals()
   })
 
@@ -191,6 +194,31 @@ describe('auth secret runtime config', () => {
       { path: '/callback/oidc' }
     )).resolves.toBe(false)
     expect(authDbMocks.select).toHaveBeenCalledTimes(1)
+  })
+
+  it('allows only one concurrent first-user bootstrap when registration is closed', async () => {
+    process.env.NUXT_PUBLIC_REGISTRATION_ENABLED = 'false'
+    authDbMocks.select.mockImplementation(() => ({
+      from: vi.fn(() => ({
+        limit: vi.fn(async () => [])
+      }))
+    }))
+    let claimed = false
+    authDbMocks.run.mockImplementation(async () => {
+      if (claimed) return { changes: 0 }
+      claimed = true
+      return { changes: 1 }
+    })
+
+    await loadAuthModule()
+    const beforeCreate = getBetterAuthOptions().databaseHooks.user.create.before
+    const results = await Promise.all([
+      beforeCreate({ email: 'first@example.com' }, { path: '/sign-up/email' }),
+      beforeCreate({ email: 'second@example.com' }, { path: '/sign-up/email' })
+    ])
+
+    expect(results.filter(Boolean)).toHaveLength(1)
+    expect(authDbMocks.run).toHaveBeenCalledTimes(2)
   })
 
   it('rejects attempts to set Libroo server-owned fields through signup and profile-update input', async () => {

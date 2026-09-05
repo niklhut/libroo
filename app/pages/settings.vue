@@ -12,7 +12,7 @@ import {
 import type { LibraryImportConflictStrategy, LibraryImportResult } from '~~/shared/types/library-transfer'
 import { roleIncludesAdmin } from '~~/shared/utils/auth-roles'
 import { canShowVerificationResendAction, canUseVerifiedEmailChange, getPasswordUpdatedDescription } from '~~/shared/utils/email-capability-ui'
-import { canShowPasskeyManagement, canShowTwoFactorManagement } from '~~/shared/utils/auth-capability-ui'
+import { canShowPasskeyManagement, canShowPasswordForm, canShowTwoFactorManagement } from '~~/shared/utils/auth-capability-ui'
 import { authClient } from '~/utils/auth-client'
 
 usePageTitle('Settings')
@@ -66,6 +66,7 @@ const pendingRecentAuthAction = ref<(() => void) | null>(null)
 const isConfirmingRecentAuth = ref(false)
 const showPasskeyManagement = computed(() => canShowPasskeyManagement(authCapabilities.value))
 const showTwoFactorManagement = computed(() => canShowTwoFactorManagement(authCapabilities.value))
+const showPasswordManagement = computed(() => canShowPasswordForm(authCapabilities.value))
 const hasRecentAuth = computed(() => recentAuthExpiresAt.value > recentAuthClock.value)
 const emailFormState = computed(() => ({
   ...emailState,
@@ -176,6 +177,7 @@ onBeforeUnmount(() => {
 
 onMounted(() => {
   void refreshPasskeys()
+  void completeOidcRecentAuth()
 })
 
 if (route.query.verify === 'required') {
@@ -209,14 +211,70 @@ function openEmailManagement() {
   emailManagementOpen.value = true
 }
 
-function requestRecentAuth(action: () => void) {
+type RecentAuthAction = 'email' | 'password' | 'two-factor-setup' | 'two-factor-manage' | 'passkeys' | 'delete'
+
+function requestRecentAuth(actionId: RecentAuthAction, action: () => void) {
   if (hasRecentAuth.value) {
     action()
+    return
+  }
+
+  if (!showPasswordManagement.value) {
+    void startOidcRecentAuth(actionId)
     return
   }
   pendingRecentAuthAction.value = action
   recentAuthPassword.value = ''
   recentAuthOpen.value = true
+}
+
+async function startOidcRecentAuth(action: RecentAuthAction) {
+  const provider = authCapabilities.value.oauthProvider
+  if (!provider) {
+    toast.add({ title: 'Reauthentication unavailable', description: 'No sign-in method is configured for this account.', color: 'error' })
+    return
+  }
+
+  isConfirmingRecentAuth.value = true
+  try {
+    const callbackURL = `/settings?reauth=oidc&action=${encodeURIComponent(action)}`
+    const result = await authClient.signIn.social({
+      provider: provider.providerId,
+      callbackURL,
+      additionalParams: {
+        prompt: 'login',
+        max_age: '0'
+      }
+    })
+    if (result.error) throw new Error(result.error.message || 'Unable to sign in again')
+  } catch (err: unknown) {
+    toast.add({ title: 'Reauthentication failed', description: getFailureMessage(err, 'Unable to sign in again'), color: 'error' })
+    isConfirmingRecentAuth.value = false
+  }
+}
+
+async function completeOidcRecentAuth() {
+  if (route.query.reauth !== 'oidc' || typeof route.query.action !== 'string') return
+  const action = route.query.action as RecentAuthAction
+  const actions: Partial<Record<RecentAuthAction, () => void>> = {
+    'email': openEmailManagement,
+    'password': openPasswordManagement,
+    'two-factor-setup': () => { void openTwoFactorSetup() },
+    'two-factor-manage': openTwoFactorManagement,
+    'passkeys': () => { void openPasskeyManagement() },
+    'delete': openAccountDeletion
+  }
+  const nextAction = actions[action]
+  if (!nextAction) return
+
+  await authStore.refresh()
+  recentAuthExpiresAt.value = Date.now() + 5 * 60 * 1000
+  scheduleRecentAuthExpiry()
+  const query = { ...route.query }
+  delete query.reauth
+  delete query.action
+  await navigateTo({ path: route.path, query }, { replace: true })
+  nextAction()
 }
 
 function scheduleRecentAuthExpiry() {
@@ -441,20 +499,22 @@ async function changeEmail(payload: FormSubmitEvent<AccountEmailChangeSchema>) {
   isChangingEmail.value = true
 
   try {
-    try {
-      await $fetch('/api/auth/verify-password', {
-        method: 'POST',
-        body: {
-          password: payload.data.currentPassword
-        }
-      })
-    } catch {
-      toast.add({
-        title: 'Email change failed',
-        description: 'Current password is incorrect.',
-        color: 'error'
-      })
-      return
+    if (showPasswordManagement.value) {
+      try {
+        await $fetch('/api/auth/verify-password', {
+          method: 'POST',
+          body: {
+            password: payload.data.currentPassword
+          }
+        })
+      } catch {
+        toast.add({
+          title: 'Email change failed',
+          description: 'Current password is incorrect.',
+          color: 'error'
+        })
+        return
+      }
     }
 
     if (canUseVerifiedEmailChange(emailCapabilities.value)) {
@@ -553,6 +613,9 @@ async function changePassword(payload: FormSubmitEvent<AccountPasswordChangeSche
       return
     }
 
+    // Security actions in the same recent-auth window must use the replacement
+    // credential after Better Auth rotates the session and password.
+    recentAuthPassword.value = payload.data.newPassword
     passwordState.currentPassword = ''
     passwordState.newPassword = ''
     passwordState.confirmPassword = ''
@@ -739,13 +802,16 @@ async function importLibraryCsvFile() {
             <UButton
               color="neutral"
               variant="outline"
-              @click="requestRecentAuth(openEmailManagement)"
+              @click="requestRecentAuth('email', openEmailManagement)"
             >
               Manage
             </UButton>
           </div>
 
-          <div class="flex flex-col gap-4 py-5 sm:flex-row sm:items-center sm:justify-between">
+          <div
+            v-if="showPasswordManagement"
+            class="flex flex-col gap-4 py-5 sm:flex-row sm:items-center sm:justify-between"
+          >
             <div class="flex min-w-0 items-start gap-3">
               <UIcon
                 name="i-lucide-key-round"
@@ -763,7 +829,7 @@ async function importLibraryCsvFile() {
             <UButton
               color="neutral"
               variant="outline"
-              @click="requestRecentAuth(openPasswordManagement)"
+              @click="requestRecentAuth('password', openPasswordManagement)"
             >
               Change password
             </UButton>
@@ -791,7 +857,7 @@ async function importLibraryCsvFile() {
               :icon="twoFactorEnabled ? undefined : 'i-lucide-shield-plus'"
               color="neutral"
               variant="outline"
-              @click="requestRecentAuth(twoFactorEnabled ? openTwoFactorManagement : openTwoFactorSetup)"
+              @click="requestRecentAuth(twoFactorEnabled ? 'two-factor-manage' : 'two-factor-setup', twoFactorEnabled ? openTwoFactorManagement : openTwoFactorSetup)"
             >
               {{ twoFactorEnabled ? 'Manage' : 'Set up' }}
             </UButton>
@@ -818,7 +884,7 @@ async function importLibraryCsvFile() {
             <UButton
               color="neutral"
               variant="outline"
-              @click="requestRecentAuth(openPasskeyManagement)"
+              @click="requestRecentAuth('passkeys', openPasskeyManagement)"
             >
               Manage passkeys
             </UButton>
@@ -843,7 +909,7 @@ async function importLibraryCsvFile() {
               color="error"
               variant="subtle"
               icon="i-lucide-trash-2"
-              @click="requestRecentAuth(openAccountDeletion)"
+              @click="requestRecentAuth('delete', openAccountDeletion)"
             >
               Delete account
             </UButton>
@@ -916,6 +982,7 @@ async function importLibraryCsvFile() {
       </UCard>
 
       <UModal
+        v-if="showPasswordManagement"
         v-model:open="recentAuthOpen"
         title="Confirm it’s you"
         description="For your security, confirm your current password before changing sign-in or account settings. This confirmation lasts five minutes."
@@ -1013,7 +1080,7 @@ async function importLibraryCsvFile() {
                 />
               </UFormField>
               <UFormField
-                v-if="!hasRecentAuth"
+                v-if="showPasswordManagement && !hasRecentAuth"
                 label="Current password"
                 name="currentPassword"
                 required
@@ -1051,7 +1118,7 @@ async function importLibraryCsvFile() {
                   type="submit"
                   icon="i-lucide-mail"
                   :loading="isChangingEmail"
-                  :disabled="isChangingEmail || emailState.email === user?.email || !(hasRecentAuth || emailState.currentPassword)"
+                  :disabled="isChangingEmail || emailState.email === user?.email || !hasRecentAuth"
                 >
                   Change email
                 </UButton>
@@ -1062,6 +1129,7 @@ async function importLibraryCsvFile() {
       </UModal>
 
       <UModal
+        v-if="showPasswordManagement"
         v-model:open="passwordManagementOpen"
         title="Change password"
         description="This signs out your other active sessions."
@@ -1075,7 +1143,7 @@ async function importLibraryCsvFile() {
             @submit="changePassword"
           >
             <UFormField
-              v-if="!hasRecentAuth"
+              v-if="showPasswordManagement && !hasRecentAuth"
               label="Current password"
               name="currentPassword"
               required
@@ -1405,7 +1473,7 @@ async function importLibraryCsvFile() {
             />
 
             <UFormField
-              v-if="!hasRecentAuth"
+              v-if="showPasswordManagement && !hasRecentAuth"
               label="Current password"
               name="currentPassword"
               required
@@ -1445,7 +1513,7 @@ async function importLibraryCsvFile() {
                 color="error"
                 icon="i-lucide-trash-2"
                 :loading="isDeletingAccount"
-                :disabled="isDeletingAccount || deletionState.confirmation !== ACCOUNT_DELETION_CONFIRMATION_TEXT || !(hasRecentAuth || deletionState.currentPassword)"
+                :disabled="isDeletingAccount || deletionState.confirmation !== ACCOUNT_DELETION_CONFIRMATION_TEXT || !hasRecentAuth"
               >
                 Delete permanently
               </UButton>

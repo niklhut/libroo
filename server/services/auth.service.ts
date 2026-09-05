@@ -11,6 +11,7 @@ import { getEmailCapabilities } from '../utils/email-capabilities'
 import type { AuthRepository } from '../repositories/auth.repository'
 import { clearPendingEmail, emailIsInUse, getPendingEmail, getPendingEmailByCurrentEmail, setPendingEmail } from '../repositories/auth.repository'
 import type { DatabaseError } from '../repositories/book.repository'
+import { verifyPasswordOrRequireRecentAuth } from './recent-auth.service'
 
 // Error types
 export class UnauthorizedError extends Data.TaggedError('UnauthorizedError')<{
@@ -164,7 +165,9 @@ export const AuthServiceLive = Layer.succeed(AuthService, {
   setPendingEmailChange: (event, pendingEmail, currentPassword) =>
     Effect.gen(function* () {
       const sessionData = yield* fetchSession(event)
-      yield* verifyCurrentPassword(event, currentPassword)
+      yield* verifyPasswordOrRequireRecentAuth(event, currentPassword).pipe(
+        Effect.mapError(error => new UnauthorizedError({ message: error.message }))
+      )
       if (!getEmailCapabilities().emailChangeVerificationEnabled) {
         return yield* Effect.fail(new EmailCapabilityDisabledError({
           message: 'Email-change verification is not enabled. Change email with current password instead.'
@@ -251,22 +254,6 @@ export const AuthServiceLive = Layer.succeed(AuthService, {
       return { status: true }
     })
 })
-
-function verifyCurrentPassword(event: H3Event, currentPassword: string | undefined) {
-  if (!currentPassword) {
-    return Effect.fail(new UnauthorizedError({ message: 'Current password is required' }))
-  }
-
-  return Effect.tryPromise({
-    try: () => auth.api.verifyPassword({
-      headers: event.headers,
-      body: {
-        password: currentPassword
-      }
-    }),
-    catch: () => new UnauthorizedError({ message: 'Current password is incorrect' })
-  })
-}
 
 function sendPendingEmailChange(event: H3Event, pendingEmail: string) {
   return Effect.tryPromise({

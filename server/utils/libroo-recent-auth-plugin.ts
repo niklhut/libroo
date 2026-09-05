@@ -4,6 +4,7 @@ import { Effect } from 'effect'
 import { RecentAuthError, RecentAuthService, RecentAuthServiceLive } from '../services/recent-auth.service'
 
 const RECENT_AUTH_PATHS = new Set([
+  '/change-password',
   '/two-factor/enable',
   '/two-factor/disable',
   '/two-factor/generate-backup-codes',
@@ -22,13 +23,26 @@ const RECENT_AUTH_SESSION_ROTATION_PATHS = new Set([
   '/two-factor/verify-totp'
 ])
 const RECENT_AUTH_SESSION_ROTATION_FLAG = '__librooRecentAuthSessionRotation'
+const OIDC_CALLBACK_PATH = '/callback/oidc'
 
 type RecentAuthContext = {
   newSession?: { session: { id: string } } | null
   [RECENT_AUTH_SESSION_ROTATION_FLAG]?: boolean
 }
 
-export const librooRecentAuthPlugin = (): BetterAuthPlugin => ({
+interface RecentAuthOperations {
+  requireRecentAuth: (sessionId: string) => Promise<void>
+  markSessionAsRecentlyAuthenticated: (sessionId: string) => Promise<void>
+}
+
+const defaultRecentAuthOperations: RecentAuthOperations = {
+  requireRecentAuth,
+  markSessionAsRecentlyAuthenticated
+}
+
+export const librooRecentAuthPlugin = (
+  operations: RecentAuthOperations = defaultRecentAuthOperations
+): BetterAuthPlugin => ({
   id: 'libroo-recent-auth',
   hooks: {
     before: [{
@@ -37,7 +51,7 @@ export const librooRecentAuthPlugin = (): BetterAuthPlugin => ({
         const session = await getSessionFromCtx(ctx)
         const sessionId = session?.session?.id
         if (!sessionId) throw APIError.from('UNAUTHORIZED', { message: 'Unauthorized', code: 'UNAUTHORIZED' })
-        await requireRecentAuth(sessionId)
+        await operations.requireRecentAuth(sessionId)
         if (ctx.path && RECENT_AUTH_SESSION_ROTATION_PATHS.has(ctx.path)) {
           ;(ctx.context as RecentAuthContext)[RECENT_AUTH_SESSION_ROTATION_FLAG] = true
         }
@@ -50,26 +64,24 @@ export const librooRecentAuthPlugin = (): BetterAuthPlugin => ({
       handler: createAuthMiddleware(async (ctx) => {
         const sessionId = (await getSessionFromCtx(ctx))?.session?.id
         if (!sessionId) return
-        await requireRecentAuth(sessionId)
+        await operations.requireRecentAuth(sessionId)
         ;(ctx.context as RecentAuthContext)[RECENT_AUTH_SESSION_ROTATION_FLAG] = true
       })
     }],
     after: [{
-      matcher: context => Boolean(context.path && RECENT_AUTH_SESSION_ROTATION_PATHS.has(context.path)),
+      matcher: context => Boolean(context.path && (
+        RECENT_AUTH_SESSION_ROTATION_PATHS.has(context.path) || context.path === OIDC_CALLBACK_PATH
+      )),
       handler: createAuthMiddleware(async (ctx) => {
         const context = ctx.context as RecentAuthContext
-        if (!context[RECENT_AUTH_SESSION_ROTATION_FLAG]) return
-        context[RECENT_AUTH_SESSION_ROTATION_FLAG] = false
+        const isOidcCallback = ctx.path === OIDC_CALLBACK_PATH
+        if (!isOidcCallback && !context[RECENT_AUTH_SESSION_ROTATION_FLAG]) return
+        if (!isOidcCallback) context[RECENT_AUTH_SESSION_ROTATION_FLAG] = false
         const replacementSessionId = context.newSession?.session.id
         if (!replacementSessionId) return
 
         try {
-          await Effect.runPromise(
-            Effect.gen(function* () {
-              const recentAuth = yield* RecentAuthService
-              return yield* recentAuth.markSessionAsRecentlyAuthenticated(replacementSessionId)
-            }).pipe(Effect.provide(RecentAuthServiceLive))
-          )
+          await operations.markSessionAsRecentlyAuthenticated(replacementSessionId)
         } catch {
           // Do not turn a completed security change into an error. A missing
           // marker simply asks the user to confirm their password again.
@@ -96,4 +108,13 @@ async function requireRecentAuth(sessionId: string) {
       code: 'RECENT_AUTH_REQUIRED'
     })
   }
+}
+
+async function markSessionAsRecentlyAuthenticated(sessionId: string) {
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const recentAuth = yield* RecentAuthService
+      return yield* recentAuth.markSessionAsRecentlyAuthenticated(sessionId)
+    }).pipe(Effect.provide(RecentAuthServiceLive))
+  )
 }

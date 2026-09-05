@@ -21,6 +21,13 @@ export const user = sqliteTable('user', {
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull()
 })
 
+// Serializes the one-time first-user bootstrap when public registration is
+// disabled. A stale claim can be replaced if account creation never completes.
+export const authBootstrapClaim = sqliteTable('auth_bootstrap_claim', {
+  id: integer('id').primaryKey(),
+  claimedAt: integer('claimed_at', { mode: 'timestamp' }).notNull()
+})
+
 export const session = sqliteTable('session', {
   id: text('id').primaryKey(),
   expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),

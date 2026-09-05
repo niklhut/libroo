@@ -41,5 +41,6 @@ const client = createClient({
 })
 
 export const db = drizzle(client, { schema })
+export const authAdapterDb = db
 export const user = schema.user
 export { schema }

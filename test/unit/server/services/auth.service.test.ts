@@ -392,7 +392,7 @@ describe('AuthService', () => {
     })
   })
 
-  it('rejects pending email changes without the current password', async () => {
+  it('rejects pending email changes without a password or recent OIDC session', async () => {
     enableVerificationEmail()
     authMock.getSession.mockResolvedValueOnce({
       user: {
@@ -411,7 +411,7 @@ describe('AuthService', () => {
     expect(result._tag).toBe('Left')
     expect(result.left).toMatchObject({
       _tag: 'UnauthorizedError',
-      message: 'Current password is required'
+      message: 'You need to sign in again.'
     })
     expect(authRepoMock.setPendingEmail).not.toHaveBeenCalled()
   })

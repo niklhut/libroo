@@ -230,9 +230,13 @@ jobs:
             console.error(`Missing required Worker secrets: ${missing.join(', ')}`)
             process.exit(1)
           }
-          process.stdout.write(JSON.stringify(Object.fromEntries(
+          const secrets = Object.fromEntries(
             secretNames.map(name => [name, process.env[name]])
-          )))
+          )
+          if (process.env.NUXT_PUBLIC_OIDC_ENABLED !== 'true') {
+            secrets.NUXT_OIDC_CLIENT_SECRET = null
+          }
+          process.stdout.write(JSON.stringify(secrets))
           NODE
 
       - name: Deploy production worker
