@@ -7,7 +7,7 @@ export function getAuthCapabilities(): AuthCapabilities {
   const provider = oidcConfig.provider
   return {
     twoFactorEnabled: true,
-    passkeysEnabled: passkeysAvailable(),
+    passkeysEnabled: oidcConfig.emailPasswordEnabled && passkeysAvailable(),
     emailPasswordEnabled: oidcConfig.emailPasswordEnabled,
     oauthProvider: oidcProviderConfigured(oidcConfig) && provider
       ? {

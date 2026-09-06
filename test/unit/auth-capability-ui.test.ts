@@ -9,11 +9,13 @@ const capabilityFixture = {
 } as const
 
 describe('auth capability UI predicates', () => {
-  it('only exposes passkey UI when the deployment supports it', () => {
+  it('only exposes passkey UI when local authentication and passkeys are enabled', () => {
     expect(canShowPasskeySignIn({ ...capabilityFixture, passkeysEnabled: false })).toBe(false)
     expect(canShowPasskeySignIn({ ...capabilityFixture, passkeysEnabled: true })).toBe(true)
+    expect(canShowPasskeySignIn({ ...capabilityFixture, emailPasswordEnabled: false, passkeysEnabled: true })).toBe(false)
     expect(canShowPasskeyManagement({ ...capabilityFixture, passkeysEnabled: true })).toBe(true)
     expect(canShowPasskeyManagement({ ...capabilityFixture, passkeysEnabled: false })).toBe(false)
+    expect(canShowPasskeyManagement({ ...capabilityFixture, emailPasswordEnabled: false, passkeysEnabled: true })).toBe(false)
   })
 
   it('shows local account security controls only when passwords are enabled', () => {

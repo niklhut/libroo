@@ -92,9 +92,9 @@ Optional email and registration settings:
 | --- | --- | --- |
 | `NUXT_EMAIL_VERIFICATION_ENABLED` | `false` | Set `true` for public installs. |
 | `NUXT_PUBLIC_REGISTRATION_ENABLED` | `true` | Controls new-user creation, not existing-user sign-in. Set `false` after creating the first admin to require invites for password signup and block new OIDC users. |
-| `NUXT_PUBLIC_PASSKEYS_ENABLED` | `false` | Enables WebAuthn passkeys only when the configured Better Auth origin is HTTPS (or localhost). Keep disabled unless the deployment origin and TLS termination are configured correctly. |
+| `NUXT_PUBLIC_PASSKEYS_ENABLED` | `false` | Enables WebAuthn passkeys only while local authentication is enabled and the configured Better Auth origin is HTTPS (or localhost). Keep disabled unless the deployment origin and TLS termination are configured correctly. |
 | `NUXT_PUBLIC_OIDC_ENABLED` / `NUXT_OIDC_DISCOVERY_URL` | `false` / empty | Enables optional OpenID Connect sign-in. Discovery is preferred; see [OAuth / OIDC Sign-In](#oauth--oidc-sign-in). |
-| `NUXT_EMAIL_PASSWORD_ENABLED` | `true` | Enables local password login, signup, invite-backed signup, and password reset. Set `false` only when another sign-in method is configured and tested. |
+| `NUXT_EMAIL_PASSWORD_ENABLED` | `true` | Enables local password and passkey authentication, password signup, invite-backed signup, and password reset. Set `false` only when another sign-in method is configured and tested. |
 | `NUXT_PUBLIC_TURNSTILE_ENABLED` | `false` | Enables Cloudflare Turnstile server enforcement and client widget rendering for signup and password-reset email requests. Public installs should set it to `true`; private LAN, VPN/Tailscale, Cloudflare Access, or otherwise access-controlled installs may leave it `false` intentionally. |
 | `NUXT_PUBLIC_TURNSTILE_SITE_KEY` / `NUXT_TURNSTILE_SECRET_KEY` | empty | Cloudflare Turnstile site key and secret key. Required when Turnstile is enabled. |
 | `NUXT_TURNSTILE_ALLOWED_HOSTNAMES` | empty | Optional comma-separated hostname allow-list for Turnstile token responses, such as `libroo.example.com,app.libroo.example.com`. |
@@ -181,13 +181,13 @@ Private self-hosted deployments may intentionally opt out by leaving `NUXT_PUBLI
 
 ### Passkeys / WebAuthn
 
-Passkeys are an optional, per-user sign-in method. Enabling this deployment capability neither enrolls users nor enforces passkeys or two-factor authentication globally.
+Passkeys are an optional, per-user local sign-in method. Enabling this deployment capability neither enrolls users nor enforces passkeys or two-factor authentication globally.
 
 ```bash
 NUXT_PUBLIC_PASSKEYS_ENABLED=true
 ```
 
-Libroo only registers the WebAuthn plugin when this flag is true and `NUXT_BETTER_AUTH_URL` is a secure context: `https:` or `http://localhost` for local development. The hostname from that URL is used as the WebAuthn relying-party ID, so it must be the browser-visible application hostname. The passkey controls stay hidden when either condition is not met.
+Libroo only registers the WebAuthn plugin when this flag and `NUXT_EMAIL_PASSWORD_ENABLED` are true and `NUXT_BETTER_AUTH_URL` is a secure context: `https:` or `http://localhost` for local development. The hostname from that URL is used as the WebAuthn relying-party ID, so it must be the browser-visible application hostname. The passkey controls stay hidden when any condition is not met.
 
 For self-hosting behind a reverse proxy, terminate TLS at the public hostname and set `NUXT_BETTER_AUTH_URL` to that exact HTTPS origin (for example `https://libroo.example.com`), not the internal HTTP container URL. Do not enable passkeys on plain HTTP LAN deployments: browsers will reject WebAuthn there. Self-hosted deployments can opt out by keeping `NUXT_PUBLIC_PASSKEYS_ENABLED=false`, which is the image default.
 
@@ -260,14 +260,15 @@ The provider, registration, and password switches serve different purposes:
 | `true` | `true` | Public password signup and OIDC just-in-time user creation are allowed. |
 | `false` | `true` | Password signup requires an invite; OIDC can sign in an already-linked user but cannot create one. |
 | `true` | `false` | OIDC can create users; password login and signup are disabled, including invite-backed signup. |
-| `false` | `false` | New password and OIDC users are blocked; only existing passkey or already-linked OIDC users can sign in. |
+| `false` | `false` | New password and OIDC users are blocked; only already-linked OIDC users can sign in. |
 
 `NUXT_PUBLIC_OIDC_ENABLED` only exposes the provider and does not override
 registration policy. New OIDC users require public registration, except that an
 empty installation permits its first user as the admin bootstrap. Disabling
 `NUXT_EMAIL_PASSWORD_ENABLED` disables both password login and password signup,
-so a valid invite cannot restore password signup. Passkeys remain independent,
-but they authenticate existing users and cannot be used to create an account.
+so a valid invite cannot restore password signup. It also disables passkey
+sign-in and enrollment; `NUXT_PUBLIC_PASSKEYS_ENABLED` is an additional opt-in
+only while local authentication remains enabled.
 
 If OIDC just-in-time creation should be available while public password signup
 is not, use `NUXT_PUBLIC_REGISTRATION_ENABLED=true` with
@@ -698,9 +699,9 @@ Repository or environment variables:
 | `NUXT_OIDC_SCOPES` | `openid email profile` unless the provider requires additional scopes. |
 | `NUXT_OIDC_TRUST_PROVIDER` | `false` by default; `true` permits automatic same-email linking for an existing locally verified user even without a provider `email_verified` claim. Use only when the IdP makes every asserted email authoritative. |
 | `NUXT_PUBLIC_OIDC_DISPLAY_NAME` / `NUXT_PUBLIC_OIDC_ICON` | Optional client-visible provider label and icon. |
-| `NUXT_EMAIL_PASSWORD_ENABLED` | `true`; set `false` only after validating OIDC sign-in. |
+| `NUXT_EMAIL_PASSWORD_ENABLED` | `true`; set `false` only after validating OIDC sign-in. This also disables passkeys. |
 | `NUXT_PUBLIC_REGISTRATION_ENABLED` | `false` after the first admin exists. |
-| `NUXT_PUBLIC_PASSKEYS_ENABLED` | `true` only for an HTTPS origin that matches `NUXT_BETTER_AUTH_URL`; otherwise `false`. |
+| `NUXT_PUBLIC_PASSKEYS_ENABLED` | `true` only when local authentication is enabled and an HTTPS origin matches `NUXT_BETTER_AUTH_URL`; otherwise `false`. |
 | `NUXT_PUBLIC_TURNSTILE_ENABLED` | `true` for hosted public deployments. |
 | `NUXT_PUBLIC_TURNSTILE_SITE_KEY` | Hosted Turnstile public site key. |
 | `NUXT_TURNSTILE_ALLOWED_HOSTNAMES` | Hosted public hostname, or a comma-separated list if multiple hostnames serve the app. |

@@ -12,7 +12,7 @@ vi.mock('../../server/utils/webauthn-config', () => ({ passkeysAvailable }))
 vi.mock('../../server/utils/oidc-provider-config', () => ({ getOidcProviderConfig, oidcProviderConfigured }))
 
 describe('auth capabilities', () => {
-  it('always offers optional TOTP while passing through secure passkey availability', () => {
+  it('only exposes passkeys when both local authentication and WebAuthn are available', () => {
     passkeysAvailable.mockReturnValue(false)
     getOidcProviderConfig.mockReturnValue({ emailPasswordEnabled: true, provider: null })
     oidcProviderConfigured.mockReturnValue(false)
@@ -31,7 +31,7 @@ describe('auth capabilities', () => {
     oidcProviderConfigured.mockReturnValue(true)
     expect(getAuthCapabilities()).toEqual({
       twoFactorEnabled: true,
-      passkeysEnabled: true,
+      passkeysEnabled: false,
       emailPasswordEnabled: false,
       oauthProvider: {
         enabled: true,
@@ -40,5 +40,9 @@ describe('auth capabilities', () => {
         icon: 'i-simple-icons-authentik'
       }
     })
+
+    getOidcProviderConfig.mockReturnValue({ emailPasswordEnabled: true, provider: null })
+    oidcProviderConfigured.mockReturnValue(false)
+    expect(getAuthCapabilities().passkeysEnabled).toBe(true)
   })
 })

@@ -186,7 +186,7 @@ onBeforeUnmount(() => {
 })
 
 onMounted(() => {
-  void refreshPasskeys()
+  if (showPasskeyManagement.value) void refreshPasskeys()
   void completeOidcRecentAuth()
   void initializeOidcLinking()
 })
@@ -903,7 +903,7 @@ async function importLibraryCsvFile() {
 
           <div
             v-if="showPasswordManagement"
-            class="flex flex-col gap-4 py-5 sm:flex-row sm:items-center sm:justify-between"
+            class="flex flex-col gap-4 py-5 first:pt-0 sm:flex-row sm:items-center sm:justify-between"
           >
             <div class="flex min-w-0 items-start gap-3">
               <UIcon
@@ -930,7 +930,7 @@ async function importLibraryCsvFile() {
 
           <div
             v-if="showTwoFactorManagement"
-            class="flex flex-col gap-4 py-5 sm:flex-row sm:items-center sm:justify-between"
+            class="flex flex-col gap-4 py-5 first:pt-0 sm:flex-row sm:items-center sm:justify-between"
           >
             <div class="flex min-w-0 items-start gap-3">
               <UIcon
@@ -958,7 +958,7 @@ async function importLibraryCsvFile() {
 
           <div
             v-if="showPasskeyManagement"
-            class="flex flex-col gap-4 py-5 sm:flex-row sm:items-center sm:justify-between"
+            class="flex flex-col gap-4 py-5 first:pt-0 sm:flex-row sm:items-center sm:justify-between"
           >
             <div class="flex min-w-0 items-start gap-3">
               <UIcon
@@ -985,7 +985,7 @@ async function importLibraryCsvFile() {
 
           <div
             v-if="oidcProvider"
-            class="flex flex-col gap-4 py-5 sm:flex-row sm:items-center sm:justify-between"
+            class="flex flex-col gap-4 py-5 first:pt-0 sm:flex-row sm:items-center sm:justify-between"
           >
             <div class="flex min-w-0 items-start gap-3">
               <UIcon
@@ -1016,7 +1016,7 @@ async function importLibraryCsvFile() {
             </UButton>
           </div>
 
-          <div class="flex flex-col gap-4 py-5 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
+          <div class="flex flex-col gap-4 py-5 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
             <div class="flex min-w-0 items-start gap-3 text-error">
               <UIcon
                 name="i-lucide-trash-2"
@@ -1767,6 +1767,7 @@ async function importLibraryCsvFile() {
       </UModal>
 
       <UModal
+        v-if="showPasskeyManagement"
         v-model:open="passkeyManagementOpen"
         title="Manage passkeys"
         description="Add, name, or remove passkeys for this account."

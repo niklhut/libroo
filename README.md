@@ -125,28 +125,30 @@ Better Auth documentation refers to `BETTER_AUTH_SECRET` and `BETTER_AUTH_URL`. 
 | `NUXT_DATABASE_URL` | Self-host | libSQL/SQLite URL. Local default is `file:.data/db/sqlite.db`; Docker uses `file:/data/db/sqlite.db`. |
 | `NUXT_LOCAL_STORAGE_DIR` | Self-host | Local blob directory. Local default is `.data/blob`; Docker uses `/data/blob`. |
 | `NUXT_PUBLIC_REGISTRATION_ENABLED` | Optional | `true` by default. Controls new-user creation, not sign-in. Set `false` after bootstrap to require an invite for password signup and block new OIDC users. |
-| `NUXT_EMAIL_PASSWORD_ENABLED` | Optional | `true` by default. Set `false` to disable password login, signup, invite-backed password signup, and password reset. |
-| `NUXT_PUBLIC_PASSKEYS_ENABLED` | Optional | `false` by default. Enables passkey sign-in and enrollment on a secure origin; passkeys do not create users. |
+| `NUXT_EMAIL_PASSWORD_ENABLED` | Optional | `true` by default. Set `false` to disable local password and passkey authentication, password signup (including invite-backed signup), and password reset. |
+| `NUXT_PUBLIC_PASSKEYS_ENABLED` | Optional | `false` by default. Enables passkey sign-in and enrollment on a secure origin while local authentication is enabled; passkeys do not create users. |
 | `NUXT_PUBLIC_OIDC_ENABLED` | Optional | `false` by default. Enables the configured OIDC provider; see [OAuth / OIDC Sign-In](docs/deployment.md#oauth--oidc-sign-in). |
 | `NUXT_OIDC_TRUST_PROVIDER` | Optional | `false` by default. When `true`, matching-email OIDC accounts may be linked automatically for an existing locally verified user even without a provider `email_verified` claim. Use only with a fully trusted IdP. |
 | `NUXT_PUBLIC_OPEN_LIBRARY_LINKS_ENABLED` | Optional | `true` in development and `false` in production unless explicitly set. |
 
-The authentication switches are independent. After the first account has been
-created, their combinations behave as follows (assuming OIDC and passkeys are
-otherwise configured where mentioned):
+Registration and OIDC are independent switches. Passkeys are part of local
+authentication and additionally require `NUXT_EMAIL_PASSWORD_ENABLED=true`.
+After the first account has been created, the combinations behave as follows
+(assuming OIDC and passkeys are otherwise configured where mentioned):
 
 | Public registration | Email/password | New users | Existing users |
 | --- | --- | --- | --- |
 | `true` | `true` | Public password signup and OIDC just-in-time creation are allowed. | Password, passkey, and already-linked OIDC sign-in remain available. |
 | `false` | `true` | Password signup requires a valid invite; OIDC cannot create a user. | Password, passkey, and already-linked OIDC sign-in remain available. |
-| `true` | `false` | OIDC can create users; password signup is unavailable even with an invite. | OIDC and passkey sign-in remain available; password login is disabled. |
-| `false` | `false` | No password or OIDC user creation; invites cannot create password accounts. | Only passkey and already-linked OIDC sign-in remain available. |
+| `true` | `false` | OIDC can create users; password signup is unavailable even with an invite. | Already-linked OIDC sign-in remains available; password and passkey sign-in are disabled. |
+| `false` | `false` | No password or OIDC user creation; invites cannot create password accounts. | Only already-linked OIDC sign-in remains available. |
 
 An empty installation has one bootstrap exception: its first account may be
 created by password or OIDC even when public registration is disabled, and that
 account is promoted to admin. `NUXT_PUBLIC_OIDC_ENABLED` only exposes the OIDC
-provider; it does not override the registration policy. Likewise, passkeys are
-an authentication method for existing users, not a signup method.
+provider; it does not override the registration policy. Passkeys are an
+authentication method for existing users, not a signup method, and are disabled
+alongside local password authentication.
 
 With `NUXT_OIDC_TRUST_PROVIDER=false`, an OIDC sign-in whose email already
 belongs to a Libroo user is not linked implicitly and returns
@@ -167,8 +169,9 @@ For an existing installation, keep `NUXT_PUBLIC_REGISTRATION_ENABLED=false`
 and `NUXT_EMAIL_PASSWORD_ENABLED=true` during the OIDC transition. That keeps
 public password signup closed (invite-backed signup still works) while existing
 users sign in with their current method and connect OIDC under **Settings →
-Account & sign-in**. Once every user has linked and tested OIDC, passwords can
-be disabled without affecting those linked identities. See the
+Account & sign-in**. Once every user has linked and tested OIDC, local password
+and passkey authentication can be disabled without affecting those linked
+identities. See the
 [OIDC rollout guide](docs/deployment.md#oauth--oidc-sign-in) for the full flow.
 
 Email is optional, but password reset, invite emails, security notifications, and verification emails require a provider.

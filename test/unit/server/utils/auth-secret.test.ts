@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { parseUserInput } from 'better-auth/db'
 
 const betterAuthMock = vi.hoisted(() => vi.fn(options => ({ options })))
+const passkeyMock = vi.hoisted(() => vi.fn(() => ({ id: 'passkey' })))
 const authDbMocks = vi.hoisted(() => ({
   select: vi.fn(),
   run: vi.fn()
@@ -13,6 +14,10 @@ vi.mock('better-auth/minimal', () => ({
 
 vi.mock('better-auth/adapters/drizzle', () => ({
   drizzleAdapter: vi.fn(() => ({}))
+}))
+
+vi.mock('@better-auth/passkey', () => ({
+  passkey: passkeyMock
 }))
 
 vi.mock('better-auth/plugins', () => ({
@@ -79,6 +84,7 @@ const originalEnv = { ...process.env }
 async function loadAuthModule() {
   vi.resetModules()
   betterAuthMock.mockClear()
+  passkeyMock.mockClear()
   return import('../../../../server/utils/auth')
 }
 
@@ -176,6 +182,23 @@ describe('auth secret runtime config', () => {
       trustedProviders: ['oidc'],
       disableImplicitLinking: false
     })
+  })
+
+  it('does not register the passkey plugin when local authentication is disabled', async () => {
+    process.env.NUXT_PUBLIC_PASSKEYS_ENABLED = 'true'
+    process.env.NUXT_BETTER_AUTH_URL = 'https://libroo.example.com'
+    process.env.NUXT_EMAIL_PASSWORD_ENABLED = 'false'
+
+    await loadAuthModule()
+
+    expect(passkeyMock).not.toHaveBeenCalled()
+    expect(getBetterAuthOptions().plugins).not.toContainEqual(expect.objectContaining({ id: 'passkey' }))
+
+    process.env.NUXT_EMAIL_PASSWORD_ENABLED = 'true'
+    await loadAuthModule()
+
+    expect(passkeyMock).toHaveBeenCalledOnce()
+    expect(getBetterAuthOptions().plugins).toContainEqual(expect.objectContaining({ id: 'passkey' }))
   })
 
   it('does not let an OIDC callback borrow an email signup invite reservation', async () => {

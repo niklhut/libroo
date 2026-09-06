@@ -398,7 +398,7 @@ export const auth = betterAuth({
           }]
         })]
       : []),
-    ...(passkeysAvailable(webAuthnConfig)
+    ...(oidcConfig.emailPasswordEnabled && passkeysAvailable(webAuthnConfig)
       ? [passkey({
           rpID: webAuthnConfig.rpID,
           rpName: 'Libroo',
