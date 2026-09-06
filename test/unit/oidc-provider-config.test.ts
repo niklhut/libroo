@@ -85,6 +85,7 @@ describe('OIDC provider config', () => {
     expect(isAllowedOidcEndpoint('http://id.example.com/.well-known/openid-configuration', false)).toBe(false)
     expect(isAllowedOidcEndpoint('http://localhost:9000/.well-known/openid-configuration', true)).toBe(true)
     expect(isAllowedOidcEndpoint('http://127.0.0.1:9000/.well-known/openid-configuration', true)).toBe(true)
+    expect(isAllowedOidcEndpoint('http://[::1]:9000/.well-known/openid-configuration', true)).toBe(true)
     expect(isAllowedOidcEndpoint('not a URL', true)).toBe(false)
   })
 

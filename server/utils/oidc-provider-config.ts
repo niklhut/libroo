@@ -30,7 +30,7 @@ function parseScopes(value: string | undefined) {
     .filter(Boolean)
 }
 
-const LOOPBACK_HOSTNAMES = new Set(['localhost', '127.0.0.1', '::1'])
+const LOOPBACK_HOSTNAMES = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
 
 export function isAllowedOidcEndpoint(value: string, allowInsecureLoopback = process.env.NODE_ENV === 'development') {
   try {

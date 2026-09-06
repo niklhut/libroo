@@ -226,6 +226,7 @@ const authServiceMock = {
   requireAuth: vi.fn(),
   requireVerifiedAuth: vi.fn(),
   getEmailVerificationStatus: vi.fn(),
+  getAccountMethodStatus: vi.fn(),
   setPendingEmailChange: vi.fn(),
   clearPendingEmailChange: vi.fn(),
   resendVerificationEmail: vi.fn(),

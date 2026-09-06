@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { canShowOAuthSignIn, canShowPasskeyManagement, canShowPasskeySignIn, canShowPasswordForm, canShowTwoFactorManagement, getOAuthProviderLabel, isOAuthProviderLinked } from '../../shared/utils/auth-capability-ui'
+import { canShowEmailManagement, canShowOAuthSignIn, canShowPasskeyManagement, canShowPasskeySignIn, canShowPasswordForm, canShowPasswordManagement, canShowTwoFactorManagement, getOAuthProviderLabel } from '../../shared/utils/auth-capability-ui'
 
 const capabilityFixture = {
   twoFactorEnabled: true,
@@ -16,8 +16,12 @@ describe('auth capability UI predicates', () => {
     expect(canShowPasskeyManagement({ ...capabilityFixture, passkeysEnabled: false })).toBe(false)
   })
 
-  it('keeps TOTP management independent of passkey availability', () => {
+  it('shows local account security controls only when passwords are enabled', () => {
     expect(canShowTwoFactorManagement(capabilityFixture)).toBe(true)
+    expect(canShowEmailManagement(capabilityFixture)).toBe(true)
+    const oidcOnlyFixture = { ...capabilityFixture, emailPasswordEnabled: false }
+    expect(canShowTwoFactorManagement(oidcOnlyFixture)).toBe(false)
+    expect(canShowEmailManagement(oidcOnlyFixture)).toBe(false)
   })
 
   it('exposes configured OIDC and local-password state independently', () => {
@@ -33,14 +37,9 @@ describe('auth capability UI predicates', () => {
     expect(canShowPasswordForm(oidcFixture)).toBe(false)
   })
 
-  it('matches linked accounts using the configured OIDC provider id', () => {
-    const oidcFixture = {
-      ...capabilityFixture,
-      oauthProvider: { enabled: true as const, providerId: 'oidc', displayName: 'Authentik' }
-    }
-
-    expect(isOAuthProviderLinked(oidcFixture, [{ providerId: 'credential' }, { providerId: 'oidc' }])).toBe(true)
-    expect(isOAuthProviderLinked(oidcFixture, [{ providerId: 'credential' }])).toBe(false)
-    expect(isOAuthProviderLinked(capabilityFixture, [{ providerId: 'oidc' }])).toBe(false)
+  it('shows password management only for users with an enabled credential account', () => {
+    expect(canShowPasswordManagement(capabilityFixture, true)).toBe(true)
+    expect(canShowPasswordManagement(capabilityFixture, false)).toBe(false)
+    expect(canShowPasswordManagement({ ...capabilityFixture, emailPasswordEnabled: false }, true)).toBe(false)
   })
 })

@@ -12,7 +12,7 @@ import {
 import type { LibraryImportConflictStrategy, LibraryImportResult } from '~~/shared/types/library-transfer'
 import { roleIncludesAdmin } from '~~/shared/utils/auth-roles'
 import { canShowVerificationResendAction, canUseVerifiedEmailChange, getPasswordUpdatedDescription } from '~~/shared/utils/email-capability-ui'
-import { canShowPasskeyManagement, canShowPasswordForm, canShowTwoFactorManagement, isOAuthProviderLinked } from '~~/shared/utils/auth-capability-ui'
+import { canShowEmailManagement, canShowPasskeyManagement, canShowPasswordManagement, canShowTwoFactorManagement } from '~~/shared/utils/auth-capability-ui'
 import { authClient } from '~/utils/auth-client'
 
 usePageTitle('Settings')
@@ -66,13 +66,17 @@ const pendingRecentAuthAction = ref<(() => void) | null>(null)
 const isConfirmingRecentAuth = ref(false)
 const showPasskeyManagement = computed(() => canShowPasskeyManagement(authCapabilities.value))
 const showTwoFactorManagement = computed(() => canShowTwoFactorManagement(authCapabilities.value))
-const showPasswordManagement = computed(() => canShowPasswordForm(authCapabilities.value))
+const hasPasswordCredential = ref(false)
+const showPasswordManagement = computed(() =>
+  canShowPasswordManagement(authCapabilities.value, hasPasswordCredential.value)
+)
+const showEmailManagement = computed(() => canShowEmailManagement(authCapabilities.value))
 const oidcProvider = computed(() => authCapabilities.value.oauthProvider)
-const linkedAuthAccounts = ref<Array<{ providerId: string }>>([])
-const oidcAccountsLoaded = ref(false)
-const isLoadingOidcAccounts = ref(false)
+const accountMethodsLoaded = ref(false)
+const isLoadingAccountMethods = ref(false)
 const isLinkingOidc = ref(false)
-const oidcProviderLinked = computed(() => isOAuthProviderLinked(authCapabilities.value, linkedAuthAccounts.value))
+const oidcProviderLinked = ref(false)
+let accountMethodsRequest: Promise<boolean> | null = null
 const hasRecentAuth = computed(() => recentAuthExpiresAt.value > recentAuthClock.value)
 const emailFormState = computed(() => ({
   ...emailState,
@@ -205,33 +209,42 @@ function getFailureMessage(err: unknown, fallback: string) {
     || fallback
 }
 
-async function refreshOidcAccounts() {
-  if (!oidcProvider.value) return false
-  if (isLoadingOidcAccounts.value) return oidcAccountsLoaded.value
+async function refreshAccountMethods() {
+  if (accountMethodsRequest) return accountMethodsRequest
 
-  isLoadingOidcAccounts.value = true
+  accountMethodsRequest = (async () => {
+    isLoadingAccountMethods.value = true
+    try {
+      const result = await $fetch<{
+        hasPasswordCredential: boolean
+        oidcProviderLinked: boolean
+      }>('/api/auth/account-methods')
+      hasPasswordCredential.value = result.hasPasswordCredential
+      oidcProviderLinked.value = result.oidcProviderLinked
+      accountMethodsLoaded.value = true
+      return true
+    } catch (err: unknown) {
+      toast.add({
+        title: 'Unable to load connected sign-in methods',
+        description: getFailureMessage(err, 'Try again shortly.'),
+        color: 'error'
+      })
+      return false
+    } finally {
+      isLoadingAccountMethods.value = false
+    }
+  })()
+
   try {
-    const result = await authClient.listAccounts()
-    if (result.error) throw new Error(result.error.message || 'Unable to load connected sign-in methods')
-    linkedAuthAccounts.value = (result.data ?? []).map(account => ({ providerId: account.providerId }))
-    oidcAccountsLoaded.value = true
-    return true
-  } catch (err: unknown) {
-    toast.add({
-      title: 'Unable to load connected sign-in methods',
-      description: getFailureMessage(err, 'Try again shortly.'),
-      color: 'error'
-    })
-    return false
+    return await accountMethodsRequest
   } finally {
-    isLoadingOidcAccounts.value = false
+    accountMethodsRequest = null
   }
 }
 
 async function initializeOidcLinking() {
+  const accountsLoaded = await refreshAccountMethods()
   if (!oidcProvider.value) return
-
-  const accountsLoaded = await refreshOidcAccounts()
   if (route.query.oidcLink !== 'complete') return
 
   const query = { ...route.query }
@@ -288,7 +301,9 @@ function openEmailManagement() {
 
 type RecentAuthAction = 'email' | 'password' | 'two-factor-setup' | 'two-factor-manage' | 'passkeys' | 'delete'
 
-function requestRecentAuth(actionId: RecentAuthAction, action: () => void) {
+async function requestRecentAuth(actionId: RecentAuthAction, action: () => void) {
+  if (!accountMethodsLoaded.value && !await refreshAccountMethods()) return
+
   if (hasRecentAuth.value) {
     action()
     return
@@ -855,7 +870,10 @@ async function importLibraryCsvFile() {
         </template>
 
         <div class="divide-y divide-default">
-          <div class="flex flex-col gap-4 py-5 first:pt-0 sm:flex-row sm:items-center sm:justify-between">
+          <div
+            v-if="showEmailManagement"
+            class="flex flex-col gap-4 py-5 first:pt-0 sm:flex-row sm:items-center sm:justify-between"
+          >
             <div class="flex min-w-0 items-start gap-3">
               <UIcon
                 name="i-lucide-mail"
@@ -979,7 +997,7 @@ async function importLibraryCsvFile() {
                   {{ oidcProvider.displayName }}
                 </p>
                 <p class="text-sm text-muted">
-                  {{ !oidcAccountsLoaded
+                  {{ !accountMethodsLoaded
                     ? 'Checking connection…'
                     : oidcProviderLinked
                       ? 'Connected to this account'
@@ -990,8 +1008,8 @@ async function importLibraryCsvFile() {
             <UButton
               color="neutral"
               variant="outline"
-              :loading="isLoadingOidcAccounts || isLinkingOidc"
-              :disabled="!oidcAccountsLoaded || oidcProviderLinked"
+              :loading="isLoadingAccountMethods || isLinkingOidc"
+              :disabled="!accountMethodsLoaded || oidcProviderLinked"
               @click="connectOidcProvider"
             >
               {{ oidcProviderLinked ? 'Connected' : `Connect ${oidcProvider.displayName}` }}
@@ -1129,6 +1147,7 @@ async function importLibraryCsvFile() {
       </UModal>
 
       <UModal
+        v-if="showEmailManagement"
         v-model:open="emailManagementOpen"
         title="Manage email"
         description="Update the email address for this account."
@@ -1413,6 +1432,7 @@ async function importLibraryCsvFile() {
       </UModal>
 
       <UModal
+        v-if="showTwoFactorManagement"
         v-model:open="twoFactorManagementOpen"
         title="Manage two-factor authentication"
         description="Regenerate recovery codes or turn off two-factor authentication."
@@ -1631,6 +1651,7 @@ async function importLibraryCsvFile() {
       </UModal>
 
       <UModal
+        v-if="showTwoFactorManagement"
         v-model:open="twoFactorSetupOpen"
         title="Set up two-factor authentication"
         :description="twoFactorSetupStep === 'backup-codes'

@@ -9,9 +9,10 @@ import { auth, getAuthSecret } from '../utils/auth'
 import { AUTH_SESSION_OUTCOMES, logAuthSessionResolution } from '../utils/auth-session-logger'
 import { getEmailCapabilities } from '../utils/email-capabilities'
 import type { AuthRepository } from '../repositories/auth.repository'
-import { clearPendingEmail, emailIsInUse, getPendingEmail, getPendingEmailByCurrentEmail, setPendingEmail } from '../repositories/auth.repository'
+import { clearPendingEmail, emailIsInUse, getPendingEmail, getPendingEmailByCurrentEmail, hasAccountWithIssuer, setPendingEmail } from '../repositories/auth.repository'
 import type { DatabaseError } from '../repositories/book.repository'
 import { verifyPasswordOrRequireRecentAuth } from './recent-auth.service'
+import { getOidcProviderConfig, oidcProviderConfigured } from '../utils/oidc-provider-config'
 
 // Error types
 export class UnauthorizedError extends Data.TaggedError('UnauthorizedError')<{
@@ -64,6 +65,10 @@ export interface AuthServiceInterface {
     verified: boolean
     pendingEmail: string | null
   }, UnauthorizedError | DatabaseError, AuthRepository>
+  getAccountMethodStatus: (userId: string) => Effect.Effect<{
+    hasPasswordCredential: boolean
+    oidcProviderLinked: boolean
+  }, DatabaseError, AuthRepository>
   setPendingEmailChange: (event: H3Event, pendingEmail: string, currentPassword: string) => Effect.Effect<{ pendingEmail: string }, UnauthorizedError | InvalidPendingEmailError | PendingEmailConflictError | VerificationEmailDeliveryError | EmailCapabilityDisabledError | DatabaseError, AuthRepository>
   clearPendingEmailChange: (event: H3Event) => Effect.Effect<{ status: boolean }, UnauthorizedError | DatabaseError, AuthRepository>
   resendVerificationEmail: (event: H3Event, currentPassword?: string) => Effect.Effect<{ status: boolean }, UnauthorizedError | VerificationEmailDeliveryError | EmailCapabilityDisabledError | DatabaseError, AuthRepository>
@@ -159,6 +164,31 @@ export const AuthServiceLive = Layer.succeed(AuthService, {
         email: sessionData.user.email,
         verified: sessionData.user.emailVerified === true,
         pendingEmail
+      }
+    }),
+
+  getAccountMethodStatus: userId =>
+    Effect.gen(function* () {
+      const hasPasswordCredential = yield* hasAccountWithIssuer(userId, 'credential', 'local:credential')
+      const oidcConfig = getOidcProviderConfig()
+      const configuredProvider = oidcConfig.provider
+      if (!oidcProviderConfigured(oidcConfig) || !configuredProvider) {
+        return { hasPasswordCredential, oidcProviderLinked: false }
+      }
+
+      const context = yield* Effect.promise(() => auth.$context)
+      const runtimeProvider = context.socialProviders.find(provider => provider.id === configuredProvider.providerId)
+      const accountIssuer = runtimeProvider?.accountIssuer
+      const issuer = typeof accountIssuer === 'string'
+        ? accountIssuer
+        : accountIssuer === undefined
+          ? `local:oauth:${encodeURIComponent(configuredProvider.providerId)}`
+          : null
+
+      if (!issuer) return { hasPasswordCredential, oidcProviderLinked: false }
+      return {
+        hasPasswordCredential,
+        oidcProviderLinked: yield* hasAccountWithIssuer(userId, configuredProvider.providerId, issuer)
       }
     }),
 
@@ -311,6 +341,9 @@ export const requireVerifiedAuth = (event: H3Event) =>
 
 export const getEmailVerificationStatus = (event: H3Event) =>
   Effect.flatMap(AuthService, service => service.getEmailVerificationStatus(event))
+
+export const getAccountMethodStatus = (userId: string) =>
+  Effect.flatMap(AuthService, service => service.getAccountMethodStatus(userId))
 
 export const resendVerificationEmail = (event: H3Event, currentPassword?: string) =>
   Effect.flatMap(AuthService, service => service.resendVerificationEmail(event, currentPassword))

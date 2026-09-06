@@ -12,15 +12,15 @@ export function getOAuthProviderLabel(capabilities: AuthCapabilities) {
   return capabilities.oauthProvider ? `Continue with ${capabilities.oauthProvider.displayName}` : 'Continue with single sign-on'
 }
 
-export function isOAuthProviderLinked(
-  capabilities: AuthCapabilities,
-  accounts: ReadonlyArray<{ providerId: string }>
-) {
-  const providerId = capabilities.oauthProvider?.providerId
-  return providerId ? accounts.some(account => account.providerId === providerId) : false
+export function canShowPasswordForm(capabilities: AuthCapabilities) {
+  return capabilities.emailPasswordEnabled
 }
 
-export function canShowPasswordForm(capabilities: AuthCapabilities) {
+export function canShowPasswordManagement(capabilities: AuthCapabilities, hasPasswordCredential: boolean) {
+  return canShowPasswordForm(capabilities) && hasPasswordCredential
+}
+
+export function canShowEmailManagement(capabilities: AuthCapabilities) {
   return capabilities.emailPasswordEnabled
 }
 
@@ -29,5 +29,5 @@ export function canShowPasskeyManagement(capabilities: AuthCapabilities) {
 }
 
 export function canShowTwoFactorManagement(capabilities: AuthCapabilities) {
-  return capabilities.twoFactorEnabled
+  return capabilities.twoFactorEnabled && capabilities.emailPasswordEnabled
 }
