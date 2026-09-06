@@ -202,9 +202,9 @@ provider's redirect URI exactly as `https://libroo.example.com/api/auth/callback
 Discovery is preferred because Better Auth validates the provider issuer and
 identity token automatically. If discovery is unavailable, set all three
 explicit endpoint URLs instead. All provider endpoints must use HTTPS in
-production; plain HTTP is accepted only for loopback development. Discovery and
-user-info redirects are refused, so configure the final endpoint URL rather
-than an endpoint that redirects to another host or path.
+production; plain HTTP is accepted only for loopback development. Configure
+only endpoints from a trusted provider, and use the final endpoint URLs rather
+than URLs that redirect to another host or path.
 
 ```bash
 NUXT_PUBLIC_OIDC_ENABLED=true
