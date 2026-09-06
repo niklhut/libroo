@@ -4,6 +4,7 @@ import { Effect } from 'effect'
 import { RecentAuthError, RecentAuthService, RecentAuthServiceLive } from '../services/recent-auth.service'
 
 const RECENT_AUTH_PATHS = new Set([
+  '/change-email',
   '/change-password',
   '/two-factor/enable',
   '/two-factor/disable',

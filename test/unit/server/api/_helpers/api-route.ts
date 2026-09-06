@@ -91,6 +91,14 @@ vi.mock('../../../../../server/services/auth-request.service', () => ({
   handleAuthRequest: (...args: unknown[]) => serviceMocks.handleAuthRequest(...args)
 }))
 
+vi.mock('../../../../../server/services/auth.service', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../../server/services/auth.service')>()
+  return {
+    ...actual,
+    getAccountMethodStatus: (...args: unknown[]) => serviceMocks.getAccountMethodStatus(...args)
+  }
+})
+
 export interface TestEvent {
   headers: Headers
   params?: Record<string, string | undefined>
@@ -243,6 +251,7 @@ export const serviceMocks = {
   listBorrowerSuggestionsForOwner: vi.fn(),
   listBooksLentToUser: vi.fn(),
   getOptionalCurrentUserId: vi.fn(),
+  getAccountMethodStatus: vi.fn(),
   handleAuthRequest: vi.fn(),
   getInvitePreview: vi.fn(),
   acceptBookInvite: vi.fn(),

@@ -9,6 +9,26 @@ vi.mock('../../server/services/recent-auth.service', () => ({
 }))
 
 describe('librooRecentAuthPlugin', () => {
+  it('requires Libroo recent authentication before changing an email address', async () => {
+    const requireRecentAuth = vi.fn(async () => {})
+    const plugin = librooRecentAuthPlugin({
+      requireRecentAuth,
+      markSessionAsRecentlyAuthenticated: vi.fn(async () => {})
+    })
+    const beforeHook = plugin.hooks?.before?.[0]
+    const context = {
+      path: '/change-email',
+      context: {
+        session: { session: { id: 'current-session' } }
+      }
+    }
+
+    expect(beforeHook?.matcher?.(context)).toBe(true)
+    await (beforeHook?.handler as (context: unknown) => Promise<void>)(context)
+
+    expect(requireRecentAuth).toHaveBeenCalledWith('current-session')
+  })
+
   it('preserves recent authentication when changing a password rotates the session', async () => {
     const requireRecentAuth = vi.fn(async () => {})
     const markSessionAsRecentlyAuthenticated = vi.fn(async () => {})
