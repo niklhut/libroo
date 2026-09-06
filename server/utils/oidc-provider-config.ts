@@ -34,9 +34,11 @@ function parseScopes(value: string | undefined) {
  * Resolves the optional OIDC deployment settings. We deliberately disable
  * implicit linking for untrusted providers: an existing account must first
  * explicitly link that provider. Trusting a provider enables matching-email
- * implicit linking even without an email_verified claim, so it is appropriate
- * only when the IdP reliably proves ownership of every asserted email address.
- * Different-email linking remains disabled. New OIDC users may still be created.
+ * implicit linking even without a provider email_verified claim, but Better
+ * Auth still requires the existing local user email to be verified. Trust is
+ * appropriate only when the IdP reliably proves ownership of every asserted
+ * email address. Different-email linking remains disabled. New OIDC users may
+ * still be created.
  */
 export function getOidcProviderConfig(): OidcProviderConfig {
   const enabled = booleanConfigValue(getConfigValue('NUXT_PUBLIC_OIDC_ENABLED', 'public.oidc.enabled'), false)

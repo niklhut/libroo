@@ -128,7 +128,7 @@ Better Auth documentation refers to `BETTER_AUTH_SECRET` and `BETTER_AUTH_URL`. 
 | `NUXT_EMAIL_PASSWORD_ENABLED` | Optional | `true` by default. Set `false` to disable password login, signup, invite-backed password signup, and password reset. |
 | `NUXT_PUBLIC_PASSKEYS_ENABLED` | Optional | `false` by default. Enables passkey sign-in and enrollment on a secure origin; passkeys do not create users. |
 | `NUXT_PUBLIC_OIDC_ENABLED` | Optional | `false` by default. Enables the configured OIDC provider; see [OAuth / OIDC Sign-In](docs/deployment.md#oauth--oidc-sign-in). |
-| `NUXT_OIDC_TRUST_PROVIDER` | Optional | `false` by default. When `true`, matching-email OIDC accounts may be linked automatically even without an `email_verified` claim. Use only with a fully trusted IdP. |
+| `NUXT_OIDC_TRUST_PROVIDER` | Optional | `false` by default. When `true`, matching-email OIDC accounts may be linked automatically for an existing locally verified user even without a provider `email_verified` claim. Use only with a fully trusted IdP. |
 | `NUXT_PUBLIC_OPEN_LIBRARY_LINKS_ENABLED` | Optional | `true` in development and `false` in production unless explicitly set. |
 
 The authentication switches are independent. After the first account has been
@@ -152,10 +152,12 @@ With `NUXT_OIDC_TRUST_PROVIDER=false`, an OIDC sign-in whose email already
 belongs to a Libroo user is not linked implicitly and returns
 `account_not_linked`; the provider must be linked explicitly from an
 authenticated account. Setting it to `true` makes the configured provider a
-trusted identity source: the same-email account is linked automatically even if
-the provider does not return `email_verified=true`. Different-email accounts
-are never merged. Enable trust only when the IdP reliably verifies ownership of
-every email address it asserts.
+trusted identity source: an account with the same verified local email is linked
+automatically even if the provider does not return `email_verified=true`.
+Better Auth still requires the existing Libroo user's `emailVerified` field to
+be true; disabling Libroo's email-verification feature does not mark existing
+users as verified. Different-email accounts are never merged. Enable trust only
+when the IdP reliably verifies ownership of every email address it asserts.
 
 Email is optional, but password reset, invite emails, security notifications, and verification emails require a provider.
 

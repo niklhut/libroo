@@ -222,10 +222,15 @@ OIDC sign-in using an existing Libroo email returns `account_not_linked`, and th
 provider must instead be linked explicitly from an authenticated account.
 Setting the flag to `true` makes the configured IdP a trusted identity source:
 a matching-email account may be linked automatically even when the IdP does not
-return `email_verified=true`. This can expose existing accounts to takeover if
-the IdP permits unverified or reassigned email claims, so enable it only when the
-IdP reliably proves ownership of every asserted email. Different-email linking
-remains disabled in both modes.
+return `email_verified=true`, provided that the existing Libroo user row already
+has `emailVerified=true`. Better Auth deliberately requires that local
+verification to prevent an unverified, pre-registered account from receiving a
+victim's OAuth identity. `NUXT_EMAIL_VERIFICATION_ENABLED=false` disables the
+verification flow but does not mark existing users as verified. Provider trust
+can expose existing accounts to takeover if the IdP permits unverified or
+reassigned email claims, so enable it only when the IdP reliably proves
+ownership of every asserted email. Different-email linking remains disabled in
+both modes.
 
 The provider, registration, and password switches serve different purposes:
 
@@ -668,7 +673,7 @@ Repository or environment variables:
 | `NUXT_OIDC_DISCOVERY_URL` | Provider discovery URL, preferred over explicit endpoint variables. |
 | `NUXT_OIDC_AUTHORIZATION_URL` / `NUXT_OIDC_TOKEN_URL` / `NUXT_OIDC_USER_INFO_URL` | Set all three only when discovery is unavailable. |
 | `NUXT_OIDC_SCOPES` | `openid email profile` unless the provider requires additional scopes. |
-| `NUXT_OIDC_TRUST_PROVIDER` | `false` by default; `true` permits automatic same-email linking even without an `email_verified` claim. Use only when the IdP makes every asserted email authoritative. |
+| `NUXT_OIDC_TRUST_PROVIDER` | `false` by default; `true` permits automatic same-email linking for an existing locally verified user even without a provider `email_verified` claim. Use only when the IdP makes every asserted email authoritative. |
 | `NUXT_PUBLIC_OIDC_DISPLAY_NAME` / `NUXT_PUBLIC_OIDC_ICON` | Optional client-visible provider label and icon. |
 | `NUXT_EMAIL_PASSWORD_ENABLED` | `true`; set `false` only after validating OIDC sign-in. |
 | `NUXT_PUBLIC_REGISTRATION_ENABLED` | `false` after the first admin exists. |
