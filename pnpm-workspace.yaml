@@ -17,3 +17,6 @@ minimumReleaseAgeExclude:
   - '@cloudflare/vitest-pool-workers@0.16.20'
   - miniflare@4.20260625.0
   - wrangler@4.105.0
+
+patchedDependencies:
+  better-auth@1.7.2: patches/better-auth@1.7.2.patch

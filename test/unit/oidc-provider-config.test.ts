@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { getOidcProviderConfig, oidcProviderConfigured, validateOidcProviderConfig } from '../../server/utils/oidc-provider-config'
+import {
+  getOidcProviderConfig,
+  isAllowedOidcEndpoint,
+  oidcProviderConfigured,
+  validateOidcProviderConfig
+} from '../../server/utils/oidc-provider-config'
 
 const envKeys = [
   'NUXT_PUBLIC_OIDC_ENABLED', 'NUXT_OIDC_DISCOVERY_URL', 'NUXT_OIDC_AUTHORIZATION_URL',
@@ -73,5 +78,22 @@ describe('OIDC provider config', () => {
     expect(oidcProviderConfigured()).toBe(false)
     expect(() => validateOidcProviderConfig()).toThrow(/NUXT_OIDC_CLIENT_ID, NUXT_OIDC_CLIENT_SECRET/)
     expect(() => validateOidcProviderConfig()).toThrow(/NUXT_OIDC_DISCOVERY_URL \(or all explicit endpoint URLs\)/)
+  })
+
+  it('requires HTTPS endpoints in production and permits loopback HTTP only for development', () => {
+    expect(isAllowedOidcEndpoint('https://id.example.com/.well-known/openid-configuration', false)).toBe(true)
+    expect(isAllowedOidcEndpoint('http://id.example.com/.well-known/openid-configuration', false)).toBe(false)
+    expect(isAllowedOidcEndpoint('http://localhost:9000/.well-known/openid-configuration', true)).toBe(true)
+    expect(isAllowedOidcEndpoint('http://127.0.0.1:9000/.well-known/openid-configuration', true)).toBe(true)
+    expect(isAllowedOidcEndpoint('not a URL', true)).toBe(false)
+  })
+
+  it('lists an insecure configured endpoint in the validation error', () => {
+    process.env.NUXT_PUBLIC_OIDC_ENABLED = 'true'
+    process.env.NUXT_OIDC_DISCOVERY_URL = 'ftp://id.example.com/.well-known/openid-configuration'
+    process.env.NUXT_OIDC_CLIENT_ID = 'client'
+    process.env.NUXT_OIDC_CLIENT_SECRET = 'secret'
+
+    expect(() => validateOidcProviderConfig()).toThrow(/Invalid: NUXT_OIDC_DISCOVERY_URL/)
   })
 })

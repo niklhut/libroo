@@ -30,6 +30,18 @@ function parseScopes(value: string | undefined) {
     .filter(Boolean)
 }
 
+const LOOPBACK_HOSTNAMES = new Set(['localhost', '127.0.0.1', '::1'])
+
+export function isAllowedOidcEndpoint(value: string, allowInsecureLoopback = process.env.NODE_ENV === 'development') {
+  try {
+    const url = new URL(value)
+    return url.protocol === 'https:'
+      || (allowInsecureLoopback && url.protocol === 'http:' && LOOPBACK_HOSTNAMES.has(url.hostname))
+  } catch {
+    return false
+  }
+}
+
 /**
  * Resolves the optional OIDC deployment settings. We deliberately disable
  * implicit linking for untrusted providers: an existing account must first
@@ -78,7 +90,7 @@ export function oidcProviderConfigured(config = getOidcProviderConfig()) {
 }
 
 export function validateOidcProviderConfig(config = getOidcProviderConfig()) {
-  if (!config.enabled || config.provider) return
+  if (!config.enabled) return
 
   const missing: string[] = []
   if (!getConfigValue('NUXT_OIDC_CLIENT_ID', 'oidc.clientId')) missing.push('NUXT_OIDC_CLIENT_ID')
@@ -97,7 +109,25 @@ export function validateOidcProviderConfig(config = getOidcProviderConfig()) {
     }
   }
 
-  throw new Error(`OIDC is enabled, but configuration is incomplete. Missing: ${missing.join(', ')}.`)
+  if (missing.length > 0) {
+    throw new Error(`OIDC is enabled, but configuration is incomplete. Missing: ${missing.join(', ')}.`)
+  }
+
+  const endpoints = discoveryUrl
+    ? [['NUXT_OIDC_DISCOVERY_URL', discoveryUrl]]
+    : [
+        ['NUXT_OIDC_AUTHORIZATION_URL', authorizationUrl],
+        ['NUXT_OIDC_TOKEN_URL', tokenUrl],
+        ['NUXT_OIDC_USER_INFO_URL', userInfoUrl]
+      ]
+  const insecure = endpoints
+    .filter((endpoint): endpoint is [string, string] => Boolean(endpoint[1]))
+    .filter(([, value]) => !isAllowedOidcEndpoint(value))
+    .map(([name]) => name)
+
+  if (insecure.length > 0) {
+    throw new Error(`OIDC endpoint URLs must use HTTPS in production (HTTP is allowed only for loopback development). Invalid: ${insecure.join(', ')}.`)
+  }
 }
 
 export function getOidcAccountLinkingOptions(config = getOidcProviderConfig()) {

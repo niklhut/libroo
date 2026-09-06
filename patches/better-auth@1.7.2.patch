@@ -1,0 +1,63 @@
+diff --git a/dist/plugins/generic-oauth/index.mjs b/dist/plugins/generic-oauth/index.mjs
+index 1d15faae623a1af54423abac6adad840d175d01f..90448d4f2b12ac8c45021214aa77b005ae0ec4ae 100644
+--- a/dist/plugins/generic-oauth/index.mjs
++++ b/dist/plugins/generic-oauth/index.mjs
+@@ -11,6 +11,7 @@ import { patreon } from "./providers/patreon.mjs";
+ import { slack } from "./providers/slack.mjs";
+ import { yandex } from "./providers/yandex.mjs";
+ import { APIError } from "@better-auth/core/error";
++import { isDevelopment } from "@better-auth/core/env";
+ import { applyDefaultAccessTokenExpiry, createAuthorizationURL, refreshAccessToken, validateAuthorizationCode, verifyProviderIdToken } from "@better-auth/core/oauth2";
+ import { createRemoteJWKSet, decodeJwt } from "jose";
+ import { betterFetch } from "@better-fetch/fetch";
+@@ -21,16 +22,31 @@ function isSecretlessTokenEndpointAuth(tokenEndpointAuth) {
+ function isClientSecretTokenEndpointAuth(tokenEndpointAuth) {
+ 	return tokenEndpointAuth?.method === "client_secret_basic" || tokenEndpointAuth?.method === "client_secret_post";
+ }
++function isSecureOAuthEndpoint(value) {
++	try {
++		const url = new URL(value);
++		return url.protocol === "https:" || isDevelopment() && url.protocol === "http:" && ["localhost", "127.0.0.1", "::1"].includes(url.hostname);
++	} catch {
++		return false;
++	}
++}
+ async function fetchDiscovery(url, headers) {
++	if (!isSecureOAuthEndpoint(url)) return null;
+ 	const result = await betterFetch(url, {
+ 		method: "GET",
+-		headers
++		headers,
++		redirect: "manual"
+ 	});
+ 	if (result.error || !result.data) return null;
+-	if (result.data.issuer) try {
+-		new URL(result.data.issuer);
+-	} catch {
+-		return null;
++	for (const endpoint of [
++		result.data.issuer,
++		result.data.authorization_endpoint,
++		result.data.token_endpoint,
++		result.data.userinfo_endpoint,
++		result.data.jwks_uri,
++		result.data.end_session_endpoint
++	]) {
++		if (endpoint && !isSecureOAuthEndpoint(endpoint)) return null;
+ 	}
+ 	return result.data;
+ }
+@@ -44,10 +60,11 @@ async function fetchUserInfo(tokens, userInfoUrl) {
+ 			...decoded
+ 		};
+ 	} catch {}
+-	if (!userInfoUrl) return null;
++	if (!userInfoUrl || !isSecureOAuthEndpoint(userInfoUrl)) return null;
+ 	const userInfo = await betterFetch(userInfoUrl, {
+ 		method: "GET",
+-		headers: { Authorization: `Bearer ${tokens.accessToken}` }
++		headers: { Authorization: `Bearer ${tokens.accessToken}` },
++		redirect: "manual"
+ 	});
+ 	if (userInfo.error || !userInfo.data) return null;
+ 	return {

@@ -201,7 +201,10 @@ provider's redirect URI exactly as `https://libroo.example.com/api/auth/callback
 
 Discovery is preferred because Better Auth validates the provider issuer and
 identity token automatically. If discovery is unavailable, set all three
-explicit endpoint URLs instead.
+explicit endpoint URLs instead. All provider endpoints must use HTTPS in
+production; plain HTTP is accepted only for loopback development. Discovery and
+user-info redirects are refused, so configure the final endpoint URL rather
+than an endpoint that redirects to another host or path.
 
 ```bash
 NUXT_PUBLIC_OIDC_ENABLED=true
@@ -245,7 +248,10 @@ email, use an explicit connection instead of weakening this gate:
 The explicit connection proves control of both the existing Libroo session and
 the OIDC identity, so it works without setting the local user's email as
 verified. Repeat the connection step for invited family or friends before
-removing their previous sign-in method.
+removing their previous sign-in method. Keeping
+`NUXT_PUBLIC_REGISTRATION_ENABLED=false` throughout this transition does not
+reopen public password signup: existing password login continues to work, and
+new password accounts still require an invite.
 
 The provider, registration, and password switches serve different purposes:
 

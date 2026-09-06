@@ -163,6 +163,14 @@ the user's existing password sign-in method. Different-email accounts are never
 merged. Enable trust only when the IdP reliably verifies ownership of every
 email address it asserts.
 
+For an existing installation, keep `NUXT_PUBLIC_REGISTRATION_ENABLED=false`
+and `NUXT_EMAIL_PASSWORD_ENABLED=true` during the OIDC transition. That keeps
+public password signup closed (invite-backed signup still works) while existing
+users sign in with their current method and connect OIDC under **Settings →
+Account & sign-in**. Once every user has linked and tested OIDC, passwords can
+be disabled without affecting those linked identities. See the
+[OIDC rollout guide](docs/deployment.md#oauth--oidc-sign-in) for the full flow.
+
 Email is optional, but password reset, invite emails, security notifications, and verification emails require a provider.
 
 SMTP is available in the self-hosted profile:
