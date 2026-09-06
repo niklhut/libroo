@@ -124,8 +124,38 @@ Better Auth documentation refers to `BETTER_AUTH_SECRET` and `BETTER_AUTH_URL`. 
 | `NUXT_LIBROO_RUNTIME_PROFILE` | Optional | `selfhost` by default. Use `cloudflare` for NuxtHub/D1/R2 builds. |
 | `NUXT_DATABASE_URL` | Self-host | libSQL/SQLite URL. Local default is `file:.data/db/sqlite.db`; Docker uses `file:/data/db/sqlite.db`. |
 | `NUXT_LOCAL_STORAGE_DIR` | Self-host | Local blob directory. Local default is `.data/blob`; Docker uses `/data/blob`. |
-| `NUXT_PUBLIC_REGISTRATION_ENABLED` | Optional | `true` by default. Set `false` after the first admin exists to make registration invite-only. |
+| `NUXT_PUBLIC_REGISTRATION_ENABLED` | Optional | `true` by default. Controls new-user creation, not sign-in. Set `false` after bootstrap to require an invite for password signup and block new OIDC users. |
+| `NUXT_EMAIL_PASSWORD_ENABLED` | Optional | `true` by default. Set `false` to disable password login, signup, invite-backed password signup, and password reset. |
+| `NUXT_PUBLIC_PASSKEYS_ENABLED` | Optional | `false` by default. Enables passkey sign-in and enrollment on a secure origin; passkeys do not create users. |
+| `NUXT_PUBLIC_OIDC_ENABLED` | Optional | `false` by default. Enables the configured OIDC provider; see [OAuth / OIDC Sign-In](docs/deployment.md#oauth--oidc-sign-in). |
+| `NUXT_OIDC_TRUST_PROVIDER` | Optional | `false` by default. When `true`, matching-email OIDC accounts may be linked automatically even without an `email_verified` claim. Use only with a fully trusted IdP. |
 | `NUXT_PUBLIC_OPEN_LIBRARY_LINKS_ENABLED` | Optional | `true` in development and `false` in production unless explicitly set. |
+
+The authentication switches are independent. After the first account has been
+created, their combinations behave as follows (assuming OIDC and passkeys are
+otherwise configured where mentioned):
+
+| Public registration | Email/password | New users | Existing users |
+| --- | --- | --- | --- |
+| `true` | `true` | Public password signup and OIDC just-in-time creation are allowed. | Password, passkey, and already-linked OIDC sign-in remain available. |
+| `false` | `true` | Password signup requires a valid invite; OIDC cannot create a user. | Password, passkey, and already-linked OIDC sign-in remain available. |
+| `true` | `false` | OIDC can create users; password signup is unavailable even with an invite. | OIDC and passkey sign-in remain available; password login is disabled. |
+| `false` | `false` | No password or OIDC user creation; invites cannot create password accounts. | Only passkey and already-linked OIDC sign-in remain available. |
+
+An empty installation has one bootstrap exception: its first account may be
+created by password or OIDC even when public registration is disabled, and that
+account is promoted to admin. `NUXT_PUBLIC_OIDC_ENABLED` only exposes the OIDC
+provider; it does not override the registration policy. Likewise, passkeys are
+an authentication method for existing users, not a signup method.
+
+With `NUXT_OIDC_TRUST_PROVIDER=false`, an OIDC sign-in whose email already
+belongs to a Libroo user is not linked implicitly and returns
+`account_not_linked`; the provider must be linked explicitly from an
+authenticated account. Setting it to `true` makes the configured provider a
+trusted identity source: the same-email account is linked automatically even if
+the provider does not return `email_verified=true`. Different-email accounts
+are never merged. Enable trust only when the IdP reliably verifies ownership of
+every email address it asserts.
 
 Email is optional, but password reset, invite emails, security notifications, and verification emails require a provider.
 
@@ -268,7 +298,14 @@ Start every new install with an empty database and public registration enabled:
 NUXT_PUBLIC_REGISTRATION_ENABLED=true
 ```
 
-Open `/register` and create the first account. The `librooAdminPolicyPlugin` runs after Better Auth creates the user and atomically assigns `user.role = 'admin'` if no admin user exists. After confirming the account can access `/admin/users`, set `NUXT_PUBLIC_REGISTRATION_ENABLED=false` for private or hosted invite-only operation and restart/redeploy.
+Open `/register` and create the first account, or use the configured OIDC button.
+The `librooAdminPolicyPlugin` runs after Better Auth creates the user and
+atomically assigns `user.role = 'admin'` if no admin user exists. After
+confirming the account can access `/admin/users`, set
+`NUXT_PUBLIC_REGISTRATION_ENABLED=false` for private or hosted invite-only
+operation and restart/redeploy. The empty-database bootstrap is also permitted
+when registration is already disabled, but enabling it during setup makes the
+intended state clearer.
 
 The policy also prevents common lockouts: admins cannot demote or ban themselves, and Libroo rejects demoting or banning the last active admin.
 
