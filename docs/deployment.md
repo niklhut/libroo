@@ -232,6 +232,21 @@ reassigned email claims, so enable it only when the IdP reliably proves
 ownership of every asserted email. Different-email linking remains disabled in
 both modes.
 
+For a private installation that intentionally does not deliver verification
+email, use an explicit connection instead of weakening this gate:
+
+1. Create the first admin with email/password and remain signed in.
+2. Enable and restart with the OIDC configuration while keeping
+   `NUXT_EMAIL_PASSWORD_ENABLED=true`.
+3. Open **Settings → Account & sign-in** and select **Connect _provider_**.
+4. Sign out and confirm that OIDC sign-in returns to the same Libroo account.
+5. Only then set `NUXT_EMAIL_PASSWORD_ENABLED=false`, if desired.
+
+The explicit connection proves control of both the existing Libroo session and
+the OIDC identity, so it works without setting the local user's email as
+verified. Repeat the connection step for invited family or friends before
+removing their previous sign-in method.
+
 The provider, registration, and password switches serve different purposes:
 
 | Public registration | Email/password | Result after bootstrap |
@@ -258,8 +273,10 @@ require a separate OIDC provisioning policy.
 - **Authentik:** use the provider's OpenID Connect discovery URL from its
   application/provider configuration and register the callback above. Authentik
   2025.10 and newer reports `email_verified=false` from its default email scope;
-  keep provider trust disabled unless a controlled property mapping and account
-  policy make every asserted email authoritative.
+  explicit connection therefore requires provider trust unless a controlled
+  property mapping emits a reliable verified-email claim. Enable trust only when
+  the Authentik account and email-assignment policy make every asserted email
+  authoritative.
 - **Keycloak:** use the realm discovery URL, normally
   `https://host/realms/<realm>/.well-known/openid-configuration`; make sure the
   client has the `openid`, `email`, and `profile` scopes.

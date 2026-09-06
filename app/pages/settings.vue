@@ -12,7 +12,7 @@ import {
 import type { LibraryImportConflictStrategy, LibraryImportResult } from '~~/shared/types/library-transfer'
 import { roleIncludesAdmin } from '~~/shared/utils/auth-roles'
 import { canShowVerificationResendAction, canUseVerifiedEmailChange, getPasswordUpdatedDescription } from '~~/shared/utils/email-capability-ui'
-import { canShowPasskeyManagement, canShowPasswordForm, canShowTwoFactorManagement } from '~~/shared/utils/auth-capability-ui'
+import { canShowPasskeyManagement, canShowPasswordForm, canShowTwoFactorManagement, isOAuthProviderLinked } from '~~/shared/utils/auth-capability-ui'
 import { authClient } from '~/utils/auth-client'
 
 usePageTitle('Settings')
@@ -67,6 +67,12 @@ const isConfirmingRecentAuth = ref(false)
 const showPasskeyManagement = computed(() => canShowPasskeyManagement(authCapabilities.value))
 const showTwoFactorManagement = computed(() => canShowTwoFactorManagement(authCapabilities.value))
 const showPasswordManagement = computed(() => canShowPasswordForm(authCapabilities.value))
+const oidcProvider = computed(() => authCapabilities.value.oauthProvider)
+const linkedAuthAccounts = ref<Array<{ providerId: string }>>([])
+const oidcAccountsLoaded = ref(false)
+const isLoadingOidcAccounts = ref(false)
+const isLinkingOidc = ref(false)
+const oidcProviderLinked = computed(() => isOAuthProviderLinked(authCapabilities.value, linkedAuthAccounts.value))
 const hasRecentAuth = computed(() => recentAuthExpiresAt.value > recentAuthClock.value)
 const emailFormState = computed(() => ({
   ...emailState,
@@ -178,6 +184,7 @@ onBeforeUnmount(() => {
 onMounted(() => {
   void refreshPasskeys()
   void completeOidcRecentAuth()
+  void initializeOidcLinking()
 })
 
 if (route.query.verify === 'required') {
@@ -196,6 +203,74 @@ function getFailureMessage(err: unknown, fallback: string) {
     || (err as { message?: string })?.message
     || (err instanceof Error ? err.message : undefined)
     || fallback
+}
+
+async function refreshOidcAccounts() {
+  if (!oidcProvider.value) return false
+  if (isLoadingOidcAccounts.value) return oidcAccountsLoaded.value
+
+  isLoadingOidcAccounts.value = true
+  try {
+    const result = await authClient.listAccounts()
+    if (result.error) throw new Error(result.error.message || 'Unable to load connected sign-in methods')
+    linkedAuthAccounts.value = (result.data ?? []).map(account => ({ providerId: account.providerId }))
+    oidcAccountsLoaded.value = true
+    return true
+  } catch (err: unknown) {
+    toast.add({
+      title: 'Unable to load connected sign-in methods',
+      description: getFailureMessage(err, 'Try again shortly.'),
+      color: 'error'
+    })
+    return false
+  } finally {
+    isLoadingOidcAccounts.value = false
+  }
+}
+
+async function initializeOidcLinking() {
+  if (!oidcProvider.value) return
+
+  const accountsLoaded = await refreshOidcAccounts()
+  if (route.query.oidcLink !== 'complete') return
+
+  const query = { ...route.query }
+  delete query.oidcLink
+  await navigateTo({ path: route.path, query }, { replace: true })
+  if (!accountsLoaded) return
+
+  toast.add(oidcProviderLinked.value
+    ? {
+        title: `${oidcProvider.value.displayName} connected`,
+        description: 'You can now use this provider to sign in to your existing account.',
+        color: 'success'
+      }
+    : {
+        title: 'Unable to confirm OIDC connection',
+        description: 'The provider did not appear in your connected sign-in methods. Try connecting it again.',
+        color: 'error'
+      })
+}
+
+async function connectOidcProvider() {
+  const provider = oidcProvider.value
+  if (!provider || oidcProviderLinked.value || isLinkingOidc.value) return
+
+  isLinkingOidc.value = true
+  try {
+    const result = await authClient.linkSocial({
+      provider: provider.providerId,
+      callbackURL: '/settings?oidcLink=complete'
+    })
+    if (result.error) throw new Error(result.error.message || `Unable to connect ${provider.displayName}`)
+  } catch (err: unknown) {
+    toast.add({
+      title: `Unable to connect ${provider.displayName}`,
+      description: getFailureMessage(err, 'Try again shortly.'),
+      color: 'error'
+    })
+    isLinkingOidc.value = false
+  }
 }
 
 function resetAccountDeletionForm() {
@@ -865,7 +940,7 @@ async function importLibraryCsvFile() {
 
           <div
             v-if="showPasskeyManagement"
-            class="flex flex-col gap-4 py-5 last:pb-0 sm:flex-row sm:items-center sm:justify-between"
+            class="flex flex-col gap-4 py-5 sm:flex-row sm:items-center sm:justify-between"
           >
             <div class="flex min-w-0 items-start gap-3">
               <UIcon
@@ -887,6 +962,39 @@ async function importLibraryCsvFile() {
               @click="requestRecentAuth('passkeys', openPasskeyManagement)"
             >
               Manage passkeys
+            </UButton>
+          </div>
+
+          <div
+            v-if="oidcProvider"
+            class="flex flex-col gap-4 py-5 sm:flex-row sm:items-center sm:justify-between"
+          >
+            <div class="flex min-w-0 items-start gap-3">
+              <UIcon
+                :name="oidcProvider.icon || 'i-lucide-log-in'"
+                class="mt-0.5 size-5 shrink-0 text-muted"
+              />
+              <div>
+                <p class="font-medium">
+                  {{ oidcProvider.displayName }}
+                </p>
+                <p class="text-sm text-muted">
+                  {{ !oidcAccountsLoaded
+                    ? 'Checking connection…'
+                    : oidcProviderLinked
+                      ? 'Connected to this account'
+                      : 'Not connected to this account' }}
+                </p>
+              </div>
+            </div>
+            <UButton
+              color="neutral"
+              variant="outline"
+              :loading="isLoadingOidcAccounts || isLinkingOidc"
+              :disabled="!oidcAccountsLoaded || oidcProviderLinked"
+              @click="connectOidcProvider"
+            >
+              {{ oidcProviderLinked ? 'Connected' : `Connect ${oidcProvider.displayName}` }}
             </UButton>
           </div>
 

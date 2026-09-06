@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { canShowOAuthSignIn, canShowPasskeyManagement, canShowPasskeySignIn, canShowPasswordForm, canShowTwoFactorManagement, getOAuthProviderLabel } from '../../shared/utils/auth-capability-ui'
+import { canShowOAuthSignIn, canShowPasskeyManagement, canShowPasskeySignIn, canShowPasswordForm, canShowTwoFactorManagement, getOAuthProviderLabel, isOAuthProviderLinked } from '../../shared/utils/auth-capability-ui'
 
 const capabilityFixture = {
   twoFactorEnabled: true,
@@ -31,5 +31,16 @@ describe('auth capability UI predicates', () => {
     expect(getOAuthProviderLabel(oidcFixture)).toBe('Continue with Authentik')
     expect(canShowPasswordForm(capabilityFixture)).toBe(true)
     expect(canShowPasswordForm(oidcFixture)).toBe(false)
+  })
+
+  it('matches linked accounts using the configured OIDC provider id', () => {
+    const oidcFixture = {
+      ...capabilityFixture,
+      oauthProvider: { enabled: true as const, providerId: 'oidc', displayName: 'Authentik' }
+    }
+
+    expect(isOAuthProviderLinked(oidcFixture, [{ providerId: 'credential' }, { providerId: 'oidc' }])).toBe(true)
+    expect(isOAuthProviderLinked(oidcFixture, [{ providerId: 'credential' }])).toBe(false)
+    expect(isOAuthProviderLinked(capabilityFixture, [{ providerId: 'oidc' }])).toBe(false)
   })
 })

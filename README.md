@@ -156,8 +156,12 @@ trusted identity source: an account with the same verified local email is linked
 automatically even if the provider does not return `email_verified=true`.
 Better Auth still requires the existing Libroo user's `emailVerified` field to
 be true; disabling Libroo's email-verification feature does not mark existing
-users as verified. Different-email accounts are never merged. Enable trust only
-when the IdP reliably verifies ownership of every email address it asserts.
+users as verified. A signed-in user can instead connect the configured provider
+explicitly under **Settings → Account & sign-in**; this proves control of both
+accounts without requiring email verification. Connect OIDC before disabling
+the user's existing password sign-in method. Different-email accounts are never
+merged. Enable trust only when the IdP reliably verifies ownership of every
+email address it asserts.
 
 Email is optional, but password reset, invite emails, security notifications, and verification emails require a provider.
 
