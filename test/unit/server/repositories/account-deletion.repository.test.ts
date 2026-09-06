@@ -21,7 +21,7 @@ describe('AccountDeletionRepository', () => {
     db = drizzle(client)
     await client.execute('PRAGMA foreign_keys = ON')
 
-    for (const migrationFile of ['0000_initial_beta.sql', '0001_add_terms_acceptance.sql', '0002_prevent_location_delete_cascade.sql', '0003_add_library_state.sql', '0006_huge_tiger_shark.sql', '0008_brave_saracen.sql', '0010_owner_private_loan_note.sql', '0011_borrower_suggestions.sql', '0012_imported_book_enrichment.sql', '0013_auth-two-factor-passkeys.sql', '0014_recent-auth.sql']) {
+    for (const migrationFile of ['0000_initial_beta.sql', '0001_add_terms_acceptance.sql', '0002_prevent_location_delete_cascade.sql', '0003_add_library_state.sql', '0006_huge_tiger_shark.sql', '0008_brave_saracen.sql', '0010_owner_private_loan_note.sql', '0011_borrower_suggestions.sql', '0012_imported_book_enrichment.sql', '0013_auth-two-factor-passkeys.sql', '0014_recent-auth.sql', '0017_better_auth_account_issuer.sql']) {
       const migrationPath = fileURLToPath(
         new URL(`../../../../server/db/migrations/sqlite/${migrationFile}`, import.meta.url)
       )
@@ -129,7 +129,8 @@ describe('AccountDeletionRepository', () => {
     })
     await db.insert(account).values({
       id: 'account-admin-1',
-      accountId: 'ada@example.com',
+      accountId: 'admin-1',
+      issuer: 'local:credential',
       providerId: 'credential',
       userId: 'admin-1',
       createdAt: now,
@@ -235,8 +236,8 @@ async function seedDeletionScenario(db: ReturnType<typeof drizzle>) {
   ])
 
   await db.insert(account).values([
-    { id: 'account-1', accountId: 'ada@example.com', providerId: 'credential', userId: 'user-1', createdAt: now, updatedAt: now },
-    { id: 'account-2', accountId: 'grace@example.com', providerId: 'credential', userId: 'user-2', createdAt: now, updatedAt: now }
+    { id: 'account-1', accountId: 'user-1', issuer: 'local:credential', providerId: 'credential', userId: 'user-1', createdAt: now, updatedAt: now },
+    { id: 'account-2', accountId: 'user-2', issuer: 'local:credential', providerId: 'credential', userId: 'user-2', createdAt: now, updatedAt: now }
   ])
   await db.insert(session).values([
     { id: 'session-1', token: 'token-1', userId: 'user-1', expiresAt: now, createdAt: now, updatedAt: now },

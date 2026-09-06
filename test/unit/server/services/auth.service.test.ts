@@ -9,7 +9,14 @@ const envKeys = [
   'NUXT_EMAIL_FROM',
   'NUXT_SMTP_HOST',
   'NUXT_SMTP_USER',
-  'NUXT_SMTP_PASSWORD'
+  'NUXT_SMTP_PASSWORD',
+  'NUXT_PUBLIC_OIDC_ENABLED',
+  'NUXT_OIDC_DISCOVERY_URL',
+  'NUXT_OIDC_AUTHORIZATION_URL',
+  'NUXT_OIDC_TOKEN_URL',
+  'NUXT_OIDC_USER_INFO_URL',
+  'NUXT_OIDC_CLIENT_ID',
+  'NUXT_OIDC_CLIENT_SECRET'
 ]
 const originalEnvValues = new Map(envKeys.map(key => [key, process.env[key]]))
 
@@ -17,7 +24,8 @@ const authMock = vi.hoisted(() => ({
   getSession: vi.fn(),
   sendVerificationEmail: vi.fn(),
   changeEmail: vi.fn(),
-  verifyPassword: vi.fn()
+  verifyPassword: vi.fn(),
+  context: Promise.resolve({ socialProviders: [] })
 }))
 
 const authSessionLoggerMock = vi.hoisted(() => ({
@@ -31,6 +39,9 @@ const jwtMock = vi.hoisted(() => ({
 vi.mock('../../../../server/utils/auth', () => ({
   getAuthSecret: () => 'test-secret',
   auth: {
+    get $context() {
+      return authMock.context
+    },
     api: {
       getSession: authMock.getSession,
       sendVerificationEmail: authMock.sendVerificationEmail,
@@ -65,13 +76,16 @@ describe('AuthService', () => {
     authRepoMock.getPendingEmail.mockReset()
     authRepoMock.getPendingEmailByCurrentEmail.mockReset()
     authRepoMock.emailIsInUse.mockReset()
+    authRepoMock.hasAccountWithIssuer.mockReset()
     authRepoMock.setPendingEmail.mockReset()
     authRepoMock.clearPendingEmail.mockReset()
     authRepoMock.getPendingEmail.mockReturnValue(Effect.succeed(null))
     authRepoMock.getPendingEmailByCurrentEmail.mockReturnValue(Effect.succeed(null))
     authRepoMock.emailIsInUse.mockReturnValue(Effect.succeed(false))
+    authRepoMock.hasAccountWithIssuer.mockReturnValue(Effect.succeed(false))
     authRepoMock.setPendingEmail.mockReturnValue(Effect.void)
     authRepoMock.clearPendingEmail.mockReturnValue(Effect.void)
+    authMock.context = Promise.resolve({ socialProviders: [] })
   })
 
   afterEach(() => {
@@ -209,6 +223,58 @@ describe('AuthService', () => {
     await expect(runAuthService(
       Effect.flatMap(AuthService, service => service.getOptionalCurrentUserId(makeEvent()))
     )).resolves.toBe('user-1')
+  })
+
+  it('matches the configured OIDC account using the provider runtime issuer', async () => {
+    enableOidc()
+    authMock.context = Promise.resolve({
+      socialProviders: [{ id: 'oidc', accountIssuer: 'https://id.example.com/application/o/libroo/' }]
+    })
+    authRepoMock.hasAccountWithIssuer
+      .mockReturnValueOnce(Effect.succeed(false))
+      .mockReturnValueOnce(Effect.succeed(true))
+
+    await expect(runAuthService(
+      Effect.flatMap(AuthService, service => service.getAccountMethodStatus('user-1'))
+    )).resolves.toEqual({
+      hasPasswordCredential: false,
+      oidcProviderLinked: true
+    })
+
+    expect(authRepoMock.hasAccountWithIssuer).toHaveBeenNthCalledWith(
+      2,
+      'user-1',
+      'oidc',
+      'https://id.example.com/application/o/libroo/'
+    )
+  })
+
+  it('uses Better Auth\'s local OAuth issuer for explicit endpoint configuration', async () => {
+    enableOidc({ explicitEndpoints: true })
+    authMock.context = Promise.resolve({
+      socialProviders: [{ id: 'oidc' }]
+    })
+
+    await runAuthService(
+      Effect.flatMap(AuthService, service => service.getAccountMethodStatus('user-1'))
+    )
+
+    expect(authRepoMock.hasAccountWithIssuer).toHaveBeenNthCalledWith(2, 'user-1', 'oidc', 'local:oauth:oidc')
+  })
+
+  it('reports the password credential without querying OIDC when the provider is disabled', async () => {
+    process.env.NUXT_PUBLIC_OIDC_ENABLED = 'false'
+    authRepoMock.hasAccountWithIssuer.mockReturnValueOnce(Effect.succeed(true))
+
+    await expect(runAuthService(
+      Effect.flatMap(AuthService, service => service.getAccountMethodStatus('user-1'))
+    )).resolves.toEqual({
+      hasPasswordCredential: true,
+      oidcProviderLinked: false
+    })
+
+    expect(authRepoMock.hasAccountWithIssuer).toHaveBeenCalledOnce()
+    expect(authRepoMock.hasAccountWithIssuer).toHaveBeenCalledWith('user-1', 'credential', 'local:credential')
   })
 
   it('allows unverified users when email verification is disabled', async () => {
@@ -392,7 +458,7 @@ describe('AuthService', () => {
     })
   })
 
-  it('rejects pending email changes without the current password', async () => {
+  it('rejects pending email changes without a password or recent OIDC session', async () => {
     enableVerificationEmail()
     authMock.getSession.mockResolvedValueOnce({
       user: {
@@ -411,7 +477,7 @@ describe('AuthService', () => {
     expect(result._tag).toBe('Left')
     expect(result.left).toMatchObject({
       _tag: 'UnauthorizedError',
-      message: 'Current password is required'
+      message: 'You need to sign in again.'
     })
     expect(authRepoMock.setPendingEmail).not.toHaveBeenCalled()
   })
@@ -557,6 +623,7 @@ const authRepoMock = {
   getPendingEmail: vi.fn(),
   getPendingEmailByCurrentEmail: vi.fn(),
   emailIsInUse: vi.fn(),
+  hasAccountWithIssuer: vi.fn(),
   setPendingEmail: vi.fn(),
   clearPendingEmail: vi.fn()
 }
@@ -583,4 +650,18 @@ function enableVerificationEmail() {
   process.env.NUXT_EMAIL_VERIFICATION_ENABLED = 'true'
   process.env.NUXT_EMAIL_FROM = 'Libroo <no-reply@example.com>'
   process.env.NUXT_SMTP_HOST = 'smtp.example.com'
+}
+
+function enableOidc(options: { explicitEndpoints?: boolean } = {}) {
+  process.env.NUXT_PUBLIC_OIDC_ENABLED = 'true'
+  process.env.NUXT_OIDC_CLIENT_ID = 'libroo'
+  process.env.NUXT_OIDC_CLIENT_SECRET = 'secret'
+
+  if (options.explicitEndpoints) {
+    process.env.NUXT_OIDC_AUTHORIZATION_URL = 'https://id.example.com/authorize'
+    process.env.NUXT_OIDC_TOKEN_URL = 'https://id.example.com/token'
+    process.env.NUXT_OIDC_USER_INFO_URL = 'https://id.example.com/userinfo'
+  } else {
+    process.env.NUXT_OIDC_DISCOVERY_URL = 'https://id.example.com/.well-known/openid-configuration'
+  }
 }

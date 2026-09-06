@@ -20,11 +20,14 @@ describe('account settings validation', () => {
     })).toThrow()
   })
 
-  it('requires the current password for email changes', () => {
-    expect(() => accountEmailChangeSchema.parse({
+  it('allows an empty current password for a recently reauthenticated OIDC session', () => {
+    expect(accountEmailChangeSchema.parse({
       email: 'ada@example.com',
       currentPassword: ''
-    })).toThrow()
+    })).toEqual({
+      email: 'ada@example.com',
+      currentPassword: ''
+    })
   })
 
   it('accepts a valid password change request', () => {

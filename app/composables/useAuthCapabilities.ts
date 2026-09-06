@@ -2,7 +2,9 @@ import type { AuthCapabilities } from '~~/shared/types/auth-capabilities'
 
 const defaultAuthCapabilities = (): AuthCapabilities => ({
   twoFactorEnabled: false,
-  passkeysEnabled: false
+  passkeysEnabled: false,
+  emailPasswordEnabled: true,
+  oauthProvider: null
 })
 
 export function useAuthCapabilities() {

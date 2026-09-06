@@ -99,6 +99,12 @@ describe('cookie-backed SSR auth restoration', () => {
     })
 
     const changedEmail = `ada-new-${Date.now()}@example.test`
+    const blockedEmailChange = await betterAuthRequest('/api/auth/change-email', {
+      newEmail: changedEmail
+    }, { cookie, allowError: true })
+    expect(blockedEmailChange.status).toBe(403)
+
+    await betterAuthRequest('/api/auth/recent-auth', { password }, { cookie })
     await betterAuthRequest('/api/auth/change-email', {
       newEmail: changedEmail
     }, { cookie })

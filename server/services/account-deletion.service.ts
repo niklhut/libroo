@@ -8,8 +8,8 @@ import { BookEnrichmentRepository } from '../repositories/book-enrichment.reposi
 import { deleteBlob } from './storage.service'
 import type { StorageService } from './storage.service'
 import type { DbService } from './db.service'
-import { auth } from '../utils/auth'
 import { UnauthorizedError } from './auth.service'
+import { verifyPasswordOrRequireRecentAuth } from './recent-auth.service'
 
 export class InvalidAccountDeletionConfirmationError extends Data.TaggedError('InvalidAccountDeletionConfirmationError')<{
   message: string
@@ -47,15 +47,9 @@ export const AccountDeletionServiceLive = Layer.succeed(AccountDeletionService, 
         }))
       }
 
-      yield* Effect.tryPromise({
-        try: () => auth.api.verifyPassword({
-          headers: event.headers,
-          body: {
-            password: parsed.data.currentPassword
-          }
-        }),
-        catch: () => new UnauthorizedError({ message: 'Current password is incorrect' })
-      })
+      yield* verifyPasswordOrRequireRecentAuth(event, parsed.data.currentPassword).pipe(
+        Effect.mapError(error => new UnauthorizedError({ message: error.message }))
+      )
 
       const result = yield* deleteAccountData(userId)
 

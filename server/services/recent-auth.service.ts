@@ -42,7 +42,7 @@ export const RecentAuthServiceLive = Layer.succeed(RecentAuthService, {
       catch: () => new RecentAuthError({ message: 'Unable to verify recent authentication.' })
     })
     if (!record?.recentAuthAt || record.recentAuthAt < threshold) {
-      return yield* Effect.fail(new RecentAuthError({ message: 'Confirm your password before making this change.' }))
+      return yield* Effect.fail(new RecentAuthError({ message: 'Sign in again before making this change.' }))
     }
   }),
   markSessionAsRecentlyAuthenticated: sessionId => Effect.tryPromise({
@@ -50,3 +50,23 @@ export const RecentAuthServiceLive = Layer.succeed(RecentAuthService, {
     catch: () => new RecentAuthError({ message: 'Unable to preserve recent authentication.' })
   }).pipe(Effect.asVoid)
 })
+
+export function verifyPasswordOrRequireRecentAuth(event: H3Event, password?: string) {
+  if (password) {
+    return Effect.tryPromise({
+      try: () => auth.api.verifyPassword({ headers: event.headers, body: { password } }),
+      catch: () => new RecentAuthError({ message: 'Current password is incorrect.' })
+    }).pipe(Effect.asVoid)
+  }
+
+  return Effect.gen(function* () {
+    const session = yield* Effect.tryPromise({
+      try: () => auth.api.getSession({ headers: event.headers }),
+      catch: () => new RecentAuthError({ message: 'You need to sign in again.' })
+    })
+    if (!session) return yield* Effect.fail(new RecentAuthError({ message: 'You need to sign in again.' }))
+
+    const recentAuth = yield* RecentAuthService
+    yield* recentAuth.requireRecentAuth(session.session.id)
+  }).pipe(Effect.provide(RecentAuthServiceLive))
+}

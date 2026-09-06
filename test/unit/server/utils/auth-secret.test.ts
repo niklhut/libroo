@@ -2,6 +2,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { parseUserInput } from 'better-auth/db'
 
 const betterAuthMock = vi.hoisted(() => vi.fn(options => ({ options })))
+const passkeyMock = vi.hoisted(() => vi.fn(() => ({ id: 'passkey' })))
+const authDbMocks = vi.hoisted(() => ({
+  select: vi.fn(),
+  run: vi.fn()
+}))
 
 vi.mock('better-auth/minimal', () => ({
   betterAuth: betterAuthMock
@@ -11,8 +16,13 @@ vi.mock('better-auth/adapters/drizzle', () => ({
   drizzleAdapter: vi.fn(() => ({}))
 }))
 
+vi.mock('@better-auth/passkey', () => ({
+  passkey: passkeyMock
+}))
+
 vi.mock('better-auth/plugins', () => ({
   admin: vi.fn(() => ({ id: 'admin' })),
+  genericOAuth: vi.fn(() => ({ id: 'generic-oauth' })),
   twoFactor: vi.fn(() => ({ id: 'two-factor' }))
 }))
 
@@ -24,6 +34,8 @@ vi.mock('better-auth/plugins/admin/access', () => ({
 
 vi.mock('@nuxthub/db', () => ({
   db: {
+    select: authDbMocks.select,
+    run: authDbMocks.run,
     update: vi.fn(() => ({
       set: vi.fn(() => ({
         where: vi.fn()
@@ -72,12 +84,15 @@ const originalEnv = { ...process.env }
 async function loadAuthModule() {
   vi.resetModules()
   betterAuthMock.mockClear()
+  passkeyMock.mockClear()
   return import('../../../../server/utils/auth')
 }
 
 describe('auth secret runtime config', () => {
   afterEach(() => {
     process.env = { ...originalEnv }
+    authDbMocks.select.mockReset()
+    authDbMocks.run.mockReset()
     vi.unstubAllGlobals()
   })
 
@@ -142,6 +157,91 @@ describe('auth secret runtime config', () => {
     expect(options.user.additionalFields).not.toHaveProperty('banned')
     expect(options.user.additionalFields).not.toHaveProperty('banReason')
     expect(options.user.additionalFields).not.toHaveProperty('banExpires')
+  })
+
+  it('only allows implicit OIDC account linking when the provider is explicitly trusted', async () => {
+    process.env.NUXT_PUBLIC_OIDC_ENABLED = 'true'
+    process.env.NUXT_OIDC_DISCOVERY_URL = 'https://id.example.com/.well-known/openid-configuration'
+    process.env.NUXT_OIDC_CLIENT_ID = 'libroo'
+    process.env.NUXT_OIDC_CLIENT_SECRET = 'secret'
+    process.env.NUXT_OIDC_TRUST_PROVIDER = 'false'
+
+    await loadAuthModule()
+    expect(getBetterAuthOptions().account.accountLinking).toEqual({
+      enabled: true,
+      allowDifferentEmails: false,
+      trustedProviders: [],
+      disableImplicitLinking: true
+    })
+
+    process.env.NUXT_OIDC_TRUST_PROVIDER = 'true'
+    await loadAuthModule()
+    expect(getBetterAuthOptions().account.accountLinking).toEqual({
+      enabled: true,
+      allowDifferentEmails: false,
+      trustedProviders: ['oidc'],
+      disableImplicitLinking: false
+    })
+  })
+
+  it('does not register the passkey plugin when local authentication is disabled', async () => {
+    process.env.NUXT_PUBLIC_PASSKEYS_ENABLED = 'true'
+    process.env.NUXT_BETTER_AUTH_URL = 'https://libroo.example.com'
+    process.env.NUXT_EMAIL_PASSWORD_ENABLED = 'false'
+
+    await loadAuthModule()
+
+    expect(passkeyMock).not.toHaveBeenCalled()
+    expect(getBetterAuthOptions().plugins).not.toContainEqual(expect.objectContaining({ id: 'passkey' }))
+
+    process.env.NUXT_EMAIL_PASSWORD_ENABLED = 'true'
+    await loadAuthModule()
+
+    expect(passkeyMock).toHaveBeenCalledOnce()
+    expect(getBetterAuthOptions().plugins).toContainEqual(expect.objectContaining({ id: 'passkey' }))
+  })
+
+  it('does not let an OIDC callback borrow an email signup invite reservation', async () => {
+    process.env.NUXT_PUBLIC_REGISTRATION_ENABLED = 'false'
+    authDbMocks.select.mockReturnValueOnce({
+      from: vi.fn(() => ({
+        limit: vi.fn(async () => [{ id: 'existing-user' }])
+      }))
+    })
+
+    await loadAuthModule()
+    const beforeCreate = getBetterAuthOptions().databaseHooks.user.create.before
+
+    await expect(beforeCreate(
+      { email: 'oidc-user@example.com' },
+      { path: '/callback/oidc' }
+    )).resolves.toBe(false)
+    expect(authDbMocks.select).toHaveBeenCalledTimes(1)
+  })
+
+  it('allows only one concurrent first-user bootstrap when registration is closed', async () => {
+    process.env.NUXT_PUBLIC_REGISTRATION_ENABLED = 'false'
+    authDbMocks.select.mockImplementation(() => ({
+      from: vi.fn(() => ({
+        limit: vi.fn(async () => [])
+      }))
+    }))
+    let claimed = false
+    authDbMocks.run.mockImplementation(async () => {
+      if (claimed) return { changes: 0 }
+      claimed = true
+      return { changes: 1 }
+    })
+
+    await loadAuthModule()
+    const beforeCreate = getBetterAuthOptions().databaseHooks.user.create.before
+    const results = await Promise.all([
+      beforeCreate({ email: 'first@example.com' }, { path: '/sign-up/email' }),
+      beforeCreate({ email: 'second@example.com' }, { path: '/sign-up/email' })
+    ])
+
+    expect(results.filter(Boolean)).toHaveLength(1)
+    expect(authDbMocks.run).toHaveBeenCalledTimes(2)
   })
 
   it('rejects attempts to set Libroo server-owned fields through signup and profile-update input', async () => {

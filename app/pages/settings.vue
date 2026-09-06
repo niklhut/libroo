@@ -12,7 +12,7 @@ import {
 import type { LibraryImportConflictStrategy, LibraryImportResult } from '~~/shared/types/library-transfer'
 import { roleIncludesAdmin } from '~~/shared/utils/auth-roles'
 import { canShowVerificationResendAction, canUseVerifiedEmailChange, getPasswordUpdatedDescription } from '~~/shared/utils/email-capability-ui'
-import { canShowPasskeyManagement, canShowTwoFactorManagement } from '~~/shared/utils/auth-capability-ui'
+import { canShowEmailManagement, canShowPasskeyManagement, canShowPasswordManagement, canShowTwoFactorManagement } from '~~/shared/utils/auth-capability-ui'
 import { authClient } from '~/utils/auth-client'
 
 usePageTitle('Settings')
@@ -66,6 +66,17 @@ const pendingRecentAuthAction = ref<(() => void) | null>(null)
 const isConfirmingRecentAuth = ref(false)
 const showPasskeyManagement = computed(() => canShowPasskeyManagement(authCapabilities.value))
 const showTwoFactorManagement = computed(() => canShowTwoFactorManagement(authCapabilities.value))
+const hasPasswordCredential = ref(false)
+const showPasswordManagement = computed(() =>
+  canShowPasswordManagement(authCapabilities.value, hasPasswordCredential.value)
+)
+const showEmailManagement = computed(() => canShowEmailManagement(authCapabilities.value))
+const oidcProvider = computed(() => authCapabilities.value.oauthProvider)
+const accountMethodsLoaded = ref(false)
+const isLoadingAccountMethods = ref(false)
+const isLinkingOidc = ref(false)
+const oidcProviderLinked = ref(false)
+let accountMethodsRequest: Promise<boolean> | null = null
 const hasRecentAuth = computed(() => recentAuthExpiresAt.value > recentAuthClock.value)
 const emailFormState = computed(() => ({
   ...emailState,
@@ -175,7 +186,9 @@ onBeforeUnmount(() => {
 })
 
 onMounted(() => {
-  void refreshPasskeys()
+  if (showPasskeyManagement.value) void refreshPasskeys()
+  void completeOidcRecentAuth()
+  void initializeOidcLinking()
 })
 
 if (route.query.verify === 'required') {
@@ -196,6 +209,83 @@ function getFailureMessage(err: unknown, fallback: string) {
     || fallback
 }
 
+async function refreshAccountMethods() {
+  if (accountMethodsRequest) return accountMethodsRequest
+
+  accountMethodsRequest = (async () => {
+    isLoadingAccountMethods.value = true
+    try {
+      const result = await $fetch<{
+        hasPasswordCredential: boolean
+        oidcProviderLinked: boolean
+      }>('/api/auth/account-methods')
+      hasPasswordCredential.value = result.hasPasswordCredential
+      oidcProviderLinked.value = result.oidcProviderLinked
+      accountMethodsLoaded.value = true
+      return true
+    } catch (err: unknown) {
+      toast.add({
+        title: 'Unable to load connected sign-in methods',
+        description: getFailureMessage(err, 'Try again shortly.'),
+        color: 'error'
+      })
+      return false
+    } finally {
+      isLoadingAccountMethods.value = false
+    }
+  })()
+
+  try {
+    return await accountMethodsRequest
+  } finally {
+    accountMethodsRequest = null
+  }
+}
+
+async function initializeOidcLinking() {
+  const accountsLoaded = await refreshAccountMethods()
+  if (!oidcProvider.value) return
+  if (route.query.oidcLink !== 'complete') return
+
+  const query = { ...route.query }
+  delete query.oidcLink
+  await navigateTo({ path: route.path, query }, { replace: true })
+  if (!accountsLoaded) return
+
+  toast.add(oidcProviderLinked.value
+    ? {
+        title: `${oidcProvider.value.displayName} connected`,
+        description: 'You can now use this provider to sign in to your existing account.',
+        color: 'success'
+      }
+    : {
+        title: 'Unable to confirm OIDC connection',
+        description: 'The provider did not appear in your connected sign-in methods. Try connecting it again.',
+        color: 'error'
+      })
+}
+
+async function connectOidcProvider() {
+  const provider = oidcProvider.value
+  if (!provider || oidcProviderLinked.value || isLinkingOidc.value) return
+
+  isLinkingOidc.value = true
+  try {
+    const result = await authClient.linkSocial({
+      provider: provider.providerId,
+      callbackURL: '/settings?oidcLink=complete'
+    })
+    if (result.error) throw new Error(result.error.message || `Unable to connect ${provider.displayName}`)
+  } catch (err: unknown) {
+    toast.add({
+      title: `Unable to connect ${provider.displayName}`,
+      description: getFailureMessage(err, 'Try again shortly.'),
+      color: 'error'
+    })
+    isLinkingOidc.value = false
+  }
+}
+
 function resetAccountDeletionForm() {
   deletionState.currentPassword = ''
   deletionState.confirmation = ''
@@ -209,14 +299,72 @@ function openEmailManagement() {
   emailManagementOpen.value = true
 }
 
-function requestRecentAuth(action: () => void) {
+type RecentAuthAction = 'email' | 'password' | 'two-factor-setup' | 'two-factor-manage' | 'passkeys' | 'delete'
+
+async function requestRecentAuth(actionId: RecentAuthAction, action: () => void) {
+  if (!accountMethodsLoaded.value && !await refreshAccountMethods()) return
+
   if (hasRecentAuth.value) {
     action()
+    return
+  }
+
+  if (!showPasswordManagement.value) {
+    void startOidcRecentAuth(actionId)
     return
   }
   pendingRecentAuthAction.value = action
   recentAuthPassword.value = ''
   recentAuthOpen.value = true
+}
+
+async function startOidcRecentAuth(action: RecentAuthAction) {
+  const provider = authCapabilities.value.oauthProvider
+  if (!provider) {
+    toast.add({ title: 'Reauthentication unavailable', description: 'No sign-in method is configured for this account.', color: 'error' })
+    return
+  }
+
+  isConfirmingRecentAuth.value = true
+  try {
+    const callbackURL = `/settings?reauth=oidc&action=${encodeURIComponent(action)}`
+    const result = await authClient.signIn.social({
+      provider: provider.providerId,
+      callbackURL,
+      additionalParams: {
+        prompt: 'login',
+        max_age: '0'
+      }
+    })
+    if (result.error) throw new Error(result.error.message || 'Unable to sign in again')
+  } catch (err: unknown) {
+    toast.add({ title: 'Reauthentication failed', description: getFailureMessage(err, 'Unable to sign in again'), color: 'error' })
+    isConfirmingRecentAuth.value = false
+  }
+}
+
+async function completeOidcRecentAuth() {
+  if (route.query.reauth !== 'oidc' || typeof route.query.action !== 'string') return
+  const action = route.query.action as RecentAuthAction
+  const actions: Partial<Record<RecentAuthAction, () => void>> = {
+    'email': openEmailManagement,
+    'password': openPasswordManagement,
+    'two-factor-setup': () => { void openTwoFactorSetup() },
+    'two-factor-manage': openTwoFactorManagement,
+    'passkeys': () => { void openPasskeyManagement() },
+    'delete': openAccountDeletion
+  }
+  const nextAction = actions[action]
+  if (!nextAction) return
+
+  await authStore.refresh()
+  recentAuthExpiresAt.value = Date.now() + 5 * 60 * 1000
+  scheduleRecentAuthExpiry()
+  const query = { ...route.query }
+  delete query.reauth
+  delete query.action
+  await navigateTo({ path: route.path, query }, { replace: true })
+  nextAction()
 }
 
 function scheduleRecentAuthExpiry() {
@@ -285,6 +433,11 @@ async function enableTwoFactor() {
   try {
     const result = await authClient.twoFactor.enable({ password: recentAuthPassword.value })
     if (result.error || !result.data) throw new Error(result.error?.message || 'Unable to start two-factor setup')
+    // Better Auth 1.7 returns the enrollment method. Libroo currently offers
+    // TOTP setup only, so never assume an OTP response has TOTP fields.
+    if (result.data.method !== 'totp') {
+      throw new Error('This deployment returned an unsupported two-factor enrollment method')
+    }
     totpUri.value = result.data.totpURI
     backupCodes.value = result.data.backupCodes
     const { default: QRCode } = await import('qrcode')
@@ -436,20 +589,22 @@ async function changeEmail(payload: FormSubmitEvent<AccountEmailChangeSchema>) {
   isChangingEmail.value = true
 
   try {
-    try {
-      await $fetch('/api/auth/verify-password', {
-        method: 'POST',
-        body: {
-          password: payload.data.currentPassword
-        }
-      })
-    } catch {
-      toast.add({
-        title: 'Email change failed',
-        description: 'Current password is incorrect.',
-        color: 'error'
-      })
-      return
+    if (showPasswordManagement.value) {
+      try {
+        await $fetch('/api/auth/verify-password', {
+          method: 'POST',
+          body: {
+            password: payload.data.currentPassword
+          }
+        })
+      } catch {
+        toast.add({
+          title: 'Email change failed',
+          description: 'Current password is incorrect.',
+          color: 'error'
+        })
+        return
+      }
     }
 
     if (canUseVerifiedEmailChange(emailCapabilities.value)) {
@@ -548,6 +703,9 @@ async function changePassword(payload: FormSubmitEvent<AccountPasswordChangeSche
       return
     }
 
+    // Security actions in the same recent-auth window must use the replacement
+    // credential after Better Auth rotates the session and password.
+    recentAuthPassword.value = payload.data.newPassword
     passwordState.currentPassword = ''
     passwordState.newPassword = ''
     passwordState.confirmPassword = ''
@@ -712,7 +870,10 @@ async function importLibraryCsvFile() {
         </template>
 
         <div class="divide-y divide-default">
-          <div class="flex flex-col gap-4 py-5 first:pt-0 sm:flex-row sm:items-center sm:justify-between">
+          <div
+            v-if="showEmailManagement"
+            class="flex flex-col gap-4 py-5 first:pt-0 sm:flex-row sm:items-center sm:justify-between"
+          >
             <div class="flex min-w-0 items-start gap-3">
               <UIcon
                 name="i-lucide-mail"
@@ -734,13 +895,16 @@ async function importLibraryCsvFile() {
             <UButton
               color="neutral"
               variant="outline"
-              @click="requestRecentAuth(openEmailManagement)"
+              @click="requestRecentAuth('email', openEmailManagement)"
             >
               Manage
             </UButton>
           </div>
 
-          <div class="flex flex-col gap-4 py-5 sm:flex-row sm:items-center sm:justify-between">
+          <div
+            v-if="showPasswordManagement"
+            class="flex flex-col gap-4 py-5 first:pt-0 sm:flex-row sm:items-center sm:justify-between"
+          >
             <div class="flex min-w-0 items-start gap-3">
               <UIcon
                 name="i-lucide-key-round"
@@ -758,7 +922,7 @@ async function importLibraryCsvFile() {
             <UButton
               color="neutral"
               variant="outline"
-              @click="requestRecentAuth(openPasswordManagement)"
+              @click="requestRecentAuth('password', openPasswordManagement)"
             >
               Change password
             </UButton>
@@ -766,7 +930,7 @@ async function importLibraryCsvFile() {
 
           <div
             v-if="showTwoFactorManagement"
-            class="flex flex-col gap-4 py-5 sm:flex-row sm:items-center sm:justify-between"
+            class="flex flex-col gap-4 py-5 first:pt-0 sm:flex-row sm:items-center sm:justify-between"
           >
             <div class="flex min-w-0 items-start gap-3">
               <UIcon
@@ -786,7 +950,7 @@ async function importLibraryCsvFile() {
               :icon="twoFactorEnabled ? undefined : 'i-lucide-shield-plus'"
               color="neutral"
               variant="outline"
-              @click="requestRecentAuth(twoFactorEnabled ? openTwoFactorManagement : openTwoFactorSetup)"
+              @click="requestRecentAuth(twoFactorEnabled ? 'two-factor-manage' : 'two-factor-setup', twoFactorEnabled ? openTwoFactorManagement : openTwoFactorSetup)"
             >
               {{ twoFactorEnabled ? 'Manage' : 'Set up' }}
             </UButton>
@@ -794,7 +958,7 @@ async function importLibraryCsvFile() {
 
           <div
             v-if="showPasskeyManagement"
-            class="flex flex-col gap-4 py-5 last:pb-0 sm:flex-row sm:items-center sm:justify-between"
+            class="flex flex-col gap-4 py-5 first:pt-0 sm:flex-row sm:items-center sm:justify-between"
           >
             <div class="flex min-w-0 items-start gap-3">
               <UIcon
@@ -813,13 +977,46 @@ async function importLibraryCsvFile() {
             <UButton
               color="neutral"
               variant="outline"
-              @click="requestRecentAuth(openPasskeyManagement)"
+              @click="requestRecentAuth('passkeys', openPasskeyManagement)"
             >
               Manage passkeys
             </UButton>
           </div>
 
-          <div class="flex flex-col gap-4 py-5 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
+          <div
+            v-if="oidcProvider"
+            class="flex flex-col gap-4 py-5 first:pt-0 sm:flex-row sm:items-center sm:justify-between"
+          >
+            <div class="flex min-w-0 items-start gap-3">
+              <UIcon
+                :name="oidcProvider.icon || 'i-lucide-log-in'"
+                class="mt-0.5 size-5 shrink-0 text-muted"
+              />
+              <div>
+                <p class="font-medium">
+                  {{ oidcProvider.displayName }}
+                </p>
+                <p class="text-sm text-muted">
+                  {{ !accountMethodsLoaded
+                    ? 'Checking connection…'
+                    : oidcProviderLinked
+                      ? 'Connected to this account'
+                      : 'Not connected to this account' }}
+                </p>
+              </div>
+            </div>
+            <UButton
+              color="neutral"
+              variant="outline"
+              :loading="isLoadingAccountMethods || isLinkingOidc"
+              :disabled="!accountMethodsLoaded || oidcProviderLinked"
+              @click="connectOidcProvider"
+            >
+              {{ oidcProviderLinked ? 'Connected' : `Connect ${oidcProvider.displayName}` }}
+            </UButton>
+          </div>
+
+          <div class="flex flex-col gap-4 py-5 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
             <div class="flex min-w-0 items-start gap-3 text-error">
               <UIcon
                 name="i-lucide-trash-2"
@@ -838,7 +1035,7 @@ async function importLibraryCsvFile() {
               color="error"
               variant="subtle"
               icon="i-lucide-trash-2"
-              @click="requestRecentAuth(openAccountDeletion)"
+              @click="requestRecentAuth('delete', openAccountDeletion)"
             >
               Delete account
             </UButton>
@@ -911,6 +1108,7 @@ async function importLibraryCsvFile() {
       </UCard>
 
       <UModal
+        v-if="showPasswordManagement"
         v-model:open="recentAuthOpen"
         title="Confirm it’s you"
         description="For your security, confirm your current password before changing sign-in or account settings. This confirmation lasts five minutes."
@@ -949,6 +1147,7 @@ async function importLibraryCsvFile() {
       </UModal>
 
       <UModal
+        v-if="showEmailManagement"
         v-model:open="emailManagementOpen"
         title="Manage email"
         description="Update the email address for this account."
@@ -1008,7 +1207,7 @@ async function importLibraryCsvFile() {
                 />
               </UFormField>
               <UFormField
-                v-if="!hasRecentAuth"
+                v-if="showPasswordManagement && !hasRecentAuth"
                 label="Current password"
                 name="currentPassword"
                 required
@@ -1046,7 +1245,7 @@ async function importLibraryCsvFile() {
                   type="submit"
                   icon="i-lucide-mail"
                   :loading="isChangingEmail"
-                  :disabled="isChangingEmail || emailState.email === user?.email || !(hasRecentAuth || emailState.currentPassword)"
+                  :disabled="isChangingEmail || emailState.email === user?.email || !hasRecentAuth"
                 >
                   Change email
                 </UButton>
@@ -1057,6 +1256,7 @@ async function importLibraryCsvFile() {
       </UModal>
 
       <UModal
+        v-if="showPasswordManagement"
         v-model:open="passwordManagementOpen"
         title="Change password"
         description="This signs out your other active sessions."
@@ -1070,7 +1270,7 @@ async function importLibraryCsvFile() {
             @submit="changePassword"
           >
             <UFormField
-              v-if="!hasRecentAuth"
+              v-if="showPasswordManagement && !hasRecentAuth"
               label="Current password"
               name="currentPassword"
               required
@@ -1232,6 +1432,7 @@ async function importLibraryCsvFile() {
       </UModal>
 
       <UModal
+        v-if="showTwoFactorManagement"
         v-model:open="twoFactorManagementOpen"
         title="Manage two-factor authentication"
         description="Regenerate recovery codes or turn off two-factor authentication."
@@ -1400,7 +1601,7 @@ async function importLibraryCsvFile() {
             />
 
             <UFormField
-              v-if="!hasRecentAuth"
+              v-if="showPasswordManagement && !hasRecentAuth"
               label="Current password"
               name="currentPassword"
               required
@@ -1440,7 +1641,7 @@ async function importLibraryCsvFile() {
                 color="error"
                 icon="i-lucide-trash-2"
                 :loading="isDeletingAccount"
-                :disabled="isDeletingAccount || deletionState.confirmation !== ACCOUNT_DELETION_CONFIRMATION_TEXT || !(hasRecentAuth || deletionState.currentPassword)"
+                :disabled="isDeletingAccount || deletionState.confirmation !== ACCOUNT_DELETION_CONFIRMATION_TEXT || !hasRecentAuth"
               >
                 Delete permanently
               </UButton>
@@ -1450,6 +1651,7 @@ async function importLibraryCsvFile() {
       </UModal>
 
       <UModal
+        v-if="showTwoFactorManagement"
         v-model:open="twoFactorSetupOpen"
         title="Set up two-factor authentication"
         :description="twoFactorSetupStep === 'backup-codes'
@@ -1565,6 +1767,7 @@ async function importLibraryCsvFile() {
       </UModal>
 
       <UModal
+        v-if="showPasskeyManagement"
         v-model:open="passkeyManagementOpen"
         title="Manage passkeys"
         description="Add, name, or remove passkeys for this account."

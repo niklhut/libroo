@@ -2,18 +2,47 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { getAuthCapabilities } from '../../server/utils/auth-capabilities'
 
-const { passkeysAvailable } = vi.hoisted(() => ({
+const { getOidcProviderConfig, oidcProviderConfigured, passkeysAvailable } = vi.hoisted(() => ({
+  getOidcProviderConfig: vi.fn(),
+  oidcProviderConfigured: vi.fn(),
   passkeysAvailable: vi.fn()
 }))
 
 vi.mock('../../server/utils/webauthn-config', () => ({ passkeysAvailable }))
+vi.mock('../../server/utils/oidc-provider-config', () => ({ getOidcProviderConfig, oidcProviderConfigured }))
 
 describe('auth capabilities', () => {
-  it('always offers optional TOTP while passing through secure passkey availability', () => {
+  it('only exposes passkeys when both local authentication and WebAuthn are available', () => {
     passkeysAvailable.mockReturnValue(false)
-    expect(getAuthCapabilities()).toEqual({ twoFactorEnabled: true, passkeysEnabled: false })
+    getOidcProviderConfig.mockReturnValue({ emailPasswordEnabled: true, provider: null })
+    oidcProviderConfigured.mockReturnValue(false)
+    expect(getAuthCapabilities()).toEqual({
+      twoFactorEnabled: true,
+      passkeysEnabled: false,
+      emailPasswordEnabled: true,
+      oauthProvider: null
+    })
 
     passkeysAvailable.mockReturnValue(true)
-    expect(getAuthCapabilities()).toEqual({ twoFactorEnabled: true, passkeysEnabled: true })
+    getOidcProviderConfig.mockReturnValue({
+      emailPasswordEnabled: false,
+      provider: { providerId: 'oidc', displayName: 'Authentik', icon: 'i-simple-icons-authentik' }
+    })
+    oidcProviderConfigured.mockReturnValue(true)
+    expect(getAuthCapabilities()).toEqual({
+      twoFactorEnabled: true,
+      passkeysEnabled: false,
+      emailPasswordEnabled: false,
+      oauthProvider: {
+        enabled: true,
+        providerId: 'oidc',
+        displayName: 'Authentik',
+        icon: 'i-simple-icons-authentik'
+      }
+    })
+
+    getOidcProviderConfig.mockReturnValue({ emailPasswordEnabled: true, provider: null })
+    oidcProviderConfigured.mockReturnValue(false)
+    expect(getAuthCapabilities().passkeysEnabled).toBe(true)
   })
 })

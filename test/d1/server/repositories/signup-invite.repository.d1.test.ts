@@ -15,6 +15,7 @@ import borrowerSuggestionsMigration from '../../../../server/db/migrations/sqlit
 import enrichmentMigration from '../../../../server/db/migrations/sqlite/0012_imported_book_enrichment.sql?raw'
 import authFactorsMigration from '../../../../server/db/migrations/sqlite/0013_auth-two-factor-passkeys.sql?raw'
 import recentAuthMigration from '../../../../server/db/migrations/sqlite/0014_recent-auth.sql?raw'
+import accountIssuerMigration from '../../../../server/db/migrations/sqlite/0017_better_auth_account_issuer.sql?raw'
 import { account, session, signupInvites, user } from '../../../../server/db/schema'
 import { hashInviteToken, SignupInviteRepository, SignupInviteRepositoryLive } from '../../../../server/repositories/signup-invite.repository'
 import { DbService, type DbServiceInterface } from '../../../../server/services/db.service'
@@ -106,7 +107,7 @@ describe('SignupInviteRepository on D1', () => {
   it('atomically deletes a compensated user with their accounts and sessions', async () => {
     const now = new Date('2026-07-11T12:00:00.000Z')
     await db.insert(account).values({
-      id: 'account-accepted', accountId: 'accepted@example.com', providerId: 'credential',
+      id: 'account-accepted', accountId: 'user-accepted', issuer: 'local:credential', providerId: 'credential',
       userId: 'user-accepted', createdAt: now, updatedAt: now
     })
     await db.insert(session).values({
@@ -124,7 +125,7 @@ describe('SignupInviteRepository on D1', () => {
 })
 
 async function applyMigrations(database: D1Database) {
-  for (const migration of [initialMigration, termsMigration, locationRestrictMigration, libraryStateMigration, previouslyOwnedMigration, inviteEmailMigration, loanNoteMigration, borrowerSuggestionsMigration, enrichmentMigration, authFactorsMigration, recentAuthMigration]) {
+  for (const migration of [initialMigration, termsMigration, locationRestrictMigration, libraryStateMigration, previouslyOwnedMigration, inviteEmailMigration, loanNoteMigration, borrowerSuggestionsMigration, enrichmentMigration, authFactorsMigration, recentAuthMigration, accountIssuerMigration]) {
     for (const statement of migration.split('--> statement-breakpoint')) {
       const migrationStatement = statement.trim()
       if (migrationStatement) await database.prepare(migrationStatement).run()

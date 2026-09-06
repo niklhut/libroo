@@ -4,7 +4,7 @@ import { setPendingEmailChange } from '../../services/auth.service'
 
 const pendingEmailSchema = z.object({
   pendingEmail: z.email(),
-  currentPassword: z.string().min(1)
+  currentPassword: z.string().optional().default('')
 })
 
 export default effectHandler(event =>

@@ -148,9 +148,10 @@ async function seedDatabase(client: Client, integrityIssues: boolean) {
       now,
       now
     ]),
-    statement('insert into account (id, account_id, provider_id, user_id, created_at, updated_at) values (?, ?, ?, ?, ?, ?)', [
+    statement('insert into account (id, issuer, account_id, provider_id, user_id, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?)', [
       'account-1',
-      'reader-account',
+      'local:credential',
+      'user-1',
       'credential',
       'user-1',
       now,
