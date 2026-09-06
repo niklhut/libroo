@@ -203,8 +203,12 @@ Discovery is preferred because Better Auth validates the provider issuer and
 identity token automatically. If discovery is unavailable, set all three
 explicit endpoint URLs instead. All provider endpoints must use HTTPS in
 production; plain HTTP is accepted only for loopback development. Configure
-only endpoints from a trusted provider, and use the final endpoint URLs rather
-than URLs that redirect to another host or path.
+only endpoints from a trusted provider. Libroo validates the configured URL
+schemes, but Better Auth 1.7.2 follows HTTP redirects when fetching discovery
+metadata and user information; using final, non-redirecting endpoint URLs avoids
+expected redirects but is not a redirect-security boundary. Deployments whose
+server can reach sensitive internal services should additionally restrict
+outbound network access to the trusted identity-provider hosts.
 
 ```bash
 NUXT_PUBLIC_OIDC_ENABLED=true
