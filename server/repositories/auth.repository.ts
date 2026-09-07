@@ -7,7 +7,7 @@ export interface AuthRepositoryInterface {
   getPendingEmail: (userId: string) => Effect.Effect<string | null, DatabaseError>
   getPendingEmailByCurrentEmail: (email: string) => Effect.Effect<string | null, DatabaseError>
   emailIsInUse: (userId: string, email: string) => Effect.Effect<boolean, DatabaseError>
-  hasAccountWithIssuer: (userId: string, providerId: string, issuer: string) => Effect.Effect<boolean, DatabaseError>
+  hasAccountWithProvider: (userId: string, providerId: string) => Effect.Effect<boolean, DatabaseError>
   setPendingEmail: (userId: string, pendingEmail: string) => Effect.Effect<void, DatabaseError>
   clearPendingEmail: (userId: string) => Effect.Effect<void, DatabaseError>
 }
@@ -86,7 +86,7 @@ export const AuthRepositoryLive = Layer.effect(
           }
         }),
 
-      hasAccountWithIssuer: (userId, providerId, issuer) =>
+      hasAccountWithProvider: (userId, providerId) =>
         Effect.tryPromise({
           try: async () => {
             const [row] = await dbService.db
@@ -94,18 +94,17 @@ export const AuthRepositoryLive = Layer.effect(
               .from(account)
               .where(and(
                 eq(account.userId, userId),
-                eq(account.providerId, providerId),
-                eq(account.issuer, issuer)
+                eq(account.providerId, providerId)
               ))
               .limit(1)
 
             return Boolean(row)
           },
           catch: (error) => {
-            console.error('auth.hasAccountWithIssuer failed:', error)
+            console.error('auth.hasAccountWithProvider failed:', error)
             return new DatabaseError({
               message: 'Failed to load linked sign-in methods',
-              operation: 'auth.hasAccountWithIssuer'
+              operation: 'auth.hasAccountWithProvider'
             })
           }
         }),
@@ -162,8 +161,8 @@ export const getPendingEmailByCurrentEmail = (email: string) =>
 export const emailIsInUse = (userId: string, email: string) =>
   Effect.flatMap(AuthRepository, repository => repository.emailIsInUse(userId, email))
 
-export const hasAccountWithIssuer = (userId: string, providerId: string, issuer: string) =>
-  Effect.flatMap(AuthRepository, repository => repository.hasAccountWithIssuer(userId, providerId, issuer))
+export const hasAccountWithProvider = (userId: string, providerId: string) =>
+  Effect.flatMap(AuthRepository, repository => repository.hasAccountWithProvider(userId, providerId))
 
 export const setPendingEmail = (userId: string, pendingEmail: string) =>
   Effect.flatMap(AuthRepository, repository => repository.setPendingEmail(userId, pendingEmail))
