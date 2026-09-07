@@ -6,7 +6,9 @@ import { MAX_BULK_ISBN_COUNT } from '../../shared/utils/schemas'
 import { DbService } from '../services/db.service'
 import { putCoverImage, type StorageService } from '../services/storage.service'
 import { DatabaseRateLimiter } from '../utils/database-rate-limiter'
+import { consumeOpenLibraryCapacity, type OpenLibraryRequestPriority } from '../utils/open-library-capacity'
 import { runtimeProfile } from '../runtime/profile.active'
+import type { OpenLibraryBookData } from '../../shared/types/open-library'
 
 // Error types
 export class OpenLibraryBookNotFoundError extends Data.TaggedError('OpenLibraryBookNotFoundError')<{
@@ -22,21 +24,6 @@ export class OpenLibraryCoverError extends Data.TaggedError('OpenLibraryCoverErr
   message: string
   isbn: string
 }> { }
-
-// Types for OpenLibrary API response
-export interface OpenLibraryBookData {
-  title: string
-  authors: string[]
-  isbn: string
-  openLibraryKey: string
-  workKey: string | null
-  coverUrl: string | null
-  description?: string
-  subjects?: string[]
-  publishDate?: string
-  publishers?: string[]
-  numberOfPages?: number
-}
 
 // OpenLibrary API response format for /api/books endpoint
 type OpenLibraryText = string | { type?: string, value?: unknown }
@@ -90,9 +77,10 @@ interface OpenLibraryWorksApiResponse {
 export interface OpenLibraryRepositoryInterface {
   // The interactive core path deliberately performs only this edition request.
   lookupCoreByISBN: (isbn: string) => Effect.Effect<OpenLibraryBookData, OpenLibraryBookNotFoundError | OpenLibraryApiError, HttpClientType.HttpClient>
-  lookupByISBN: (isbn: string) => Effect.Effect<OpenLibraryBookData, OpenLibraryBookNotFoundError | OpenLibraryApiError, HttpClientType.HttpClient>
-  lookupByISBNs: (isbns: string[]) => Effect.Effect<Map<string, OpenLibraryBookData>, OpenLibraryApiError, HttpClientType.HttpClient>
-  downloadCover: (isbn: string, size?: 'S' | 'M' | 'L') => Effect.Effect<string | null, never, HttpClientType.HttpClient | StorageService>
+  lookupByISBN: (isbn: string, priority?: OpenLibraryRequestPriority) => Effect.Effect<OpenLibraryBookData, OpenLibraryBookNotFoundError | OpenLibraryApiError, HttpClientType.HttpClient>
+  enrichMetadata: (data: OpenLibraryBookData, priority?: OpenLibraryRequestPriority) => Effect.Effect<OpenLibraryBookData, OpenLibraryApiError, HttpClientType.HttpClient>
+  lookupByISBNs: (isbns: string[], priority?: OpenLibraryRequestPriority) => Effect.Effect<Map<string, OpenLibraryBookData>, OpenLibraryApiError, HttpClientType.HttpClient>
+  downloadCover: (isbn: string, size?: 'S' | 'M' | 'L', providerCoverUrl?: string | null, priority?: OpenLibraryRequestPriority) => Effect.Effect<string | null, never, HttpClientType.HttpClient | StorageService>
   downloadCovers: (isbns: string[], size?: 'S' | 'M' | 'L') => Effect.Effect<Map<string, string | null>, never, HttpClientType.HttpClient | StorageService>
 }
 
@@ -195,7 +183,9 @@ function toOpenLibraryBookData(
     .filter(subject => !subject.startsWith('nyt:'))
     .slice(0, 20)
   const workKey = 'works' in details ? details.works?.[0]?.key ?? null : null
-  const hasCover = ('covers' in details && Boolean(details.covers?.length))
+  const coverId = 'covers' in details ? details.covers?.[0] : undefined
+  const editionKey = details.key?.match(/\/books\/(OL[^/?#]+)/i)?.[1]
+  const hasCover = Boolean(coverId)
     || Boolean(entry.cover || entry.thumbnail_url)
 
   return {
@@ -204,13 +194,22 @@ function toOpenLibraryBookData(
     isbn,
     openLibraryKey: details.key || '',
     workKey,
-    coverUrl: hasCover ? `${coversBase}/b/isbn/${isbn}-L.jpg?default=false` : null,
+    // Prefer the cover id returned by the edition endpoint. ISBN cover URLs
+    // require another lookup at Open Library and are slower for new books.
+    // OLID is a durable fallback because the edition key is persisted with
+    // the canonical book row.
+    coverUrl: coverId
+      ? `${coversBase}/b/id/${coverId}-L.jpg?default=false`
+      : hasCover && editionKey
+        ? `${coversBase}/b/olid/${editionKey}-L.jpg?default=false`
+        : hasCover ? `${coversBase}/b/isbn/${isbn}-L.jpg?default=false` : null,
     description: extractOpenLibraryText(details.notes)
       ?? extractOpenLibraryText(details.excerpts?.[0]?.text),
     subjects,
     publishDate: details.publish_date,
     publishers,
-    numberOfPages: details.number_of_pages
+    numberOfPages: details.number_of_pages,
+    coverId
   }
 }
 
@@ -224,7 +223,7 @@ const fetchJson = <T>(
   Effect.gen(function* () {
     const slotStartedAt = Date.now()
     yield* acquireSlot
-    yield* Effect.logDebug('Open Library outbound slot acquired').pipe(
+    yield* Effect.logInfo('Open Library outbound slot acquired').pipe(
       Effect.annotateLogs({ operation, waitDurationMs: Date.now() - slotStartedAt })
     )
     const requestStartedAt = Date.now()
@@ -244,7 +243,7 @@ const fetchJson = <T>(
         message: `HTTP request failed: ${HCError.isHttpClientError(error) ? error.message : String(error)}`
       }))
     )
-    yield* Effect.logDebug('Open Library request completed').pipe(
+    yield* Effect.logInfo('Open Library request completed').pipe(
       Effect.annotateLogs({ operation, requestDurationMs: Date.now() - requestStartedAt })
     )
     return json as T
@@ -265,19 +264,19 @@ export const OpenLibraryRepositoryLive = Layer.effect(
     const isSqliteBusy = (error: unknown) =>
       String(error).includes('SQLITE_BUSY') || String(error).includes('database is locked')
 
-    const acquireDistributedSlotWithRetry = (attempt = 0): Effect.Effect<void, OpenLibraryApiError> => Effect.suspend(() =>
+    const acquireDistributedSlotWithRetry = (priority: OpenLibraryRequestPriority, attempt = 0): Effect.Effect<void, OpenLibraryApiError> => Effect.suspend(() =>
       Effect.tryPromise({
-        try: () => limiter.consume('openlibrary:outbound', getOpenLibraryContactEmail() ? 3 : 1, 1),
+        try: () => consumeOpenLibraryCapacity(limiter, Boolean(getOpenLibraryContactEmail()), priority),
         catch: error => new OpenLibraryApiError({ message: `Open Library rate limiter failed: ${String(error)}` })
       }).pipe(
         Effect.flatMap(result => result.allowed
           ? Effect.void
           : Effect.sleep(Duration.seconds(result.retryAfterSeconds)).pipe(
-              Effect.flatMap(() => acquireDistributedSlotWithRetry())
+              Effect.flatMap(() => acquireDistributedSlotWithRetry(priority))
             )),
         Effect.catchAll(error => isSqliteBusy(error.message) && attempt < 6
           ? Effect.sleep(Duration.millis(25 * 2 ** attempt)).pipe(
-              Effect.flatMap(() => acquireDistributedSlotWithRetry(attempt + 1))
+              Effect.flatMap(() => acquireDistributedSlotWithRetry(priority, attempt + 1))
             )
           : Effect.fail(error))
       )
@@ -293,11 +292,11 @@ export const OpenLibraryRepositoryLive = Layer.effect(
       localGate = slot.catch(() => {})
       return slot
     })
-    const acquireSlot = runtimeProfile === 'selfhost'
+    const acquireSlot = (priority: OpenLibraryRequestPriority = 'interactive') => runtimeProfile === 'selfhost'
       ? acquireLocalSlot
-      : acquireDistributedSlotWithRetry()
+      : acquireDistributedSlotWithRetry(priority)
 
-    const lookupByISBNs = (isbns: string[]) =>
+    const lookupByISBNs = (isbns: string[], priority: OpenLibraryRequestPriority = 'interactive') =>
       Effect.gen(function* () {
         const normalized = [...new Set(isbns.map(normalizeISBN))]
         const booksByIsbn = new Map<string, OpenLibraryBookData>()
@@ -309,7 +308,7 @@ export const OpenLibraryRepositoryLive = Layer.effect(
           const bibkeys = chunk.map(isbn => `ISBN:${isbn}`).join(',')
           const response = yield* fetchJson<OpenLibraryBooksApiResponse>(
             `${apiBase}/api/books?bibkeys=${bibkeys}&jscmd=details&format=json`,
-            acquireSlot,
+            acquireSlot(priority),
             'metadata'
           )
 
@@ -325,7 +324,7 @@ export const OpenLibraryRepositoryLive = Layer.effect(
           const authorFallbackByIsbn = isbnsMissingAuthors.length > 0
             ? yield* fetchJson<OpenLibraryBooksApiResponse>(
               `${apiBase}/api/books?bibkeys=${isbnsMissingAuthors.map(isbn => `ISBN:${isbn}`).join(',')}&jscmd=data&format=json`,
-              acquireSlot,
+              acquireSlot(priority),
               'metadata'
             )
             : null
@@ -350,7 +349,7 @@ export const OpenLibraryRepositoryLive = Layer.effect(
         const workKeys = [...new Set(booksNeedingWork.map(book => book.workKey).filter((key): key is string => Boolean(key)))]
         const workResults = yield* Effect.forEach(
           workKeys,
-          key => fetchJson<OpenLibraryWorksApiResponse>(`${apiBase}${key}.json`, acquireSlot, 'work').pipe(
+          key => fetchJson<OpenLibraryWorksApiResponse>(`${apiBase}${key}.json`, acquireSlot(priority), 'work').pipe(
             Effect.map(data => [key, data] as const),
             Effect.catchAll(error => Effect.logDebug(`[OpenLibrary] Error fetching work ${key}: ${String(error)}`).pipe(
               Effect.as([key, null] as const)
@@ -381,7 +380,7 @@ export const OpenLibraryRepositoryLive = Layer.effect(
         const coversBase = getOpenLibraryCoversBase()
         const response = yield* fetchJson<OpenLibraryBooksApiResponse>(
           `${apiBase}/api/books?bibkeys=ISBN:${normalizedISBN}&jscmd=details&format=json`,
-          acquireSlot,
+          acquireSlot('interactive'),
           'metadata'
         )
         const entry = response[`ISBN:${normalizedISBN}`]
@@ -395,19 +394,51 @@ export const OpenLibraryRepositoryLive = Layer.effect(
         return toOpenLibraryBookData(normalizedISBN, entry, details, coversBase)
       })
 
-    const fetchCoverImage = (isbn: string, size: 'S' | 'M' | 'L') =>
+    // Complete a persisted core payload without repeating its edition request.
+    // Only fetch the optional author fallback and work record when the seed is
+    // missing those fields.
+    const enrichMetadata = (seed: OpenLibraryBookData, priority: OpenLibraryRequestPriority = 'enrichment') =>
+      Effect.gen(function* () {
+        const apiBase = getOpenLibraryApiBase()
+        let authors = seed.authors
+        if (authors.length === 0 || (authors.length === 1 && authors[0] === 'Unknown Author')) {
+          const response = yield* fetchJson<OpenLibraryBooksApiResponse>(
+            `${apiBase}/api/books?bibkeys=ISBN:${normalizeISBN(seed.isbn)}&jscmd=data&format=json`,
+            acquireSlot(priority),
+            'metadata'
+          )
+          authors = normalizeAuthors(response[`ISBN:${normalizeISBN(seed.isbn)}`]?.authors)
+          if (authors.length === 0) authors = seed.authors
+        }
+        if (!seed.workKey || (seed.description && (seed.subjects?.length ?? 0) >= MIN_ENRICHED_SUBJECT_COUNT)) {
+          return { ...seed, authors }
+        }
+        const work = yield* fetchJson<OpenLibraryWorksApiResponse>(`${apiBase}${seed.workKey}.json`, acquireSlot(priority), 'work').pipe(
+          Effect.catchAll(error => Effect.logDebug(`[OpenLibrary] Optional work enrichment failed: ${String(error)}`).pipe(Effect.as(null)))
+        )
+        if (!work) return { ...seed, authors }
+        const description = seed.description || extractOpenLibraryText(work.description)
+        const subjects = seed.subjects && seed.subjects.length >= MIN_ENRICHED_SUBJECT_COUNT
+          ? seed.subjects
+          : [...new Set([...(seed.subjects || []), ...(work.subjects || []).filter(subject => !subject.startsWith('nyt:'))])].slice(0, 20)
+        return { ...seed, authors, description, subjects }
+      })
+
+    const fetchCoverImage = (isbn: string, size: 'S' | 'M' | 'L', providerCoverUrl?: string | null, priority: OpenLibraryRequestPriority = 'interactive') =>
       Effect.gen(function* () {
         const normalizedISBN = normalizeISBN(isbn)
-        const coverUrl = `${getOpenLibraryCoversBase()}/b/isbn/${normalizedISBN}-${size}.jpg?default=false`
+        const coverUrl = providerCoverUrl
+          ? providerCoverUrl.replace(/-(?:S|M|L)\.jpg(?:\?[^/]*)?$/, `-${size}.jpg?default=false`)
+          : `${getOpenLibraryCoversBase()}/b/isbn/${normalizedISBN}-${size}.jpg?default=false`
         const slotStartedAt = Date.now()
-        const acquired = yield* acquireSlot.pipe(
+        const acquired = yield* acquireSlot(priority).pipe(
           Effect.as(true),
           Effect.catchAll(error =>
             Effect.logWarning(error.message).pipe(Effect.as(false))
           )
         )
         if (!acquired) return null
-        yield* Effect.logDebug('Open Library outbound slot acquired').pipe(
+        yield* Effect.logInfo('Open Library outbound slot acquired').pipe(
           Effect.annotateLogs({ operation: 'cover', waitDurationMs: Date.now() - slotStartedAt })
         )
 
@@ -436,20 +467,20 @@ export const OpenLibraryRepositoryLive = Layer.effect(
             )
           )
         )
-        yield* Effect.logDebug('Open Library request completed').pipe(
+        yield* Effect.logInfo('Open Library request completed').pipe(
           Effect.annotateLogs({ operation: 'cover', requestDurationMs: Date.now() - requestStartedAt })
         )
         return image
       })
 
-    const downloadCovers = (isbns: string[], size: 'S' | 'M' | 'L' = 'L') =>
+    const downloadCovers = (isbns: string[], size: 'S' | 'M' | 'L' = 'L', providerUrls?: Map<string, string | null>, priority: OpenLibraryRequestPriority = 'interactive') =>
       Effect.gen(function* () {
         const normalized = [...new Set(isbns.map(normalizeISBN))]
         const storageSemaphore = yield* Effect.makeSemaphore(OPEN_LIBRARY_COVER_STORAGE_CONCURRENCY)
         const results = yield* Effect.forEach(
           normalized,
           isbn => Effect.gen(function* () {
-            const imageBuffer = yield* fetchCoverImage(isbn, size)
+            const imageBuffer = yield* fetchCoverImage(isbn, size, providerUrls?.get(isbn), priority)
             if (!imageBuffer) {
               yield* Effect.log(`[OpenLibrary] No cover found for ISBN ${isbn}`)
               return [isbn, null] as const
@@ -475,11 +506,12 @@ export const OpenLibraryRepositoryLive = Layer.effect(
 
     return {
       lookupCoreByISBN,
+      enrichMetadata,
       lookupByISBNs,
-      lookupByISBN: isbn =>
+      lookupByISBN: (isbn, priority = 'interactive') =>
         Effect.gen(function* () {
           const normalizedISBN = normalizeISBN(isbn)
-          const books = yield* lookupByISBNs([normalizedISBN])
+          const books = yield* lookupByISBNs([normalizedISBN], priority)
           const book = books.get(normalizedISBN)
           if (book) return book
           return yield* Effect.fail(new OpenLibraryBookNotFoundError({
@@ -489,8 +521,8 @@ export const OpenLibraryRepositoryLive = Layer.effect(
         }),
 
       downloadCovers,
-      downloadCover: (isbn, size = 'L') =>
-        downloadCovers([isbn], size).pipe(
+      downloadCover: (isbn, size = 'L', providerCoverUrl = null, priority = 'interactive') =>
+        downloadCovers([isbn], size, new Map([[normalizeISBN(isbn), providerCoverUrl]]), priority).pipe(
           Effect.map(covers => covers.get(normalizeISBN(isbn)) ?? null)
         )
     }
@@ -498,14 +530,14 @@ export const OpenLibraryRepositoryLive = Layer.effect(
 )
 
 // Helper effects
-export const lookupByISBN = (isbn: string) =>
-  Effect.flatMap(OpenLibraryRepository, repo => repo.lookupByISBN(isbn))
+export const lookupByISBN = (isbn: string, priority?: OpenLibraryRequestPriority) =>
+  Effect.flatMap(OpenLibraryRepository, repo => repo.lookupByISBN(isbn, priority))
 
-export const lookupByISBNs = (isbns: string[]) =>
-  Effect.flatMap(OpenLibraryRepository, repo => repo.lookupByISBNs(isbns))
+export const lookupByISBNs = (isbns: string[], priority?: OpenLibraryRequestPriority) =>
+  Effect.flatMap(OpenLibraryRepository, repo => repo.lookupByISBNs(isbns, priority))
 
-export const downloadCover = (isbn: string, size?: 'S' | 'M' | 'L') =>
-  Effect.flatMap(OpenLibraryRepository, repo => repo.downloadCover(isbn, size))
+export const downloadCover = (isbn: string, size?: 'S' | 'M' | 'L', providerCoverUrl?: string | null, priority?: OpenLibraryRequestPriority) =>
+  Effect.flatMap(OpenLibraryRepository, repo => repo.downloadCover(isbn, size, providerCoverUrl, priority))
 
 export const downloadCovers = (isbns: string[], size?: 'S' | 'M' | 'L') =>
   Effect.flatMap(OpenLibraryRepository, repo => repo.downloadCovers(isbns, size))

@@ -16,6 +16,7 @@ import borrowerSuggestionsMigration from '../../../../server/db/migrations/sqlit
 import enrichmentMigration from '../../../../server/db/migrations/sqlite/0012_imported_book_enrichment.sql?raw'
 import authFactorsMigration from '../../../../server/db/migrations/sqlite/0013_auth-two-factor-passkeys.sql?raw'
 import recentAuthMigration from '../../../../server/db/migrations/sqlite/0014_recent-auth.sql?raw'
+import durableOpenLibraryPayloadMigration from '../../../../server/db/migrations/sqlite/0019_durable_open_library_payload.sql?raw'
 import libraryIndexesMigration from '../../../../server/db/migrations/sqlite/0004_add_user_books_library_indexes.sql?raw'
 import activeUserBookUniqueMigration from '../../../../server/db/migrations/sqlite/0005_add_active_user_book_unique.sql?raw'
 import { bookAuthors, books, loans, user, userBooks, userBookTags } from '../../../../server/db/schema'
@@ -324,7 +325,8 @@ async function applyMigrations(database: D1Database) {
     borrowerSuggestionsMigration,
     enrichmentMigration,
     authFactorsMigration,
-    recentAuthMigration
+    recentAuthMigration,
+    durableOpenLibraryPayloadMigration
   ]) {
     for (const statement of migration.split('--> statement-breakpoint')) {
       const migrationStatement = statement.trim()

@@ -134,6 +134,13 @@
       "when": 1788625879934,
       "tag": "0018_auth_bootstrap_claim",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1788727543575,
+      "tag": "0019_durable_open_library_payload",
+      "breakpoints": true
     }
   ]
 }

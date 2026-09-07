@@ -80,7 +80,7 @@ export const CanonicalBookEnrichmentRepositoryLive = Layer.effect(
       }),
       ensurePending: (bookId, isbn) => Effect.gen(function* () {
         const now = new Date()
-        yield* Effect.tryPromise({
+        const inserted = yield* Effect.tryPromise({
           try: () => dbService.db.insert(canonicalBookEnrichmentJobs).values({
             bookId,
             isbn,
@@ -89,10 +89,12 @@ export const CanonicalBookEnrichmentRepositoryLive = Layer.effect(
             maxAttempts: 5,
             createdAt: now,
             updatedAt: now
-          }).onConflictDoNothing(),
+          }).onConflictDoNothing().returning(),
           catch: error => new DatabaseError({ message: `Failed to persist canonical enrichment job: ${error}`, operation: 'canonicalEnrichment.ensurePending' })
         })
-        const job = yield* get(bookId)
+        // The common path now returns the inserted row directly. Only a
+        // concurrent caller that won the unique key needs a follow-up read.
+        const job = inserted[0] ? toJob(inserted[0]) : yield* get(bookId)
         if (!job) return yield* Effect.fail(new DatabaseError({ message: 'Canonical enrichment job was not persisted', operation: 'canonicalEnrichment.ensurePending.resolve' }))
         return job
       }),

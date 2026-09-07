@@ -1,6 +1,7 @@
 import type { BookEnrichmentPatch, BookLookupResult, BulkBookLookupItem, BulkBookLookupResponse, LibraryState } from '~~/shared/types/book'
 import { getApiErrorMessage } from '~~/shared/utils/api-error'
 import { MAX_BULK_ISBN_COUNT } from '~~/shared/utils/schemas'
+import { normalizeIsbnIdentity } from '~~/shared/utils/isbn'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { useLibraryDashboardStore } from './libraryDashboard'
@@ -31,6 +32,14 @@ interface BulkLookupOptions {
   onBatchComplete?: (items: BulkBookLookupItem[]) => void
 }
 
+interface LookupOptions {
+  fallbackMessage?: string
+  /** Allow a speculative lookup to be cancelled when the lookup view resets. */
+  cancelOnReset?: boolean
+  /** Warm the request cache without changing visible lookup state. */
+  prefetch?: boolean
+}
+
 export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
   const dashboardStore = useLibraryDashboardStore()
 
@@ -46,7 +55,12 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
   let resetVersion = 0
   let activeLookupRequest = 0
   const activeLookupControllers = new Set<AbortController>()
+  const lookupControllers = new Map<string, AbortController>()
   const activeEnrichmentControllers = new Map<number, Set<AbortController>>()
+  let enrichmentStarted = new WeakSet<BookLookupResult>()
+  // Keep successful requests around so a lookup started by the ISBN input can
+  // be adopted by the submit action (including ISBN-10/ISBN-13 equivalents).
+  const lookupRequests = new Map<string, Promise<BookLookupResult>>()
 
   const isLookingUp = computed(() => pendingLookups.value > 0)
   const isAdding = computed(() => pendingAdds.value > 0)
@@ -56,10 +70,13 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
     resetVersion += 1
     for (const controller of activeLookupControllers) controller.abort()
     activeLookupControllers.clear()
+    lookupControllers.clear()
     for (const controllers of activeEnrichmentControllers.values()) {
       for (const controller of controllers) controller.abort()
     }
     activeEnrichmentControllers.clear()
+    enrichmentStarted = new WeakSet<BookLookupResult>()
+    lookupRequests.clear()
     pendingLookups.value = 0
     pendingAdds.value = 0
     pendingEnrichments.value = 0
@@ -94,8 +111,11 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
     if (controllers.size === 0) activeEnrichmentControllers.delete(requestVersion)
   }
 
-  async function enrichResult(result: BookLookupResult, requestVersion: number, requestId: number, attempt = 0): Promise<void> {
-    if (!result.bookId || !isPending(result.enrichment) || !isActiveRequest(requestVersion, requestId)) return
+  async function enrichResult(result: BookLookupResult, requestVersion: number, attempt = 0): Promise<void> {
+    // Enrichment belongs to the cached book result, so it must survive a
+    // newer lookup (for example A → B → A) and patch the cached result when it
+    // becomes active again.
+    if (!result.bookId || !isPending(result.enrichment) || requestVersion !== resetVersion) return
     const controller = new AbortController()
     registerEnrichmentController(requestVersion, controller)
     pendingEnrichments.value += 1
@@ -105,7 +125,7 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
         body: { bookId: result.bookId },
         signal: controller.signal
       })
-      if (!isActiveRequest(requestVersion, requestId) || patch.bookId !== result.bookId) return
+      if (requestVersion !== resetVersion || patch.bookId !== result.bookId) return
       result.author = patch.author
       result.authors = patch.authors
       result.coverUrl = patch.coverUrl
@@ -117,11 +137,11 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
       result.enrichment = { status: patch.status }
       if (isPending(result.enrichment) && attempt < 4) {
         window.setTimeout(() => {
-          void enrichResult(result, requestVersion, requestId, attempt + 1)
+          void enrichResult(result, requestVersion, attempt + 1)
         }, 1500 * (attempt + 1))
       }
     } catch (err: unknown) {
-      if (isActiveRequest(requestVersion, requestId)) {
+      if (requestVersion === resetVersion) {
         enrichmentError.value = getErrorMessage(err, 'Book details are still being prepared')
       }
     } finally {
@@ -134,35 +154,78 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
 
   async function lookupIsbn(
     isbn: string,
-    options: { fallbackMessage?: string } = {}
+    options: LookupOptions = {}
   ): Promise<IsbnLookupSuccess | IsbnLookupFailure> {
     const requestVersion = resetVersion
-    const requestId = ++activeLookupRequest
-    pendingLookups.value += 1
-    lookupError.value = null
+    const isPrefetch = options.prefetch === true
+    const requestId = isPrefetch ? activeLookupRequest : ++activeLookupRequest
+    if (!isPrefetch) {
+      pendingLookups.value += 1
+      lookupError.value = null
+    }
 
-    try {
-      const response = await $fetch<BookLookupResult>('/api/books/lookup', {
+    const identity = normalizeIsbnIdentity(isbn)
+    let request = lookupRequests.get(identity)
+    if (!request) {
+      let controller: AbortController | undefined
+      if (options.cancelOnReset) {
+        controller = new AbortController()
+        activeLookupControllers.add(controller)
+        lookupControllers.set(identity, controller)
+      }
+      const fetchOptions: { method: 'POST', body: { isbn: string }, signal?: AbortSignal } = {
         method: 'POST',
         body: { isbn }
+      }
+      if (controller) fetchOptions.signal = controller.signal
+      request = $fetch<BookLookupResult>('/api/books/lookup', fetchOptions)
+        .finally(() => {
+          if (controller) activeLookupControllers.delete(controller)
+          if (controller && lookupControllers.get(identity) === controller) lookupControllers.delete(identity)
+        })
+      lookupRequests.set(identity, request)
+      // Failed requests should be retryable. Successful responses remain
+      // reusable for the submit event that follows a speculative lookup.
+      void request.catch(() => {
+        if (lookupRequests.get(identity) === request) lookupRequests.delete(identity)
       })
+      void request.then((result) => {
+        if (!result.found && lookupRequests.get(identity) === request) lookupRequests.delete(identity)
+      }, () => undefined)
+    }
+
+    try {
+      const response = await request
+      if (isPrefetch) return { ok: true, result: response }
       if (!isActiveRequest(requestVersion, requestId)) {
         return { ok: false, message: options.fallbackMessage || 'Failed to lookup book' }
       }
       activeLookupResult.value = response
       const result = activeLookupResult.value!
 
-      if (result.found && result.enrichment && isPending(result.enrichment)) {
-        void enrichResult(result, requestVersion, requestId)
+      if (result.found && result.bookId && result.enrichment && isPending(result.enrichment) && !enrichmentStarted.has(result)) {
+        enrichmentStarted.add(result)
+        void enrichResult(result, requestVersion)
       }
       return { ok: true, result }
     } catch (err: unknown) {
       const message = getErrorMessage(err, options.fallbackMessage || 'Failed to lookup book')
-      if (isActiveRequest(requestVersion, requestId)) lookupError.value = message
+      if (!isPrefetch && isActiveRequest(requestVersion, requestId)) lookupError.value = message
       return { ok: false, message }
     } finally {
-      pendingLookups.value = Math.max(0, pendingLookups.value - 1)
+      if (!isPrefetch && requestVersion === resetVersion) {
+        pendingLookups.value = Math.max(0, pendingLookups.value - 1)
+      }
     }
+  }
+
+  function cancelLookup(isbn: string) {
+    const identity = normalizeIsbnIdentity(isbn)
+    const controller = lookupControllers.get(identity)
+    if (!controller) return
+    lookupControllers.delete(identity)
+    lookupRequests.delete(identity)
+    controller.abort()
   }
 
   async function bulkLookupIsbns(
@@ -252,6 +315,7 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
           })
           success.push(...result.added.map(book => book.isbn))
           failed.push(...result.failed)
+          for (const book of result.added) lookupRequests.delete(normalizeIsbnIdentity(book.isbn))
 
           if (requestVersion !== resetVersion) break
         } catch (err: unknown) {
@@ -285,6 +349,7 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
     activeLookupResult,
     getErrorMessage,
     lookupIsbn,
+    cancelLookup,
     bulkLookupIsbns,
     addIsbnsToLibrary,
     reset

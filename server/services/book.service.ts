@@ -285,23 +285,23 @@ export const BookServiceLive = Layer.effect(
     const locationRepo = yield* LocationRepository
 
     const normalizeISBN = normalizeIsbnIdentity
-    const withDebugTiming = <A, E, R>(
+    const withLookupTiming = <A, E, R>(
       operation: string,
       isbn: string,
       effect: Effect.Effect<A, E, R>
     ): Effect.Effect<A, E, R> =>
-      Effect.gen(function* () {
-        const start = yield* Effect.sync(() => Date.now())
-        const result = yield* effect
-        const durationMs = yield* Effect.sync(() => Date.now() - start)
-        yield* Effect.logDebug(`${operation} completed`).pipe(
-          Effect.annotateLogs({
-            operation,
-            isbn,
-            durationMs
-          })
-        )
-        return result
+      Effect.suspend(() => {
+        const start = performance.now()
+        return effect.pipe(Effect.onExit(exit =>
+          Effect.logInfo('Book lookup stage finished').pipe(
+            Effect.annotateLogs({
+              operation,
+              isbn,
+              durationMs: Math.round(performance.now() - start),
+              outcome: exit._tag
+            })
+          )
+        ))
       })
 
     const normalizeProgress = (
@@ -327,7 +327,9 @@ export const BookServiceLive = Layer.effect(
       title: book.title,
       author: book.author,
       authors: book.authors.map(author => author.name),
-      coverUrl: book.coverPath ? `/api/blob/${book.coverPath}` : null,
+      coverUrl: book.coverPath
+        ? `/api/blob/${book.coverPath}`
+        : book.source === 'open_library' ? book.openLibraryMetadata?.coverUrl ?? null : null,
       description: book.description ?? undefined,
       subjects,
       publishDate: book.publishDate ?? undefined,
@@ -359,10 +361,12 @@ export const BookServiceLive = Layer.effect(
         return imported
       })
 
-    const ensureCoreOpenLibraryBook = (isbn: string) =>
+    const ensureCoreOpenLibraryBook = (isbn: string, knownMissing = false) =>
       Effect.gen(function* () {
         const normalizedISBN = normalizeISBN(isbn)
-        const existing = yield* withDebugTiming('core.localCanonicalLookup', normalizedISBN, bookRepo.findByIsbn(normalizedISBN))
+        // The lookup endpoint has already checked the canonical record. Keep
+        // the check for add callers, and let persistence resolve insert races.
+        const existing = knownMissing ? null : yield* withLookupTiming('core.localCanonicalLookup', normalizedISBN, bookRepo.findByIsbn(normalizedISBN))
         if (existing?.source === 'open_library') {
           const tags = yield* bookRepo.getSystemTagsByBookId(existing.id)
           const needsRepair = !existing.coverPath || !existing.description || tags.length === 0
@@ -371,9 +375,9 @@ export const BookServiceLive = Layer.effect(
             : null
           return { book: existing, job }
         }
-        const data = yield* withDebugTiming('core.openLibraryMetadata', normalizedISBN, openLibraryRepo.lookupCoreByISBN(normalizedISBN))
-        const book = yield* withDebugTiming('core.minimumPersistence', normalizedISBN, bookRepo.createCoreOpenLibraryBook(normalizedISBN, data))
-        const job = yield* withDebugTiming('core.pendingJobPersistence', normalizedISBN, canonicalEnrichmentRepo.ensurePending(book.id, normalizedISBN))
+        const data = yield* withLookupTiming('core.openLibraryMetadata', normalizedISBN, openLibraryRepo.lookupCoreByISBN(normalizedISBN))
+        const book = yield* withLookupTiming('core.minimumPersistence', normalizedISBN, bookRepo.createCoreOpenLibraryBook(normalizedISBN, data))
+        const job = yield* withLookupTiming('core.pendingJobPersistence', normalizedISBN, canonicalEnrichmentRepo.ensurePending(book.id, normalizedISBN))
         return { book, job }
       })
 
@@ -415,16 +419,41 @@ export const BookServiceLive = Layer.effect(
 
         let downloadedCoverPath: string | null = null
         const enrichment = yield* Effect.either(Effect.gen(function* () {
-          const data = yield* withDebugTiming('enrichment.workMetadata', current.isbn!, openLibraryRepo.lookupByISBN(current.isbn!))
-          const storedCover = data.coverUrl
-            ? yield* bookRepo.findStoredOpenLibraryCover(current.isbn!)
-            : null
-          if (!storedCover && data.coverUrl) {
-            downloadedCoverPath = yield* withDebugTiming(
-              'enrichment.coverDownload',
-              current.isbn!,
-              openLibraryRepo.downloadCover(current.isbn!, 'L')
-            )
+          const seed = current.openLibraryMetadata
+          const dataEffect = seed
+            ? openLibraryRepo.enrichMetadata(seed, 'enrichment')
+            : openLibraryRepo.lookupByISBN(current.isbn!, 'enrichment')
+          const coverSeed = seed?.coverUrl ?? null
+          const parallel = yield* Effect.all({
+            data: Effect.either(withLookupTiming('enrichment.workMetadata', current.isbn!, dataEffect)),
+            cover: Effect.either(Effect.gen(function* () {
+              const stored = coverSeed
+                ? yield* bookRepo.findStoredOpenLibraryCover(current.isbn!)
+                : null
+              if (stored || !coverSeed) return { storedCover: stored, downloadedCoverPath: null }
+              const downloaded = yield* withLookupTiming(
+                'enrichment.coverDownload',
+                current.isbn!,
+                openLibraryRepo.downloadCover(current.isbn!, 'L', coverSeed, 'enrichment')
+              )
+              return { storedCover: null, downloadedCoverPath: downloaded }
+            }))
+          }, { concurrency: 'unbounded' })
+          if (Either.isRight(parallel.cover)) downloadedCoverPath = parallel.cover.right.downloadedCoverPath
+          if (Either.isLeft(parallel.data)) return yield* Effect.fail(parallel.data.left)
+          if (Either.isLeft(parallel.cover)) return yield* Effect.fail(parallel.cover.left)
+          const data = parallel.data.right
+          const coverResult = parallel.cover.right
+          let storedCover = coverResult.storedCover
+          if (!storedCover && !downloadedCoverPath && !coverSeed && data.coverUrl) {
+            storedCover = yield* bookRepo.findStoredOpenLibraryCover(current.isbn!)
+            if (!storedCover) {
+              downloadedCoverPath = yield* withLookupTiming(
+                'enrichment.coverDownload',
+                current.isbn!,
+                openLibraryRepo.downloadCover(current.isbn!, 'L', data.coverUrl, 'enrichment')
+              )
+            }
           }
           const coverPath = storedCover ?? downloadedCoverPath
           const book = yield* bookRepo.applyOpenLibraryEnrichment(current.id, data, coverPath)
@@ -672,10 +701,12 @@ export const BookServiceLive = Layer.effect(
         }),
 
       lookupBook: (userId, isbn) =>
-        Effect.gen(function* () {
+        withLookupTiming('lookup.total', normalizeISBN(isbn), Effect.gen(function* () {
           const normalizedISBN = normalizeISBN(isbn)
-          const existingInUserLibrary = yield* bookRepo.hasBookInUserLibrary(userId, normalizedISBN)
-          const localBook = yield* bookRepo.findByIsbn(normalizedISBN)
+          const [existingInUserLibrary, localBook] = yield* Effect.all([
+            withLookupTiming('lookup.ownership', normalizedISBN, bookRepo.hasBookInUserLibrary(userId, normalizedISBN)),
+            withLookupTiming('lookup.canonical', normalizedISBN, bookRepo.findByIsbn(normalizedISBN))
+          ], { concurrency: 2 })
           if (localBook) {
             const bookTags = yield* bookRepo.getSystemTagsByBookId(localBook.id)
             const job = localBook.source === 'open_library' && (!localBook.coverPath || !localBook.description || bookTags.length === 0)
@@ -686,7 +717,7 @@ export const BookServiceLive = Layer.effect(
               enrichment: job ? { status: toBookEnrichmentUiStatus(job.status) } : undefined
             } satisfies BookLookupResult
           }
-          const core = yield* ensureCoreOpenLibraryBook(normalizedISBN).pipe(
+          const core = yield* ensureCoreOpenLibraryBook(normalizedISBN, true).pipe(
             Effect.catchTag('OpenLibraryBookNotFoundError', () => Effect.succeed(null))
           )
           if (!core) return { found: false, isbn: normalizedISBN, message: 'Book not found on OpenLibrary' } satisfies BookLookupResult
@@ -694,7 +725,7 @@ export const BookServiceLive = Layer.effect(
             ...toLookupResult(core.book, normalizedISBN, existingInUserLibrary, []),
             enrichment: core.job ? { status: toBookEnrichmentUiStatus(core.job.status) } : undefined
           } satisfies BookLookupResult
-        }),
+        })),
 
       // Canonical records are intentionally shared before a user adds them.
       // The authenticated endpoint's database-backed per-user rate limit is

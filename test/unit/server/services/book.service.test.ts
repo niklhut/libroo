@@ -258,6 +258,96 @@ describe('canonical ISBN enrichment', () => {
     )
   })
 
+  it('cleans up a seeded cover downloaded in parallel when enrichment metadata fails', async () => {
+    const retry = vi.fn(() => Effect.void)
+    const isCoverReferenced = vi.fn(() => Effect.succeed(false))
+    const deleteCover = vi.fn(() => Effect.void)
+    const seed = {
+      isbn: '9780441172719', title: 'Dune', authors: ['Frank Herbert'],
+      openLibraryKey: '/books/OL1M', workKey: '/works/OL1W',
+      coverUrl: 'https://covers.openlibrary.org/b/id/1-L.jpg', coverId: 1
+    }
+    const bookRepository = {
+      getBookById: vi.fn(() => Effect.succeed({
+        id: 'book-1', isbn: seed.isbn, title: seed.title, author: 'Frank Herbert', authors: [{ id: 'author-1', name: 'Frank Herbert' }],
+        coverPath: null, openLibraryKey: seed.openLibraryKey, openLibraryMetadata: seed, createdAt: new Date(), source: 'open_library' as const, createdByUserId: null
+      })),
+      findStoredOpenLibraryCover: vi.fn(() => Effect.succeed(null)),
+      getSystemTagsByBookId: vi.fn(() => Effect.succeed([]))
+    } as unknown as BookRepositoryInterface
+    const canonicalRepository = {
+      ensurePending: vi.fn(() => Effect.succeed({ status: 'pending', attempts: 0, maxAttempts: 5 })),
+      claim: vi.fn(() => Effect.succeed({ claimToken: 'claim-1', attempts: 1, maxAttempts: 5 })),
+      retry
+    } as unknown as CanonicalBookEnrichmentRepositoryService['Service']
+    const openLibraryRepository = {
+      enrichMetadata: vi.fn(() => Effect.fail(new OpenLibraryApiError({ message: 'work unavailable' }))),
+      downloadCover: vi.fn(() => Effect.succeed('covers/9780441172719.webp'))
+    } as unknown as OpenLibraryRepositoryInterface
+    const enrichmentRepository = { isCoverReferenced } as unknown as BookEnrichmentRepositoryInterface
+
+    const patch = await Effect.runPromise(enrichOpenLibraryBook('book-1').pipe(
+      Effect.provide(BookServiceLive),
+      Effect.provide(Layer.succeed(BookRepository, bookRepository)),
+      Effect.provide(Layer.succeed(BookEnrichmentRepository, enrichmentRepository)),
+      Effect.provide(Layer.succeed(CanonicalBookEnrichmentRepository, canonicalRepository)),
+      Effect.provide(Layer.succeed(OpenLibraryRepository, openLibraryRepository)),
+      Effect.provide(Layer.succeed(LocationRepository, {} as LocationRepositoryInterface)),
+      Effect.provide(Layer.succeed(StorageService, { delete: deleteCover } as StorageServiceInterface))
+    ))
+
+    expect(patch.status).toBe('retrying')
+    expect(isCoverReferenced).toHaveBeenCalledWith('covers/9780441172719.webp')
+    expect(deleteCover).toHaveBeenCalledWith('covers/9780441172719.webp')
+    expect(retry).toHaveBeenCalled()
+  })
+
+  it('does not retry a seeded cover download after the provider returns no image', async () => {
+    const seed = {
+      isbn: '9780441172719', title: 'Dune', authors: ['Frank Herbert'],
+      openLibraryKey: '/books/OL1M', workKey: null,
+      coverUrl: 'https://covers.openlibrary.org/b/id/1-L.jpg', coverId: 1
+    }
+    const book = {
+      id: 'book-1', isbn: seed.isbn, title: seed.title, author: 'Frank Herbert', authors: [{ id: 'author-1', name: 'Frank Herbert' }],
+      coverPath: null, openLibraryKey: seed.openLibraryKey, openLibraryMetadata: seed, createdAt: new Date(), source: 'open_library' as const, createdByUserId: null
+    }
+    const downloadCover = vi.fn(() => Effect.succeed(null))
+    const applyOpenLibraryEnrichment = vi.fn(() => Effect.succeed(book))
+    const complete = vi.fn(() => Effect.void)
+    const bookRepository = {
+      getBookById: vi.fn(() => Effect.succeed(book)),
+      findStoredOpenLibraryCover: vi.fn(() => Effect.succeed(null)),
+      getSystemTagsByBookId: vi.fn(() => Effect.succeed([])),
+      applyOpenLibraryEnrichment,
+      addSystemTagsToBook: vi.fn(() => Effect.void)
+    } as unknown as BookRepositoryInterface
+    const canonicalRepository = {
+      ensurePending: vi.fn(() => Effect.succeed({ status: 'pending', attempts: 0, maxAttempts: 5 })),
+      claim: vi.fn(() => Effect.succeed({ claimToken: 'claim-1', attempts: 1, maxAttempts: 5 })),
+      complete
+    } as unknown as CanonicalBookEnrichmentRepositoryService['Service']
+    const openLibraryRepository = {
+      enrichMetadata: vi.fn(() => Effect.succeed(seed)),
+      downloadCover
+    } as unknown as OpenLibraryRepositoryInterface
+
+    const patch = await Effect.runPromise(enrichOpenLibraryBook('book-1').pipe(
+      Effect.provide(BookServiceLive),
+      Effect.provide(Layer.succeed(BookRepository, bookRepository)),
+      Effect.provide(Layer.succeed(BookEnrichmentRepository, {} as BookEnrichmentRepositoryInterface)),
+      Effect.provide(Layer.succeed(CanonicalBookEnrichmentRepository, canonicalRepository)),
+      Effect.provide(Layer.succeed(OpenLibraryRepository, openLibraryRepository)),
+      Effect.provide(Layer.succeed(LocationRepository, {} as LocationRepositoryInterface)),
+      Effect.provide(Layer.succeed(StorageService, {} as StorageServiceInterface))
+    ))
+
+    expect(patch.status).toBe('no_cover')
+    expect(downloadCover).toHaveBeenCalledTimes(1)
+    expect(applyOpenLibraryEnrichment).toHaveBeenCalledOnce()
+    expect(complete).toHaveBeenCalledWith('book-1', 'claim-1', 'no_cover', null, expect.any(Date))
+  })
+
   it('marks a missing Open Library record as terminal not_found', async () => {
     const complete = vi.fn(() => Effect.void)
     const bookRepository = {

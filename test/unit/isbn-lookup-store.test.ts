@@ -171,6 +171,88 @@ describe('useIsbnLookupStore', () => {
     expect(store.activeLookupResult).toMatchObject({ isbn: '9782222222222', title: 'Second Book' })
   })
 
+  it('shares a pending lookup between ISBN-10 and equivalent ISBN-13 input', async () => {
+    const response = deferred<{ found: true, isbn: string, title: string, author: string }>()
+    const fetchMock = vi.fn().mockReturnValue(response.promise)
+    ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
+
+    const store = useIsbnLookupStore()
+    const first = store.lookupIsbn('043936213X')
+    const second = store.lookupIsbn('9780439362139')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    response.resolve({ found: true, isbn: '9780439362139', title: 'Book A', author: 'Author A' })
+    await expect(first).resolves.toMatchObject({ ok: false })
+    await expect(second).resolves.toMatchObject({ ok: true, result: { isbn: '9780439362139' } })
+  })
+
+  it('reuses a completed speculative result without starting enrichment twice', async () => {
+    const enrichment = deferred<never>()
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ found: true, bookId: 'book-1', isbn: '9781234567890', title: 'Book A', enrichment: { status: 'preparing' } })
+      .mockReturnValueOnce(enrichment.promise)
+    ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
+
+    const store = useIsbnLookupStore()
+    await store.lookupIsbn('9781234567890')
+    const second = await store.lookupIsbn('9781234567890')
+
+    expect(second).toMatchObject({ ok: true, result: { bookId: 'book-1' } })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    enrichment.resolve(undefined as never)
+  })
+
+  it('keeps a pending prefetch invisible and lets submit adopt it', async () => {
+    const response = deferred<{ found: true, bookId: string, isbn: string, title: string, enrichment: { status: 'preparing' } }>()
+    const enrichment = deferred<never>()
+    const fetchMock = vi.fn()
+      .mockReturnValueOnce(response.promise)
+      .mockReturnValueOnce(enrichment.promise)
+    ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
+
+    const store = useIsbnLookupStore()
+    const prefetch = store.lookupIsbn('9781234567890', { prefetch: true, cancelOnReset: true })
+    expect(store.isLookingUp).toBe(false)
+    response.resolve({ found: true, bookId: 'book-1', isbn: '9781234567890', title: 'Book A', enrichment: { status: 'preparing' } })
+    const submit = store.lookupIsbn('9781234567890')
+    await expect(prefetch).resolves.toMatchObject({ ok: true })
+    await expect(submit).resolves.toMatchObject({ ok: true, result: { bookId: 'book-1' } })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    enrichment.resolve(undefined as never)
+  })
+
+  it('does not cache a not-found response for a later retry', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ found: false, isbn: '9781234567890' })
+      .mockResolvedValueOnce({ found: true, isbn: '9781234567890', title: 'Book A' })
+    ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
+
+    const store = useIsbnLookupStore()
+    await store.lookupIsbn('9781234567890')
+    const retry = await store.lookupIsbn('9781234567890')
+
+    expect(retry).toMatchObject({ ok: true, result: { found: true } })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps the new lookup counter while an old lookup settles after reset', async () => {
+    const oldResponse = deferred<BookLookupResult>()
+    const newResponse = deferred<BookLookupResult>()
+    const fetchMock = vi.fn().mockReturnValueOnce(oldResponse.promise).mockReturnValueOnce(newResponse.promise)
+    ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
+
+    const store = useIsbnLookupStore()
+    const oldLookup = store.lookupIsbn('9781111111111')
+    store.reset()
+    const newLookup = store.lookupIsbn('9782222222222')
+    oldResponse.resolve({ found: true, isbn: '9781111111111' })
+    await oldLookup
+    expect(store.isLookingUp).toBe(true)
+    newResponse.resolve({ found: true, isbn: '9782222222222' })
+    await newLookup
+    expect(store.isLookingUp).toBe(false)
+  })
+
   it('adds a typed single ISBN through the shared bulk add primitive and marks dashboard sync', async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce({
       added: [{ isbn: '9781234567890' }],

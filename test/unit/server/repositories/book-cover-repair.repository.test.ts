@@ -6,6 +6,7 @@ import previouslyOwnedMigration from '../../../../server/db/migrations/sqlite/00
 import inviteEmailMigration from '../../../../server/db/migrations/sqlite/0008_brave_saracen.sql?raw'
 import enrichmentMigration from '../../../../server/db/migrations/sqlite/0012_imported_book_enrichment.sql?raw'
 import authFactorsMigration from '../../../../server/db/migrations/sqlite/0013_auth-two-factor-passkeys.sql?raw'
+import durableOpenLibraryPayloadMigration from '../../../../server/db/migrations/sqlite/0019_durable_open_library_payload.sql?raw'
 import { Effect, Layer } from 'effect'
 import * as HttpClient from '@effect/platform/HttpClient'
 import { createClient } from '@libsql/client'
@@ -27,7 +28,7 @@ describe('BookRepository cover repair helpers', () => {
     db = drizzle(client)
     await client.execute('PRAGMA foreign_keys = ON')
 
-    for (const migration of [initialMigration, termsAcceptanceMigration, locationRestrictMigration, libraryStateMigration, previouslyOwnedMigration, inviteEmailMigration, enrichmentMigration, authFactorsMigration]) {
+    for (const migration of [initialMigration, termsAcceptanceMigration, locationRestrictMigration, libraryStateMigration, previouslyOwnedMigration, inviteEmailMigration, enrichmentMigration, authFactorsMigration, durableOpenLibraryPayloadMigration]) {
       for (const statement of migration.split('--> statement-breakpoint')) {
         const sql = statement.trim()
         if (sql) {
@@ -179,7 +180,7 @@ describe('BookRepository cover repair helpers', () => {
 
     expect(result.book.coverPath).toBe('covers/downloaded.webp')
     expect(get).toHaveBeenCalledWith('covers/9781234567890.webp')
-    expect(downloadCover).toHaveBeenCalledWith('9781234567890', 'L')
+    expect(downloadCover).toHaveBeenCalledWith('9781234567890', 'L', undefined, undefined)
 
     const rows = await db.select({
       isbn: books.isbn,

@@ -9,7 +9,8 @@ import { DbService } from '../services/db.service'
 import type { AtomicDbStatement, AtomicDbStatements } from '../services/db.service'
 import { getBlob, type StorageService } from '../services/storage.service'
 import { downloadCover, lookupByISBN } from './openLibrary.repository'
-import type { OpenLibraryApiError, OpenLibraryBookData, OpenLibraryBookNotFoundError, OpenLibraryRepository } from './openLibrary.repository'
+import type { OpenLibraryApiError, OpenLibraryBookNotFoundError, OpenLibraryRepository } from './openLibrary.repository'
+import type { OpenLibraryBookData } from '../../shared/types/open-library'
 import type { LibraryState, TagWithCount } from '../../shared/types/book'
 import { isbnIdentityAliases, normalizeIsbnIdentity } from '../../shared/utils/isbn'
 
@@ -63,6 +64,7 @@ export interface Book {
   publishers?: string | null
   numberOfPages?: number | null
   workKey?: string | null
+  openLibraryMetadata?: OpenLibraryBookData | null
   source: 'open_library' | 'manual'
   createdByUserId: string | null
 }
@@ -391,6 +393,7 @@ export const BookRepositoryLive = Layer.effect(
       publishers: book.publishers,
       numberOfPages: book.numberOfPages,
       workKey: book.workKey,
+      openLibraryMetadata: book.openLibraryMetadata ?? null,
       source: book.source,
       createdByUserId: book.createdByUserId
     })
@@ -518,6 +521,50 @@ export const BookRepositoryLive = Layer.effect(
         }
 
         return author.id
+      })
+
+    // Resolve a set of authors in one database batch regardless of the
+    // number of provider authors. The old per-author read/insert/read loop was
+    // particularly expensive on D1, where each call is a separate round trip.
+    const resolveOrCreateAuthorIds = (names: string[]) =>
+      Effect.gen(function* () {
+        const normalized = names.map((name) => {
+          const displayName = name.trim().replace(/\s+/g, ' ') || 'Unknown Author'
+          return { displayName, normalizedName: normalizeAuthorName(displayName) }
+        })
+        const unique = [...new Map(normalized.map(author => [author.normalizedName, author])).values()]
+        const now = new Date()
+
+        const rows = yield* Effect.tryPromise({
+          try: async () => {
+            const results = await dbService.executeAtomic(database => [
+              database.insert(authors).values(unique.map(author => ({
+                id: generateId(),
+                name: author.displayName,
+                normalizedName: author.normalizedName,
+                createdAt: now,
+                updatedAt: now
+              }))).onConflictDoNothing(),
+              database.select({ id: authors.id, normalizedName: authors.normalizedName })
+                .from(authors)
+                .where(inArray(authors.normalizedName, unique.map(author => author.normalizedName)))
+            ])
+            return (results[1] ?? []) as Array<{ id: string, normalizedName: string }>
+          },
+          catch: error => new DatabaseError({
+            message: `Failed to resolve authors: ${error}`,
+            operation: 'resolveOrCreateAuthorIds.batch'
+          })
+        })
+        const ids = new Map(rows.map(row => [row.normalizedName, row.id]))
+        const missing = unique.find(author => !ids.has(author.normalizedName))
+        if (missing) {
+          return yield* Effect.fail(new DatabaseError({
+            message: `Author upsert failed for name: ${missing.displayName}`,
+            operation: 'resolveOrCreateAuthorIds.final'
+          }))
+        }
+        return unique.map(author => ids.get(author.normalizedName)!)
       })
 
     const linkBookAuthor = (bookId: string, authorId: string, sortOrder: number, client = dbService.db) =>
@@ -1048,7 +1095,26 @@ export const BookRepositoryLive = Layer.effect(
           if ((authorMap.get(existing.id)?.length ?? 0) === 0) {
             // A competing core lookup can persist the canonical book before
             // its author links. Repair that narrow window before responding.
-            yield* setBookAuthors(existing.id, data.authors)
+            const normalizedSeen = new Set<string>()
+            const names = data.authors
+              .map(name => name.trim().replace(/\s+/g, ' '))
+              .filter((name) => {
+                const normalized = normalizeAuthorName(name)
+                if (!normalized || normalizedSeen.has(normalized)) return false
+                normalizedSeen.add(normalized)
+                return true
+              })
+            const authorIds = yield* resolveOrCreateAuthorIds(names.length > 0 ? names : ['Unknown Author'])
+            const now = new Date()
+            yield* Effect.tryPromise({
+              try: () => dbService.executeAtomic((database) => {
+                const statements = authorIds.map((authorId, index) =>
+                  database.insert(bookAuthors).values({ bookId: existing.id, authorId, sortOrder: index, createdAt: now }).onConflictDoNothing()
+                )
+                return [statements[0]!, ...statements.slice(1)] as AtomicDbStatements
+              }),
+              catch: error => new DatabaseError({ message: `Failed to link authors: ${error}`, operation: 'createCoreOpenLibraryBook.repairAuthors' })
+            })
             authorMap = yield* hydrateAuthorsForBookIds([existing.id])
           }
           return toBookModel(existing, authorMap.get(existing.id) || [])
@@ -1066,7 +1132,7 @@ export const BookRepositoryLive = Layer.effect(
             return true
           })
         const names = authorNames.length > 0 ? authorNames : ['Unknown Author']
-        const authorIds = yield* Effect.forEach(names, name => resolveOrCreateAuthorId(name), { concurrency: 1 })
+        const authorIds = yield* resolveOrCreateAuthorIds(names)
 
         yield* Effect.tryPromise({
           try: () => dbService.executeAtomic((database) => {
@@ -1078,6 +1144,7 @@ export const BookRepositoryLive = Layer.effect(
                 coverPath: null,
                 openLibraryKey: data.openLibraryKey,
                 workKey: data.workKey,
+                openLibraryMetadata: data,
                 description: data.description || null,
                 publishDate: data.publishDate || null,
                 publishers: data.publishers?.join(', ') || null,

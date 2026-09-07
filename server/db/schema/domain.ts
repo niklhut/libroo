@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm'
 import { sqliteTable, text, integer, uniqueIndex, index, primaryKey, check } from 'drizzle-orm/sqlite-core'
 import type { AnySQLiteColumn } from 'drizzle-orm/sqlite-core'
+import type { OpenLibraryBookData } from '../../../shared/types/open-library'
 import { user } from './auth'
 
 // Domain tables for Libroo
@@ -14,6 +15,8 @@ export const books = sqliteTable('books', {
   coverPath: text('cover_path'), // Local blob storage path
   openLibraryKey: text('open_library_key'), // OpenLibrary edition key
   workKey: text('work_key'), // OpenLibrary works key (for description)
+  // Original provider response retained for background enrichment and retries.
+  openLibraryMetadata: text('open_library_metadata', { mode: 'json' }).$type<OpenLibraryBookData | null>(),
 
   // Enhanced metadata from OpenLibrary
   description: text('description'),

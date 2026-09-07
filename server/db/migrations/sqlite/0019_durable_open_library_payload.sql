@@ -1,0 +1,1 @@
+ALTER TABLE `books` ADD `open_library_metadata` text;
