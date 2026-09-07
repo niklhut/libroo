@@ -4,7 +4,7 @@ import { isBookEnrichmentInProgress } from '~~/shared/utils/book-enrichment'
 /**
  * Reusable book preview component showing cover, details, and action buttons
  */
-defineProps<{
+const props = defineProps<{
   book: BookLookupResult
   isAdding?: boolean
   backLabel?: string
@@ -13,6 +13,11 @@ defineProps<{
   moveDisabled?: boolean
   unavailableLabel?: string
 }>()
+
+const coverFailed = ref(false)
+watch(() => props.book.coverUrl, () => {
+  coverFailed.value = false
+})
 
 defineEmits<{
   add: []
@@ -28,11 +33,12 @@ defineEmits<{
       <!-- Cover Preview -->
       <div class="w-32 aspect-[2/3] flex-shrink-0 overflow-hidden rounded-lg bg-muted shadow-md">
         <NuxtImg
-          v-if="book.coverUrl"
+          v-if="book.coverUrl && !coverFailed"
           :src="book.coverUrl"
           :alt="book.title || 'Book cover'"
           class="w-full h-full object-cover"
           loading="eager"
+          @error="coverFailed = true"
         />
         <div
           v-else-if="isBookEnrichmentInProgress(book.enrichment?.status)"

@@ -3,7 +3,7 @@
 import { env } from 'cloudflare:workers'
 import { Effect, Layer } from 'effect'
 import { drizzle } from 'drizzle-orm/d1'
-import { eq } from 'drizzle-orm'
+import { asc, eq } from 'drizzle-orm'
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import initialMigration from '../../../../server/db/migrations/sqlite/0000_initial_beta.sql?raw'
 import termsMigration from '../../../../server/db/migrations/sqlite/0001_add_terms_acceptance.sql?raw'
@@ -17,6 +17,7 @@ import enrichmentMigration from '../../../../server/db/migrations/sqlite/0012_im
 import authFactorsMigration from '../../../../server/db/migrations/sqlite/0013_auth-two-factor-passkeys.sql?raw'
 import recentAuthMigration from '../../../../server/db/migrations/sqlite/0014_recent-auth.sql?raw'
 import canonicalEnrichmentMigration from '../../../../server/db/migrations/sqlite/0016_canonical_book_enrichment.sql?raw'
+import durableOpenLibraryPayloadMigration from '../../../../server/db/migrations/sqlite/0019_durable_open_library_payload.sql?raw'
 import { authors, bookAuthors, bookEnrichmentJobs, books, canonicalBookEnrichmentJobs, user, userBooks } from '../../../../server/db/schema'
 import {
   BookEnrichmentRepository,
@@ -30,7 +31,7 @@ import {
   BookRepository,
   BookRepositoryLive
 } from '../../../../server/repositories/book.repository'
-import type { OpenLibraryBookData } from '../../../../server/repositories/openLibrary.repository'
+import type { OpenLibraryBookData } from '../../../../shared/types/open-library'
 import { DbService, type DbServiceInterface } from '../../../../server/services/db.service'
 
 type D1Db = ReturnType<typeof drizzle>
@@ -209,6 +210,34 @@ describe('BookEnrichmentRepository on D1', () => {
     expect(reclaimed?.attempts).toBe(2)
   })
 
+  it('returns the inserted canonical job without a follow-up read, and preserves the winner on conflict', async () => {
+    const first = await runCanonicalRepository(Effect.flatMap(CanonicalBookEnrichmentRepository, repository =>
+      repository.ensurePending('book-1', '9780441172719')
+    ))
+    expect(first).toMatchObject({
+      bookId: 'book-1',
+      isbn: '9780441172719',
+      status: 'pending',
+      attempts: 0
+    })
+
+    await db.update(canonicalBookEnrichmentJobs)
+      .set({ status: 'retrying', attempts: 2, lastError: 'keep this row' })
+      .where(eq(canonicalBookEnrichmentJobs.bookId, 'book-1'))
+
+    const existing = await runCanonicalRepository(Effect.flatMap(CanonicalBookEnrichmentRepository, repository =>
+      repository.ensurePending('book-1', 'different-isbn')
+    ))
+    expect(existing).toMatchObject({
+      bookId: 'book-1',
+      isbn: '9780441172719',
+      status: 'retrying',
+      attempts: 2,
+      lastError: 'keep this row'
+    })
+    await expect(db.select().from(canonicalBookEnrichmentJobs)).resolves.toHaveLength(1)
+  })
+
   it('marks a canonical job failed after its final allowed attempt', async () => {
     await runCanonicalRepository(Effect.flatMap(CanonicalBookEnrichmentRepository, repository =>
       repository.ensurePending('book-1', '9780441172719')
@@ -321,6 +350,35 @@ describe('BookEnrichmentRepository on D1', () => {
     expect(persistedAuthors[0]?.createdAt).toBeInstanceOf(Date)
   })
 
+  it('resolves and links multiple normalized authors exactly once during competing inserts', async () => {
+    const data: OpenLibraryBookData = {
+      isbn: '9780306406157',
+      title: 'Nuclear Physics',
+      authors: [' George  Green ', 'Marie Curie', 'George Green', ' Marie   Curie '],
+      openLibraryKey: '/books/OL2M',
+      workKey: '/works/OL2W',
+      coverUrl: null
+    }
+    const create = () => runBookRepository(Effect.flatMap(BookRepository, repository =>
+      repository.createCoreOpenLibraryBook(data.isbn, data)
+    ))
+
+    const [first, second] = await Promise.all([create(), create()])
+    expect(first.id).toBe(second.id)
+    expect(first.authors.map(author => author.name)).toEqual(['George Green', 'Marie Curie'])
+    expect(second.authors.map(author => author.name)).toEqual(['George Green', 'Marie Curie'])
+
+    const persistedAuthors = await db.select({ name: authors.name, sortOrder: bookAuthors.sortOrder })
+      .from(bookAuthors)
+      .innerJoin(authors, eq(bookAuthors.authorId, authors.id))
+      .where(eq(bookAuthors.bookId, first.id))
+      .orderBy(asc(bookAuthors.sortOrder))
+    expect(persistedAuthors).toEqual([
+      { name: 'George Green', sortOrder: 0 },
+      { name: 'Marie Curie', sortOrder: 1 }
+    ])
+  })
+
   it('replaces an Unknown Author placeholder when enrichment returns an author', async () => {
     await db.update(books)
       .set({ source: 'open_library' })
@@ -390,7 +448,8 @@ async function applyMigrations(database: D1Database) {
     enrichmentMigration,
     authFactorsMigration,
     recentAuthMigration,
-    canonicalEnrichmentMigration
+    canonicalEnrichmentMigration,
+    durableOpenLibraryPayloadMigration
   ]) {
     for (const statement of migration.split('--> statement-breakpoint')) {
       const migrationStatement = statement.trim()

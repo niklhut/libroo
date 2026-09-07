@@ -2,11 +2,13 @@
 import type { FormSubmitEvent } from '@nuxt/ui'
 import type { LibraryState } from '~~/shared/types/book'
 import { storeToRefs } from 'pinia'
+import { isValidIsbnChecksum } from '~~/shared/utils/schemas'
+import { normalizeIsbnIdentity, normalizeIsbnText } from '~~/shared/utils/isbn'
 
 const toast = useToast()
 const isbnLookupStore = useIsbnLookupStore()
 const { isLookingUp, isAdding } = storeToRefs(isbnLookupStore)
-const { lookupIsbn, addIsbnsToLibrary } = isbnLookupStore
+const { lookupIsbn, cancelLookup, addIsbnsToLibrary } = isbnLookupStore
 
 const formState = reactive({
   isbn: ''
@@ -14,9 +16,44 @@ const formState = reactive({
 
 const lookupResult = ref<BookLookupResult | null>(null)
 const isMoving = ref(false)
+let speculativeLookupTimer: ReturnType<typeof setTimeout> | undefined
+let speculativeIsbn: string | undefined
+let inputVersion = 0
+
+function normalizedCompleteIsbn(value: string) {
+  const normalized = normalizeIsbnText(value)
+  return (normalized.length === 10 || normalized.length === 13) && isValidIsbnChecksum(normalized)
+    ? normalized
+    : null
+}
+
+function scheduleSpeculativeLookup(value: string) {
+  inputVersion += 1
+  const version = inputVersion
+  if (speculativeLookupTimer) clearTimeout(speculativeLookupTimer)
+  const isbn = normalizedCompleteIsbn(value)
+  if (speculativeIsbn && (!isbn || normalizeIsbnIdentity(speculativeIsbn) !== normalizeIsbnIdentity(isbn))) {
+    cancelLookup(speculativeIsbn)
+    speculativeIsbn = undefined
+  }
+  if (!isbn || lookupResult.value?.found) return
+
+  speculativeIsbn = isbn
+  speculativeLookupTimer = setTimeout(() => {
+    // This only warms the shared request cache. Submit owns presentation and
+    // all user-facing toasts.
+    if (version === inputVersion) void lookupIsbn(isbn, { cancelOnReset: true, prefetch: true })
+  }, 220)
+}
+
+watch(() => formState.isbn, scheduleSpeculativeLookup)
 
 // Lookup book by ISBN
 async function lookupISBN(payload: FormSubmitEvent<BookIsbnSchema>) {
+  inputVersion += 1
+  if (speculativeLookupTimer) clearTimeout(speculativeLookupTimer)
+  // Adopt the pending prefetch rather than aborting the request being reused.
+  speculativeIsbn = undefined
   lookupResult.value = null
 
   const lookup = await lookupIsbn(payload.data.isbn)
@@ -111,9 +148,19 @@ async function moveToLibrary() {
 }
 
 function reset() {
+  inputVersion += 1
+  if (speculativeLookupTimer) clearTimeout(speculativeLookupTimer)
   lookupResult.value = null
   formState.isbn = ''
+  isbnLookupStore.reset()
 }
+
+onBeforeUnmount(() => {
+  inputVersion += 1
+  if (speculativeLookupTimer) clearTimeout(speculativeLookupTimer)
+  if (speculativeIsbn) cancelLookup(speculativeIsbn)
+  speculativeIsbn = undefined
+})
 
 const previewTitle = computed(() => lookupResult.value?.existsLocally ? 'Already in Library' : 'Book Found')
 const previewIconClass = computed(() => lookupResult.value?.existsLocally ? 'text-lg text-info' : 'text-lg text-success')

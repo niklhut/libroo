@@ -62,11 +62,13 @@ const server = createServer((request, response) => {
     return
   }
 
-  const allowedCoverPaths = new Set(Object.keys(books).flatMap(isbn => [
-    `/b/isbn/${isbn}-S.jpg`,
-    `/b/isbn/${isbn}-M.jpg`,
-    `/b/isbn/${isbn}-L.jpg`
-  ]))
+  const allowedCoverPaths = new Set(Object.entries(books).flatMap(([isbn, book]) =>
+    ['S', 'M', 'L'].flatMap(size => [
+      `/b/isbn/${isbn}-${size}.jpg`,
+      `/b/id/${book.covers[0]}-${size}.jpg`,
+      `/b/olid/${book.key.split('/').pop()}-${size}.jpg`
+    ])
+  ))
   if (allowedCoverPaths.has(url.pathname)) {
     response.writeHead(200, {
       'content-type': 'image/svg+xml',

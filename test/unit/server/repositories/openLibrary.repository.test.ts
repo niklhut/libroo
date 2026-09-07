@@ -404,4 +404,26 @@ describe('OpenLibraryRepository details lookup', () => {
     expect(executeAtomic).not.toHaveBeenCalled()
     expect(consoleError).not.toHaveBeenCalled()
   })
+
+  it('enriches a persisted seed without repeating the edition details request', async () => {
+    vi.stubGlobal('useRuntimeConfig', () => ({ openLibraryRequestTimeoutSeconds: 12, openLibraryCoverTimeoutSeconds: 20, openLibraryContactEmail: '' }))
+    const urls: string[] = []
+    const httpClient = HttpClient.make((request) => {
+      urls.push(request.url)
+      return Effect.succeed(HttpClientResponse.fromWeb(request, new Response(JSON.stringify({ key: '/works/OL1W', title: 'Work', subjects: ['one'] }))))
+    })
+    const seed = { title: 'Seed', authors: ['Author'], isbn: '9780306406157', openLibraryKey: '/books/OL1M', workKey: '/works/OL1W', coverUrl: 'https://covers.openlibrary.org/b/id/42-L.jpg?default=false', subjects: ['one'], description: 'Ready' }
+    const result = await Effect.runPromise(Effect.flatMap(OpenLibraryRepository, repo => repo.enrichMetadata(seed)).pipe(Effect.provide(OpenLibraryRepositoryLive), Effect.provide(Layer.succeed(DbService, { executeAtomic: vi.fn() } as never)), Effect.provide(Layer.succeed(HttpClient.HttpClient, httpClient))))
+    expect(result.title).toBe('Seed')
+    expect(urls.every(url => !url.includes('/api/books'))).toBe(true)
+  })
+
+  it('keeps persisted metadata when optional work enrichment fails', async () => {
+    vi.stubGlobal('useRuntimeConfig', () => ({ openLibraryRequestTimeoutSeconds: 12, openLibraryCoverTimeoutSeconds: 20, openLibraryContactEmail: '' }))
+    const httpClient = HttpClient.make(request => Effect.succeed(HttpClientResponse.fromWeb(request, new Response('failure', { status: 503 }))))
+    const seed = { title: 'Seed', authors: ['Author'], isbn: '9780306406157', openLibraryKey: '/books/OL1M', workKey: '/works/OL1W', coverUrl: null, subjects: [], description: undefined }
+    const result = await Effect.runPromise(Effect.flatMap(OpenLibraryRepository, repo => repo.enrichMetadata(seed)).pipe(Effect.provide(OpenLibraryRepositoryLive), Effect.provide(Layer.succeed(DbService, { executeAtomic: vi.fn() } as never)), Effect.provide(Layer.succeed(HttpClient.HttpClient, httpClient))))
+    expect(result.title).toBe('Seed')
+    expect(result.authors).toEqual(['Author'])
+  })
 })
