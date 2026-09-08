@@ -18,6 +18,7 @@ import authFactorsMigration from '../../../../server/db/migrations/sqlite/0013_a
 import recentAuthMigration from '../../../../server/db/migrations/sqlite/0014_recent-auth.sql?raw'
 import durableOpenLibraryPayloadMigration from '../../../../server/db/migrations/sqlite/0019_durable_open_library_payload.sql?raw'
 import accountIssuerMigration from '../../../../server/db/migrations/sqlite/0017_better_auth_account_issuer.sql?raw'
+import accountIdentityMigration from '../../../../server/db/migrations/sqlite/0020_better_auth_restore_account_identity.sql?raw'
 import { account, books, locations, loans, session, signupInvites, tags, user, userBookTags, userBooks, verification } from '../../../../server/db/schema'
 import { AccountDeletionRepository, AccountDeletionRepositoryLive, LastAdminAccountDeletionError } from '../../../../server/repositories/account-deletion.repository'
 import { DbService, type DbServiceInterface } from '../../../../server/services/db.service'
@@ -95,7 +96,6 @@ describe('AccountDeletionRepository on D1', () => {
     await db.insert(account).values({
       id: 'account-admin-1',
       accountId: 'admin-1',
-      issuer: 'local:credential',
       providerId: 'credential',
       userId: 'admin-1',
       createdAt: now,
@@ -123,7 +123,6 @@ describe('AccountDeletionRepository on D1', () => {
     await db.insert(account).values({
       id: 'account-admin-1',
       accountId: 'admin-1',
-      issuer: 'local:credential',
       providerId: 'credential',
       userId: 'admin-1',
       createdAt: now,
@@ -171,7 +170,7 @@ describe('AccountDeletionRepository on D1', () => {
 })
 
 async function applyMigrations(database: D1Database) {
-  for (const migration of [initialMigration, termsMigration, locationRestrictMigration, libraryStateMigration, previouslyOwnedMigration, inviteEmailMigration, loanNoteMigration, borrowerSuggestionsMigration, enrichmentMigration, authFactorsMigration, recentAuthMigration, accountIssuerMigration, durableOpenLibraryPayloadMigration]) {
+  for (const migration of [initialMigration, termsMigration, locationRestrictMigration, libraryStateMigration, previouslyOwnedMigration, inviteEmailMigration, loanNoteMigration, borrowerSuggestionsMigration, enrichmentMigration, authFactorsMigration, recentAuthMigration, accountIssuerMigration, durableOpenLibraryPayloadMigration, accountIdentityMigration]) {
     for (const statement of migration.split('--> statement-breakpoint')) {
       const migrationStatement = statement.trim()
       if (migrationStatement) {
@@ -202,8 +201,8 @@ async function seedDeletionScenario(database: D1Db) {
     { id: 'user-2', name: 'Grace', email: 'grace@example.com', emailVerified: true, role: 'user', banned: false, createdAt: now, updatedAt: now }
   ])
   await database.insert(account).values([
-    { id: 'account-1', accountId: 'user-1', issuer: 'local:credential', providerId: 'credential', userId: 'user-1', createdAt: now, updatedAt: now },
-    { id: 'account-2', accountId: 'user-2', issuer: 'local:credential', providerId: 'credential', userId: 'user-2', createdAt: now, updatedAt: now }
+    { id: 'account-1', accountId: 'user-1', providerId: 'credential', userId: 'user-1', createdAt: now, updatedAt: now },
+    { id: 'account-2', accountId: 'user-2', providerId: 'credential', userId: 'user-2', createdAt: now, updatedAt: now }
   ])
   await database.insert(session).values([
     { id: 'session-1', token: 'token-1', userId: 'user-1', expiresAt: now, createdAt: now, updatedAt: now },

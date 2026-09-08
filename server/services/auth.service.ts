@@ -9,7 +9,7 @@ import { auth, getAuthSecret } from '../utils/auth'
 import { AUTH_SESSION_OUTCOMES, logAuthSessionResolution } from '../utils/auth-session-logger'
 import { getEmailCapabilities } from '../utils/email-capabilities'
 import type { AuthRepository } from '../repositories/auth.repository'
-import { clearPendingEmail, emailIsInUse, getPendingEmail, getPendingEmailByCurrentEmail, hasAccountWithIssuer, setPendingEmail } from '../repositories/auth.repository'
+import { clearPendingEmail, emailIsInUse, getPendingEmail, getPendingEmailByCurrentEmail, hasAccountWithProvider, setPendingEmail } from '../repositories/auth.repository'
 import type { DatabaseError } from '../repositories/book.repository'
 import { verifyPasswordOrRequireRecentAuth } from './recent-auth.service'
 import { getOidcProviderConfig, oidcProviderConfigured } from '../utils/oidc-provider-config'
@@ -169,26 +169,16 @@ export const AuthServiceLive = Layer.succeed(AuthService, {
 
   getAccountMethodStatus: userId =>
     Effect.gen(function* () {
-      const hasPasswordCredential = yield* hasAccountWithIssuer(userId, 'credential', 'local:credential')
+      const hasPasswordCredential = yield* hasAccountWithProvider(userId, 'credential')
       const oidcConfig = getOidcProviderConfig()
       const configuredProvider = oidcConfig.provider
       if (!oidcProviderConfigured(oidcConfig) || !configuredProvider) {
         return { hasPasswordCredential, oidcProviderLinked: false }
       }
 
-      const context = yield* Effect.promise(() => auth.$context)
-      const runtimeProvider = context.socialProviders.find(provider => provider.id === configuredProvider.providerId)
-      const accountIssuer = runtimeProvider?.accountIssuer
-      const issuer = typeof accountIssuer === 'string'
-        ? accountIssuer
-        : accountIssuer === undefined
-          ? `local:oauth:${encodeURIComponent(configuredProvider.providerId)}`
-          : null
-
-      if (!issuer) return { hasPasswordCredential, oidcProviderLinked: false }
       return {
         hasPasswordCredential,
-        oidcProviderLinked: yield* hasAccountWithIssuer(userId, configuredProvider.providerId, issuer)
+        oidcProviderLinked: yield* hasAccountWithProvider(userId, configuredProvider.providerId)
       }
     }),
 

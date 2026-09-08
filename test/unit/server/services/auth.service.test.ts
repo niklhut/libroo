@@ -76,13 +76,13 @@ describe('AuthService', () => {
     authRepoMock.getPendingEmail.mockReset()
     authRepoMock.getPendingEmailByCurrentEmail.mockReset()
     authRepoMock.emailIsInUse.mockReset()
-    authRepoMock.hasAccountWithIssuer.mockReset()
+    authRepoMock.hasAccountWithProvider.mockReset()
     authRepoMock.setPendingEmail.mockReset()
     authRepoMock.clearPendingEmail.mockReset()
     authRepoMock.getPendingEmail.mockReturnValue(Effect.succeed(null))
     authRepoMock.getPendingEmailByCurrentEmail.mockReturnValue(Effect.succeed(null))
     authRepoMock.emailIsInUse.mockReturnValue(Effect.succeed(false))
-    authRepoMock.hasAccountWithIssuer.mockReturnValue(Effect.succeed(false))
+    authRepoMock.hasAccountWithProvider.mockReturnValue(Effect.succeed(false))
     authRepoMock.setPendingEmail.mockReturnValue(Effect.void)
     authRepoMock.clearPendingEmail.mockReturnValue(Effect.void)
     authMock.context = Promise.resolve({ socialProviders: [] })
@@ -225,12 +225,9 @@ describe('AuthService', () => {
     )).resolves.toBe('user-1')
   })
 
-  it('matches the configured OIDC account using the provider runtime issuer', async () => {
+  it('matches the configured OIDC account using the provider identity', async () => {
     enableOidc()
-    authMock.context = Promise.resolve({
-      socialProviders: [{ id: 'oidc', accountIssuer: 'https://id.example.com/application/o/libroo/' }]
-    })
-    authRepoMock.hasAccountWithIssuer
+    authRepoMock.hasAccountWithProvider
       .mockReturnValueOnce(Effect.succeed(false))
       .mockReturnValueOnce(Effect.succeed(true))
 
@@ -241,30 +238,26 @@ describe('AuthService', () => {
       oidcProviderLinked: true
     })
 
-    expect(authRepoMock.hasAccountWithIssuer).toHaveBeenNthCalledWith(
+    expect(authRepoMock.hasAccountWithProvider).toHaveBeenNthCalledWith(
       2,
       'user-1',
-      'oidc',
-      'https://id.example.com/application/o/libroo/'
+      'oidc'
     )
   })
 
-  it('uses Better Auth\'s local OAuth issuer for explicit endpoint configuration', async () => {
+  it('uses the configured provider identity for explicit endpoint configuration', async () => {
     enableOidc({ explicitEndpoints: true })
-    authMock.context = Promise.resolve({
-      socialProviders: [{ id: 'oidc' }]
-    })
 
     await runAuthService(
       Effect.flatMap(AuthService, service => service.getAccountMethodStatus('user-1'))
     )
 
-    expect(authRepoMock.hasAccountWithIssuer).toHaveBeenNthCalledWith(2, 'user-1', 'oidc', 'local:oauth:oidc')
+    expect(authRepoMock.hasAccountWithProvider).toHaveBeenNthCalledWith(2, 'user-1', 'oidc')
   })
 
   it('reports the password credential without querying OIDC when the provider is disabled', async () => {
     process.env.NUXT_PUBLIC_OIDC_ENABLED = 'false'
-    authRepoMock.hasAccountWithIssuer.mockReturnValueOnce(Effect.succeed(true))
+    authRepoMock.hasAccountWithProvider.mockReturnValueOnce(Effect.succeed(true))
 
     await expect(runAuthService(
       Effect.flatMap(AuthService, service => service.getAccountMethodStatus('user-1'))
@@ -273,8 +266,8 @@ describe('AuthService', () => {
       oidcProviderLinked: false
     })
 
-    expect(authRepoMock.hasAccountWithIssuer).toHaveBeenCalledOnce()
-    expect(authRepoMock.hasAccountWithIssuer).toHaveBeenCalledWith('user-1', 'credential', 'local:credential')
+    expect(authRepoMock.hasAccountWithProvider).toHaveBeenCalledOnce()
+    expect(authRepoMock.hasAccountWithProvider).toHaveBeenCalledWith('user-1', 'credential')
   })
 
   it('allows unverified users when email verification is disabled', async () => {
@@ -623,7 +616,7 @@ const authRepoMock = {
   getPendingEmail: vi.fn(),
   getPendingEmailByCurrentEmail: vi.fn(),
   emailIsInUse: vi.fn(),
-  hasAccountWithIssuer: vi.fn(),
+  hasAccountWithProvider: vi.fn(),
   setPendingEmail: vi.fn(),
   clearPendingEmail: vi.fn()
 }

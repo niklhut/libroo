@@ -141,6 +141,13 @@
       "when": 1788727543575,
       "tag": "0019_durable_open_library_payload",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1788812376338,
+      "tag": "0020_better_auth_restore_account_identity",
+      "breakpoints": true
     }
   ]
 }
