@@ -1,5 +1,6 @@
 import { createServer } from 'node:http'
 import bulkFixtureIsbns from './fixtures/bulk-isbns.json' with { type: 'json' }
+import optimisticBulkIsbns from './fixtures/optimistic-bulk-isbns.json' with { type: 'json' }
 
 const port = Number(process.env.LIBROO_OPENLIBRARY_FIXTURE_PORT || 3011)
 const fixtureIsbn = '9780385533225'
@@ -14,7 +15,7 @@ const cover = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="400" h
 <desc>${'deterministic cover fixture '.repeat(80)}</desc>
 </svg>`)
 
-const books = Object.fromEntries([fixtureIsbn, ...bulkFixtureIsbns].map((isbn, index) => [isbn, {
+const books = Object.fromEntries([fixtureIsbn, ...bulkFixtureIsbns, ...optimisticBulkIsbns].map((isbn, index) => [isbn, {
   title: index === 0 ? 'Fixture Driven Development' : `Bulk Fixture Book ${index}`,
   authors: [{ name: 'Ada Example' }],
   publishers: ['Libroo Test Press'],

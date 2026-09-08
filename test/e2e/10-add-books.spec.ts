@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { addManualBook, bulkFixtureIsbns, fixtureIsbn, fixtureIsbnTitle, libraryBookLink, pasteBulkIsbns } from './support/books'
+import { addManualBook, bulkFixtureIsbns, fixtureIsbn, fixtureIsbnTitle, libraryBookLink, optimisticBulkIsbns, pasteBulkIsbns } from './support/books'
 import { storageState } from './support/auth'
 import { addBookTabs } from './support/selectors'
 
@@ -153,15 +153,15 @@ test('shows bulk added books before the post-save library refresh completes', as
   const refreshGate = await holdPostSaveLibraryRefresh(page, '/api/books/bulk-add')
 
   try {
-    await pasteBulkIsbns(page, bulkFixtureIsbns.slice(0, 2))
+    await pasteBulkIsbns(page, optimisticBulkIsbns)
     await expect(page.getByText('2 found')).toBeVisible({ timeout: 30_000 })
     await page.getByRole('navigation', { name: 'Add selected books' })
       .getByRole('button', { name: 'Add 2 Books to Library' }).click()
 
     await refreshGate.refreshStarted
     await expect(page).toHaveURL(/\/library(?:\?.*)?$/)
-    await expect(libraryBookLink(page, 'Bulk Fixture Book 1')).toBeVisible()
-    await expect(libraryBookLink(page, 'Bulk Fixture Book 2')).toBeVisible()
+    await expect(libraryBookLink(page, 'Bulk Fixture Book 13')).toBeVisible()
+    await expect(libraryBookLink(page, 'Bulk Fixture Book 14')).toBeVisible()
   } finally {
     await refreshGate.release()
     await context.close()
