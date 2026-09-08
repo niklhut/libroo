@@ -27,6 +27,9 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
   const page = ref(DEFAULT_PAGE)
   const pageSize = ref(DEFAULT_PAGE_SIZE)
   const allBooks = ref<LibraryBook[]>([])
+  // Successful additions are retained until a library response confirms them.
+  // This bridges route changes and prevents an early refresh from hiding a new book.
+  const pendingAddedBooks = ref<LibraryBook[]>([])
   const pagination = ref<DashboardPagination | null>(null)
   const resultCache = ref<Record<string, DashboardResultCacheEntry>>({})
   const search = ref('')
@@ -49,8 +52,27 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
     return Math.max(1, Math.ceil(allBooks.value.length / pageSize.value))
   }
 
+  function canOptimisticallyDisplayBook(book: LibraryBook) {
+    return page.value === 1
+      && !search.value.trim()
+      && loanStatus.value === 'all'
+      && readingStatus.value === 'all'
+      && tags.value.length === 0
+      && !location.value
+      && !locationId.value
+      && !includeLocationDescendants.value
+      && sortBy.value === 'dateAdded'
+      && (libraryState.value.length === 0 || libraryState.value.includes(book.libraryState))
+  }
+
   function addBook(book: LibraryBook) {
-    if (libraryState.value.length > 0 && !libraryState.value.includes(book.libraryState)) return
+    resultCache.value = {}
+    resultCacheKeyOrder.value = []
+    pendingAddedBooks.value = [
+      ...pendingAddedBooks.value.filter(item => item.id !== book.id),
+      book
+    ]
+    if (!canOptimisticallyDisplayBook(book)) return
 
     const existingIndex = allBooks.value.findIndex(item => item.id === book.id)
     const existed = existingIndex !== -1
@@ -74,10 +96,21 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
     }
   }
 
+  function getPendingAddedBooks() {
+    return [...pendingAddedBooks.value]
+  }
+
+  function clearPendingAddedBooks(ids: string[]) {
+    if (ids.length === 0) return
+    const confirmed = new Set(ids)
+    pendingAddedBooks.value = pendingAddedBooks.value.filter(book => !confirmed.has(book.id))
+  }
+
   function removeBooks(removedIds: string[]) {
     if (removedIds.length === 0) return
 
     const removedIdSet = new Set(removedIds)
+    pendingAddedBooks.value = pendingAddedBooks.value.filter(book => !removedIdSet.has(book.id))
     const previousLength = allBooks.value.length
     allBooks.value = allBooks.value.filter(book => !removedIdSet.has(book.id))
     const removedCount = previousLength - allBooks.value.length
@@ -150,6 +183,7 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
     shouldRestoreScroll.value = false
     shouldSync.value = false
     syncTargetPages.value = DEFAULT_PAGE
+    pendingAddedBooks.value = []
   }
 
   function cacheResults(cacheKey: string) {
@@ -191,6 +225,7 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
     page,
     pageSize,
     allBooks,
+    pendingAddedBooks,
     pagination,
     resultCache,
     search,
@@ -208,6 +243,7 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
     shouldSync,
     syncTargetPages,
     getLoadedPages,
+    canOptimisticallyDisplayBook,
     addBook,
     removeBooks,
     updateBookTags,
@@ -216,6 +252,8 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
     resetResults,
     resetAll,
     cacheResults,
-    restoreCachedResults
+    restoreCachedResults,
+    getPendingAddedBooks,
+    clearPendingAddedBooks
   }
 })

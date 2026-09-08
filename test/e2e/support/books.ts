@@ -1,11 +1,13 @@
 import type { Page } from '@playwright/test'
 import { expect } from '@playwright/test'
 import bulkFixtureIsbns from './fixtures/bulk-isbns.json' with { type: 'json' }
+import optimisticBulkIsbns from './fixtures/optimistic-bulk-isbns.json' with { type: 'json' }
 import { addBookTabs } from './selectors'
 
 export const fixtureIsbn = '9780385533225'
 export const fixtureIsbnTitle = 'Fixture Driven Development'
 export { bulkFixtureIsbns }
+export { optimisticBulkIsbns }
 const manualCoverPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEklEQVQImWNwtjjlbHGKAUIBACF+BRVveqO2AAAAAElFTkSuQmCC', 'base64')
 
 export async function addFixtureIsbnBook(page: Page) {

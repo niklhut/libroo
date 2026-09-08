@@ -1,4 +1,4 @@
-import type { BookEnrichmentPatch, BookLookupResult, BulkBookLookupItem, BulkBookLookupResponse, LibraryState } from '~~/shared/types/book'
+import type { BookEnrichmentPatch, BookLookupResult, BulkBookLookupItem, BulkBookLookupResponse, LibraryBook, LibraryState } from '~~/shared/types/book'
 import { getApiErrorMessage } from '~~/shared/utils/api-error'
 import { MAX_BULK_ISBN_COUNT } from '~~/shared/utils/schemas'
 import { normalizeIsbnIdentity } from '~~/shared/utils/isbn'
@@ -18,6 +18,7 @@ interface IsbnLookupFailure {
 
 interface AddIsbnsApiResult {
   added: Array<{ isbn: string }>
+  books?: LibraryBook[]
   failed: Array<{ isbn: string, error: string }>
 }
 
@@ -302,6 +303,7 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
     const loadedPagesBeforeAdd = dashboardStore.getLoadedPages()
 
     const success: string[] = []
+    const addedBooks: LibraryBook[] = []
     const failed: Array<{ isbn: string, error: string }> = []
 
     try {
@@ -314,8 +316,11 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
             body: { books: batch.map(isbn => ({ isbn, libraryState })) }
           })
           success.push(...result.added.map(book => book.isbn))
+          addedBooks.push(...(result.books ?? []))
           failed.push(...result.failed)
-          for (const book of result.added) lookupRequests.delete(normalizeIsbnIdentity(book.isbn))
+          for (const book of result.added) {
+            lookupRequests.delete(normalizeIsbnIdentity(book.isbn))
+          }
 
           if (requestVersion !== resetVersion) break
         } catch (err: unknown) {
@@ -327,6 +332,11 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
         }
       }
 
+      if (addedBooks.length > 0 && requestVersion === resetVersion) {
+        // Seed the dashboard immediately so navigation does not wait for the
+        // follow-up library refresh to make a successful add visible.
+        for (const book of addedBooks) dashboardStore.addBook(book)
+      }
       if (success.length > 0) dashboardStore.markNeedsSync(loadedPagesBeforeAdd)
 
       return requestVersion === resetVersion

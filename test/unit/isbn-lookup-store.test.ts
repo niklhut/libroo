@@ -256,6 +256,19 @@ describe('useIsbnLookupStore', () => {
   it('adds a typed single ISBN through the shared bulk add primitive and marks dashboard sync', async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce({
       added: [{ isbn: '9781234567890' }],
+      books: [{
+        id: 'user-book-1',
+        bookId: 'book-1',
+        libraryState: 'owned',
+        title: 'Book A',
+        author: 'Author A',
+        isbn: '9781234567890',
+        coverPath: null,
+        location: null,
+        tags: [],
+        addedAt: '2026-09-08T12:00:00.000Z',
+        enrichmentStatus: 'queued'
+      }],
       failed: []
     })
 
@@ -288,11 +301,67 @@ describe('useIsbnLookupStore', () => {
     })
     expect(dashboardStore.shouldSync).toBe(true)
     expect(dashboardStore.syncTargetPages).toBe(2)
+    expect(dashboardStore.allBooks[0]).toMatchObject({
+      id: 'user-book-1',
+      title: 'Book A',
+      isbn: '9781234567890',
+      enrichmentStatus: 'queued'
+    })
+    expect(dashboardStore.getPendingAddedBooks()).toEqual([
+      expect.objectContaining({ id: 'user-book-1', isbn: '9781234567890' })
+    ])
+  })
+
+  it('keeps a retained filtered dashboard unchanged while recording the added book as pending', async () => {
+    const addedBook = {
+      id: 'user-book-added',
+      bookId: 'book-added',
+      libraryState: 'owned' as const,
+      title: 'Added Book',
+      author: 'Added Author',
+      isbn: '9781234567890',
+      coverPath: null,
+      location: null,
+      tags: [],
+      addedAt: '2026-09-08T12:00:00.000Z',
+      enrichmentStatus: 'queued' as const
+    }
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      added: [{ isbn: addedBook.isbn }],
+      books: [addedBook],
+      failed: []
+    })
+    ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
+
+    const dashboardStore = useLibraryDashboardStore()
+    const retainedBook = { ...addedBook, id: 'retained-book', title: 'Matching title' }
+    dashboardStore.search = 'Matching'
+    dashboardStore.allBooks = [retainedBook]
+    dashboardStore.pagination = { page: 1, pageSize: 12, totalItems: 1, totalPages: 1, hasMore: false }
+
+    await useIsbnLookupStore().addIsbnsToLibrary([addedBook.isbn])
+
+    expect(dashboardStore.allBooks).toEqual([retainedBook])
+    expect(dashboardStore.getPendingAddedBooks()).toEqual([addedBook])
+    expect(dashboardStore.shouldSync).toBe(true)
   })
 
   it('normalizes bulk add failures for scanner and bulk flows', async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce({
       added: [{ isbn: '9781234567890' }],
+      books: [{
+        id: 'user-book-1',
+        bookId: 'book-1',
+        libraryState: 'owned',
+        title: 'Book A',
+        author: 'Author A',
+        isbn: '9781234567890',
+        coverPath: null,
+        location: null,
+        tags: [],
+        addedAt: '2026-09-08T12:00:00.000Z',
+        enrichmentStatus: 'queued'
+      }],
       failed: [{ isbn: '9780987654321', error: 'BookCreateError' }]
     })
 
@@ -305,6 +374,11 @@ describe('useIsbnLookupStore', () => {
       success: ['9781234567890'],
       failed: [{ isbn: '9780987654321', error: 'BookCreateError' }],
       failedIsbns: ['9780987654321']
+    })
+    expect(useLibraryDashboardStore().allBooks).toHaveLength(1)
+    expect(useLibraryDashboardStore().allBooks[0]).toMatchObject({
+      isbn: '9781234567890',
+      title: 'Book A'
     })
   })
 
@@ -439,8 +513,8 @@ describe('useIsbnLookupStore', () => {
     expect(store.isLookingUp).toBe(false)
   })
 
-  it('marks the dashboard for sync when a stale add request already succeeded', async () => {
-    const addResponse = deferred<{ added: Array<{ isbn: string }>, failed: [] }>()
+  it('does not seed dashboard state when a successful add resolves after reset', async () => {
+    const addResponse = deferred<{ added: Array<{ isbn: string }>, books: Array<Record<string, unknown>>, failed: [] }>()
     const fetchMock = vi.fn(() => addResponse.promise)
     ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
 
@@ -448,9 +522,27 @@ describe('useIsbnLookupStore', () => {
     const store = useIsbnLookupStore()
     const add = store.addIsbnsToLibrary(['9780306406157'])
     store.reset()
-    addResponse.resolve({ added: [{ isbn: '9780306406157' }], failed: [] })
+    addResponse.resolve({
+      added: [{ isbn: '9780306406157' }],
+      books: [{
+        id: 'user-book-1',
+        bookId: 'book-1',
+        libraryState: 'owned',
+        title: 'Stale Book',
+        author: 'Author',
+        isbn: '9780306406157',
+        coverPath: null,
+        location: null,
+        tags: [],
+        addedAt: '2026-09-08T12:00:00.000Z',
+        enrichmentStatus: 'queued'
+      }],
+      failed: []
+    })
 
     await expect(add).resolves.toEqual({ success: [], failed: [], failedIsbns: [] })
     expect(dashboardStore.shouldSync).toBe(true)
+    expect(dashboardStore.allBooks).toEqual([])
+    expect(dashboardStore.getPendingAddedBooks()).toEqual([])
   })
 })
