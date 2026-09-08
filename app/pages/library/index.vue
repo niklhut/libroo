@@ -114,22 +114,8 @@ locationId.value = routeState.locationId ?? ''
 includeLocationDescendants.value = Boolean(routeState.includeLocationDescendants)
 sortBy.value = routeState.sortBy ?? 'dateAdded'
 
-function canSeedPendingBooks() {
-  return !search.value.trim()
-    && tags.value.length === 0
-    && loanStatus.value === 'all'
-    && readingStatus.value === 'all'
-    && !location.value
-    && !locationId.value
-    && !includeLocationDescendants.value
-    && sortBy.value === 'dateAdded'
-    && page.value === 1
-}
-const pendingBooksForView = canSeedPendingBooks()
-  ? dashboardStore.getPendingAddedBooks().filter(book =>
-      libraryState.value.length === 0 || libraryState.value.includes(book.libraryState)
-    )
-  : []
+const pendingBooksForView = dashboardStore.getPendingAddedBooks()
+  .filter(book => dashboardStore.canOptimisticallyDisplayBook(book))
 if (pendingBooksForView.length > 0) {
   const pendingIds = new Set(pendingBooksForView.map(book => book.id))
   allBooks.value = [...pendingBooksForView, ...allBooks.value.filter(book => !pendingIds.has(book.id))]
@@ -179,8 +165,7 @@ const activeResultCacheKey = ref(getLibraryResultCacheKey())
 const shouldFetchInitial = allBooks.value.length === 0 || !paginationState.value
 
 function pendingBookMatchesFilters(book: LibraryBook) {
-  return page.value === 1 && canSeedPendingBooks()
-    && (libraryState.value.length === 0 || libraryState.value.includes(book.libraryState))
+  return dashboardStore.canOptimisticallyDisplayBook(book)
 }
 
 // These auxiliary filters do not affect the initial book query. Start them

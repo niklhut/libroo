@@ -732,4 +732,65 @@ describe('bulk ISBN add', () => {
     })))
     expect(bookRepository.addBookByISBN).toHaveBeenCalledTimes(2)
   })
+
+  it('keeps added ISBNs aligned with complete books when one addition fails', async () => {
+    const inputs = ['9780306406157', '9780141439518']
+    const books = new Map(inputs.map((isbn, index) => {
+      const book = {
+        id: `book-${index + 1}`,
+        isbn,
+        title: `Book ${index + 1}`,
+        author: `Author ${index + 1}`,
+        authors: [],
+        coverPath: null,
+        description: 'Core metadata',
+        openLibraryKey: `/books/OL${index + 1}M`,
+        createdAt: new Date(),
+        source: 'open_library' as const,
+        createdByUserId: null
+      }
+      return [isbn, book] as const
+    }))
+    const successfulBook = books.get(inputs[1]!)!
+    const successfulUserBook = {
+      id: 'user-book-2',
+      bookId: successfulBook.id,
+      libraryState: 'owned' as const,
+      book: successfulBook,
+      location: null,
+      lastKnownLocation: null,
+      tags: [],
+      addedAt: new Date(),
+      activeLoan: null
+    }
+    const addBookByISBN = vi.fn((_userId: string, isbn: string) => isbn === inputs[0]
+      ? Effect.fail(new DatabaseError({ message: 'busy', operation: 'addBookByISBN' }))
+      : Effect.succeed(successfulUserBook))
+    const bookRepository = {
+      findByIsbn: vi.fn((isbn: string) => Effect.succeed(books.get(isbn) ?? null)),
+      getSystemTagsByBookId: vi.fn(() => Effect.succeed([])),
+      addBookByISBN
+    } as unknown as BookRepositoryInterface
+    const canonicalRepository = {
+      ensurePending: vi.fn(() => Effect.succeed({ status: 'pending' as const }))
+    } as unknown as CanonicalBookEnrichmentRepositoryService['Service']
+
+    const result = await Effect.runPromise(bulkAddBooks('user-1', inputs.map(isbn => ({ isbn }))).pipe(
+      Effect.provide(BookServiceLive),
+      Effect.provide(Layer.succeed(BookRepository, bookRepository)),
+      Effect.provide(Layer.succeed(BookEnrichmentRepository, {} as BookEnrichmentRepositoryInterface)),
+      Effect.provide(Layer.succeed(CanonicalBookEnrichmentRepository, canonicalRepository)),
+      Effect.provide(Layer.succeed(OpenLibraryRepository, {} as OpenLibraryRepositoryInterface)),
+      Effect.provide(Layer.succeed(LocationRepository, {} as LocationRepositoryInterface)),
+      Effect.provide(Layer.succeed(StorageService, {} as StorageServiceInterface))
+    ))
+
+    expect(result.failed).toEqual([{ isbn: inputs[0], error: 'DatabaseError' }])
+    expect(result.added).toEqual([{ isbn: inputs[1] }])
+    expect(result.books).toEqual([
+      expect.objectContaining({ id: 'user-book-2', isbn: inputs[1], enrichmentStatus: 'queued' })
+    ])
+    expect(result.added.map(book => book.isbn)).toEqual(result.books.map(book => book.isbn))
+    expect(addBookByISBN).toHaveBeenCalledTimes(2)
+  })
 })

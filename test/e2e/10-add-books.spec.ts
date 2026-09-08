@@ -4,6 +4,7 @@ import { storageState } from './support/auth'
 import { addBookTabs } from './support/selectors'
 
 const libraryRefreshPaths = new Set(['/api/books', '/api/preferences', '/api/tags', '/api/locations'])
+const libraryBooksPath = '/api/books'
 
 /** Hold the first library refresh that starts after the add response succeeds. */
 async function holdPostSaveLibraryRefresh(page: import('@playwright/test').Page, addPath: string) {
@@ -16,6 +17,7 @@ async function holdPostSaveLibraryRefresh(page: import('@playwright/test').Page,
   const refreshStarted = new Promise<void>((resolve) => {
     refreshSeen = resolve
   })
+  const heldRequests = new Set<Promise<void>>()
 
   const onResponse = (response: import('@playwright/test').Response) => {
     if (response.url().includes(addPath) && response.request().method() === 'POST' && response.ok()) {
@@ -24,7 +26,7 @@ async function holdPostSaveLibraryRefresh(page: import('@playwright/test').Page,
   }
   page.on('response', onResponse)
 
-  await page.route('**/api/**', async (route) => {
+  const routeHandler = async (route: import('@playwright/test').Route) => {
     const pathname = new URL(route.request().url()).pathname
     const isLibraryRefresh = libraryRefreshPaths.has(pathname)
     if (!addCompleted || route.request().method() !== 'GET') {
@@ -36,17 +38,28 @@ async function holdPostSaveLibraryRefresh(page: import('@playwright/test').Page,
       return
     }
 
-    refreshSeen()
-    const response = await route.fetch()
-    await refreshReleased
-    await route.fulfill({ response })
-  })
+    const heldRequest = (async () => {
+      if (pathname === libraryBooksPath) refreshSeen()
+      const response = await route.fetch()
+      await refreshReleased
+      await route.fulfill({ response })
+    })()
+    heldRequests.add(heldRequest)
+    try {
+      await heldRequest
+    } finally {
+      heldRequests.delete(heldRequest)
+    }
+  }
+  await page.route('**/api/**', routeHandler)
 
   return {
     refreshStarted,
-    release() {
+    async release() {
       releaseRefresh()
       page.off('response', onResponse)
+      await Promise.all(heldRequests)
+      await page.unroute('**/api/**', routeHandler)
     }
   }
 }
@@ -102,7 +115,7 @@ test('adds a book by ISBN through the OpenLibrary fixture server', async ({ brow
     await expect(page).toHaveURL(/\/library(?:\?.*)?$/)
     await expect(libraryBookLink(page, fixtureIsbnTitle)).toBeVisible()
   } finally {
-    refreshGate.release()
+    await refreshGate.release()
     await context.close()
   }
 })
@@ -150,7 +163,7 @@ test('shows bulk added books before the post-save library refresh completes', as
     await expect(libraryBookLink(page, 'Bulk Fixture Book 1')).toBeVisible()
     await expect(libraryBookLink(page, 'Bulk Fixture Book 2')).toBeVisible()
   } finally {
-    refreshGate.release()
+    await refreshGate.release()
     await context.close()
   }
 })

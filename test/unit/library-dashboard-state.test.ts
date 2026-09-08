@@ -96,6 +96,31 @@ describe('useLibraryDashboardStore', () => {
     expect(allBooks.value.map((b: LibraryBook) => b.id)).toEqual(['3', '2'])
   })
 
+  it.each([
+    ['search', (store: ReturnType<typeof useLibraryDashboardStore>) => { store.search = 'another title' }],
+    ['tag', (store: ReturnType<typeof useLibraryDashboardStore>) => { store.tags = ['fiction'] }],
+    ['loan status', (store: ReturnType<typeof useLibraryDashboardStore>) => { store.loanStatus = 'loaned' }],
+    ['reading status', (store: ReturnType<typeof useLibraryDashboardStore>) => { store.readingStatus = 'reading' }],
+    ['location', (store: ReturnType<typeof useLibraryDashboardStore>) => { store.location = 'office' }],
+    ['location descendants', (store: ReturnType<typeof useLibraryDashboardStore>) => {
+      store.locationId = 'location-1'
+      store.includeLocationDescendants = true
+    }],
+    ['sort', (store: ReturnType<typeof useLibraryDashboardStore>) => { store.sortBy = 'title' }],
+    ['page', (store: ReturnType<typeof useLibraryDashboardStore>) => { store.page = 2 }]
+  ])('records additions without inserting into a retained %s view', (_label, configure) => {
+    const store = createStore()
+    const retainedBook = createBook('retained')
+    const addedBook = createBook('added')
+    store.allBooks = [retainedBook]
+    configure(store)
+
+    store.addBook(addedBook)
+
+    expect(store.allBooks).toEqual([retainedBook])
+    expect(store.getPendingAddedBooks()).toEqual([addedBook])
+  })
+
   it('reorders an existing book without increasing totals', () => {
     const store = createStore()
     const { page, allBooks, pagination } = storeToRefs(store)

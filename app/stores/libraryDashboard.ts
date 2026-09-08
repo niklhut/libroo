@@ -52,6 +52,19 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
     return Math.max(1, Math.ceil(allBooks.value.length / pageSize.value))
   }
 
+  function canOptimisticallyDisplayBook(book: LibraryBook) {
+    return page.value === 1
+      && !search.value.trim()
+      && loanStatus.value === 'all'
+      && readingStatus.value === 'all'
+      && tags.value.length === 0
+      && !location.value
+      && !locationId.value
+      && !includeLocationDescendants.value
+      && sortBy.value === 'dateAdded'
+      && (libraryState.value.length === 0 || libraryState.value.includes(book.libraryState))
+  }
+
   function addBook(book: LibraryBook) {
     resultCache.value = {}
     resultCacheKeyOrder.value = []
@@ -59,7 +72,7 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
       ...pendingAddedBooks.value.filter(item => item.id !== book.id),
       book
     ]
-    if (libraryState.value.length > 0 && !libraryState.value.includes(book.libraryState)) return
+    if (!canOptimisticallyDisplayBook(book)) return
 
     const existingIndex = allBooks.value.findIndex(item => item.id === book.id)
     const existed = existingIndex !== -1
@@ -230,6 +243,7 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
     shouldSync,
     syncTargetPages,
     getLoadedPages,
+    canOptimisticallyDisplayBook,
     addBook,
     removeBooks,
     updateBookTags,
