@@ -17,7 +17,8 @@ import { putCoverImage, StorageService, type StorageServiceInterface } from '../
 Object.assign(globalThis, { BookRepository, OpenLibraryRepository, LocationRepository, putCoverImage })
 
 const canonicalEnrichmentRepository = {
-  get: () => Effect.succeed(null)
+  get: () => Effect.succeed(null),
+  ensurePending: vi.fn(() => Effect.succeed({ status: 'pending' }))
 } as unknown as CanonicalBookEnrichmentRepositoryService['Service']
 
 describe('manual cover validation', () => {
@@ -474,10 +475,10 @@ describe('bulk ISBN lookup', () => {
       findByIsbns: vi.fn(() => Effect.succeed(new Map([[localBook.isbn, localBook]]))),
       findUserLibraryByIsbns: vi.fn(() => Effect.succeed(new Map([[localBook.isbn, { userBookId: 'user-book-1', libraryState: 'owned' as const }]]))),
       getSystemTagsByBookId: vi.fn(() => Effect.succeed([])),
-      ensureOpenLibraryBook: vi.fn(() => Effect.succeed(remoteBook))
+      createCoreOpenLibraryBook: vi.fn(() => Effect.succeed(remoteBook))
     } as unknown as BookRepositoryInterface
     const openLibraryRepository = {
-      lookupByISBNs: vi.fn(() => Effect.succeed(new Map([[remoteBook.isbn, {
+      lookupCoreByISBNs: vi.fn(() => Effect.succeed(new Map([[remoteBook.isbn, {
         title: remoteBook.title,
         authors: ['Remote Author'],
         isbn: remoteBook.isbn,
@@ -506,8 +507,8 @@ describe('bulk ISBN lookup', () => {
     expect(result.items[1]).toMatchObject({ status: 'invalid', normalizedIsbn: null })
     expect(result.items[2]).toMatchObject({ status: 'ok', normalizedIsbn: localBook.isbn, duplicateOf: 0 })
     expect(result.items[3]).toMatchObject({ status: 'ok', normalizedIsbn: remoteBook.isbn, result: { coverUrl: '/api/blob/covers/9780141439518.webp' } })
-    expect(openLibraryRepository.lookupByISBNs).toHaveBeenCalledWith([remoteBook.isbn])
-    expect(bookRepository.ensureOpenLibraryBook).toHaveBeenCalledOnce()
+    expect(openLibraryRepository.lookupCoreByISBNs).toHaveBeenCalledWith([remoteBook.isbn])
+    expect(bookRepository.createCoreOpenLibraryBook).toHaveBeenCalledOnce()
   })
 
   it('returns an upstream failure for each unresolved ISBN without failing the request', async () => {
@@ -516,7 +517,7 @@ describe('bulk ISBN lookup', () => {
       findUserLibraryByIsbns: () => Effect.succeed(new Map())
     } as unknown as BookRepositoryInterface
     const openLibraryRepository = {
-      lookupByISBNs: () => Effect.fail(new OpenLibraryApiError({ message: 'unavailable' }))
+      lookupCoreByISBNs: () => Effect.fail(new OpenLibraryApiError({ message: 'unavailable' }))
     } as unknown as OpenLibraryRepositoryInterface
 
     const result = await Effect.runPromise(bulkLookupBooks('user-1', [
@@ -541,7 +542,7 @@ describe('bulk ISBN lookup', () => {
     const isbns = ['9780306406157', '9780141439518']
     let active = 0
     let maxActive = 0
-    const ensureOpenLibraryBook = vi.fn((isbn: string) => Effect.promise(async () => {
+    const createCoreOpenLibraryBook = vi.fn((isbn: string) => Effect.promise(async () => {
       active += 1
       maxActive = Math.max(maxActive, active)
       await new Promise(resolve => setTimeout(resolve, 5))
@@ -555,11 +556,10 @@ describe('bulk ISBN lookup', () => {
     const bookRepository = {
       findByIsbns: () => Effect.succeed(new Map()),
       findUserLibraryByIsbns: () => Effect.succeed(new Map()),
-      ensureOpenLibraryBook,
-      getSystemTagsByBookId: () => Effect.succeed([])
+      createCoreOpenLibraryBook
     } as unknown as BookRepositoryInterface
     const openLibraryRepository = {
-      lookupByISBNs: () => Effect.succeed(new Map(isbns.map(isbn => [isbn, {
+      lookupCoreByISBNs: () => Effect.succeed(new Map(isbns.map(isbn => [isbn, {
         title: isbn, authors: ['Author'], isbn, openLibraryKey: '/books/OL1M', workKey: null, coverUrl: null
       }])))
     } as unknown as OpenLibraryRepositoryInterface
@@ -574,11 +574,11 @@ describe('bulk ISBN lookup', () => {
     ))
 
     expect(result.items.every(item => item.status === 'ok')).toBe(true)
-    expect(ensureOpenLibraryBook).toHaveBeenCalledTimes(2)
+    expect(createCoreOpenLibraryBook).toHaveBeenCalledTimes(2)
     expect(maxActive).toBe(1)
   })
 
-  it('prepares remote covers once and passes their paths into serial persistence', async () => {
+  it('persists core rows without downloading covers in the request', async () => {
     const isbns = ['9780306406157', '9780141439518']
     const remoteData = new Map(isbns.map(isbn => [isbn, {
       title: isbn,
@@ -588,13 +588,13 @@ describe('bulk ISBN lookup', () => {
       workKey: null,
       coverUrl: `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`
     }]))
-    const ensureOpenLibraryBook = vi.fn((isbn: string, _data: unknown, coverPath: string | null) => Effect.succeed({
+    const createCoreOpenLibraryBook = vi.fn((isbn: string, _data: unknown) => Effect.succeed({
       id: `book-${isbn}`,
       isbn,
       title: isbn,
       author: 'Author',
       authors: [],
-      coverPath,
+      coverPath: null,
       openLibraryKey: '/books/OL1M',
       createdAt: new Date(),
       source: 'open_library' as const,
@@ -604,13 +604,10 @@ describe('bulk ISBN lookup', () => {
       findByIsbns: () => Effect.succeed(new Map()),
       findUserLibraryByIsbns: () => Effect.succeed(new Map()),
       findStoredOpenLibraryCover: vi.fn(() => Effect.succeed(null)),
-      ensureOpenLibraryBook,
-      getSystemTagsByBookId: () => Effect.succeed([])
+      createCoreOpenLibraryBook
     } as unknown as BookRepositoryInterface
-    const downloadCovers = vi.fn(() => Effect.succeed(new Map(isbns.map(isbn => [isbn, `covers/${isbn}.webp`]))))
     const openLibraryRepository = {
-      lookupByISBNs: () => Effect.succeed(remoteData),
-      downloadCovers
+      lookupCoreByISBNs: () => Effect.succeed(remoteData)
     } as unknown as OpenLibraryRepositoryInterface
 
     const result = await Effect.runPromise(bulkLookupBooks('user-1', isbns).pipe(
@@ -623,8 +620,51 @@ describe('bulk ISBN lookup', () => {
     ))
 
     expect(result.items.every(item => item.status === 'ok')).toBe(true)
-    expect(downloadCovers).toHaveBeenCalledWith(isbns, 'L')
-    expect(ensureOpenLibraryBook).toHaveBeenNthCalledWith(1, isbns[0], remoteData.get(isbns[0]), `covers/${isbns[0]}.webp`)
-    expect(ensureOpenLibraryBook).toHaveBeenNthCalledWith(2, isbns[1], remoteData.get(isbns[1]), `covers/${isbns[1]}.webp`)
+    expect(createCoreOpenLibraryBook).toHaveBeenCalledTimes(2)
+  })
+
+  it('contains enrichment queue failures to the affected ISBN', async () => {
+    const isbns = ['9780306406157', '9780141439518']
+    const remoteData = new Map(isbns.map((isbn, index) => [isbn, {
+      title: `Book ${index + 1}`,
+      authors: ['Author'],
+      isbn,
+      openLibraryKey: `/books/OL${index + 1}M`,
+      workKey: null,
+      coverUrl: `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`
+    }]))
+    const createCoreOpenLibraryBook = vi.fn((isbn: string) => Effect.succeed({
+      id: `book-${isbn}`, isbn, title: isbn, author: 'Author', authors: [],
+      coverPath: null, openLibraryKey: '/books/OL1M', createdAt: new Date(),
+      source: 'open_library' as const, createdByUserId: null,
+      openLibraryMetadata: remoteData.get(isbn)
+    }))
+    const bookRepository = {
+      findByIsbns: () => Effect.succeed(new Map()),
+      findUserLibraryByIsbns: () => Effect.succeed(new Map()),
+      createCoreOpenLibraryBook
+    } as unknown as BookRepositoryInterface
+    const openLibraryRepository = {
+      lookupCoreByISBNs: () => Effect.succeed(remoteData)
+    } as unknown as OpenLibraryRepositoryInterface
+    const ensurePending = vi.fn((bookId: string) => bookId.includes(isbns[0])
+      ? Effect.fail(new DatabaseError({ message: 'busy', operation: 'test' }))
+      : Effect.succeed({ status: 'pending' as const }))
+    const canonical = { ensurePending } as unknown as CanonicalBookEnrichmentRepositoryService['Service']
+
+    const result = await Effect.runPromise(bulkLookupBooks('user-1', isbns).pipe(
+      Effect.provide(BookServiceLive),
+      Effect.provide(Layer.succeed(BookRepository, bookRepository)),
+      Effect.provide(Layer.succeed(BookEnrichmentRepository, {} as BookEnrichmentRepositoryInterface)),
+      Effect.provide(Layer.succeed(CanonicalBookEnrichmentRepository, canonical)),
+      Effect.provide(Layer.succeed(OpenLibraryRepository, openLibraryRepository)),
+      Effect.provide(Layer.succeed(LocationRepository, {} as LocationRepositoryInterface))
+    ))
+
+    expect(result.items[0]).toMatchObject({ status: 'error', errorCode: 'persistence_failure' })
+    expect(result.items[1]).toMatchObject({
+      status: 'ok',
+      result: { found: true, coverUrl: `https://covers.openlibrary.org/b/isbn/${isbns[1]}-L.jpg`, enrichment: { status: 'queued' } }
+    })
   })
 })

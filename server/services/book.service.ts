@@ -22,8 +22,6 @@ import { OpenLibraryBookNotFoundError } from '../repositories/openLibrary.reposi
 import { getBooksEnrichmentConfig } from '../utils/books-config'
 import { deleteBlob } from './storage.service'
 
-const BULK_COVER_LOOKUP_CONCURRENCY = 16
-
 interface UserBookViewModel {
   id: string
   bookId: string
@@ -776,7 +774,7 @@ export const BookServiceLive = Layer.effect(
           const localLookup = yield* Effect.either(Effect.all({
             books: bookRepo.findByIsbns(uniqueIsbns),
             ownership: bookRepo.findUserLibraryByIsbns(userId, uniqueIsbns)
-          }))
+          }, { concurrency: 2 }))
 
           if (Either.isLeft(localLookup)) {
             yield* Effect.logError(localLookup.left)
@@ -791,11 +789,18 @@ export const BookServiceLive = Layer.effect(
             const { books: localBooks, ownership } = localLookup.right
             const localResults = yield* Effect.forEach(
               [...localBooks.entries()],
-              ([isbn, book]) => Effect.either(
-                bookRepo.getSystemTagsByBookId(book.id).pipe(
-                  Effect.map(tags => [isbn, toLookupResult(book, isbn, ownership.get(isbn) ?? null, tags.map(tag => tag.name))] as const)
-                )
-              ),
+              ([isbn, book]) => Effect.either(Effect.gen(function* () {
+                const tags = yield* bookRepo.getSystemTagsByBookId(book.id)
+                const needsEnrichment = book.source === 'open_library'
+                  && (!book.coverPath || !book.description || tags.length === 0)
+                const job = needsEnrichment
+                  ? yield* canonicalEnrichmentRepo.ensurePending(book.id, isbn)
+                  : null
+                return [isbn, {
+                  ...toLookupResult(book, isbn, ownership.get(isbn) ?? null, tags.map(tag => tag.name)),
+                  enrichment: job ? { status: toBookEnrichmentUiStatus(job.status) } : undefined
+                }] as const
+              })),
               { concurrency: BULK_LOOKUP_CONCURRENCY }
             )
             for (const result of localResults) {
@@ -805,7 +810,7 @@ export const BookServiceLive = Layer.effect(
 
             const unresolved = uniqueIsbns.filter(isbn => !localBooks.has(isbn))
             if (unresolved.length > 0) {
-              const remoteLookup = yield* Effect.either(openLibraryRepo.lookupByISBNs(unresolved))
+              const remoteLookup = yield* Effect.either(openLibraryRepo.lookupCoreByISBNs(unresolved))
               if (Either.isLeft(remoteLookup)) {
                 yield* Effect.logError(remoteLookup.left)
                 for (const isbn of unresolved) {
@@ -816,29 +821,6 @@ export const BookServiceLive = Layer.effect(
                   })
                 }
               } else {
-                const coverPreparationStartedAt = Date.now()
-                const coverCandidates = unresolved.filter(isbn => Boolean(remoteLookup.right.get(isbn)?.coverUrl))
-                const storedCoverEntries = yield* Effect.forEach(
-                  coverCandidates,
-                  isbn => bookRepo.findStoredOpenLibraryCover(isbn).pipe(
-                    Effect.map(coverPath => [isbn, coverPath] as const)
-                  ),
-                  { concurrency: BULK_COVER_LOOKUP_CONCURRENCY }
-                )
-                const coverPaths = new Map(storedCoverEntries)
-                const missingCovers = coverCandidates.filter(isbn => !coverPaths.get(isbn))
-                if (missingCovers.length > 0) {
-                  const downloadedCovers = yield* openLibraryRepo.downloadCovers(missingCovers, 'L')
-                  for (const [isbn, coverPath] of downloadedCovers) coverPaths.set(isbn, coverPath)
-                }
-                yield* Effect.logDebug('Bulk Open Library cover preparation completed').pipe(
-                  Effect.annotateLogs({
-                    candidateCount: coverCandidates.length,
-                    downloadedCount: missingCovers.length,
-                    durationMs: Date.now() - coverPreparationStartedAt
-                  })
-                )
-
                 const persistLookup = (isbn: string): Effect.Effect<
                   readonly [string, UniqueOutcome],
                   never,
@@ -851,21 +833,28 @@ export const BookServiceLive = Layer.effect(
                       result: { found: false, isbn, message: 'Book not found on OpenLibrary' }
                     }] as const
                   }
-                  const result = yield* Effect.either(
-                    bookRepo.ensureOpenLibraryBook(isbn, data, coverPaths.get(isbn) ?? null).pipe(
-                      Effect.flatMap(book => bookRepo.getSystemTagsByBookId(book.id).pipe(
-                        Effect.map(tags => toLookupResult(book, isbn, ownership.get(isbn) ?? null, tags.map(tag => tag.name)))
-                      ))
-                    )
-                  )
+                  const result = yield* Effect.either(Effect.gen(function* () {
+                    const book = yield* bookRepo.createCoreOpenLibraryBook(isbn, data)
+                    const job = yield* canonicalEnrichmentRepo.ensurePending(book.id, isbn)
+                    return {
+                      result: toLookupResult(book, isbn, ownership.get(isbn) ?? null, []),
+                      job
+                    }
+                  }))
                   let outcome: UniqueOutcome
                   if (Either.isRight(result)) {
-                    outcome = { status: 'ok', result: result.right }
+                    outcome = {
+                      status: 'ok',
+                      result: {
+                        ...result.right.result,
+                        enrichment: { status: toBookEnrichmentUiStatus(result.right.job.status) }
+                      }
+                    }
                   } else {
                     yield* Effect.logError(result.left)
                     outcome = {
                       status: 'error',
-                      errorCode: result.left._tag === 'OpenLibraryApiError' ? 'upstream_failure' : 'persistence_failure',
+                      errorCode: 'persistence_failure',
                       message: 'We could not save this lookup right now. Try again in a moment.'
                     }
                   }
@@ -874,9 +863,8 @@ export const BookServiceLive = Layer.effect(
                 const persisted = yield* Effect.forEach(
                   unresolved,
                   persistLookup,
-                  // Cover preparation is complete before this phase. SQLite
-                  // persistence remains serial because each book still inserts
-                  // and hydrates several related rows.
+                  // SQLite persistence remains serial to avoid writer
+                  // contention; core rows are deliberately lightweight.
                   { concurrency: 1 }
                 )
                 for (const [isbn, outcome] of persisted) outcomes.set(isbn, outcome)

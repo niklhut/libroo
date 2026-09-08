@@ -67,6 +67,41 @@ describe('OpenLibraryRepository details lookup', () => {
     expect(requestedUrls.some(url => /\/books\/[^?]+\.json/.test(url))).toBe(false)
   })
 
+  it('core batch lookup deduplicates ISBNs and avoids optional enrichment requests', async () => {
+    vi.stubGlobal('useRuntimeConfig', () => ({
+      openLibraryRequestTimeoutSeconds: 12,
+      openLibraryCoverTimeoutSeconds: 20,
+      openLibraryContactEmail: ''
+    }))
+    const requestedUrls: string[] = []
+    const httpClient = HttpClient.make((request) => {
+      requestedUrls.push(request.url)
+      return Effect.succeed(HttpClientResponse.fromWeb(request, new Response(JSON.stringify({
+        'ISBN:9780306406157': {
+          details: {
+            key: '/books/OL1M', title: 'Dune', authors: [{ name: 'Author' }],
+            works: [{ key: '/works/OL1W' }]
+          }
+        }
+      }))))
+    })
+
+    const result = await Effect.runPromise(Effect.flatMap(OpenLibraryRepository, repository =>
+      repository.lookupCoreByISBNs(['9780306406157', '9780306406157', '9780141439518'])
+    ).pipe(
+      Effect.provide(OpenLibraryRepositoryLive),
+      Effect.provide(Layer.succeed(DbService, { executeAtomic: vi.fn() } as never)),
+      Effect.provide(Layer.succeed(HttpClient.HttpClient, httpClient))
+    ))
+
+    expect(result.size).toBe(1)
+    expect(result.get('9780306406157')).toMatchObject({ title: 'Dune', authors: ['Author'] })
+    expect(requestedUrls).toHaveLength(1)
+    expect(requestedUrls[0]).toContain('bibkeys=ISBN:9780306406157,ISBN:9780141439518')
+    expect(requestedUrls[0]).toContain('jscmd=details')
+    expect(requestedUrls.some(url => url.includes('jscmd=data') || url.includes('/works/'))).toBe(false)
+  })
+
   it('falls back to ISBN data when details omits edition authors', async () => {
     vi.stubGlobal('useRuntimeConfig', () => ({
       openLibraryRequestTimeoutSeconds: 12,
