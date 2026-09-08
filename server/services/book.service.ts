@@ -94,6 +94,7 @@ export interface BulkAddBookInput {
 
 export interface BulkAddBooksResult {
   added: Array<{ isbn: string }>
+  books: LibraryBook[]
   failed: Array<{ isbn: string, error: string }>
 }
 
@@ -518,6 +519,7 @@ export const BookServiceLive = Layer.effect(
       bulkAddBooks: (userId, books) =>
         Effect.gen(function* () {
           const added: Array<{ isbn: string }> = []
+          const addedBooks: LibraryBook[] = []
           const failed: Array<{ isbn: string, error: string }> = []
           const normalizedBooks = books.map(book => ({
             isbn: normalizeISBN(book.isbn),
@@ -528,8 +530,9 @@ export const BookServiceLive = Layer.effect(
             normalizedBooks,
             book => Effect.either(
               ensureCoreOpenLibraryBook(book.isbn).pipe(
-                Effect.flatMap(() => bookRepo.addBookByISBN(userId, book.isbn, book.libraryState, { coreOnly: true })),
-                Effect.map(() => ({ isbn: book.isbn }))
+                Effect.flatMap(core => bookRepo.addBookByISBN(userId, book.isbn, book.libraryState, { coreOnly: true }).pipe(
+                  Effect.map(userBook => toLibraryBook(userBook, core.job?.status))
+                ))
               )
             ),
             { concurrency: 3 }
@@ -538,7 +541,8 @@ export const BookServiceLive = Layer.effect(
           results.forEach((result, index) => {
             const isbn = normalizedBooks[index]!.isbn
             if (Either.isRight(result)) {
-              added.push({ isbn })
+              added.push({ isbn: result.right.isbn ?? normalizedBooks[index]!.isbn })
+              addedBooks.push(result.right)
             } else {
               const error = result.left
               const message = '_tag' in error ? String(error._tag) : 'Unknown error'
@@ -546,7 +550,7 @@ export const BookServiceLive = Layer.effect(
             }
           })
 
-          return { added, failed }
+          return { added, books: addedBooks, failed }
         }),
 
       createManualBook: (userId, input) =>

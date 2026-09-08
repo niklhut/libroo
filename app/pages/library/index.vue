@@ -39,6 +39,9 @@ const toast = useToast()
 const route = useRoute()
 const authStore = useAuthStore()
 
+const routeState = normalizeLibraryQuery(route.query)
+const hasExplicitLibraryStateQuery = route.query.libraryState !== undefined
+
 const dashboardStore = useLibraryDashboardStore()
 const {
   page,
@@ -65,18 +68,22 @@ const {
   clearNeedsSync: clearNeedsSyncAction,
   cacheResults: cacheResultsAction,
   restoreCachedResults: restoreCachedResultsAction,
-  resetResults: resetResultsAction
+  resetResults: resetResultsAction,
+  getPendingAddedBooks,
+  clearPendingAddedBooks
 } = dashboardStore
 
 const { data: preferences } = await useFetch<PreferencesResponse>('/api/preferences', {
-  headers: useRequestHeaders(['cookie'])
+  headers: useRequestHeaders(['cookie']),
+  lazy: hasExplicitLibraryStateQuery || dashboardStore.getPendingAddedBooks().length > 0
 })
 
-const routeState = normalizeLibraryQuery(route.query)
-const hasExplicitLibraryStateQuery = route.query.libraryState !== undefined
 const initialLibraryState: LibraryState[] = hasExplicitLibraryStateQuery
   ? routeState.libraryState ?? DEFAULT_LIBRARY_STATE_FILTER
-  : preferences.value?.defaultLibraryStateFilter ?? DEFAULT_LIBRARY_STATE_FILTER
+  : (preferences.value?.defaultLibraryStateFilter
+    ?? (dashboardStore.getPendingAddedBooks()[0]?.libraryState
+      ? [dashboardStore.getPendingAddedBooks()[0]!.libraryState]
+      : DEFAULT_LIBRARY_STATE_FILTER))
 const hasRouteStateMismatch = pageSize.value !== routeState.pageSize
   || search.value !== (routeState.search ?? '')
   || loanStatus.value !== (routeState.loanStatus ?? 'all')
@@ -106,6 +113,36 @@ location.value = routeState.location ?? ''
 locationId.value = routeState.locationId ?? ''
 includeLocationDescendants.value = Boolean(routeState.includeLocationDescendants)
 sortBy.value = routeState.sortBy ?? 'dateAdded'
+
+function canSeedPendingBooks() {
+  return !search.value.trim()
+    && tags.value.length === 0
+    && loanStatus.value === 'all'
+    && readingStatus.value === 'all'
+    && !location.value
+    && !locationId.value
+    && !includeLocationDescendants.value
+    && sortBy.value === 'dateAdded'
+    && page.value === 1
+}
+const pendingBooksForView = canSeedPendingBooks()
+  ? dashboardStore.getPendingAddedBooks().filter(book =>
+      libraryState.value.length === 0 || libraryState.value.includes(book.libraryState)
+    )
+  : []
+if (pendingBooksForView.length > 0) {
+  const pendingIds = new Set(pendingBooksForView.map(book => book.id))
+  allBooks.value = [...pendingBooksForView, ...allBooks.value.filter(book => !pendingIds.has(book.id))]
+  if (!paginationState.value) {
+    paginationState.value = {
+      page: 1,
+      pageSize: pageSize.value,
+      totalItems: pendingBooksForView.length,
+      totalPages: 1,
+      hasMore: false
+    }
+  }
+}
 
 // Pagination state
 const isLoadingMore = ref(false)
@@ -141,11 +178,20 @@ function getLibraryResultCacheKey() {
 const activeResultCacheKey = ref(getLibraryResultCacheKey())
 const shouldFetchInitial = allBooks.value.length === 0 || !paginationState.value
 
-const { data: locations } = await useFetch<BookLocationWithCount[]>('/api/locations', {
-  headers: useRequestHeaders(['cookie'])
+function pendingBookMatchesFilters(book: LibraryBook) {
+  return page.value === 1 && canSeedPendingBooks()
+    && (libraryState.value.length === 0 || libraryState.value.includes(book.libraryState))
+}
+
+// These auxiliary filters do not affect the initial book query. Start them
+// without blocking route rendering so the library can appear immediately.
+const { data: locations } = useFetch<BookLocationWithCount[]>('/api/locations', {
+  headers: useRequestHeaders(['cookie']),
+  lazy: true
 })
-const { data: availableTags } = await useFetch<TagWithCount[]>('/api/tags', {
-  headers: useRequestHeaders(['cookie'])
+const { data: availableTags } = useFetch<TagWithCount[]>('/api/tags', {
+  headers: useRequestHeaders(['cookie']),
+  lazy: true
 })
 
 // Fetch books with pagination
@@ -171,18 +217,30 @@ const { data, refresh, status } = await useFetch<PaginatedResponse>('/api/books'
 watch(data, (response) => {
   if (!response) return
 
-  paginationState.value = response.pagination
+  const responseIds = new Set(response.items.map(book => book.id))
+  const pending = getPendingAddedBooks().filter(book => !responseIds.has(book.id) && pendingBookMatchesFilters(book))
+  clearPendingAddedBooks(response.items.map(book => book.id))
+  const items = [...pending, ...response.items]
+
+  paginationState.value = pending.length > 0
+    ? {
+        ...response.pagination,
+        totalItems: response.pagination.totalItems + pending.length,
+        totalPages: Math.ceil((response.pagination.totalItems + pending.length) / response.pagination.pageSize),
+        hasMore: response.pagination.page < Math.ceil((response.pagination.totalItems + pending.length) / response.pagination.pageSize)
+      }
+    : response.pagination
 
   if (page.value === 1) {
-    allBooks.value = [...response.items]
+    allBooks.value = items
   } else {
     const existingIds = new Set(allBooks.value.map(book => book.id))
-    const newItems = response.items.filter(book => !existingIds.has(book.id))
+    const newItems = items.filter(book => !existingIds.has(book.id))
     allBooks.value.push(...newItems)
   }
 
   cacheResultsAction(activeResultCacheKey.value)
-}, { immediate: true })
+}, { immediate: shouldFetchInitial })
 
 const hasPendingEnrichment = computed(() =>
   allBooks.value.some(book =>

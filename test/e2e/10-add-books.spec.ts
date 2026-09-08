@@ -1,7 +1,55 @@
 import { expect, test } from '@playwright/test'
-import { addFixtureIsbnBook, addManualBook, bulkFixtureIsbns, fixtureIsbnTitle, libraryBookLink, pasteBulkIsbns } from './support/books'
+import { addManualBook, bulkFixtureIsbns, fixtureIsbn, fixtureIsbnTitle, libraryBookLink, pasteBulkIsbns } from './support/books'
 import { storageState } from './support/auth'
 import { addBookTabs } from './support/selectors'
+
+const libraryRefreshPaths = new Set(['/api/books', '/api/preferences', '/api/tags', '/api/locations'])
+
+/** Hold the first library refresh that starts after the add response succeeds. */
+async function holdPostSaveLibraryRefresh(page: import('@playwright/test').Page, addPath: string) {
+  let addCompleted = false
+  let releaseRefresh!: () => void
+  let refreshSeen!: () => void
+  const refreshReleased = new Promise<void>((resolve) => {
+    releaseRefresh = resolve
+  })
+  const refreshStarted = new Promise<void>((resolve) => {
+    refreshSeen = resolve
+  })
+
+  const onResponse = (response: import('@playwright/test').Response) => {
+    if (response.url().includes(addPath) && response.request().method() === 'POST' && response.ok()) {
+      addCompleted = true
+    }
+  }
+  page.on('response', onResponse)
+
+  await page.route('**/api/**', async (route) => {
+    const pathname = new URL(route.request().url()).pathname
+    const isLibraryRefresh = libraryRefreshPaths.has(pathname)
+    if (!addCompleted || route.request().method() !== 'GET') {
+      await route.continue()
+      return
+    }
+    if (!isLibraryRefresh) {
+      await route.continue()
+      return
+    }
+
+    refreshSeen()
+    const response = await route.fetch()
+    await refreshReleased
+    await route.fulfill({ response })
+  })
+
+  return {
+    refreshStarted,
+    release() {
+      releaseRefresh()
+      page.off('response', onResponse)
+    }
+  }
+}
 
 test('submits a pending ISBN prefetch without issuing a second lookup', async ({ browser }) => {
   const context = await browser.newContext({ storageState: await storageState(browser, 'user') })
@@ -38,9 +86,25 @@ test('adds a book by ISBN through the OpenLibrary fixture server', async ({ brow
   const context = await browser.newContext({ storageState: await storageState(browser, 'user') })
   const page = await context.newPage()
 
-  await addFixtureIsbnBook(page)
-  await expect(libraryBookLink(page, fixtureIsbnTitle)).toBeVisible()
-  await context.close()
+  const refreshGate = await holdPostSaveLibraryRefresh(page, '/api/books/bulk-add')
+  try {
+    await page.goto('/library')
+    await expect(page).toHaveURL(/\/library(?:\?.*)?$/)
+    await page.getByRole('link', { name: 'Add Book' }).click()
+    await expect(page).toHaveURL(/\/library\/add(?:\?.*)?$/)
+    await expect(page.getByText('Find Book by ISBN')).toBeVisible()
+    await page.getByLabel('ISBN').fill(fixtureIsbn)
+    await page.getByRole('button', { name: 'Look Up Book' }).click()
+    await expect(page.getByRole('heading', { name: fixtureIsbnTitle })).toBeVisible()
+    await page.getByRole('button', { name: 'Add to Library' }).click()
+
+    await refreshGate.refreshStarted
+    await expect(page).toHaveURL(/\/library(?:\?.*)?$/)
+    await expect(libraryBookLink(page, fixtureIsbnTitle)).toBeVisible()
+  } finally {
+    refreshGate.release()
+    await context.close()
+  }
 })
 
 test('adds a manual book with an uploaded private cover @mobile', async ({ browser }, testInfo) => {
@@ -65,7 +129,28 @@ test('keeps the bulk review action visible while reviewing a long list @mobile',
   await expect(actionBar.getByRole('button', { name: 'Add 12 Books to Library' })).toBeVisible()
 
   await actionBar.getByRole('button', { name: 'Add 12 Books to Library' }).click()
-  await expect(page).toHaveURL(/\/library/)
+  await expect(page).toHaveURL(/\/library(?:\?.*)?$/)
   await expect(libraryBookLink(page, 'Bulk Fixture Book 1')).toBeVisible()
   await context.close()
+})
+
+test('shows bulk added books before the post-save library refresh completes', async ({ browser }) => {
+  const context = await browser.newContext({ storageState: await storageState(browser, 'user') })
+  const page = await context.newPage()
+  const refreshGate = await holdPostSaveLibraryRefresh(page, '/api/books/bulk-add')
+
+  try {
+    await pasteBulkIsbns(page, bulkFixtureIsbns.slice(0, 2))
+    await expect(page.getByText('2 found')).toBeVisible({ timeout: 30_000 })
+    await page.getByRole('navigation', { name: 'Add selected books' })
+      .getByRole('button', { name: 'Add 2 Books to Library' }).click()
+
+    await refreshGate.refreshStarted
+    await expect(page).toHaveURL(/\/library(?:\?.*)?$/)
+    await expect(libraryBookLink(page, 'Bulk Fixture Book 1')).toBeVisible()
+    await expect(libraryBookLink(page, 'Bulk Fixture Book 2')).toBeVisible()
+  } finally {
+    refreshGate.release()
+    await context.close()
+  }
 })

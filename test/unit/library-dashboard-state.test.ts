@@ -201,6 +201,25 @@ describe('useLibraryDashboardStore', () => {
     expect(pagination.value).toBeNull()
   })
 
+  it('keeps pending additions across result resets until confirmed', () => {
+    const store = createStore()
+    const book = createBook('pending')
+    store.addBook(book)
+    store.resetResults()
+
+    expect(store.getPendingAddedBooks().map(item => item.id)).toEqual(['pending'])
+    store.clearPendingAddedBooks(['pending'])
+    expect(store.getPendingAddedBooks()).toEqual([])
+  })
+
+  it('removes pending additions when a book is removed', () => {
+    const store = createStore()
+    store.addBook(createBook('pending'))
+    store.removeBooks(['pending'])
+
+    expect(store.getPendingAddedBooks()).toEqual([])
+  })
+
   it('fully resets user-scoped dashboard state', () => {
     const store = createStore()
     const { page, pageSize, allBooks, pagination, resultCache, search, loanStatus, libraryState, readingStatus, tags, location, locationId, includeLocationDescendants, sortBy, groupByLocation, scrollY, shouldRestoreScroll, shouldSync, syncTargetPages } = storeToRefs(store)

@@ -11,7 +11,7 @@ import { CanonicalBookEnrichmentRepository, type CanonicalBookEnrichmentReposito
 import { LocationRepository, type LocationRepositoryInterface } from '../../../../server/repositories/location.repository'
 import { OpenLibraryApiError, OpenLibraryBookNotFoundError, OpenLibraryRepository, type OpenLibraryRepositoryInterface } from '../../../../server/repositories/openLibrary.repository'
 import type { BookService } from '../../../../server/services/book.service'
-import { BookServiceLive, bulkLookupBooks, createManualBook, decodeCoverImage, enrichOpenLibraryBook, getBookDetails, getUserLibrary, InvalidManualCoverError, recoverCanonicalEnrichment } from '../../../../server/services/book.service'
+import { BookServiceLive, bulkAddBooks, bulkLookupBooks, createManualBook, decodeCoverImage, enrichOpenLibraryBook, getBookDetails, getUserLibrary, InvalidManualCoverError, recoverCanonicalEnrichment } from '../../../../server/services/book.service'
 import { putCoverImage, StorageService, type StorageServiceInterface } from '../../../../server/services/storage.service'
 
 Object.assign(globalThis, { BookRepository, OpenLibraryRepository, LocationRepository, putCoverImage })
@@ -666,5 +666,70 @@ describe('bulk ISBN lookup', () => {
       status: 'ok',
       result: { found: true, coverUrl: `https://covers.openlibrary.org/b/isbn/${isbns[1]}-L.jpg`, enrichment: { status: 'queued' } }
     })
+  })
+})
+
+describe('bulk ISBN add', () => {
+  it('returns complete library books with pending enrichment status', async () => {
+    const inputs = ['9780306406157', '9780141439518']
+    const books = new Map(inputs.map((isbn, index) => {
+      const book = {
+        id: `book-${index + 1}`,
+        isbn,
+        title: `Book ${index + 1}`,
+        author: `Author ${index + 1}`,
+        authors: [{ id: `author-${index + 1}`, name: `Author ${index + 1}` }],
+        coverPath: null,
+        description: 'Core metadata',
+        openLibraryKey: `/books/OL${index + 1}M`,
+        createdAt: new Date(),
+        source: 'open_library' as const,
+        createdByUserId: null
+      }
+      return [isbn, book] as const
+    }))
+    const userBooks = new Map([...books].map(([isbn, book]) => [isbn, {
+      id: `user-book-${book.id}`,
+      bookId: book.id,
+      libraryState: 'owned' as const,
+      book,
+      location: null,
+      lastKnownLocation: null,
+      tags: [],
+      addedAt: new Date(),
+      activeLoan: null
+    }]))
+    const bookRepository = {
+      findByIsbn: vi.fn((isbn: string) => Effect.succeed(books.get(isbn) ?? null)),
+      getSystemTagsByBookId: vi.fn(() => Effect.succeed([])),
+      addBookByISBN: vi.fn((userId: string, isbn: string) => Effect.succeed(userBooks.get(isbn)!))
+    } as unknown as BookRepositoryInterface
+    const canonicalRepository = {
+      ensurePending: vi.fn(() => Effect.succeed({ status: 'pending' as const })),
+      get: vi.fn(() => Effect.succeed({ status: 'pending' as const }))
+    } as unknown as CanonicalBookEnrichmentRepositoryService['Service']
+    const result = await Effect.runPromise(bulkAddBooks('user-1', inputs.map(isbn => ({ isbn }))).pipe(
+      Effect.provide(BookServiceLive),
+      Effect.provide(Layer.succeed(BookRepository, bookRepository)),
+      Effect.provide(Layer.succeed(BookEnrichmentRepository, {} as BookEnrichmentRepositoryInterface)),
+      Effect.provide(Layer.succeed(CanonicalBookEnrichmentRepository, canonicalRepository)),
+      Effect.provide(Layer.succeed(OpenLibraryRepository, {} as OpenLibraryRepositoryInterface)),
+      Effect.provide(Layer.succeed(LocationRepository, {} as LocationRepositoryInterface)),
+      Effect.provide(Layer.succeed(StorageService, {} as StorageServiceInterface))
+    ))
+
+    expect(result.added).toEqual(inputs.map(isbn => ({ isbn })))
+    expect(result.failed).toEqual([])
+    expect(result.books).toHaveLength(2)
+    expect(result.books).toEqual(inputs.map((isbn, index) => expect.objectContaining({
+      id: `user-book-book-${index + 1}`,
+      bookId: `book-${index + 1}`,
+      isbn,
+      title: `Book ${index + 1}`,
+      author: `Author ${index + 1}`,
+      libraryState: 'owned',
+      enrichmentStatus: 'queued'
+    })))
+    expect(bookRepository.addBookByISBN).toHaveBeenCalledTimes(2)
   })
 })
