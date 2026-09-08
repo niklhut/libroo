@@ -78,6 +78,8 @@ export interface OpenLibraryRepositoryInterface {
   // The interactive core path deliberately performs only this edition request.
   lookupCoreByISBN: (isbn: string) => Effect.Effect<OpenLibraryBookData, OpenLibraryBookNotFoundError | OpenLibraryApiError, HttpClientType.HttpClient>
   lookupByISBN: (isbn: string, priority?: OpenLibraryRequestPriority) => Effect.Effect<OpenLibraryBookData, OpenLibraryBookNotFoundError | OpenLibraryApiError, HttpClientType.HttpClient>
+  /** Batch edition metadata only; skips author fallback and work hydration. */
+  lookupCoreByISBNs: (isbns: string[], priority?: OpenLibraryRequestPriority) => Effect.Effect<Map<string, OpenLibraryBookData>, OpenLibraryApiError, HttpClientType.HttpClient>
   enrichMetadata: (data: OpenLibraryBookData, priority?: OpenLibraryRequestPriority) => Effect.Effect<OpenLibraryBookData, OpenLibraryApiError, HttpClientType.HttpClient>
   lookupByISBNs: (isbns: string[], priority?: OpenLibraryRequestPriority) => Effect.Effect<Map<string, OpenLibraryBookData>, OpenLibraryApiError, HttpClientType.HttpClient>
   downloadCover: (isbn: string, size?: 'S' | 'M' | 'L', providerCoverUrl?: string | null, priority?: OpenLibraryRequestPriority) => Effect.Effect<string | null, never, HttpClientType.HttpClient | StorageService>
@@ -373,6 +375,33 @@ export const OpenLibraryRepositoryLive = Layer.effect(
         return booksByIsbn
       })
 
+    // Bulk intake only needs enough edition metadata to render a preview and
+    // persist a durable core row. Optional authors, works, subjects, and
+    // covers are completed by the enrichment worker after the request returns.
+    const lookupCoreByISBNs = (isbns: string[], priority: OpenLibraryRequestPriority = 'interactive') =>
+      Effect.gen(function* () {
+        const normalized = [...new Set(isbns.map(normalizeISBN))]
+        const booksByIsbn = new Map<string, OpenLibraryBookData>()
+        const apiBase = getOpenLibraryApiBase()
+        const coversBase = getOpenLibraryCoversBase()
+
+        for (let start = 0; start < normalized.length; start += MAX_BULK_ISBN_COUNT) {
+          const chunk = normalized.slice(start, start + MAX_BULK_ISBN_COUNT)
+          const response = yield* fetchJson<OpenLibraryBooksApiResponse>(
+            `${apiBase}/api/books?bibkeys=${chunk.map(isbn => `ISBN:${isbn}`).join(',')}&jscmd=details&format=json`,
+            acquireSlot(priority),
+            'metadata'
+          )
+          for (const isbn of chunk) {
+            const entry = response[`ISBN:${isbn}`]
+            if (!entry) continue
+            const details = entry.details ?? entry
+            booksByIsbn.set(isbn, toOpenLibraryBookData(isbn, entry, details, coversBase))
+          }
+        }
+        return booksByIsbn
+      })
+
     const lookupCoreByISBN = (isbn: string) =>
       Effect.gen(function* () {
         const normalizedISBN = normalizeISBN(isbn)
@@ -506,6 +535,7 @@ export const OpenLibraryRepositoryLive = Layer.effect(
 
     return {
       lookupCoreByISBN,
+      lookupCoreByISBNs,
       enrichMetadata,
       lookupByISBNs,
       lookupByISBN: (isbn, priority = 'interactive') =>
@@ -535,6 +565,9 @@ export const lookupByISBN = (isbn: string, priority?: OpenLibraryRequestPriority
 
 export const lookupByISBNs = (isbns: string[], priority?: OpenLibraryRequestPriority) =>
   Effect.flatMap(OpenLibraryRepository, repo => repo.lookupByISBNs(isbns, priority))
+
+export const lookupCoreByISBNs = (isbns: string[], priority?: OpenLibraryRequestPriority) =>
+  Effect.flatMap(OpenLibraryRepository, repo => repo.lookupCoreByISBNs(isbns, priority))
 
 export const downloadCover = (isbn: string, size?: 'S' | 'M' | 'L', providerCoverUrl?: string | null, priority?: OpenLibraryRequestPriority) =>
   Effect.flatMap(OpenLibraryRepository, repo => repo.downloadCover(isbn, size, providerCoverUrl, priority))

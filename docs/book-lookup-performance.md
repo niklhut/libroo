@@ -8,6 +8,12 @@ Ownership and canonical-book reads run concurrently. An existing canonical recor
 
 Migration `0019_durable_open_library_payload.sql` adds nullable `books.open_library_metadata`. It retains the initial edition payload for later requests and retries. Existing books without this payload continue using the legacy enrichment lookup.
 
+## Bulk lookup
+
+Bulk lookup uses one batched Open Library edition-details request per provider chunk. It skips synchronous author fallback, work hydration, and cover downloads, then persists each canonical core row and queues enrichment serially to avoid SQLite writer contention. The response still preserves input order, duplicate markers, local ownership, and provider cover URLs for previews; richer details and stored covers arrive through the scheduled enrichment worker.
+
+The open bulk preview does not auto-refresh when enrichment completes; updated metadata and stored covers appear after the user refreshes the view.
+
 ## Covers and details
 
 The initial result includes the provider cover URL when available. Cover IDs are preferred over ISBN URLs, with OLID fallback when available. The browser can display this preview while the server downloads and stores the cover through StorageService. A failed preview renders a placeholder and can retry when the stored URL arrives.
