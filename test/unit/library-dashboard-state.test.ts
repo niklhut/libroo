@@ -159,6 +159,44 @@ describe('useLibraryDashboardStore', () => {
     expect(store.allBooks[0]?.suggestedTags).toEqual(['keep'])
   })
 
+  it('preserves a tag edit when an enrichment response arrives afterward', async () => {
+    let resolveResponse: ((value: unknown) => void) | undefined
+    const response = new Promise((resolve) => {
+      resolveResponse = resolve
+    })
+    const fetchMock = vi.fn().mockReturnValue(response)
+    vi.stubGlobal('$fetch', fetchMock)
+    const store = createStore()
+    store.allBooks = [{ ...createBook('1'), tags: ['old'] }]
+
+    store.startEnrichmentBatch('batch-late-tags')
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    store.updateBookTags('1', ['new'])
+    resolveResponse?.({
+      claimed: 1,
+      pending: 0,
+      nextAttemptAt: null,
+      updates: [{
+        userBookId: '1',
+        bookId: 'book-1',
+        isbn: '978000000001',
+        author: 'Author',
+        authors: ['Author'],
+        coverPath: null,
+        coverUrl: null,
+        subjects: [],
+        tags: ['old'],
+        suggestedTags: ['new', 'keep'],
+        status: 'no_cover'
+      } satisfies LibraryBookEnrichmentUpdate]
+    })
+    await vi.waitFor(() => expect(store.allBooks[0]?.enrichmentStatus).toBe('no_cover'))
+
+    expect(store.allBooks[0]?.tags).toEqual(['new'])
+    expect(store.allBooks[0]?.suggestedTags).toEqual(['keep'])
+    store.resetAll()
+  })
+
   it('initializes with expected defaults', () => {
     const store = createStore()
     const {
@@ -328,13 +366,13 @@ describe('useLibraryDashboardStore', () => {
       description: 'Updated description',
       publishers: 'Publisher A, Publisher B',
       numberOfPages: 321,
-      tags: ['fiction', 'manual'],
+      tags: ['manual'],
       enrichmentStatus: 'no_cover'
     })
     allBooks.value = []
     store.restoreCachedResults('library')
     expect(store.allBooks[0]?.coverPath).toBe('covers/updated.webp')
-    expect(store.allBooks[0]?.tags).toEqual(['fiction', 'manual'])
+    expect(store.allBooks[0]?.tags).toEqual(['manual'])
   })
 
   it('buffers enrichment updates until a matching book is hydrated', () => {

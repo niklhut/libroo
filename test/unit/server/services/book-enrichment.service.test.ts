@@ -106,6 +106,16 @@ describe('BookEnrichmentService', () => {
     }))
   })
 
+  it('keeps the configured batch size for scheduled recovery', async () => {
+    vi.stubEnv('NUXT_BOOKS_ENRICHMENT_BATCH_SIZE', '25')
+    try {
+      await runService()
+      expect(enrichmentRepository.claimJobs).toHaveBeenCalledWith(expect.objectContaining({ limit: 25 }))
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
   it('rejects a missing or foreign batch before claiming any work', async () => {
     vi.mocked(enrichmentRepository.getBatchProgress).mockReturnValueOnce(
       Effect.succeed({ exists: false, pending: 0, nextAttemptAt: null })

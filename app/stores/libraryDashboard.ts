@@ -163,22 +163,37 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
   }
 
   function updateBookEnrichment(userBookId: string, update: LibraryBookEnrichmentUpdate) {
-    pendingEnrichmentUpdates.value[userBookId] = update
+    const knownBooks = [
+      ...allBooks.value,
+      ...pendingAddedBooks.value,
+      ...Object.values(resultCache.value).flatMap(entry => entry.books)
+    ]
+    const currentBook = knownBooks.find(book => book.id === userBookId && book.bookId === update.bookId)
+    const currentTags = currentBook?.tags ?? update.tags
+    const normalizedUpdate: LibraryBookEnrichmentUpdate = {
+      ...update,
+      ...(currentTags ? { tags: [...currentTags] } : {}),
+      ...(update.suggestedTags
+        ? { suggestedTags: update.suggestedTags.filter(tag => !currentTags?.includes(tag)) }
+        : {})
+    }
+
+    pendingEnrichmentUpdates.value[userBookId] = normalizedUpdate
     const patchBook = (book: LibraryBook): LibraryBook => {
-      if (book.id !== userBookId || book.bookId !== update.bookId) return book
+      if (book.id !== userBookId || book.bookId !== normalizedUpdate.bookId) return book
       return {
         ...book,
-        author: update.author,
-        coverPath: update.coverPath,
-        description: update.description ?? null,
-        publishDate: update.publishDate ?? null,
-        publishers: Array.isArray(update.publishers) ? update.publishers.join(', ') : (update.publishers ?? null),
-        numberOfPages: update.numberOfPages ?? null,
-        openLibraryKey: update.openLibraryKey ?? null,
-        workKey: update.workKey ?? null,
-        enrichmentStatus: update.status,
-        ...(update.tags ? { tags: [...update.tags] } : {}),
-        ...(update.suggestedTags ? { suggestedTags: [...update.suggestedTags] } : {})
+        author: normalizedUpdate.author,
+        coverPath: normalizedUpdate.coverPath,
+        description: normalizedUpdate.description ?? null,
+        publishDate: normalizedUpdate.publishDate ?? null,
+        publishers: Array.isArray(normalizedUpdate.publishers) ? normalizedUpdate.publishers.join(', ') : (normalizedUpdate.publishers ?? null),
+        numberOfPages: normalizedUpdate.numberOfPages ?? null,
+        openLibraryKey: normalizedUpdate.openLibraryKey ?? null,
+        workKey: normalizedUpdate.workKey ?? null,
+        enrichmentStatus: normalizedUpdate.status,
+        ...(normalizedUpdate.tags ? { tags: [...normalizedUpdate.tags] } : {}),
+        ...(normalizedUpdate.suggestedTags ? { suggestedTags: [...normalizedUpdate.suggestedTags] } : {})
       }
     }
 

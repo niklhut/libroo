@@ -64,6 +64,8 @@ function retryAt(now: Date, attempts: number, baseSeconds: number) {
   return new Date(now.getTime() + Math.round(exponentialSeconds * jitter) * 1000)
 }
 
+const MAX_FOREGROUND_ENRICHMENT_JOBS = 20
+
 function parseStringList(value: unknown) {
   if (!value) return []
   if (Array.isArray(value)) return value.filter((item): item is string => typeof item === 'string')
@@ -125,7 +127,7 @@ export const BookEnrichmentServiceLive = Layer.effect(
       yield* enrichmentRepo.cancelIneligibleJobs(now)
       const leaseExpiresAt = new Date(now.getTime() + config.leaseSeconds * 1000)
       const jobs = yield* enrichmentRepo.claimJobs({
-        limit: Math.min(options.limit ?? config.batchSize, 20),
+        limit: options.limit ?? config.batchSize,
         leaseExpiresAt,
         now,
         batchId: options.batchId,
@@ -243,6 +245,7 @@ export const BookEnrichmentServiceLive = Layer.effect(
     return {
       runOwnedBatch: (userId, batchId, limit) =>
         Effect.gen(function* () {
+          const config = getBooksEnrichmentConfig()
           const claimedBookIds: string[] = []
           const progress = yield* enrichmentRepo.getBatchProgress(userId, batchId)
           if (!progress.exists) return yield* Effect.fail(new InvalidEnrichmentBatchError({ message: 'Enrichment batch was not found' }))
@@ -250,7 +253,12 @@ export const BookEnrichmentServiceLive = Layer.effect(
             batchId, pending: progress.pending,
             batchAgeMs: progress.createdAt ? Date.now() - progress.createdAt.getTime() : null
           }))
-          const result = yield* enrichImportedBooksImpl({ batchId, userId, limit, onClaimed: jobs => Effect.sync(() => claimedBookIds.push(...jobs.map(job => job.bookId))) })
+          const result = yield* enrichImportedBooksImpl({
+            batchId,
+            userId,
+            limit: Math.min(limit ?? config.batchSize, MAX_FOREGROUND_ENRICHMENT_JOBS),
+            onClaimed: jobs => Effect.sync(() => claimedBookIds.push(...jobs.map(job => job.bookId)))
+          })
           const after = yield* enrichmentRepo.getBatchProgress(userId, batchId)
           const userBookIds = claimedBookIds.length > 0
             ? yield* enrichmentRepo.getUserBookIdsForBooks(userId, claimedBookIds)
