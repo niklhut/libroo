@@ -14,6 +14,7 @@ interface Props {
   addedAt?: string | Date
   activeLoan?: ActiveLoanSummary | null
   tags?: string[]
+  suggestedTags?: string[]
   enrichmentStatus?: BookEnrichmentUiStatus | null
 }
 
@@ -21,6 +22,13 @@ const props = defineProps<Props>()
 const emit = defineEmits<{ 'tag-selected': [tag: string] }>()
 const visibleTags = computed(() => props.tags?.slice(0, 3) ?? [])
 const hiddenTagCount = computed(() => Math.max(0, (props.tags?.length ?? 0) - visibleTags.value.length))
+const visibleSuggestedTags = computed(() => props.suggestedTags?.slice(0, 2) ?? [])
+const enrichmentMessage = computed(() => {
+  if (props.enrichmentStatus === 'no_cover') return 'Cover unavailable'
+  if (props.enrichmentStatus === 'not_found') return 'Details not found'
+  if (props.enrichmentStatus === 'failed') return 'Enrichment failed'
+  return null
+})
 
 function selectTag(event: MouseEvent, tag: string) {
   event.preventDefault()
@@ -114,8 +122,14 @@ const coverUrl = computed(() => {
         <p class="text-xs text-muted line-clamp-1">
           {{ author }}
         </p>
+        <p
+          v-if="enrichmentMessage"
+          class="text-xs text-warning line-clamp-1"
+        >
+          {{ enrichmentMessage }}
+        </p>
         <div
-          v-if="visibleTags.length"
+          v-if="visibleTags.length || visibleSuggestedTags.length"
           class="flex flex-wrap gap-1 pt-1"
         >
           <UBadge
@@ -136,6 +150,15 @@ const coverUrl = computed(() => {
             size="sm"
           >
             +{{ hiddenTagCount }}
+          </UBadge>
+          <UBadge
+            v-for="tag in visibleSuggestedTags"
+            :key="`suggested-${tag}`"
+            color="neutral"
+            variant="outline"
+            size="sm"
+          >
+            {{ tag }}
           </UBadge>
         </div>
         <div

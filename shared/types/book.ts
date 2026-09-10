@@ -12,9 +12,16 @@ export interface LibraryBook {
   authors?: BookAuthor[]
   isbn: string | null
   coverPath: string | null
+  description?: string | null
+  publishDate?: string | null
+  publishers?: string | null
+  numberOfPages?: number | null
+  openLibraryKey?: string | null
+  workKey?: string | null
   location: BookLocation | null
   lastKnownLocation?: string | null
   tags?: string[]
+  suggestedTags?: string[]
   addedAt: Date | string
   activeLoan?: ActiveLoanSummary | null
   enrichmentStatus?: BookEnrichmentUiStatus | null
@@ -80,11 +87,13 @@ export interface BookLookupResult {
   author?: string
   authors?: string[]
   coverUrl?: string | null
-  description?: string
+  description?: string | null
   subjects?: string[] | null
-  publishDate?: string
+  publishDate?: string | null
   publishers?: string[] | null
-  numberOfPages?: number
+  numberOfPages?: number | null
+  openLibraryKey?: string | null
+  workKey?: string | null
   existsLocally?: boolean
   existingUserBookId?: string | null
   existingState?: LibraryState | null
@@ -95,18 +104,28 @@ export interface BookLookupResult {
 }
 
 export interface BookEnrichmentPatch {
+  userBookId?: string
   bookId: string
-  isbn: string
+  isbn: string | null
   author: string
   authors: string[]
   coverPath: string | null
   coverUrl: string | null
-  description?: string
+  description?: string | null
   subjects: string[]
   publishDate?: string
   publishers?: string[] | null
   numberOfPages?: number
+  suggestedTags?: string[]
+  tags?: string[]
+  openLibraryKey?: string | null
+  workKey?: string | null
   status: BookEnrichmentUiStatus | null
+}
+
+export interface LibraryBookEnrichmentUpdate extends BookEnrichmentPatch {
+  userBookId: string
+  bookId: string
 }
 
 interface BulkBookLookupItemBase {

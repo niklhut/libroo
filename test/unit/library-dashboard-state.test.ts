@@ -1,7 +1,7 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia, storeToRefs } from 'pinia'
 import { MAX_DASHBOARD_RESULT_CACHE_ENTRIES, useLibraryDashboardStore } from '../../app/stores/libraryDashboard'
-import type { LibraryBook } from '../../shared/types/book'
+import type { LibraryBook, LibraryBookEnrichmentUpdate } from '../../shared/types/book'
 import { DEFAULT_LIBRARY_STATE_FILTER } from '../../shared/utils/library-query'
 
 const createBook = (id: string): LibraryBook => ({
@@ -20,8 +20,143 @@ describe('useLibraryDashboardStore', () => {
 
   beforeEach(() => {
     setActivePinia(createPinia())
+    vi.restoreAllMocks()
 
     createStore = () => useLibraryDashboardStore()
+  })
+
+  it('starts enrichment with an immediate foreground request for the batch', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ claimed: 0, pending: 0, nextAttemptAt: null })
+    vi.stubGlobal('$fetch', fetchMock)
+    const store = createStore()
+
+    store.startEnrichmentBatch('batch-immediate')
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/books/enrichment/batch', expect.objectContaining({
+      method: 'POST',
+      body: { batchId: 'batch-immediate' }
+    }))
+  })
+
+  it('continues through multiple foreground passes while work remains pending', async () => {
+    vi.useFakeTimers()
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ claimed: 1, pending: 2, nextAttemptAt: null })
+      .mockResolvedValueOnce({ claimed: 0, pending: 1, nextAttemptAt: null })
+      .mockResolvedValueOnce({ claimed: 1, pending: 0, nextAttemptAt: null })
+    vi.stubGlobal('$fetch', fetchMock)
+    const store = createStore()
+
+    store.startEnrichmentBatch('batch-multi-pass')
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+
+    await vi.advanceTimersByTimeAsync(5_000)
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    await vi.advanceTimersByTimeAsync(5_000)
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
+
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    vi.useRealTimers()
+  })
+
+  it('keeps imported books pending when a foreground enrichment request fails', async () => {
+    const book = { ...createBook('imported'), enrichmentStatus: 'queued' as const }
+    const fetchMock = vi.fn().mockRejectedValue(new Error('temporary failure'))
+    vi.stubGlobal('$fetch', fetchMock)
+    const store = createStore()
+    store.allBooks = [book]
+
+    store.startEnrichmentBatch('batch-failure')
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+
+    expect(store.allBooks[0]?.enrichmentStatus).toBe('queued')
+    store.resetAll()
+  })
+
+  it('does not let a late response from a reset batch restart foreground work', async () => {
+    let resolveResponse: ((value: unknown) => void) | undefined
+    const response = new Promise((resolve) => {
+      resolveResponse = resolve
+    })
+    const fetchMock = vi.fn().mockReturnValue(response)
+    vi.stubGlobal('$fetch', fetchMock)
+    const store = createStore()
+
+    store.startEnrichmentBatch('batch-reset')
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    store.resetAll()
+    resolveResponse?.({ claimed: 1, pending: 1, nextAttemptAt: null })
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('runs different batches concurrently but deduplicates the same batch', async () => {
+    vi.useFakeTimers()
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ claimed: 1, pending: 1, nextAttemptAt: null })
+      .mockResolvedValueOnce({ claimed: 1, pending: 1, nextAttemptAt: null })
+      .mockResolvedValue({ claimed: 0, pending: 0, nextAttemptAt: null })
+    vi.stubGlobal('$fetch', fetchMock)
+    const store = createStore()
+
+    store.startEnrichmentBatch('batch-a')
+    store.startEnrichmentBatch('batch-b')
+    store.startEnrichmentBatch('batch-a')
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    await vi.advanceTimersByTimeAsync(1_000)
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4))
+
+    expect(fetchMock.mock.calls.map(call => call[1]?.body)).toEqual([
+      { batchId: 'batch-a' },
+      { batchId: 'batch-b' },
+      { batchId: 'batch-a' },
+      { batchId: 'batch-b' }
+    ])
+    vi.useRealTimers()
+  })
+
+  it('ignores a late response when the same batch ID is restarted after reset', async () => {
+    let resolveFirst: ((value: unknown) => void) | undefined
+    let resolveSecond: ((value: unknown) => void) | undefined
+    const first = new Promise((resolve) => {
+      resolveFirst = resolve
+    })
+    const second = new Promise((resolve) => {
+      resolveSecond = resolve
+    })
+    const fetchMock = vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(second)
+    vi.stubGlobal('$fetch', fetchMock)
+    const store = createStore()
+
+    store.startEnrichmentBatch('batch-restart')
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    store.resetAll()
+    store.startEnrichmentBatch('batch-restart')
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+
+    resolveFirst?.({ claimed: 1, pending: 1, nextAttemptAt: null })
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+
+    resolveSecond?.({ claimed: 0, pending: 0, nextAttemptAt: null })
+    await Promise.resolve()
+  })
+
+  it('keeps buffered enrichment tags aligned with later manual tag edits', () => {
+    const store = createStore()
+    store.updateBookEnrichment('1', {
+      userBookId: '1', bookId: 'book-1', isbn: '978000000001', author: 'Author', authors: ['Author'],
+      coverPath: null, coverUrl: null, subjects: [], tags: ['old'], suggestedTags: ['new', 'keep'], status: 'no_cover'
+    })
+    store.updateBookTags('1', ['new'])
+    store.allBooks = [createBook('1')]
+    store.applyPendingEnrichmentUpdates()
+    expect(store.allBooks[0]?.tags).toEqual(['new'])
+    expect(store.allBooks[0]?.suggestedTags).toEqual(['keep'])
   })
 
   it('initializes with expected defaults', () => {
@@ -156,6 +291,64 @@ describe('useLibraryDashboardStore', () => {
     allBooks.value = []
     store.restoreCachedResults('library')
     expect(allBooks.value[0]?.tags).toEqual(['New tag'])
+  })
+
+  it('applies rich enrichment updates to displayed and cached books', () => {
+    const store = createStore()
+    const { allBooks, pagination } = storeToRefs(store)
+    allBooks.value = [{ ...createBook('1'), enrichmentStatus: 'preparing', tags: ['manual'] }]
+    pagination.value = { page: 1, pageSize: 12, totalItems: 1, totalPages: 1, hasMore: false }
+    store.cacheResults('library')
+
+    const update: LibraryBookEnrichmentUpdate = {
+      userBookId: '1',
+      bookId: 'book-1',
+      isbn: '978000000001',
+      author: 'Updated Author',
+      authors: ['Updated Author'],
+      coverPath: 'covers/updated.webp',
+      coverUrl: null,
+      description: 'Updated description',
+      publishDate: '2024',
+      publishers: ['Publisher A', 'Publisher B'],
+      numberOfPages: 321,
+      openLibraryKey: 'OL1W',
+      workKey: 'OL1W',
+      subjects: ['fiction'],
+      tags: ['fiction', 'manual'],
+      suggestedTags: ['suggested'],
+      status: 'no_cover'
+    }
+
+    store.updateBookEnrichment('1', update)
+
+    expect(allBooks.value[0]).toMatchObject({
+      author: 'Updated Author',
+      coverPath: 'covers/updated.webp',
+      description: 'Updated description',
+      publishers: 'Publisher A, Publisher B',
+      numberOfPages: 321,
+      tags: ['fiction', 'manual'],
+      enrichmentStatus: 'no_cover'
+    })
+    allBooks.value = []
+    store.restoreCachedResults('library')
+    expect(store.allBooks[0]?.coverPath).toBe('covers/updated.webp')
+    expect(store.allBooks[0]?.tags).toEqual(['fiction', 'manual'])
+  })
+
+  it('buffers enrichment updates until a matching book is hydrated', () => {
+    const store = createStore()
+    const update = {
+      userBookId: 'late', bookId: 'book-late', isbn: '978000000009', author: 'Author', authors: ['Author'],
+      coverPath: 'covers/late.webp', coverUrl: null, subjects: [], status: 'not_found' as const
+    } satisfies LibraryBookEnrichmentUpdate
+
+    store.updateBookEnrichment('late', update)
+    store.allBooks = [createBook('late')]
+    store.applyPendingEnrichmentUpdates()
+
+    expect(store.allBooks[0]).toMatchObject({ coverPath: 'covers/late.webp', enrichmentStatus: 'not_found' })
   })
 
   it('removes books, updates pagination, and clamps page', () => {

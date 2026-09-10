@@ -18,7 +18,7 @@ import authFactorsMigration from '../../../../server/db/migrations/sqlite/0013_a
 import recentAuthMigration from '../../../../server/db/migrations/sqlite/0014_recent-auth.sql?raw'
 import canonicalEnrichmentMigration from '../../../../server/db/migrations/sqlite/0016_canonical_book_enrichment.sql?raw'
 import durableOpenLibraryPayloadMigration from '../../../../server/db/migrations/sqlite/0019_durable_open_library_payload.sql?raw'
-import { authors, bookAuthors, bookEnrichmentJobs, books, canonicalBookEnrichmentJobs, user, userBooks } from '../../../../server/db/schema'
+import { authors, bookAuthors, bookEnrichmentJobs, books, canonicalBookEnrichmentJobs, user, userBooks, tags, userBookTags, bookSystemTags } from '../../../../server/db/schema'
 import {
   BookEnrichmentRepository,
   BookEnrichmentRepositoryLive
@@ -74,6 +74,92 @@ describe('BookEnrichmentRepository on D1', () => {
       isbn: '9780441172719',
       attempts: 1
     })
+  })
+
+  it('scopes foreground batch claims to the authenticated owner', async () => {
+    const now = new Date('2026-07-26T10:00:00.000Z')
+    await db.insert(user).values({
+      id: 'user-2',
+      name: 'Grace',
+      email: 'grace@example.com',
+      emailVerified: true,
+      role: 'user',
+      banned: false,
+      createdAt: now,
+      updatedAt: now
+    })
+    await db.insert(books).values({
+      id: 'book-2',
+      isbn: '9780141439518',
+      title: 'Pride and Prejudice',
+      source: 'manual',
+      entrySource: 'csv_import',
+      createdByUserId: 'user-2',
+      createdAt: now
+    })
+    await db.insert(userBooks).values({
+      id: 'ub-2',
+      userId: 'user-2',
+      bookId: 'book-2',
+      libraryState: 'owned',
+      addedAt: now
+    })
+    await db.insert(bookEnrichmentJobs).values({
+      id: 'job-2',
+      batchId: 'batch-1',
+      userId: 'user-2',
+      bookId: 'book-2',
+      isbn: '9780141439518',
+      status: 'pending',
+      attempts: 0,
+      maxAttempts: 5,
+      createdAt: now,
+      updatedAt: now
+    })
+
+    const claimed = await runRepository(Effect.flatMap(BookEnrichmentRepository, repository =>
+      repository.claimJobs({
+        batchId: 'batch-1',
+        userId: 'user-1',
+        limit: 10,
+        now,
+        leaseExpiresAt: new Date(now.getTime() + 60_000)
+      })
+    ))
+
+    expect(claimed.map(job => job.userId)).toEqual(['user-1'])
+    await expect(db.select({ status: bookEnrichmentJobs.status }).from(bookEnrichmentJobs)
+      .where(eq(bookEnrichmentJobs.id, 'job-2')))
+      .resolves.toEqual([{ status: 'pending' }])
+  })
+
+  it('aggregates pending work and the earliest retry time for an owned batch', async () => {
+    const _now = new Date('2026-07-26T10:00:00.000Z')
+    const nextAttemptAt = new Date('2026-07-26T10:05:00.000Z')
+    await db.update(bookEnrichmentJobs).set({ status: 'retrying', nextAttemptAt }).where(eq(bookEnrichmentJobs.id, 'job-1'))
+
+    const progress = await runRepository(Effect.flatMap(BookEnrichmentRepository, repository =>
+      repository.getBatchProgress('user-1', 'batch-1')
+    ))
+    expect(progress).toMatchObject({ exists: true, pending: 1, nextAttemptAt, createdAt: new Date('2026-07-26T09:00:00.000Z') })
+
+    const foreign = await runRepository(Effect.flatMap(BookEnrichmentRepository, repository =>
+      repository.getBatchProgress('other-user', 'batch-1')
+    ))
+    expect(foreign).toEqual({ exists: false, pending: 0, nextAttemptAt: null, createdAt: null })
+  })
+
+  it('uses a live processing lease as the next poll time', async () => {
+    const leaseExpiresAt = new Date('2026-07-26T10:10:00.000Z')
+    await db.update(bookEnrichmentJobs).set({
+      status: 'processing',
+      nextAttemptAt: null,
+      leaseExpiresAt
+    }).where(eq(bookEnrichmentJobs.id, 'job-1'))
+
+    await expect(runRepository(Effect.flatMap(BookEnrichmentRepository, repository =>
+      repository.getBatchProgress('user-1', 'batch-1')
+    ))).resolves.toMatchObject({ exists: true, pending: 1, nextAttemptAt: leaseExpiresAt, createdAt: expect.any(Date) })
   })
 
   it('prevents workers from holding the same ISBN lock until its lease expires', async () => {
@@ -153,10 +239,59 @@ describe('BookEnrichmentRepository on D1', () => {
 
     expect(updates).toEqual([{
       userBookId: 'ub-1',
+      bookId: 'book-1',
       author: 'Unknown Author',
+      authors: '[]',
+      isbn: '9780441172719',
+      subjects: '[]',
+      coverUrl: null,
       coverPath: null,
+      description: null,
+      publishDate: null,
+      publishers: null,
+      numberOfPages: null,
+      openLibraryKey: null,
+      workKey: null,
+      tags: '[]',
+      suggestedTags: '[]',
       status: 'pending'
     }])
+  })
+
+  it('hydrates manual and suggested tags as JSON without comma corruption', async () => {
+    const now = new Date('2026-07-26T10:00:00.000Z')
+    await db.insert(tags).values([
+      { id: 'tag-manual', name: 'Manual, comma', normalizedName: 'manual-comma', createdAt: now, updatedAt: now },
+      { id: 'tag-overlap', name: 'Shared', normalizedName: 'shared', createdAt: now, updatedAt: now },
+      { id: 'tag-system', name: 'System suggestion', normalizedName: 'system-suggestion', createdAt: now, updatedAt: now }
+    ])
+    await db.insert(userBookTags).values([
+      { id: 'ubt-manual', userBookId: 'ub-1', tagId: 'tag-manual', createdAt: now, updatedAt: now },
+      { id: 'ubt-overlap', userBookId: 'ub-1', tagId: 'tag-overlap', createdAt: now, updatedAt: now }
+    ])
+    await db.insert(bookSystemTags).values([
+      { bookId: 'book-1', tagId: 'tag-overlap', createdAt: now, updatedAt: now },
+      { bookId: 'book-1', tagId: 'tag-system', createdAt: now, updatedAt: now }
+    ])
+    const [update] = await runRepository(Effect.flatMap(BookEnrichmentRepository, repository =>
+      repository.getUpdatesForUserBooks('user-1', ['ub-1'])
+    ))
+    expect(JSON.parse(update!.tags)).toEqual(['Manual, comma', 'Shared'])
+    expect(JSON.parse(update!.suggestedTags)).toEqual(['System suggestion'])
+  })
+
+  it('returns active owned user-book ids with a hard foreground bound', async () => {
+    await db.update(userBooks).set({ removedAt: new Date('2026-07-26T09:00:00.000Z') }).where(eq(userBooks.id, 'ub-1'))
+    const ids = await runRepository(Effect.flatMap(BookEnrichmentRepository, repository =>
+      repository.getUserBookIdsForBooks('user-1', ['book-1'], 100)
+    ))
+    expect(ids).toEqual([])
+
+    await db.update(userBooks).set({ removedAt: null }).where(eq(userBooks.id, 'ub-1'))
+    const active = await runRepository(Effect.flatMap(BookEnrichmentRepository, repository =>
+      repository.getUserBookIdsForBooks('user-1', ['book-1'], 100)
+    ))
+    expect(active).toEqual(['ub-1'])
   })
 
   it('returns canonical enrichment updates for a user-owned book', async () => {
@@ -183,8 +318,21 @@ describe('BookEnrichmentRepository on D1', () => {
 
     expect(updates).toEqual([{
       userBookId: 'ub-1',
+      bookId: 'book-1',
       author: 'Unknown Author',
+      authors: '[]',
+      isbn: '9780441172719',
+      subjects: '[]',
+      coverUrl: null,
       coverPath: 'covers/9780441172719.webp',
+      description: null,
+      publishDate: null,
+      publishers: null,
+      numberOfPages: null,
+      openLibraryKey: null,
+      workKey: null,
+      tags: '[]',
+      suggestedTags: '[]',
       status: 'processing'
     }])
   })
