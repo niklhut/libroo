@@ -90,7 +90,7 @@ function toEnrichmentUpdate(update: BookEnrichmentUpdateRecord): LibraryBookEnri
     coverPath: update.coverPath,
     description: update.description,
     publishDate: update.publishDate ?? undefined,
-    publishers: update.publishers ? update.publishers.split(', ').filter(Boolean) : null,
+    publishers: update.publishers ? parseStringList(update.publishers) : null,
     numberOfPages: update.numberOfPages ?? undefined,
     openLibraryKey: update.openLibraryKey,
     workKey: update.workKey,
@@ -196,7 +196,7 @@ export const BookEnrichmentServiceLive = Layer.effect(
               result.notFound++
               continue
             }
-            const applied = yield* enrichmentRepo.applyMetadata(job, { coverPath: coverPaths.get(isbn) ?? null, description: data.description, publishDate: data.publishDate, publishers: data.publishers?.join(', '), numberOfPages: data.numberOfPages, openLibraryKey: data.openLibraryKey, workKey: data.workKey })
+            const applied = yield* enrichmentRepo.applyMetadata(job, { coverPath: coverPaths.get(isbn) ?? null, description: data.description, publishDate: data.publishDate, publishers: data.publishers?.length ? JSON.stringify(data.publishers) : undefined, numberOfPages: data.numberOfPages, openLibraryKey: data.openLibraryKey, workKey: data.workKey })
             if (!applied) {
               yield* enrichmentRepo.cancelClaim(job.id, job.claimToken, 'Book changed or was removed while enrichment was running', now)
               result.cancelled++
