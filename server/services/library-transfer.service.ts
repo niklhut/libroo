@@ -178,6 +178,8 @@ export const LibraryTransferServiceLive = Layer.effect(
 
       importLibraryCsv: (userId, csv, conflictStrategy, enrich) =>
         Effect.gen(function* () {
+          const startedAt = Date.now()
+          const batchId = crypto.randomUUID()
           const rows = yield* Effect.try({
             try: () => {
               const records: LibraryImportBookInput[] = []
@@ -193,7 +195,7 @@ export const LibraryTransferServiceLive = Layer.effect(
 
           const imported = yield* transferRepo.importRecords(userId, rows, conflictStrategy, {
             enqueueEnrichment: enrich,
-            batchId: crypto.randomUUID(),
+            batchId,
             maxAttempts: getBooksEnrichmentConfig().maxAttempts
           })
           const enrichmentRepo = yield* BookEnrichmentRepository
@@ -246,6 +248,14 @@ export const LibraryTransferServiceLive = Layer.effect(
           }
 
           const { orphanedSharedCoverPaths: _, ...result } = imported
+          yield* Effect.logInfo('CSV library import completed').pipe(
+            Effect.annotateLogs({
+              batchId: imported.enrichmentBatchId ?? batchId,
+              queuedCount: imported.enrichmentQueued,
+              durationMs: Date.now() - startedAt,
+              completedAt: new Date().toISOString()
+            })
+          )
           return result
         })
     }

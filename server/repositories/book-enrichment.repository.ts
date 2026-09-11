@@ -1,6 +1,6 @@
 import { Context, Effect, Layer } from 'effect'
 import { and, asc, eq, exists, inArray, isNotNull, isNull, lte, not, or, sql } from 'drizzle-orm'
-import { authors, bookAuthors, bookEnrichmentJobs, bookEnrichmentLocks, books, canonicalBookEnrichmentJobs, loans, userBooks } from 'hub:db:schema'
+import { authors, bookAuthors, bookEnrichmentJobs, bookEnrichmentLocks, books, canonicalBookEnrichmentJobs, loans, userBooks, tags, userBookTags, bookSystemTags } from 'hub:db:schema'
 import type { BookEnrichmentStatus } from '../../shared/types/book'
 import { DatabaseError } from './book.repository'
 import { DbService } from '../services/db.service'
@@ -28,18 +28,34 @@ export interface EnrichmentMetadataPatch {
 
 export interface BookEnrichmentUpdateRecord {
   userBookId: string
+  bookId: string
   author: string
+  authors: string
+  isbn: string | null
+  subjects: string | null
+  coverUrl: string | null
   coverPath: string | null
+  description: string | null
+  publishDate: string | null
+  publishers: string | null
+  numberOfPages: number | null
+  openLibraryKey: string | null
+  workKey: string | null
+  tags: string | null
+  suggestedTags: string | null
   status: BookEnrichmentStatus | null
 }
 
 export interface BookEnrichmentRepositoryInterface {
+  getUserBookIdsForBooks: (userId: string, bookIds: string[], limit?: number) => Effect.Effect<string[], DatabaseError, DbService>
+  getBatchProgress: (userId: string, batchId: string) => Effect.Effect<{ exists: boolean, pending: number, nextAttemptAt: Date | null, createdAt: Date | null }, DatabaseError, DbService>
   cancelIneligibleJobs: (now: Date) => Effect.Effect<number, DatabaseError, DbService>
   claimJobs: (options: {
     limit: number
     leaseExpiresAt: Date
     now: Date
     batchId?: string
+    userId?: string
   }) => Effect.Effect<ClaimedBookEnrichmentJob[], DatabaseError, DbService>
   acquireIsbnLocks: (
     isbns: string[],
@@ -143,6 +159,51 @@ export const BookEnrichmentRepositoryLive = Layer.effect(
     )
 
     return {
+      getUserBookIdsForBooks: (userId, bookIds, limit = 20) =>
+        Effect.tryPromise({
+          try: async () => {
+            if (bookIds.length === 0) return []
+            const rows = await dbService.db.select({ id: userBooks.id })
+              .from(userBooks)
+              .where(and(
+                eq(userBooks.userId, userId),
+                isNull(userBooks.removedAt),
+                inArray(userBooks.bookId, bookIds)
+              ))
+              .limit(Math.min(20, Math.max(1, limit)))
+            return rows.map(row => row.id)
+          },
+          catch: error => new DatabaseError({ message: `Failed to load enrichment user books: ${error}`, operation: 'bookEnrichment.getUserBookIdsForBooks' })
+        }),
+
+      getBatchProgress: (userId, batchId) =>
+        Effect.tryPromise({
+          try: async () => {
+            const [aggregate] = await dbService.db.select({
+              total: sql<number>`count(*)`,
+              pending: sql<number>`sum(case when ${bookEnrichmentJobs.status} in ('pending', 'processing', 'retrying') then 1 else 0 end)`,
+              nextAttemptAt: sql<number | null>`min(case
+                when ${bookEnrichmentJobs.status} in ('pending', 'retrying') then coalesce(${bookEnrichmentJobs.nextAttemptAt}, 0)
+                when ${bookEnrichmentJobs.status} = 'processing' then coalesce(${bookEnrichmentJobs.leaseExpiresAt}, 0)
+                else null
+              end)`,
+              createdAt: sql<number | null>`min(${bookEnrichmentJobs.createdAt})`
+            }).from(bookEnrichmentJobs).where(and(
+              eq(bookEnrichmentJobs.userId, userId),
+              eq(bookEnrichmentJobs.batchId, batchId)
+            ))
+            const nextAttemptSeconds = aggregate?.nextAttemptAt ?? null
+            const createdAtSeconds = aggregate?.createdAt ?? null
+            return {
+              exists: Number(aggregate?.total ?? 0) > 0,
+              pending: Number(aggregate?.pending ?? 0),
+              nextAttemptAt: nextAttemptSeconds && nextAttemptSeconds > 0 ? new Date(nextAttemptSeconds * 1000) : null,
+              createdAt: createdAtSeconds ? new Date(createdAtSeconds * 1000) : null
+            }
+          },
+          catch: error => new DatabaseError({ message: `Failed to load enrichment batch progress: ${error}`, operation: 'bookEnrichment.getBatchProgress' })
+        }),
+
       cancelIneligibleJobs: now =>
         Effect.tryPromise({
           try: async () => {
@@ -183,7 +244,7 @@ export const BookEnrichmentRepositoryLive = Layer.effect(
           })
         }),
 
-      claimJobs: ({ limit, leaseExpiresAt, now, batchId }) =>
+      claimJobs: ({ limit, leaseExpiresAt, now, batchId, userId }) =>
         Effect.tryPromise({
           try: async () => {
             const eligible = or(
@@ -193,7 +254,10 @@ export const BookEnrichmentRepositoryLive = Layer.effect(
               ),
               and(
                 eq(bookEnrichmentJobs.status, 'processing'),
-                lte(bookEnrichmentJobs.leaseExpiresAt, now)
+                or(
+                  isNull(bookEnrichmentJobs.leaseExpiresAt),
+                  lte(bookEnrichmentJobs.leaseExpiresAt, now)
+                )
               )
             )
             const candidates = await dbService.db
@@ -209,7 +273,8 @@ export const BookEnrichmentRepositoryLive = Layer.effect(
                 eq(books.source, 'manual'),
                 eq(books.entrySource, 'csv_import'),
                 eq(books.isbn, bookEnrichmentJobs.isbn),
-                batchId ? eq(bookEnrichmentJobs.batchId, batchId) : undefined
+                batchId ? eq(bookEnrichmentJobs.batchId, batchId) : undefined,
+                userId ? eq(bookEnrichmentJobs.userId, userId) : undefined
               ))
               .orderBy(asc(bookEnrichmentJobs.nextAttemptAt), asc(bookEnrichmentJobs.createdAt))
               .limit(Math.max(limit, limit * 10))
@@ -534,6 +599,7 @@ export const BookEnrichmentRepositoryLive = Layer.effect(
             const rows = await dbService.db
               .select({
                 userBookId: userBooks.id,
+                bookId: books.id,
                 author: sql<string>`coalesce((
                   select group_concat(name, ', ') from (
                     select ${authors.name} as name
@@ -543,7 +609,40 @@ export const BookEnrichmentRepositoryLive = Layer.effect(
                     order by ${bookAuthors.sortOrder} asc, ${authors.name} asc
                   )
                 ), 'Unknown Author')`,
+                authors: sql<string>`coalesce((select json_group_array(name) from (
+                  select ${authors.name} as name from ${bookAuthors}
+                  inner join ${authors} on ${authors.id} = ${bookAuthors.authorId}
+                  where ${bookAuthors.bookId} = ${books.id}
+                  order by ${bookAuthors.sortOrder} asc, ${authors.name} asc
+                )), '[]')`,
+                isbn: books.isbn,
+                subjects: sql<string>`coalesce((select json_group_array(name) from (
+                  select ${tags.name} as name from ${bookSystemTags}
+                  inner join ${tags} on ${tags.id} = ${bookSystemTags.tagId}
+                  where ${bookSystemTags.bookId} = ${books.id}
+                  order by ${tags.name} asc
+                )), '[]')`,
+                coverUrl: sql<string | null>`null`,
                 coverPath: books.coverPath,
+                description: books.description,
+                publishDate: books.publishDate,
+                publishers: books.publishers,
+                numberOfPages: books.numberOfPages,
+                openLibraryKey: books.openLibraryKey,
+                workKey: books.workKey,
+                tags: sql<string>`coalesce((select json_group_array(name) from (
+                  select ${tags.name} as name from ${userBookTags}
+                  inner join ${tags} on ${tags.id} = ${userBookTags.tagId}
+                  where ${userBookTags.userBookId} = ${userBooks.id}
+                  order by ${tags.name} asc
+                )), '[]')`,
+                suggestedTags: sql<string>`coalesce((select json_group_array(name) from (
+                  select ${tags.name} as name from ${bookSystemTags}
+                  inner join ${tags} on ${tags.id} = ${bookSystemTags.tagId}
+                  where ${bookSystemTags.bookId} = ${books.id}
+                    and not exists (select 1 from ${userBookTags} as ubt inner join ${tags} as mt on mt."id" = ubt."tag_id" where ubt."user_book_id" = ${userBooks.id} and mt."name" = ${tags.name})
+                  order by ${tags.name} asc
+                )), '[]')`,
                 status: sql<string | null>`coalesce(${bookEnrichmentJobs.status}, ${canonicalBookEnrichmentJobs.status})`
               })
               .from(userBooks)

@@ -11,10 +11,13 @@ import {
   OpenLibraryRepository,
   type OpenLibraryRepositoryInterface
 } from '../../../../server/repositories/openLibrary.repository'
+import type {
+  InvalidEnrichmentBatchError } from '../../../../server/services/book-enrichment.service'
 import {
   BookEnrichmentServiceLive,
   enrichImportedBooks,
-  getBookEnrichmentUpdates
+  getBookEnrichmentUpdates,
+  runOwnedEnrichmentBatch
 } from '../../../../server/services/book-enrichment.service'
 
 const job: ClaimedBookEnrichmentJob = {
@@ -35,6 +38,7 @@ describe('BookEnrichmentService', () => {
 
   beforeEach(() => {
     enrichmentRepository = {
+      getBatchProgress: vi.fn(() => Effect.succeed({ exists: true, pending: 1, nextAttemptAt: null })),
       cancelIneligibleJobs: vi.fn(() => Effect.succeed(0)),
       claimJobs: vi.fn(() => Effect.succeed([job])),
       acquireIsbnLocks: vi.fn(() => Effect.succeed(new Set([job.isbn]))),
@@ -62,7 +66,8 @@ describe('BookEnrichmentService', () => {
         workKey: '/works/OL1W',
         coverUrl: null,
         description: 'Provider description',
-        subjects: ['Science Fiction']
+        subjects: ['Science Fiction'],
+        publishers: ['Publisher, Inc.', 'Other Publisher']
       }]]))),
       downloadCovers: vi.fn(() => Effect.succeed(new Map()))
     } as unknown as OpenLibraryRepositoryInterface
@@ -79,7 +84,8 @@ describe('BookEnrichmentService', () => {
     expect(enrichmentRepository.applyMetadata).toHaveBeenCalledWith(job, expect.objectContaining({
       description: 'Provider description',
       openLibraryKey: '/books/OL1M',
-      workKey: '/works/OL1W'
+      workKey: '/works/OL1W',
+      publishers: JSON.stringify(['Publisher, Inc.', 'Other Publisher'])
     }))
     expect(bookRepository.addSystemTagsToBook).toHaveBeenCalledWith('book-1', ['Science Fiction'])
     expect(enrichmentRepository.markCompleted).toHaveBeenCalledWith(
@@ -90,6 +96,72 @@ describe('BookEnrichmentService', () => {
       expect.any(Date)
     )
     expect(enrichmentRepository.releaseIsbnLocks).toHaveBeenCalled()
+  })
+
+  it('passes the batch owner and worker bound through to claim selection', async () => {
+    await runService({ batchId: 'batch-1', userId: 'owner-1', limit: 3 })
+
+    expect(enrichmentRepository.claimJobs).toHaveBeenCalledWith(expect.objectContaining({
+      batchId: 'batch-1',
+      userId: 'owner-1',
+      limit: 3
+    }))
+  })
+
+  it('keeps the configured batch size for scheduled recovery', async () => {
+    vi.stubEnv('NUXT_BOOKS_ENRICHMENT_BATCH_SIZE', '25')
+    try {
+      await runService()
+      expect(enrichmentRepository.claimJobs).toHaveBeenCalledWith(expect.objectContaining({ limit: 25 }))
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('rejects a missing or foreign batch before claiming any work', async () => {
+    vi.mocked(enrichmentRepository.getBatchProgress).mockReturnValueOnce(
+      Effect.succeed({ exists: false, pending: 0, nextAttemptAt: null })
+    )
+
+    const effect = runOwnedEnrichmentBatch('other-user', 'batch-1', 3).pipe(
+      Effect.provide(BookEnrichmentServiceLive),
+      Effect.provide(Layer.succeed(BookEnrichmentRepository, enrichmentRepository)),
+      Effect.provide(Layer.succeed(BookRepository, bookRepository)),
+      Effect.provide(Layer.succeed(OpenLibraryRepository, openLibraryRepository))
+    )
+
+    await expect(Effect.runPromise(effect as Effect.Effect<unknown, InvalidEnrichmentBatchError, never>))
+      .rejects.toThrow('Enrichment batch was not found')
+    expect(enrichmentRepository.claimJobs).not.toHaveBeenCalled()
+  })
+
+  it('returns terminal batch progress without claiming new work', async () => {
+    const terminal = { exists: true, pending: 0, nextAttemptAt: null }
+    vi.mocked(enrichmentRepository.getBatchProgress)
+      .mockReturnValueOnce(Effect.succeed(terminal))
+      .mockReturnValueOnce(Effect.succeed(terminal))
+    vi.mocked(enrichmentRepository.claimJobs).mockReturnValueOnce(Effect.succeed([]))
+
+    const result = await runOwnedBatch('user-1', 'batch-1', 3)
+
+    expect(result).toMatchObject({ claimed: 0, pending: 0, nextAttemptAt: null })
+    expect(enrichmentRepository.claimJobs).toHaveBeenCalledWith(expect.objectContaining({
+      userId: 'user-1',
+      batchId: 'batch-1',
+      limit: 3
+    }))
+  })
+
+  it('reports the earliest retry time while a batch still has pending work', async () => {
+    const nextAttemptAt = new Date('2026-07-26T10:05:00.000Z')
+    vi.mocked(enrichmentRepository.getBatchProgress)
+      .mockReturnValueOnce(Effect.succeed({ exists: true, pending: 1, nextAttemptAt }))
+      .mockReturnValueOnce(Effect.succeed({ exists: true, pending: 1, nextAttemptAt }))
+    vi.mocked(enrichmentRepository.claimJobs).mockReturnValueOnce(Effect.succeed([]))
+
+    const result = await runOwnedBatch('user-1', 'batch-1', 3)
+
+    expect(result).toMatchObject({ pending: 1, nextAttemptAt })
   })
 
   it('retries transient provider failures and always releases the ISBN lock', async () => {
@@ -135,8 +207,16 @@ describe('BookEnrichmentService', () => {
 
   it('maps internal job states to silent card updates', async () => {
     vi.mocked(enrichmentRepository.getUpdatesForUserBooks).mockReturnValueOnce(Effect.succeed([
-      { userBookId: 'ub-1', author: 'Frank Herbert', coverPath: 'covers/9780441172719.webp', status: 'completed' },
-      { userBookId: 'ub-2', author: 'Frank Herbert', coverPath: null, status: 'retrying' }
+      {
+        userBookId: 'ub-1', bookId: 'book-1', author: 'Frank Herbert', authors: ['Frank Herbert'], coverPath: 'covers/9780441172719.webp',
+        description: 'A desert planet', publishDate: '1965', publishers: JSON.stringify(['Publisher, Inc.', 'Other Publisher']), numberOfPages: 412,
+        openLibraryKey: '/books/OL1M', workKey: '/works/OL1W', tags: 'Science Fiction', suggestedTags: 'Classic', status: 'completed'
+      },
+      {
+        userBookId: 'ub-2', bookId: 'book-2', author: 'Frank Herbert', authors: ['Frank Herbert'], coverPath: null,
+        description: null, publishDate: null, publishers: null, numberOfPages: null,
+        openLibraryKey: null, workKey: null, tags: null, suggestedTags: null, status: 'retrying'
+      }
     ]))
     const effect = getBookEnrichmentUpdates('user-1', ['ub-1', 'ub-2']).pipe(
       Effect.provide(BookEnrichmentServiceLive),
@@ -146,13 +226,22 @@ describe('BookEnrichmentService', () => {
     )
 
     await expect(Effect.runPromise(effect as Effect.Effect<unknown, never, never>)).resolves.toEqual([
-      { userBookId: 'ub-1', author: 'Frank Herbert', coverPath: 'covers/9780441172719.webp', status: null },
-      { userBookId: 'ub-2', author: 'Frank Herbert', coverPath: null, status: 'retrying' }
+      {
+        userBookId: 'ub-1', bookId: 'book-1', author: 'Frank Herbert', authors: ['Frank Herbert'], coverPath: 'covers/9780441172719.webp',
+        isbn: undefined, coverUrl: '/api/blob/covers/9780441172719.webp', subjects: [],
+        description: 'A desert planet', publishDate: '1965', publishers: ['Publisher, Inc.', 'Other Publisher'], numberOfPages: 412,
+        openLibraryKey: '/books/OL1M', workKey: '/works/OL1W', tags: ['Science Fiction'], suggestedTags: ['Classic'], status: null
+      },
+      {
+        userBookId: 'ub-2', bookId: 'book-2', author: 'Frank Herbert', authors: ['Frank Herbert'], coverPath: null,
+        isbn: undefined, coverUrl: null, subjects: [], description: null, publishDate: undefined, publishers: null, numberOfPages: undefined,
+        openLibraryKey: null, workKey: null, tags: [], suggestedTags: [], status: 'retrying'
+      }
     ])
   })
 
-  function runService() {
-    const effect = enrichImportedBooks({ batchId: 'batch-1' }).pipe(
+  function runService(options: { batchId?: string, userId?: string, limit?: number } = { batchId: 'batch-1' }) {
+    const effect = enrichImportedBooks(options).pipe(
       Effect.provide(BookEnrichmentServiceLive),
       Effect.provide(Layer.succeed(BookEnrichmentRepository, enrichmentRepository)),
       Effect.provide(Layer.succeed(BookRepository, bookRepository)),
@@ -167,5 +256,15 @@ describe('BookEnrichmentService', () => {
       failed: number
       cancelled: number
     }, never, never>)
+  }
+
+  function runOwnedBatch(userId: string, batchId: string, limit?: number) {
+    const effect = runOwnedEnrichmentBatch(userId, batchId, limit).pipe(
+      Effect.provide(BookEnrichmentServiceLive),
+      Effect.provide(Layer.succeed(BookEnrichmentRepository, enrichmentRepository)),
+      Effect.provide(Layer.succeed(BookRepository, bookRepository)),
+      Effect.provide(Layer.succeed(OpenLibraryRepository, openLibraryRepository))
+    )
+    return Effect.runPromise(effect as Effect.Effect<unknown, never, never>)
   }
 })

@@ -20,6 +20,7 @@ usePageTitle('Settings')
 const toast = useToast()
 const route = useRoute()
 const authStore = useAuthStore()
+const dashboardStore = useLibraryDashboardStore()
 const { user } = storeToRefs(authStore)
 const { data: emailCapabilities } = await useEmailCapabilities()
 const { data: authCapabilities } = await useAuthCapabilities()
@@ -832,12 +833,18 @@ async function importLibraryCsvFile() {
     importConfirmOpen.value = false
     libraryImportOpen.value = false
     resetImport()
+    // The library page may already have cached pages. Mark them stale before
+    // navigating so imported rows and their enrichment status are reconciled.
+    dashboardStore.markNeedsSync()
+    if (result.enrichmentBatchId) dashboardStore.startEnrichmentBatch(result.enrichmentBatchId)
 
     toast.add({
       title: 'Import complete',
       description: `${result.created} created, ${result.updated} updated, ${result.skipped} skipped${result.enrichmentQueued ? `, ${result.enrichmentQueued} queued for missing covers and details` : ''}${result.failed.length ? `, ${result.failed.length} failed` : ''}.`,
       color: result.failed.length ? 'warning' : 'success'
     })
+
+    await navigateTo('/library')
   } catch (err: unknown) {
     toast.add({
       title: 'Import failed',

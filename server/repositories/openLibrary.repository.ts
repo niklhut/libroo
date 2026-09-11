@@ -516,8 +516,16 @@ export const OpenLibraryRepositoryLive = Layer.effect(
             }
 
             const pathname = `covers/${isbn}.webp`
+            const storageStartedAt = Date.now()
             const coverPath = yield* storageSemaphore.withPermits(1)(
               putCoverImage(pathname, imageBuffer).pipe(
+                Effect.tap(() => Effect.logInfo('Open Library cover stored').pipe(
+                  Effect.annotateLogs({
+                    operation: 'cover-storage',
+                    isbn,
+                    storageDurationMs: Date.now() - storageStartedAt
+                  })
+                )),
                 Effect.map(blobMetadata => blobMetadata.pathname),
                 Effect.catchAll(error =>
                   Effect.logWarning(`Failed to store cover in blob storage: ${error}`).pipe(

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { LibraryBook, BookLocationWithCount, LibraryState, TagWithCount } from '~~/shared/types/book'
+import type { LibraryBook, LibraryBookEnrichmentUpdate, BookLocationWithCount, LibraryState, TagWithCount } from '~~/shared/types/book'
 import {
   buildLibraryRouteQuery,
   DEFAULT_LIBRARY_STATE_FILTER,
@@ -24,13 +24,6 @@ interface PaginatedResponse {
 
 interface PreferencesResponse {
   defaultLibraryStateFilter: LibraryState[]
-}
-
-interface EnrichmentUpdate {
-  userBookId: string
-  author: string
-  coverPath: string | null
-  status: LibraryBook['enrichmentStatus']
 }
 
 usePageTitle('Library')
@@ -67,6 +60,8 @@ const {
 const {
   clearNeedsSync: clearNeedsSyncAction,
   cacheResults: cacheResultsAction,
+  updateBookEnrichment,
+  applyPendingEnrichmentUpdates,
   restoreCachedResults: restoreCachedResultsAction,
   resetResults: resetResultsAction,
   getPendingAddedBooks,
@@ -223,6 +218,7 @@ watch(data, (response) => {
     const newItems = items.filter(book => !existingIds.has(book.id))
     allBooks.value.push(...newItems)
   }
+  applyPendingEnrichmentUpdates()
 
   cacheResultsAction(activeResultCacheKey.value)
 }, { immediate: shouldFetchInitial })
@@ -251,17 +247,12 @@ function scheduleEnrichmentPoll(delayOverride?: number) {
         )
         .map(book => book.id)
       for (let offset = 0; offset < pendingIds.length; offset += 100) {
-        const updates = await $fetch<EnrichmentUpdate[]>('/api/books/enrichment/updates', {
+        const updates = await $fetch<LibraryBookEnrichmentUpdate[]>('/api/books/enrichment/updates', {
           method: 'POST',
           body: { ids: pendingIds.slice(offset, offset + 100) }
         })
-        const updatesById = new Map(updates.map(update => [update.userBookId, update]))
-        for (const book of allBooks.value) {
-          const update = updatesById.get(book.id)
-          if (!update) continue
-          book.author = update.author
-          book.coverPath = update.coverPath
-          book.enrichmentStatus = update.status
+        for (const update of updates) {
+          updateBookEnrichment(update.userBookId, update)
         }
       }
       cacheResultsAction(activeResultCacheKey.value)
@@ -939,6 +930,7 @@ async function syncLoadedPages(targetPages: number) {
                 :active-loan="book.activeLoan"
                 :library-state="book.libraryState"
                 :tags="book.tags"
+                :suggested-tags="book.suggestedTags"
                 :enrichment-status="book.enrichmentStatus"
                 @tag-selected="toggleTagFilter"
               />
@@ -965,6 +957,7 @@ async function syncLoadedPages(targetPages: number) {
             :active-loan="book.activeLoan"
             :library-state="book.libraryState"
             :tags="book.tags"
+            :suggested-tags="book.suggestedTags"
             :enrichment-status="book.enrichmentStatus"
             @tag-selected="toggleTagFilter"
           />
