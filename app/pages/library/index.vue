@@ -930,7 +930,6 @@ async function syncLoadedPages(targetPages: number) {
                 :active-loan="book.activeLoan"
                 :library-state="book.libraryState"
                 :tags="book.tags"
-                :suggested-tags="book.suggestedTags"
                 :enrichment-status="book.enrichmentStatus"
                 @tag-selected="toggleTagFilter"
               />
@@ -957,7 +956,6 @@ async function syncLoadedPages(targetPages: number) {
             :active-loan="book.activeLoan"
             :library-state="book.libraryState"
             :tags="book.tags"
-            :suggested-tags="book.suggestedTags"
             :enrichment-status="book.enrichmentStatus"
             @tag-selected="toggleTagFilter"
           />
