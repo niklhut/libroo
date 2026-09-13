@@ -6,7 +6,7 @@ import { getBooksEnrichmentRateLimitConfig, getBooksRateLimitConfig, getBulkLook
 import { DatabaseRateLimiter, redactKey } from '../utils/database-rate-limiter'
 import { runEffect } from '../utils/effect'
 
-const BOOKS_RATE_LIMIT_PATHS = new Set(['/api/books/lookup', '/api/books', '/api/books/bulk-lookup', '/api/books/enrichment/run'])
+const BOOKS_RATE_LIMIT_PATHS = new Set(['/api/books/lookup', '/api/books', '/api/books/bulk-lookup', '/api/books/enrichment/run', '/api/books/enrichment/batch'])
 
 export function shouldEnforceRateLimit(event: { method?: string, path?: string }) {
   return event.method === 'POST' && BOOKS_RATE_LIMIT_PATHS.has(event.path ?? '')
@@ -36,7 +36,7 @@ export default defineEventHandler(async (event) => {
 
   const config = event.path === '/api/books/bulk-lookup'
     ? getBulkLookupRateLimitConfig()
-    : event.path === '/api/books/enrichment/run'
+    : event.path === '/api/books/enrichment/run' || event.path === '/api/books/enrichment/batch'
       ? getBooksEnrichmentRateLimitConfig()
       : getBooksRateLimitConfig()
   if (!config.enabled) return

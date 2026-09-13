@@ -135,6 +135,7 @@ const errorStatusCodes: Record<string, number> = {
   InvalidReadingProgressError: 400,
   InvalidManualCoverError: 400,
   InvalidLibraryCsvError: 400,
+  InvalidEnrichmentBatchError: 404,
   InvalidPreferencesError: 400,
   PreferencesError: 500,
   InvalidLocationError: 400,

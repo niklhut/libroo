@@ -21,6 +21,12 @@ const props = defineProps<Props>()
 const emit = defineEmits<{ 'tag-selected': [tag: string] }>()
 const visibleTags = computed(() => props.tags?.slice(0, 3) ?? [])
 const hiddenTagCount = computed(() => Math.max(0, (props.tags?.length ?? 0) - visibleTags.value.length))
+const enrichmentMessage = computed(() => {
+  if (props.enrichmentStatus === 'no_cover') return 'Cover unavailable'
+  if (props.enrichmentStatus === 'not_found') return 'Details not found'
+  if (props.enrichmentStatus === 'failed') return 'Enrichment failed'
+  return null
+})
 
 function selectTag(event: MouseEvent, tag: string) {
   event.preventDefault()
@@ -113,6 +119,12 @@ const coverUrl = computed(() => {
         </h3>
         <p class="text-xs text-muted line-clamp-1">
           {{ author }}
+        </p>
+        <p
+          v-if="enrichmentMessage"
+          class="text-xs text-warning line-clamp-1"
+        >
+          {{ enrichmentMessage }}
         </p>
         <div
           v-if="visibleTags.length"

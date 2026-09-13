@@ -560,6 +560,10 @@ export const runBookEnrichmentSchema = z.object({
   bookId: z.string().min(1).max(128)
 })
 
+export const runLibraryEnrichmentBatchSchema = z.object({
+  batchId: z.string().min(1).max(128)
+})
+
 export type LibraryImportSchema = z.infer<typeof libraryImportSchema>
 
 export const createLoanSchema = z.object({
