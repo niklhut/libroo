@@ -152,6 +152,7 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
         books: entry.books.map(updateTags)
       }])
     )
+    pendingAddedBooks.value = pendingAddedBooks.value.map(updateTags)
     const pending = pendingEnrichmentUpdates.value[userBookId]
     if (pending) {
       pendingEnrichmentUpdates.value[userBookId] = {

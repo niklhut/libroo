@@ -159,6 +159,24 @@ describe('useLibraryDashboardStore', () => {
     expect(store.allBooks[0]?.suggestedTags).toEqual(['keep'])
   })
 
+  it('keeps pending book tags aligned after results reset and rehydration', () => {
+    const store = createStore()
+    const book = { ...createBook('pending'), tags: ['old'] }
+    store.addBook(book)
+    store.resetResults()
+
+    store.updateBookTags('pending', ['new'])
+    store.updateBookEnrichment('pending', {
+      userBookId: 'pending', bookId: 'book-pending', isbn: '97800000000pending', author: 'Author', authors: ['Author'],
+      coverPath: null, coverUrl: null, subjects: [], tags: ['old'], suggestedTags: ['new', 'keep'], status: 'no_cover'
+    })
+    store.allBooks = [...store.pendingAddedBooks]
+    store.applyPendingEnrichmentUpdates()
+
+    expect(store.allBooks[0]?.tags).toEqual(['new'])
+    expect(store.allBooks[0]?.suggestedTags).toEqual(['keep'])
+  })
+
   it('preserves a tag edit when an enrichment response arrives afterward', async () => {
     let resolveResponse: ((value: unknown) => void) | undefined
     const response = new Promise((resolve) => {

@@ -66,7 +66,8 @@ describe('BookEnrichmentService', () => {
         workKey: '/works/OL1W',
         coverUrl: null,
         description: 'Provider description',
-        subjects: ['Science Fiction']
+        subjects: ['Science Fiction'],
+        publishers: ['Publisher, Inc.', 'Other Publisher']
       }]]))),
       downloadCovers: vi.fn(() => Effect.succeed(new Map()))
     } as unknown as OpenLibraryRepositoryInterface
@@ -83,7 +84,8 @@ describe('BookEnrichmentService', () => {
     expect(enrichmentRepository.applyMetadata).toHaveBeenCalledWith(job, expect.objectContaining({
       description: 'Provider description',
       openLibraryKey: '/books/OL1M',
-      workKey: '/works/OL1W'
+      workKey: '/works/OL1W',
+      publishers: JSON.stringify(['Publisher, Inc.', 'Other Publisher'])
     }))
     expect(bookRepository.addSystemTagsToBook).toHaveBeenCalledWith('book-1', ['Science Fiction'])
     expect(enrichmentRepository.markCompleted).toHaveBeenCalledWith(
@@ -207,7 +209,7 @@ describe('BookEnrichmentService', () => {
     vi.mocked(enrichmentRepository.getUpdatesForUserBooks).mockReturnValueOnce(Effect.succeed([
       {
         userBookId: 'ub-1', bookId: 'book-1', author: 'Frank Herbert', authors: ['Frank Herbert'], coverPath: 'covers/9780441172719.webp',
-        description: 'A desert planet', publishDate: '1965', publishers: 'Chilton', numberOfPages: 412,
+        description: 'A desert planet', publishDate: '1965', publishers: JSON.stringify(['Publisher, Inc.', 'Other Publisher']), numberOfPages: 412,
         openLibraryKey: '/books/OL1M', workKey: '/works/OL1W', tags: 'Science Fiction', suggestedTags: 'Classic', status: 'completed'
       },
       {
@@ -227,7 +229,7 @@ describe('BookEnrichmentService', () => {
       {
         userBookId: 'ub-1', bookId: 'book-1', author: 'Frank Herbert', authors: ['Frank Herbert'], coverPath: 'covers/9780441172719.webp',
         isbn: undefined, coverUrl: '/api/blob/covers/9780441172719.webp', subjects: [],
-        description: 'A desert planet', publishDate: '1965', publishers: ['Chilton'], numberOfPages: 412,
+        description: 'A desert planet', publishDate: '1965', publishers: ['Publisher, Inc.', 'Other Publisher'], numberOfPages: 412,
         openLibraryKey: '/books/OL1M', workKey: '/works/OL1W', tags: ['Science Fiction'], suggestedTags: ['Classic'], status: null
       },
       {
