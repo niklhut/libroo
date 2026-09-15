@@ -5,7 +5,7 @@ const apiToken = process.env.CLOUDFLARE_API_TOKEN
 if (!accountId || !apiToken) {
   throw new Error('CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN are required')
 }
-if (!/^libroo-pr-\d+$/.test(workerName)) {
+if (!/^(?:libroo-pr|libroo-enrichment-pr)-\d+$/.test(workerName)) {
   throw new Error(`Unsafe preview Worker name: ${workerName}`)
 }
 

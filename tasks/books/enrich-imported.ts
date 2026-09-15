@@ -2,6 +2,8 @@ import { Effect, Either } from 'effect'
 import { enrichImportedBooks } from '../../server/services/book-enrichment.service'
 import { recoverCanonicalEnrichment } from '../../server/services/book.service'
 import { runEffect } from '../../server/utils/effect'
+import { runtimeProfile } from '../../server/runtime/profile.active'
+import { EnrichmentReconciliationService } from '../../server/services/enrichment-reconciliation.service'
 
 export default defineTask({
   meta: {
@@ -10,6 +12,13 @@ export default defineTask({
   },
   run: async () => {
     const sweepId = crypto.randomUUID()
+    if (runtimeProfile === 'cloudflare') {
+      const reconciliation = await runEffect(Effect.either(
+        Effect.flatMap(EnrichmentReconciliationService, service => service.reconcile())
+      ))
+      console.info('Hosted enrichment reconciliation completed', { sweepId, reconciliation })
+      return { result: null, canonicalRecovery: null, reconciliation }
+    }
     const [imported, canonical] = await Promise.all([
       runEffect(Effect.either(enrichImportedBooks())),
       runEffect(Effect.either(recoverCanonicalEnrichment(20)))

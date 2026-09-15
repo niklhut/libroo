@@ -1,5 +1,5 @@
 import { Context, Effect, Layer } from 'effect'
-import { and, asc, eq, lt, lte, or, sql } from 'drizzle-orm'
+import { and, asc, eq, gt, lt, lte, or, sql } from 'drizzle-orm'
 import { canonicalBookEnrichmentJobs } from 'hub:db:schema'
 import type { BookEnrichmentStatus } from '../../shared/types/book'
 import { DbService } from '../services/db.service'
@@ -24,6 +24,8 @@ export class CanonicalBookEnrichmentRepository extends Context.Tag('CanonicalBoo
     get: (bookId: string) => Effect.Effect<CanonicalBookEnrichmentJob | null, DatabaseError, DbService>
     listRecoverable: (now: Date, limit: number) => Effect.Effect<CanonicalBookEnrichmentJob[], DatabaseError, DbService>
     claim: (bookId: string, now: Date, leaseExpiresAt: Date) => Effect.Effect<CanonicalBookEnrichmentJob | null, DatabaseError, DbService>
+    claimForWorkflow: (bookId: string, expectedAttempt: number, claimToken: string, now: Date, leaseExpiresAt: Date) => Effect.Effect<CanonicalBookEnrichmentJob | null, DatabaseError, DbService>
+    renew: (bookId: string, claimToken: string, leaseExpiresAt: Date, now: Date) => Effect.Effect<boolean, DatabaseError, DbService>
     complete: (bookId: string, claimToken: string, status: 'completed' | 'no_cover' | 'not_found', error: string | null, now: Date) => Effect.Effect<void, DatabaseError, DbService>
     retry: (bookId: string, claimToken: string, nextAttemptAt: Date, error: string, now: Date) => Effect.Effect<void, DatabaseError, DbService>
   }
@@ -57,6 +59,7 @@ export const CanonicalBookEnrichmentRepositoryLive = Layer.effect(
       get,
       listRecoverable: (now, limit) => Effect.tryPromise({
         try: async () => {
+          await dbService.db.update(canonicalBookEnrichmentJobs).set({ status: 'failed', claimToken: null, leaseExpiresAt: null, completedAt: now, updatedAt: now, lastError: 'Maximum enrichment attempts exhausted' }).where(and(eq(canonicalBookEnrichmentJobs.status, 'processing'), lte(canonicalBookEnrichmentJobs.leaseExpiresAt, now), sql`${canonicalBookEnrichmentJobs.attempts} >= ${canonicalBookEnrichmentJobs.maxAttempts}`))
           const rows = await dbService.db.select().from(canonicalBookEnrichmentJobs).where(or(
             eq(canonicalBookEnrichmentJobs.status, 'pending'),
             and(eq(canonicalBookEnrichmentJobs.status, 'retrying'), lte(canonicalBookEnrichmentJobs.nextAttemptAt, now)),
@@ -98,6 +101,18 @@ export const CanonicalBookEnrichmentRepositoryLive = Layer.effect(
         if (!job) return yield* Effect.fail(new DatabaseError({ message: 'Canonical enrichment job was not persisted', operation: 'canonicalEnrichment.ensurePending.resolve' }))
         return job
       }),
+      claimForWorkflow: (bookId, expectedAttempt, claimToken, now, leaseExpiresAt) => Effect.tryPromise({
+        try: async () => {
+          const rows = await dbService.db.update(canonicalBookEnrichmentJobs).set({ status: 'processing', attempts: sql`${canonicalBookEnrichmentJobs.attempts} + 1`, claimToken, leaseExpiresAt, nextAttemptAt: null, updatedAt: now, lastError: null }).where(and(
+            eq(canonicalBookEnrichmentJobs.bookId, bookId), eq(canonicalBookEnrichmentJobs.attempts, expectedAttempt - 1),
+            lt(canonicalBookEnrichmentJobs.attempts, canonicalBookEnrichmentJobs.maxAttempts),
+            or(eq(canonicalBookEnrichmentJobs.status, 'pending'), and(eq(canonicalBookEnrichmentJobs.status, 'retrying'), lte(canonicalBookEnrichmentJobs.nextAttemptAt, now)), and(eq(canonicalBookEnrichmentJobs.status, 'processing'), lte(canonicalBookEnrichmentJobs.leaseExpiresAt, now)))
+          )).returning()
+          if (rows[0]) return toJob(rows[0])
+          const replay = await dbService.db.select().from(canonicalBookEnrichmentJobs).where(and(eq(canonicalBookEnrichmentJobs.bookId, bookId), eq(canonicalBookEnrichmentJobs.attempts, expectedAttempt), eq(canonicalBookEnrichmentJobs.claimToken, claimToken), eq(canonicalBookEnrichmentJobs.status, 'processing'), gt(canonicalBookEnrichmentJobs.leaseExpiresAt, now))).limit(1)
+          return replay[0] ? toJob(replay[0]) : null
+        }, catch: error => new DatabaseError({ message: `Failed to claim canonical workflow job: ${error}`, operation: 'canonicalEnrichment.claimForWorkflow' })
+      }),
       claim: (bookId, now, leaseExpiresAt) => Effect.gen(function* () {
         const token = crypto.randomUUID()
         const claimed = yield* Effect.tryPromise({
@@ -121,6 +136,19 @@ export const CanonicalBookEnrichmentRepositoryLive = Layer.effect(
         })
         return claimed[0] ? toJob(claimed[0]) : null
       }),
+      renew: (bookId, claimToken, leaseExpiresAt, now) => Effect.tryPromise({
+        try: async () => {
+          const rows = await dbService.db.update(canonicalBookEnrichmentJobs).set({ leaseExpiresAt, updatedAt: now })
+            .where(and(
+              eq(canonicalBookEnrichmentJobs.bookId, bookId),
+              eq(canonicalBookEnrichmentJobs.claimToken, claimToken),
+              eq(canonicalBookEnrichmentJobs.status, 'processing'),
+              gt(canonicalBookEnrichmentJobs.leaseExpiresAt, now)
+            )).returning({ bookId: canonicalBookEnrichmentJobs.bookId })
+          return rows.length > 0
+        },
+        catch: error => new DatabaseError({ message: `Failed to renew canonical enrichment: ${error}`, operation: 'canonicalEnrichment.renew' })
+      }),
       complete: (bookId, claimToken, status, error, now) =>
         Effect.tryPromise({
           try: () => dbService.db.update(canonicalBookEnrichmentJobs).set({
@@ -138,10 +166,10 @@ export const CanonicalBookEnrichmentRepositoryLive = Layer.effect(
           try: () => dbService.db.update(canonicalBookEnrichmentJobs).set({
             status: sql`CASE WHEN ${canonicalBookEnrichmentJobs.attempts} >= ${canonicalBookEnrichmentJobs.maxAttempts} THEN 'failed' ELSE 'retrying' END`,
             lastError: error,
-            nextAttemptAt: sql`CASE WHEN ${canonicalBookEnrichmentJobs.attempts} >= ${canonicalBookEnrichmentJobs.maxAttempts} THEN NULL ELSE ${nextAttemptAt.getTime()} END`,
+            nextAttemptAt: sql`CASE WHEN ${canonicalBookEnrichmentJobs.attempts} >= ${canonicalBookEnrichmentJobs.maxAttempts} THEN NULL ELSE ${Math.floor(nextAttemptAt.getTime() / 1000)} END`,
             claimToken: null,
             leaseExpiresAt: null,
-            completedAt: sql`CASE WHEN ${canonicalBookEnrichmentJobs.attempts} >= ${canonicalBookEnrichmentJobs.maxAttempts} THEN ${now.getTime()} ELSE NULL END`,
+            completedAt: sql`CASE WHEN ${canonicalBookEnrichmentJobs.attempts} >= ${canonicalBookEnrichmentJobs.maxAttempts} THEN ${Math.floor(now.getTime() / 1000)} ELSE NULL END`,
             updatedAt: now
           }).where(and(eq(canonicalBookEnrichmentJobs.bookId, bookId), eq(canonicalBookEnrichmentJobs.claimToken, claimToken))),
           catch: error => new DatabaseError({ message: `Failed to retry canonical enrichment: ${error}`, operation: 'canonicalEnrichment.retry' })

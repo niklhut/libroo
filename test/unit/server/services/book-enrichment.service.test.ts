@@ -41,6 +41,7 @@ describe('BookEnrichmentService', () => {
       getBatchProgress: vi.fn(() => Effect.succeed({ exists: true, pending: 1, nextAttemptAt: null })),
       cancelIneligibleJobs: vi.fn(() => Effect.succeed(0)),
       claimJobs: vi.fn(() => Effect.succeed([job])),
+      renewClaim: vi.fn(() => Effect.succeed(true)),
       acquireIsbnLocks: vi.fn(() => Effect.succeed(new Set([job.isbn]))),
       releaseIsbnLocks: vi.fn(() => Effect.void),
       applyMetadata: vi.fn(() => Effect.succeed(true)),

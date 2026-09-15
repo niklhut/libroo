@@ -1,7 +1,7 @@
 import { Context, Effect, Layer, Data, Duration } from 'effect'
 import type * as HttpClient from '@effect/platform/HttpClient'
-import { eq, and, count, desc, asc, inArray, or, sql, notInArray, exists, isNull, not } from 'drizzle-orm'
-import { books, authors, bookAuthors, userBooks, tags, bookSystemTags, userBookTags, loans, user, locations } from 'hub:db:schema'
+import { eq, and, count, desc, asc, inArray, or, sql, notInArray, exists, isNull, not, gt } from 'drizzle-orm'
+import { books, authors, bookAuthors, userBooks, tags, bookSystemTags, userBookTags, loans, user, locations, canonicalBookEnrichmentJobs } from 'hub:db:schema'
 import { normalizeTagInput, normalizeSuggestedTags } from '../../shared/utils/tag-ingestion'
 import type { LibraryQueryFilters } from '../../shared/utils/library-query'
 import { escapeLocationLikePattern } from '../../shared/utils/location-hierarchy'
@@ -11,7 +11,8 @@ import { getBlob, type StorageService } from '../services/storage.service'
 import { downloadCover, lookupByISBN } from './openLibrary.repository'
 import type { OpenLibraryApiError, OpenLibraryBookNotFoundError, OpenLibraryRepository } from './openLibrary.repository'
 import type { OpenLibraryBookData } from '../../shared/types/open-library'
-import type { LibraryState, TagWithCount } from '../../shared/types/book'
+import type { ActiveLoanSummary, BookDetails, BookLocation, LibraryState, ReadingProgress, ReadingStatus, TagWithCount } from '../../shared/types/book'
+import type { PaginatedResult, PaginationParams } from '../../shared/types/pagination'
 import { isbnIdentityAliases, normalizeIsbnIdentity } from '../../shared/utils/isbn'
 
 // Error types
@@ -135,7 +136,8 @@ export interface BookRepositoryInterface {
   applyOpenLibraryEnrichment: (
     bookId: string,
     data: Pick<OpenLibraryBookData, 'authors' | 'description' | 'publishDate' | 'publishers' | 'numberOfPages' | 'openLibraryKey' | 'workKey'>,
-    coverPath: string | null
+    coverPath: string | null,
+    fence?: { claimToken: string, isbn: string, now: Date }
   ) => Effect.Effect<Book, BookNotFoundError | DatabaseError, DbService>
   ensureOpenLibraryBook: (
     isbn: string,
@@ -1191,7 +1193,8 @@ export const BookRepositoryLive = Layer.effect(
     const applyOpenLibraryEnrichment = (
       bookId: string,
       data: Pick<OpenLibraryBookData, 'authors' | 'description' | 'publishDate' | 'publishers' | 'numberOfPages' | 'openLibraryKey' | 'workKey'>,
-      coverPath: string | null
+      coverPath: string | null,
+      fence?: { claimToken: string, isbn: string, now: Date }
     ) =>
       Effect.gen(function* () {
         const updated = yield* Effect.tryPromise({
@@ -1203,7 +1206,7 @@ export const BookRepositoryLive = Layer.effect(
             numberOfPages: sql`coalesce(${books.numberOfPages}, ${data.numberOfPages ?? null})`,
             openLibraryKey: sql`coalesce(${books.openLibraryKey}, ${data.openLibraryKey ?? null})`,
             workKey: sql`coalesce(${books.workKey}, ${data.workKey ?? null})`
-          }).where(and(eq(books.id, bookId), eq(books.source, 'open_library'))).returning(),
+          }).where(and(eq(books.id, bookId), eq(books.source, 'open_library'), fence ? eq(books.isbn, fence.isbn) : undefined, fence ? exists(dbService.db.select({ value: sql`1` }).from(canonicalBookEnrichmentJobs).where(and(eq(canonicalBookEnrichmentJobs.bookId, bookId), eq(canonicalBookEnrichmentJobs.claimToken, fence.claimToken), eq(canonicalBookEnrichmentJobs.status, 'processing'), gt(canonicalBookEnrichmentJobs.leaseExpiresAt, fence.now)))) : undefined)).returning(),
           catch: error => new DatabaseError({ message: `Failed to apply Open Library enrichment: ${error}`, operation: 'applyOpenLibraryEnrichment' })
         })
         const book = updated[0]

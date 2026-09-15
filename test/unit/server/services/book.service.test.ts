@@ -17,6 +17,7 @@ import { putCoverImage, StorageService, type StorageServiceInterface } from '../
 Object.assign(globalThis, { BookRepository, OpenLibraryRepository, LocationRepository, putCoverImage })
 
 const canonicalEnrichmentRepository = {
+  renew: vi.fn(() => Effect.succeed(true)),
   get: () => Effect.succeed(null),
   ensurePending: vi.fn(() => Effect.succeed({ status: 'pending' }))
 } as unknown as CanonicalBookEnrichmentRepositoryService['Service']
@@ -219,6 +220,7 @@ describe('canonical ISBN enrichment', () => {
       getSystemTagsByBookId: vi.fn(() => Effect.succeed([]))
     } as unknown as BookRepositoryInterface
     const canonicalRepository = {
+      renew: vi.fn(() => Effect.succeed(true)),
       ensurePending: vi.fn(() => Effect.succeed({ status: 'pending', attempts: 0, maxAttempts: 5 })),
       claim: vi.fn(() => Effect.succeed({ claimToken: 'claim-1', attempts: 1, maxAttempts: 5 })),
       retry
@@ -277,6 +279,7 @@ describe('canonical ISBN enrichment', () => {
       getSystemTagsByBookId: vi.fn(() => Effect.succeed([]))
     } as unknown as BookRepositoryInterface
     const canonicalRepository = {
+      renew: vi.fn(() => Effect.succeed(true)),
       ensurePending: vi.fn(() => Effect.succeed({ status: 'pending', attempts: 0, maxAttempts: 5 })),
       claim: vi.fn(() => Effect.succeed({ claimToken: 'claim-1', attempts: 1, maxAttempts: 5 })),
       retry
@@ -324,6 +327,7 @@ describe('canonical ISBN enrichment', () => {
       addSystemTagsToBook: vi.fn(() => Effect.void)
     } as unknown as BookRepositoryInterface
     const canonicalRepository = {
+      renew: vi.fn(() => Effect.succeed(true)),
       ensurePending: vi.fn(() => Effect.succeed({ status: 'pending', attempts: 0, maxAttempts: 5 })),
       claim: vi.fn(() => Effect.succeed({ claimToken: 'claim-1', attempts: 1, maxAttempts: 5 })),
       complete
@@ -367,6 +371,7 @@ describe('canonical ISBN enrichment', () => {
       getSystemTagsByBookId: vi.fn(() => Effect.succeed([]))
     } as unknown as BookRepositoryInterface
     const canonicalRepository = {
+      renew: vi.fn(() => Effect.succeed(true)),
       ensurePending: vi.fn(() => Effect.succeed({ status: 'pending', attempts: 0, maxAttempts: 5 })),
       claim: vi.fn(() => Effect.succeed({ claimToken: 'claim-1', attempts: 1, maxAttempts: 5 })),
       complete
@@ -418,6 +423,7 @@ describe('canonical ISBN enrichment', () => {
       getSystemTagsByBookId: vi.fn(() => Effect.succeed([]))
     } as unknown as BookRepositoryInterface
     const canonicalRepository = {
+      renew: vi.fn(() => Effect.succeed(true)),
       listRecoverable: vi.fn(() => Effect.succeed([{ bookId: 'book-1' }, { bookId: 'book-2' }])),
       ensurePending: vi.fn(() => Effect.succeed({ status: 'pending', attempts: 0, maxAttempts: 5 })),
       claim: vi.fn(() => Effect.succeed({ claimToken: 'claim-1', attempts: 1, maxAttempts: 5 })),

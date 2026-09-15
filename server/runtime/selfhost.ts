@@ -4,6 +4,7 @@ import { NodeHttpClient } from '@effect/platform-node'
 import { DbServiceSelfHostLive } from './providers/db.selfhost'
 import { EmailServiceSmtpLive } from './providers/email.smtp'
 import { StorageServiceLocalSharpLive } from './providers/storage.local-sharp'
+import { EnrichmentDispatchServiceLive } from '../services/enrichment-dispatch.service'
 
 const HttpClientLive = Layer.effect(
   HttpClient.HttpClient,
@@ -17,5 +18,6 @@ export const RuntimeInfrastructureLive = Layer.mergeAll(
   DbServiceSelfHostLive,
   StorageServiceLocalSharpLive,
   EmailServiceSmtpLive,
-  HttpClientLive
+  HttpClientLive,
+  EnrichmentDispatchServiceLive
 )

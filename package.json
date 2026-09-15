@@ -16,7 +16,8 @@
     "postinstall": "nuxt prepare",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "typecheck": "nuxt typecheck",
+    "typecheck": "nuxt typecheck && pnpm typecheck:enrichment",
+    "typecheck:enrichment": "tsc --noEmit -p workers/enrichment/tsconfig.json",
     "test": "vitest run --project unit --project d1 --project integration --project scripts",
     "test:unit": "vitest run --project unit",
     "test:d1": "vitest run --project d1",
@@ -63,6 +64,7 @@
     "@libsql/linux-x64-musl": "0.5.29"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "4.20260702.1",
     "@cloudflare/vitest-pool-workers": "0.22.0",
     "@nuxt/eslint": "^1.17.0",
     "@nuxt/test-utils": "^4.2.0",

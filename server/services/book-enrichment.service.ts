@@ -8,6 +8,7 @@ import { deleteBlob, type StorageError, type StorageService } from './storage.se
 import { getBooksEnrichmentConfig } from '../utils/books-config'
 import { toBookEnrichmentUiStatus } from '../../shared/utils/book-enrichment'
 import type { LibraryBookEnrichmentUpdate } from '../../shared/types/book'
+import { runtimeProfile } from '../runtime/profile.active'
 
 export interface EnrichImportedBooksResult {
   claimed: number
@@ -146,6 +147,11 @@ export const BookEnrichmentServiceLive = Layer.effect(
       if (jobs.length === 0) return result
 
       const claimToken = jobs[0]!.claimToken
+      const renewLease = (job: ClaimedBookEnrichmentJob) => {
+        const leaseSeconds = getBooksEnrichmentConfig().leaseSeconds
+        const now = new Date()
+        return enrichmentRepo.renewClaim(job.id, job.claimToken, new Date(now.getTime() + leaseSeconds * 1000), now)
+      }
       const groupedJobs = groupJobsByIsbn(jobs)
       const isbns = [...groupedJobs.keys()]
       const lockedIsbns = yield* enrichmentRepo.acquireIsbnLocks(isbns, claimToken, leaseExpiresAt, now)
@@ -191,6 +197,14 @@ export const BookEnrichmentServiceLive = Layer.effect(
           const data = metadataByIsbn.get(isbn)
           let appliedCount = 0
           for (const job of groupedJobs.get(isbn) ?? []) {
+            // Queue/workflow invocations can be suspended between provider,
+            // blob, and persistence steps. Renew immediately before each
+            // durable step so an older invocation cannot lose its claim.
+            const leaseStillOwned = yield* renewLease(job)
+            if (!leaseStillOwned) {
+              result.cancelled++
+              continue
+            }
             if (!data) {
               yield* enrichmentRepo.markCompleted(job.id, job.claimToken, 'not_found', 'Open Library has no record for this ISBN', now)
               result.notFound++
@@ -249,6 +263,17 @@ export const BookEnrichmentServiceLive = Layer.effect(
           const claimedBookIds: string[] = []
           const progress = yield* enrichmentRepo.getBatchProgress(userId, batchId)
           if (!progress.exists) return yield* Effect.fail(new InvalidEnrichmentBatchError({ message: 'Enrichment batch was not found' }))
+          if (runtimeProfile === 'cloudflare') {
+            const userBookIds = yield* enrichmentRepo.getBatchUserBookIds(userId, batchId)
+            const updates = yield* enrichmentRepo.getUpdatesForUserBooks(userId, userBookIds).pipe(
+              Effect.map(rows => rows.map(toEnrichmentUpdate))
+            )
+            return {
+              claimed: 0, enriched: 0, noCover: 0, notFound: 0,
+              retried: 0, failed: 0, cancelled: 0,
+              pending: progress.pending, nextAttemptAt: progress.nextAttemptAt, updates
+            }
+          }
           yield* Effect.logInfo('CSV foreground enrichment started').pipe(Effect.annotateLogs({
             batchId, pending: progress.pending,
             batchAgeMs: progress.createdAt ? Date.now() - progress.createdAt.getTime() : null

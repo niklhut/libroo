@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "WebWorker"],
+    "types": ["@cloudflare/workers-types", "node"],
+    "baseUrl": "../..",
+    "ignoreDeprecations": "6.0",
+    "skipLibCheck": true,
+    "paths": {
+      "hub:db:schema": ["server/db/schema/index.ts"],
+      "#imports": ["./nuxt-imports.d.ts"],
+      "~~/*": ["*"],
+      "~/*": ["app/*"]
+    },
+    "noEmit": true
+  },
+  "include": ["./**/*.ts", "./nuxt-imports.d.ts"]
+}

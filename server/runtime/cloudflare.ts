@@ -4,6 +4,7 @@ import * as HttpClient from '@effect/platform/HttpClient'
 import { DbServiceCloudflareLive } from './providers/db.cloudflare'
 import { EmailServicePlunkLive } from './providers/email.plunk'
 import { StorageServiceCloudflareLive } from './providers/storage.cloudflare'
+import { EnrichmentDispatchServiceCloudflareLive } from './providers/enrichment-dispatch.cloudflare'
 
 const HttpClientLive = Layer.effect(
   HttpClient.HttpClient,
@@ -17,5 +18,6 @@ export const RuntimeInfrastructureLive = Layer.mergeAll(
   DbServiceCloudflareLive,
   StorageServiceCloudflareLive,
   EmailServicePlunkLive,
-  HttpClientLive
+  HttpClientLive,
+  EnrichmentDispatchServiceCloudflareLive
 )

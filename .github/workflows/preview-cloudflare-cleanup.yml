@@ -24,6 +24,9 @@ jobs:
       ACCESS_APP_NAME: libroo-preview-pr-${{ github.event.pull_request.number }}
       WORKER_NAME: libroo-pr-${{ github.event.pull_request.number }}
       RESOURCE_NAME: libroo-preview-pr-${{ github.event.pull_request.number }}
+      ENRICHMENT_WORKER_NAME: libroo-enrichment-pr-${{ github.event.pull_request.number }}
+      ENRICHMENT_QUEUE_NAME: libroo-enrichment-pr-${{ github.event.pull_request.number }}
+      ENRICHMENT_WORKFLOW_NAME: libroo-enrichment-pr-${{ github.event.pull_request.number }}
 
     steps:
       - name: Checkout
@@ -50,6 +53,18 @@ jobs:
           set -uo pipefail
           failures=()
 
+          workflow_safe=false
+          if workflow_output="$(pnpm exec wrangler workflows delete "${ENRICHMENT_WORKFLOW_NAME}" 2>&1)"; then
+            echo "Workflow cleanup: ${workflow_output}"
+            workflow_safe=true
+          elif grep -Eqi 'not found|does not exist|could not find' <<< "${workflow_output}"; then
+            echo "Workflow ${ENRICHMENT_WORKFLOW_NAME} is already absent."
+            workflow_safe=true
+          else
+            echo "${workflow_output}"
+            failures+=("Workflow ${ENRICHMENT_WORKFLOW_NAME}")
+          fi
+
           worker_safe=false
           if worker_output="$(node scripts/preview/worker-delete.mjs "${WORKER_NAME}" 2>&1)"; then
             echo "Worker cleanup: ${worker_output}"
@@ -57,6 +72,17 @@ jobs:
           else
             echo "${worker_output}"
             failures+=("Worker ${WORKER_NAME}")
+          fi
+
+          enrichment_worker_safe=false
+          enrichment_worker_output=''
+          if [[ "${workflow_safe}" == "true" ]] \
+            && enrichment_worker_output="$(node scripts/preview/worker-delete.mjs "${ENRICHMENT_WORKER_NAME}" 2>&1)"; then
+            echo "Enrichment Worker cleanup: ${enrichment_worker_output}"
+            enrichment_worker_safe=true
+          else
+            echo "${enrichment_worker_output}"
+            failures+=("Enrichment Worker ${ENRICHMENT_WORKER_NAME}")
           fi
 
           if [[ "${worker_safe}" == "true" ]]; then
@@ -70,7 +96,10 @@ jobs:
             echo "Keeping Access application ${ACCESS_APP_NAME} because Worker deletion failed."
           fi
 
-          if ! NO_COLOR=1 pnpm --silent exec wrangler r2 bucket list > "${RUNNER_TEMP}/r2.txt" 2>&1; then
+          if [[ "${worker_safe}" != "true" || "${enrichment_worker_safe}" != "true" ]]; then
+            echo "Keeping D1 and R2 because a Worker deletion failed."
+            failures+=("D1/R2 cleanup blocked by Worker deletion failure")
+          elif ! NO_COLOR=1 pnpm --silent exec wrangler r2 bucket list > "${RUNNER_TEMP}/r2.txt" 2>&1; then
             cat "${RUNNER_TEMP}/r2.txt"
             failures+=("R2 resource listing")
           elif sed -n 's/^name:[[:space:]]*//p' "${RUNNER_TEMP}/r2.txt" | grep -Fxq "${RESOURCE_NAME}"; then
@@ -114,13 +143,29 @@ jobs:
             echo "R2 bucket ${RESOURCE_NAME} is already absent."
           fi
 
-          if d1_output="$(pnpm exec wrangler d1 delete "${RESOURCE_NAME}" --skip-confirmation 2>&1)"; then
+          if [[ "${worker_safe}" != "true" || "${enrichment_worker_safe}" != "true" ]]; then
+            :
+          elif d1_output="$(pnpm exec wrangler d1 delete "${RESOURCE_NAME}" --skip-confirmation 2>&1)"; then
             echo "${d1_output}"
           elif grep -Eqi 'not found|does not exist|could not find' <<< "${d1_output}"; then
             echo "D1 database ${RESOURCE_NAME} is already absent."
           else
             echo "${d1_output}"
             failures+=("D1 database ${RESOURCE_NAME}")
+          fi
+
+          if [[ "${enrichment_worker_safe}" == "true" ]] \
+            && queue_output="$(pnpm exec wrangler queues delete "${ENRICHMENT_QUEUE_NAME}" 2>&1)"; then
+            echo "${queue_output}"
+          elif [[ "${workflow_safe}" != "true" ]]; then
+            echo "Keeping enrichment Worker and Queue because Workflow deletion failed."
+          elif [[ "${enrichment_worker_safe}" != "true" ]]; then
+            echo "Keeping Queue ${ENRICHMENT_QUEUE_NAME} because enrichment Worker deletion failed."
+          elif grep -Eqi 'not found|does not exist|could not find' <<< "${queue_output}"; then
+            echo "Queue ${ENRICHMENT_QUEUE_NAME} is already absent."
+          else
+            echo "${queue_output}"
+            failures+=("Queue ${ENRICHMENT_QUEUE_NAME}")
           fi
 
           if (( ${#failures[@]} > 0 )); then
@@ -139,9 +184,11 @@ jobs:
             echo
             echo "Deleted or confirmed absent:"
             echo "- Worker \`${WORKER_NAME}\`"
+            echo "- Enrichment Worker \`${ENRICHMENT_WORKER_NAME}\`"
             echo "- D1 \`${RESOURCE_NAME}\`"
             echo "- R2 \`${RESOURCE_NAME}\`"
             echo "- Access application \`${ACCESS_APP_NAME}\`"
+            echo "- Queue \`${ENRICHMENT_QUEUE_NAME}\`"
           } >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Update preview PR comment

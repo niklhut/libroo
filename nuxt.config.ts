@@ -212,19 +212,31 @@ export default defineNuxtConfig({
                 }
               : { workers_dev: true }),
             ...(hasCloudflareRuntimeVars ? { vars: cloudflareRuntimeVars } : {}),
-            ...(!cloudflarePreview
-              ? {
-                  triggers: {
-                    crons: ['*/5 * * * *', '0 3 * * *', '30 3 * * *', '0 4 * * *']
-                  }
-                }
-              : {}),
+            ...{
+              triggers: {
+                crons: cloudflarePreview
+                  ? ['*/5 * * * *']
+                  : ['*/5 * * * *', '0 3 * * *', '30 3 * * *', '0 4 * * *']
+              }
+            },
             observability: {
               enabled: true,
               logs: {
                 enabled: true
               }
             },
+            ...(process.env.ENRICHMENT_QUEUE_NAME
+              ? {
+                  queues: {
+                    producers: [
+                      {
+                        binding: 'ENRICHMENT_QUEUE',
+                        queue: process.env.ENRICHMENT_QUEUE_NAME
+                      }
+                    ]
+                  }
+                }
+              : {}),
             upload_source_maps: true
           }
         }
