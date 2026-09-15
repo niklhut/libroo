@@ -35,6 +35,8 @@ jobs:
       PREVIEW_ACCESS_APP_NAME: libroo-preview-pr-${{ github.event.pull_request.number }}
       PREVIEW_D1_DATABASE_NAME: libroo-preview-pr-${{ github.event.pull_request.number }}
       NUXT_HUB_CLOUDFLARE_BUCKET_NAME: libroo-preview-pr-${{ github.event.pull_request.number }}
+      ENRICHMENT_WORKER_NAME: libroo-enrichment-pr-${{ github.event.pull_request.number }}
+      ENRICHMENT_QUEUE_NAME: libroo-enrichment-pr-${{ github.event.pull_request.number }}
 
     steps:
       - name: Checkout
@@ -243,6 +245,11 @@ jobs:
             echo "${create_output}"
           fi
 
+      - name: Provision preview enrichment Queue
+        run: |
+          set -euo pipefail
+          node scripts/cloudflare/queues.mjs ensure "${ENRICHMENT_QUEUE_NAME}"
+
       - name: Load canonical preview runtime values
         run: |
           set -euo pipefail
@@ -307,6 +314,22 @@ jobs:
       - name: Deploy preview Worker
         id: deploy
         run: pnpm exec wrangler deploy --config .output/server/wrangler.json
+
+      - name: Deploy preview enrichment Worker
+        env:
+          ENRICHMENT_QUEUE_NAME: ${{ env.ENRICHMENT_QUEUE_NAME }}
+          ENRICHMENT_WORKER_NAME: ${{ env.ENRICHMENT_WORKER_NAME }}
+        run: |
+          set -euo pipefail
+          node scripts/cloudflare/generate-enrichment-wrangler-config.mjs \
+            .output/server/wrangler.json "${RUNNER_TEMP}/enrichment-wrangler.json"
+          pnpm exec wrangler deploy --config "${RUNNER_TEMP}/enrichment-wrangler.json"
+
+      - name: Sync preview enrichment Worker secret
+        run: |
+          set -euo pipefail
+          test -n "${NUXT_OPEN_LIBRARY_CONTACT_EMAIL}"
+          printf '%s' "${NUXT_OPEN_LIBRARY_CONTACT_EMAIL}" | pnpm exec wrangler secret put NUXT_OPEN_LIBRARY_CONTACT_EMAIL --config "${RUNNER_TEMP}/enrichment-wrangler.json"
 
       - name: Publish preview status
         if: always()

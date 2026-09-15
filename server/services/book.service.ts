@@ -443,6 +443,8 @@ export const BookServiceLive = Layer.effect(
           if (Either.isLeft(parallel.cover)) return yield* Effect.fail(parallel.cover.left)
           const data = parallel.data.right
           const coverResult = parallel.cover.right
+          const leaseStillOwned = yield* canonicalEnrichmentRepo.renew(current.id, claimed.claimToken!, new Date(Date.now() + leaseSeconds * 1000), new Date())
+          if (!leaseStillOwned) return yield* Effect.fail(new Error('Canonical enrichment claim was lost'))
           let storedCover = coverResult.storedCover
           if (!storedCover && !downloadedCoverPath && !coverSeed && data.coverUrl) {
             storedCover = yield* bookRepo.findStoredOpenLibraryCover(current.isbn!)

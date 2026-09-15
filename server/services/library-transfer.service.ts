@@ -21,6 +21,7 @@ import { BookEnrichmentRepository } from '../repositories/book-enrichment.reposi
 import { LibraryTransferRepository } from '../repositories/library-transfer.repository'
 import type { DbService } from './db.service'
 import { deleteBlob, type StorageService } from './storage.service'
+import { EnrichmentDispatchService } from './enrichment-dispatch.service'
 
 export class InvalidLibraryCsvError extends Data.TaggedError('InvalidLibraryCsvError')<{
   message: string
@@ -33,7 +34,7 @@ export interface LibraryTransferServiceInterface {
     csv: string,
     conflictStrategy: LibraryImportConflictStrategy,
     enrich: boolean
-  ) => Effect.Effect<LibraryImportResult, InvalidLibraryCsvError | DatabaseError, BookEnrichmentRepository | DbService | StorageService>
+  ) => Effect.Effect<LibraryImportResult, InvalidLibraryCsvError | DatabaseError, BookEnrichmentRepository | DbService | StorageService | EnrichmentDispatchService>
 }
 
 export class LibraryTransferService extends Context.Tag('LibraryTransferService')<
@@ -147,6 +148,7 @@ export const LibraryTransferServiceLive = Layer.effect(
   LibraryTransferService,
   Effect.gen(function* () {
     const transferRepo = yield* LibraryTransferRepository
+    const dispatch = yield* EnrichmentDispatchService
 
     return {
       exportLibraryCsv: userId =>
@@ -248,6 +250,13 @@ export const LibraryTransferServiceLive = Layer.effect(
           }
 
           const { orphanedSharedCoverPaths: _, ...result } = imported
+          if (enrich && imported.enrichmentQueued > 0 && imported.enrichmentBatchId) {
+            const jobs = yield* enrichmentRepo.listDispatchable(userId, imported.enrichmentBatchId)
+            yield* Effect.forEach(jobs, job => dispatch.dispatch({
+              kind: 'imported', jobId: job.id, attempt: job.attempts,
+              batchId: imported.enrichmentBatchId!, userId, isbn: job.isbn
+            }), { discard: true })
+          }
           yield* Effect.logInfo('CSV library import completed').pipe(
             Effect.annotateLogs({
               batchId: imported.enrichmentBatchId ?? batchId,

@@ -18,6 +18,7 @@ import {
   LibraryTransferServiceLive
 } from '../../../../server/services/library-transfer.service'
 import { StorageService } from '../../../../server/services/storage.service'
+import { EnrichmentDispatchService } from '../../../../server/services/enrichment-dispatch.service'
 
 const header = libraryCsvColumns.join(',')
 const publicResult: LibraryImportResult = {
@@ -44,6 +45,7 @@ function runImport(
     isCoverReferencedEffect?: ReturnType<typeof vi.fn>
     acquireIsbnLocksEffect?: ReturnType<typeof vi.fn>
     deleteBlobEffect?: ReturnType<typeof vi.fn>
+    dispatch?: ReturnType<typeof vi.fn>
   } = {}
 ) {
   const {
@@ -53,7 +55,8 @@ function runImport(
     acquireLock = true,
     isCoverReferencedEffect,
     acquireIsbnLocksEffect,
-    deleteBlobEffect
+    deleteBlobEffect,
+    dispatch = vi.fn(() => Effect.succeed(false))
   } = options
   const isCoverReferenced = isCoverReferencedEffect ?? vi.fn(() => Effect.succeed(coverReferenced))
   const acquireIsbnLocks = acquireIsbnLocksEffect ?? vi.fn((isbns: string[]) => Effect.succeed(
@@ -71,8 +74,10 @@ function runImport(
     Effect.provide(Layer.succeed(BookEnrichmentRepository, {
       isCoverReferenced,
       acquireIsbnLocks,
-      releaseIsbnLocks
+      releaseIsbnLocks,
+      listDispatchable: vi.fn(() => Effect.succeed([{ id: 'job-1', attempts: 0, isbn: '9781234567890' }]))
     } as never)),
+    Effect.provide(Layer.succeed(EnrichmentDispatchService, { dispatch })),
     Effect.provide(Layer.succeed(StorageService, {
       put: vi.fn(),
       putCoverImage: vi.fn(),
@@ -93,6 +98,15 @@ function runImport(
 }
 
 describe('LibraryTransferService.importLibraryCsv', () => {
+  it('keeps persisted enrichment pending when queue dispatch fails', async () => {
+    const persisted = { ...result, enrichmentQueued: 1, enrichmentBatchId: 'batch-1' }
+    const importRecords = vi.fn(() => Effect.succeed(persisted))
+    const dispatch = vi.fn(() => Effect.succeed(false))
+    const outcome = await runImport(csvWithFormatVersion('2'), { importRecords, dispatch }).effect
+    expect(outcome).toMatchObject({ _tag: 'Right', right: { enrichmentQueued: 1, enrichmentBatchId: 'batch-1' } })
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'job-1', batchId: 'batch-1', attempt: 0 }))
+  })
+
   it.each([
     ['title is required', `${[...libraryCsvColumns.filter(column => column !== 'title'), 'title'].join(',')}\n[""Ada""]`],
     ['Invalid JSON in tags field', `${header}\nDune,,,[not valid JSON]`],

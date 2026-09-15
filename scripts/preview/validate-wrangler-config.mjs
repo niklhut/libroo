@@ -58,7 +58,10 @@ if (config.routes?.length) {
   errors.push('Preview Worker must not contain custom routes')
 }
 if (config.triggers) {
-  errors.push('Preview Worker must not contain scheduled triggers')
+  const crons = config.triggers.crons ?? []
+  if (crons.length !== 1 || crons[0] !== '*/5 * * * *') {
+    errors.push('Preview Worker may contain only the enrichment dispatcher cron (*/5 * * * *)')
+  }
 }
 if (config.vars?.NUXT_CLOUDFLARE_PREVIEW !== 'true') {
   errors.push('Preview runtime enforcement is not enabled')

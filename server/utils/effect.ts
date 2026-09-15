@@ -11,6 +11,9 @@ import type { EmailService } from '../runtime/email.core'
 import { AuthCapabilityServiceLive } from '../services/auth-capability.service'
 import type { AuthCapabilityService } from '../services/auth-capability.service'
 import { StructuredLoggerLive } from './logger'
+import type { EnrichmentDispatchService } from '../services/enrichment-dispatch.service'
+import { EnrichmentReconciliationServiceLive } from '../services/enrichment-reconciliation.service'
+import type { EnrichmentReconciliationService } from '../services/enrichment-reconciliation.service'
 
 // Base services layer (no dependencies)
 const BaseServicesLive = Layer.mergeAll(
@@ -45,7 +48,7 @@ const RepositoriesLive = Layer.provideMerge(
 
 // Service layer (depends on repositories)
 const CoreServicesLive = Layer.provideMerge(
-  Layer.mergeAll(BookServiceLive, BookEnrichmentServiceLive, LendingServiceLive, AdminServiceLive, AuditServiceLive, LocationServiceLive, LibraryTransferServiceLive, PreferencesServiceLive, AccountDeletionServiceLive, SignupInviteServiceLive, EmailCapabilityServiceLive, AuthCapabilityServiceLive, HealthServiceLive, LegalServiceLive, RateLimitServiceLive, MetricsServiceLive),
+  Layer.mergeAll(BookServiceLive, BookEnrichmentServiceLive, EnrichmentReconciliationServiceLive, LendingServiceLive, AdminServiceLive, AuditServiceLive, LocationServiceLive, LibraryTransferServiceLive, PreferencesServiceLive, AccountDeletionServiceLive, SignupInviteServiceLive, EmailCapabilityServiceLive, AuthCapabilityServiceLive, HealthServiceLive, LegalServiceLive, RateLimitServiceLive, MetricsServiceLive),
   RepositoriesLive
 )
 
@@ -101,6 +104,8 @@ export type MainServices
     | LegalService
     | RateLimitService
     | MetricsService
+    | EnrichmentDispatchService
+    | EnrichmentReconciliationService
     | HttpClient.HttpClient
 
 // Helper to safely get property from unknown object

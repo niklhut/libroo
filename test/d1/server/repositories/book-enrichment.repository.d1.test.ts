@@ -76,6 +76,81 @@ describe('BookEnrichmentRepository on D1', () => {
     })
   })
 
+  it('fences workflow claims by expected attempt and makes same-token replay read-only', async () => {
+    const now = new Date('2026-07-26T10:00:00.000Z')
+    const first = await runRepository(Effect.flatMap(BookEnrichmentRepository, repository =>
+      repository.claimJob('job-1', 1, 'workflow-token', now, new Date(now.getTime() + 60_000))
+    ))
+    expect(first?.attempts).toBe(1)
+    const replay = await runRepository(Effect.flatMap(BookEnrichmentRepository, repository =>
+      repository.claimJob('job-1', 1, 'workflow-token', now, new Date(now.getTime() + 120_000))
+    ))
+    expect(replay?.attempts).toBe(1)
+    const hijack = await runRepository(Effect.flatMap(BookEnrichmentRepository, repository =>
+      repository.claimJob('job-1', 1, 'other-token', now, new Date(now.getTime() + 180_000))
+    ))
+    expect(hijack).toBeNull()
+  })
+
+  it('renews only the currently fenced processing claim', async () => {
+    const claimedAt = new Date('2026-07-26T10:00:00.000Z')
+    const initialLease = new Date('2026-07-26T10:01:00.000Z')
+    const [job] = await runRepository(Effect.flatMap(BookEnrichmentRepository, repository =>
+      repository.claimJobs({ limit: 1, now: claimedAt, leaseExpiresAt: initialLease })
+    ))
+    expect(job?.claimToken).toEqual(expect.any(String))
+
+    const renewedLease = new Date('2026-07-26T10:05:00.000Z')
+    const renewed = await runRepository(Effect.flatMap(BookEnrichmentRepository, repository =>
+      repository.renewClaim(job!.id, job!.claimToken!, renewedLease, new Date('2026-07-26T10:00:01.000Z'))
+    ))
+    expect(renewed).toBe(true)
+
+    const stolen = await runRepository(Effect.flatMap(BookEnrichmentRepository, repository =>
+      repository.renewClaim(job!.id, 'stale-worker-token', new Date('2026-07-26T10:10:00.000Z'), new Date('2026-07-26T10:00:02.000Z'))
+    ))
+    expect(stolen).toBe(false)
+
+    await expect(db.select({ status: bookEnrichmentJobs.status, attempts: bookEnrichmentJobs.attempts, claimToken: bookEnrichmentJobs.claimToken, leaseExpiresAt: bookEnrichmentJobs.leaseExpiresAt })
+      .from(bookEnrichmentJobs)
+      .where(eq(bookEnrichmentJobs.id, job!.id)))
+      .resolves.toEqual([{ status: 'processing', attempts: 1, claimToken: job!.claimToken, leaseExpiresAt: renewedLease }])
+  })
+
+  it('does not let an expired worker revive its processing claim', async () => {
+    const claimedAt = new Date('2026-07-26T10:00:00.000Z')
+    const [job] = await runRepository(Effect.flatMap(BookEnrichmentRepository, repository =>
+      repository.claimJobs({ limit: 1, now: claimedAt, leaseExpiresAt: new Date('2026-07-26T10:00:01.000Z') })
+    ))
+
+    const renewed = await runRepository(Effect.flatMap(BookEnrichmentRepository, repository =>
+      repository.renewClaim(job!.id, job!.claimToken!, new Date('2026-07-26T10:05:00.000Z'), new Date('2026-07-26T10:00:02.000Z'))
+    ))
+
+    expect(renewed).toBe(false)
+  })
+
+  it('fences terminal updates after a claim has been replaced', async () => {
+    const firstNow = new Date('2026-07-26T10:00:00.000Z')
+    const first = (await runRepository(Effect.flatMap(BookEnrichmentRepository, repository =>
+      repository.claimJobs({ limit: 1, now: firstNow, leaseExpiresAt: new Date('2026-07-26T10:00:01.000Z') })
+    )))[0]!
+    const second = (await runRepository(Effect.flatMap(BookEnrichmentRepository, repository =>
+      repository.claimJobs({ limit: 1, now: new Date('2026-07-26T10:00:02.000Z'), leaseExpiresAt: new Date('2026-07-26T10:01:02.000Z') })
+    )))[0]!
+    expect(second.claimToken).not.toBe(first.claimToken)
+
+    const staleCompletion = await runRepository(Effect.flatMap(BookEnrichmentRepository, repository =>
+      repository.markCompleted(first.id, first.claimToken!, 'completed', 'stale worker', new Date('2026-07-26T10:00:03.000Z'))
+    ))
+    expect(staleCompletion).toBe(false)
+
+    await expect(db.select({ status: bookEnrichmentJobs.status, attempts: bookEnrichmentJobs.attempts, claimToken: bookEnrichmentJobs.claimToken, lastError: bookEnrichmentJobs.lastError })
+      .from(bookEnrichmentJobs)
+      .where(eq(bookEnrichmentJobs.id, first.id)))
+      .resolves.toEqual([{ status: 'processing', attempts: 2, claimToken: second.claimToken, lastError: null }])
+  })
+
   it('scopes foreground batch claims to the authenticated owner', async () => {
     const now = new Date('2026-07-26T10:00:00.000Z')
     await db.insert(user).values({
@@ -184,6 +259,15 @@ describe('BookEnrichmentRepository on D1', () => {
     expect([...first]).toEqual(['9780441172719'])
     expect([...second]).toEqual([])
     expect([...third]).toEqual(['9780441172719'])
+  })
+
+  it('renews an ISBN lock only for its live owner', async () => {
+    const now = new Date('2026-07-26T10:00:00.000Z')
+    const lease = new Date(now.getTime() + 60_000)
+    await runRepository(Effect.flatMap(BookEnrichmentRepository, repository => repository.acquireIsbnLocks(['9780441172719'], 'lock-owner', lease, now)))
+    await expect(runRepository(Effect.flatMap(BookEnrichmentRepository, repository => repository.renewIsbnLock('9780441172719', 'wrong', now, new Date(now.getTime() + 120_000))))).resolves.toBe(false)
+    await expect(runRepository(Effect.flatMap(BookEnrichmentRepository, repository => repository.renewIsbnLock('9780441172719', 'lock-owner', now, new Date(now.getTime() + 120_000))))).resolves.toBe(true)
+    await expect(runRepository(Effect.flatMap(BookEnrichmentRepository, repository => repository.renewIsbnLock('9780441172719', 'lock-owner', new Date(now.getTime() + 120_001), new Date(now.getTime() + 180_000))))).resolves.toBe(false)
   })
 
   it('does not apply stale results after the imported ISBN changes', async () => {
@@ -358,6 +442,52 @@ describe('BookEnrichmentRepository on D1', () => {
     expect(reclaimed?.attempts).toBe(2)
   })
 
+  it('claims canonical workflow jobs once and reclaims only after lease expiry', async () => {
+    await db.update(books).set({ source: 'open_library' }).where(eq(books.id, 'book-1'))
+    await db.insert(canonicalBookEnrichmentJobs).values({ bookId: 'book-1', isbn: '9780441172719', status: 'pending', attempts: 0, maxAttempts: 5, createdAt: new Date(), updatedAt: new Date() })
+    const now = new Date('2026-07-26T10:00:00.000Z')
+    const first = await runCanonicalRepository(Effect.flatMap(CanonicalBookEnrichmentRepository, repository => repository.claimForWorkflow('book-1', 1, 'workflow-token', now, new Date(now.getTime() + 60_000))))
+    expect(first?.attempts).toBe(1)
+    const replay = await runCanonicalRepository(Effect.flatMap(CanonicalBookEnrichmentRepository, repository => repository.claimForWorkflow('book-1', 1, 'workflow-token', now, new Date(now.getTime() + 120_000))))
+    expect(replay?.attempts).toBe(1)
+    const blocked = await runCanonicalRepository(Effect.flatMap(CanonicalBookEnrichmentRepository, repository => repository.claimForWorkflow('book-1', 1, 'other-token', now, new Date(now.getTime() + 120_000))))
+    expect(blocked).toBeNull()
+  })
+
+  it('terminalizes an expired canonical claim at the attempt limit', async () => {
+    await db.update(books).set({ source: 'open_library' }).where(eq(books.id, 'book-1'))
+    const expired = new Date('2026-07-26T10:00:00.000Z')
+    await db.insert(canonicalBookEnrichmentJobs).values({ bookId: 'book-1', isbn: '9780441172719', status: 'processing', attempts: 5, maxAttempts: 5, claimToken: 'expired', leaseExpiresAt: new Date(expired.getTime() - 1), createdAt: expired, updatedAt: expired })
+    const recoverable = await runCanonicalRepository(Effect.flatMap(CanonicalBookEnrichmentRepository, repository => repository.listRecoverable(expired, 10)))
+    expect(recoverable).toEqual([])
+    await expect(db.select({ status: canonicalBookEnrichmentJobs.status, lastError: canonicalBookEnrichmentJobs.lastError }).from(canonicalBookEnrichmentJobs)).resolves.toEqual([{ status: 'failed', lastError: 'Maximum enrichment attempts exhausted' }])
+  })
+
+  it('terminalizes an expired imported claim at the attempt limit', async () => {
+    const expired = new Date('2026-07-26T10:00:00.000Z')
+    await db.update(bookEnrichmentJobs).set({
+      status: 'processing',
+      attempts: 5,
+      maxAttempts: 5,
+      claimToken: 'expired',
+      leaseExpiresAt: new Date(expired.getTime() - 1),
+      updatedAt: expired
+    }).where(eq(bookEnrichmentJobs.id, 'job-1'))
+
+    const recoverable = await runRepository(Effect.flatMap(BookEnrichmentRepository, repository =>
+      repository.listRecoverableDispatch(expired, 10)
+    ))
+    expect(recoverable).toEqual([])
+    await expect(db.select({ status: bookEnrichmentJobs.status, lastError: bookEnrichmentJobs.lastError, claimToken: bookEnrichmentJobs.claimToken })
+      .from(bookEnrichmentJobs).where(eq(bookEnrichmentJobs.id, 'job-1')))
+      .resolves.toEqual([{ status: 'failed', lastError: 'Maximum enrichment attempts exhausted', claimToken: null }])
+
+    const claim = await runRepository(Effect.flatMap(BookEnrichmentRepository, repository =>
+      repository.claimJob('job-1', 6, 'new-token', expired, new Date(expired.getTime() + 60_000))
+    ))
+    expect(claim).toBeNull()
+  })
+
   it('returns the inserted canonical job without a follow-up read, and preserves the winner on conflict', async () => {
     const first = await runCanonicalRepository(Effect.flatMap(CanonicalBookEnrichmentRepository, repository =>
       repository.ensurePending('book-1', '9780441172719')
@@ -405,6 +535,7 @@ describe('BookEnrichmentRepository on D1', () => {
     ))
     const job = await runCanonicalRepository(Effect.flatMap(CanonicalBookEnrichmentRepository, repository => repository.get('book-1')))
     expect(job).toMatchObject({ status: 'failed', nextAttemptAt: null })
+    await expect(db.select({ completedAt: canonicalBookEnrichmentJobs.completedAt }).from(canonicalBookEnrichmentJobs).where(eq(canonicalBookEnrichmentJobs.bookId, 'book-1'))).resolves.toEqual([{ completedAt: now }])
 
     const retryClaim = await runCanonicalRepository(Effect.flatMap(CanonicalBookEnrichmentRepository, repository =>
       repository.claim('book-1', new Date(now.getTime() + 60_001), new Date(now.getTime() + 120_000))

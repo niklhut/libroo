@@ -51,8 +51,10 @@ jobs:
             --jq '.[].number' | sort -n > "${RUNNER_TEMP}/open-prs.txt"
           pnpm --silent exec wrangler d1 list --json > "${RUNNER_TEMP}/d1.json"
           NO_COLOR=1 pnpm --silent exec wrangler r2 bucket list > "${RUNNER_TEMP}/r2.txt"
+          node scripts/cloudflare/queues.mjs list > "${RUNNER_TEMP}/queues.json"
           node scripts/preview/access-app.mjs list > "${RUNNER_TEMP}/access.json"
           node scripts/preview/worker-list.mjs > "${RUNNER_TEMP}/workers.json"
+          pnpm --silent exec wrangler workflows list --json > "${RUNNER_TEMP}/workflows.json"
 
           node -e '
             const databases = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))
@@ -64,6 +66,13 @@ jobs:
             | grep -E '^libroo-preview-pr-[0-9]+$' \
             > "${RUNNER_TEMP}/r2-preview.txt" || true
           node -e '
+            const payload = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))
+            const queues = payload.result ?? payload
+            for (const queue of queues) {
+              if (/^libroo-enrichment-pr-[0-9]+$/.test(queue.queue_name)) console.log(queue.queue_name)
+            }
+          ' "${RUNNER_TEMP}/queues.json" > "${RUNNER_TEMP}/queue-preview.txt"
+          node -e '
             const applications = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))
             for (const application of applications) {
               if (/^libroo-preview-pr-[0-9]+$/.test(application.name)) {
@@ -74,15 +83,24 @@ jobs:
           node -e '
             const workers = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))
             for (const worker of workers) {
-              const match = /^libroo-pr-([0-9]+)$/.exec(worker)
-              if (match) console.log(`libroo-preview-pr-${match[1]}`)
+              const match = /^(libroo-pr|libroo-enrichment-pr)-([0-9]+)$/.exec(worker)
+              if (match) console.log(`${match[1] === 'libroo-pr' ? 'libroo-preview-pr' : 'libroo-enrichment-pr'}-${match[2]}`)
             }
           ' "${RUNNER_TEMP}/workers.json" > "${RUNNER_TEMP}/worker-preview.txt"
+          node -e '
+            const workflows = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))
+            for (const workflow of workflows) {
+              const name = workflow.name || workflow.id
+              if (/^libroo-enrichment-pr-[0-9]+$/.test(name)) console.log(name)
+            }
+          ' "${RUNNER_TEMP}/workflows.json" > "${RUNNER_TEMP}/workflow-preview.txt"
           cat \
             "${RUNNER_TEMP}/d1-preview.txt" \
             "${RUNNER_TEMP}/r2-preview.txt" \
+            "${RUNNER_TEMP}/queue-preview.txt" \
             "${RUNNER_TEMP}/access-preview.txt" \
             "${RUNNER_TEMP}/worker-preview.txt" \
+            "${RUNNER_TEMP}/workflow-preview.txt" \
             | sort -u > "${RUNNER_TEMP}/preview-resources.txt"
 
           empty_r2_bucket() {
@@ -141,6 +159,32 @@ jobs:
               failures+=("Worker ${worker}")
             fi
 
+            enrichment_worker="libroo-enrichment-pr-${pr_number}"
+            workflow="libroo-enrichment-pr-${pr_number}"
+            workflow_safe=false
+            if workflow_output="$(pnpm exec wrangler workflows delete "${workflow}" 2>&1)"; then
+              workflow_safe=true
+              deleted+=("Workflow ${workflow}")
+            elif grep -Eqi 'not found|does not exist|could not find' <<< "${workflow_output}"; then
+              workflow_safe=true
+            else
+              echo "${workflow_output}"
+              failures+=("Workflow ${workflow}")
+            fi
+            enrichment_worker_safe=false
+            enrichment_output=''
+            if [[ "${workflow_safe}" == "true" ]] \
+              && enrichment_output="$(node scripts/preview/worker-delete.mjs "${enrichment_worker}" 2>&1)"; then
+              enrichment_worker_safe=true
+              echo "Enrichment Worker cleanup: ${enrichment_output}"
+              if grep -Fxq "${resource}" "${RUNNER_TEMP}/queue-preview.txt"; then
+                deleted+=("Worker ${enrichment_worker}")
+              fi
+            else
+              echo "${enrichment_output}"
+              failures+=("Enrichment Worker ${enrichment_worker}")
+            fi
+
             if [[ "${worker_safe}" == "true" ]] \
               && grep -Fxq "${resource}" "${RUNNER_TEMP}/access-preview.txt"; then
               if node scripts/preview/access-app.mjs delete "${resource}"; then
@@ -169,6 +213,15 @@ jobs:
                 deleted+=("D1 ${resource}")
               else
                 failures+=("D1 ${resource}")
+              fi
+            fi
+
+            if [[ "${enrichment_worker_safe}" == "true" ]] \
+              && grep -Fxq "${resource}" "${RUNNER_TEMP}/queue-preview.txt"; then
+              if pnpm exec wrangler queues delete "${resource}"; then
+                deleted+=("Queue ${resource}")
+              else
+                failures+=("Queue ${resource}")
               fi
             fi
 

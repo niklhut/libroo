@@ -368,7 +368,7 @@ Secrets should be injected through the orchestrator, an env file outside source 
 
 ### Scheduled Tasks
 
-Libroo runs an opted-in CSV import enrichment sweep every five minutes, a daily audit cleanup task at 03:00, and a daily Open Library cover repair task at 03:30. The sweep processes bounded batches and recovers deferred, retried, or interrupted work without attaching enrichment to an interactive request. Enrichment jobs use expiring claims and per-ISBN locks, apply provider fields additively, and stop when their imported record changes or is removed. Cloudflare preview Workers intentionally omit cron triggers, so queued enrichment remains pending in previews. The cover repair task checks a small random batch of Open Library books that were saved without a generated cover image, retries the cover download, and fills `cover_path` only when a cover is successfully stored.
+Libroo runs an opted-in CSV import enrichment dispatcher every five minutes, a daily audit cleanup task at 03:00, and a daily Open Library cover repair task at 03:30. The dispatcher processes bounded batches and reconciles jobs that were persisted before Queue publication; heavy per-book work runs in the dedicated Cloudflare Workflow Worker. Enrichment jobs use expiring claims and per-ISBN locks, apply provider fields additively, and stop when their imported record changes or is removed. Cloudflare preview Workers intentionally omit cron triggers, but imports dispatch directly to the isolated preview Queue. The cover repair task checks a small random batch of Open Library books that were saved without a generated cover image, retries the cover download, and fills `cover_path` only when a cover is successfully stored.
 
 Interactive ISBN lookup has a separate canonical enrichment job. The initial request waits only for the edition metadata, canonical book, authors, and durable pending job; the browser then calls the foreground enrichment endpoint for work details, tags, and cover storage. Claims use a short lease, so a disconnected tab or interrupted Worker leaves work reclaimable on the next lookup, Add, or foreground request. `waitUntil()` is not used as a delivery guarantee: its post-disconnect allowance is limited, and preview deployments may have no cron. The scheduled sweep remains fallback recovery rather than the normal interactive path.
 
@@ -407,6 +407,38 @@ active production resources are:
 - Worker: `libroo-production`
 - D1 database: `libroo-production`
 - R2 bucket: `libroo-production`
+
+CSV enrichment has a separate regular Worker and one Queue/Workflow namespace:
+
+- Worker: `libroo-enrichment-production`
+- Queue: `libroo-enrichment-production`
+- Workflow: `libroo-enrichment-production`
+
+The web Worker only publishes a small job reference. The Queue consumer starts a
+stable Workflow instance for each job and acknowledges the message after the
+instance is accepted. D1 remains the source of progress and R2 stores cover
+bytes. Queue creation is idempotent and is performed by the production deploy
+workflow before the enrichment Worker is deployed. The Workflow resource is
+created or updated by deploying that Worker; do not point it at the production
+web Worker or at a preview resource.
+
+Each pull request receives matching isolated resources:
+`libroo-enrichment-pr-<number>` for its Worker, Queue, and Workflow, alongside
+the existing `libroo-pr-<number>`, `libroo-preview-pr-<number>` D1, and
+`libroo-preview-pr-<number>` R2 resources. Close-event cleanup deletes the
+enrichment Worker before its Queue, and the daily orphan sweep inventories and
+removes both if a close workflow was interrupted. A preview must never use the
+production Queue, Workflow, D1, or R2.
+
+Cloudflare Workflows Free currently allows 10 ms of active CPU per step. Queue
+and Workflow dispatch does not increase that allowance. Before enabling a plan
+or changing concurrency, build the enrichment Worker with Wrangler's dry run,
+run a representative one-book import in an isolated preview, and inspect the
+Workflow invocation CPU and failure logs. This repository does not claim Free
+plan compatibility without those measurements; if metadata lookup, persistence,
+or cover storage exceeds the target plan's step budget, use a plan with a
+larger allowance or split the step further. Record the measured plan, sample
+size, and limits in the release notes.
 
 Set `NUXT_CLOUDFLARE_WORKER_NAME` to select the Worker; the production workflow
 pins it to `libroo-production`. Same-repository PRs validate the Cloudflare
@@ -506,7 +538,7 @@ The canonical checked-in values are in `scripts/preview/runtime.env`; the deploy
 | Public access | Denied by Cloudflare Access unless the visitor matches the reusable preview policy. Libroo also validates the Access JWT and fails closed when it is missing or invalid. |
 | Legal Markdown and canonical URLs | Empty, so no production legal content endpoint is contacted. |
 | Registration | Enabled for tester convenience. |
-| Scheduled tasks | Wrangler cron triggers are omitted when `NUXT_CLOUDFLARE_PREVIEW=true`. |
+| Scheduled tasks | Previews run only the `*/5 * * * *` enrichment dispatcher/reconciliation cron; maintenance tasks remain production-only. |
 | Better Auth origin | `NUXT_BETTER_AUTH_URL` is the exact generated origin, `https://libroo-pr-<number>.<account-subdomain>.workers.dev`. |
 | Custom domain | `NUXT_CLOUDFLARE_CUSTOM_DOMAIN` must be unset. The generated Worker keeps `workers_dev: true`. |
 
@@ -624,10 +656,11 @@ Repository or environment secrets:
 
 | Secret | Purpose |
 | --- | --- |
-| `CLOUDFLARE_API_TOKEN` | Wrangler deploy, D1 migration, R2, and custom-domain route access. |
+| `CLOUDFLARE_API_TOKEN` | Wrangler deploy, D1 migration, R2, Queues, Workflows, and custom-domain route access. |
 | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account for Wrangler. |
 | `NUXT_HUB_CLOUDFLARE_DATABASE_ID` | D1 database ID used during the Cloudflare build. |
 | `NUXT_HUB_CLOUDFLARE_BUCKET_NAME` | R2 bucket name used during the Cloudflare build. |
+| `ENRICHMENT_QUEUE_NAME` | Queue consumed by the dedicated enrichment Worker. Production uses `libroo-enrichment-production`; previews derive `libroo-enrichment-pr-<number>`. |
 | `NUXT_BETTER_AUTH_SECRET` | Hosted auth secret. |
 | `NUXT_OIDC_CLIENT_SECRET` | OIDC client secret when `NUXT_PUBLIC_OIDC_ENABLED=true`. |
 | `NUXT_PLUNK_API_KEY` | Hosted email delivery. |

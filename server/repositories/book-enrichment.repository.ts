@@ -1,5 +1,5 @@
 import { Context, Effect, Layer } from 'effect'
-import { and, asc, eq, exists, inArray, isNotNull, isNull, lte, not, or, sql } from 'drizzle-orm'
+import { and, asc, eq, exists, gt, gte, inArray, isNotNull, isNull, lt, lte, not, or, sql } from 'drizzle-orm'
 import { authors, bookAuthors, bookEnrichmentJobs, bookEnrichmentLocks, books, canonicalBookEnrichmentJobs, loans, userBooks, tags, userBookTags, bookSystemTags } from 'hub:db:schema'
 import type { BookEnrichmentStatus } from '../../shared/types/book'
 import { DatabaseError } from './book.repository'
@@ -49,6 +49,9 @@ export interface BookEnrichmentUpdateRecord {
 export interface BookEnrichmentRepositoryInterface {
   getUserBookIdsForBooks: (userId: string, bookIds: string[], limit?: number) => Effect.Effect<string[], DatabaseError, DbService>
   getBatchProgress: (userId: string, batchId: string) => Effect.Effect<{ exists: boolean, pending: number, nextAttemptAt: Date | null, createdAt: Date | null }, DatabaseError, DbService>
+  listDispatchable: (userId: string, batchId: string) => Effect.Effect<Array<{ id: string, isbn: string, attempts: number }>, DatabaseError, DbService>
+  getBatchUserBookIds: (userId: string, batchId: string, limit?: number) => Effect.Effect<string[], DatabaseError, DbService>
+  listRecoverableDispatch: (now: Date, limit: number) => Effect.Effect<Array<{ id: string, attempts: number, isbn: string, userId: string, batchId: string }>, DatabaseError, DbService>
   cancelIneligibleJobs: (now: Date) => Effect.Effect<number, DatabaseError, DbService>
   claimJobs: (options: {
     limit: number
@@ -57,12 +60,14 @@ export interface BookEnrichmentRepositoryInterface {
     batchId?: string
     userId?: string
   }) => Effect.Effect<ClaimedBookEnrichmentJob[], DatabaseError, DbService>
+  claimJob: (jobId: string, expectedAttempt: number, claimToken: string, now: Date, leaseExpiresAt: Date) => Effect.Effect<ClaimedBookEnrichmentJob | null, DatabaseError, DbService>
   acquireIsbnLocks: (
     isbns: string[],
     claimToken: string,
     leaseExpiresAt: Date,
     now: Date
   ) => Effect.Effect<Set<string>, DatabaseError, DbService>
+  renewIsbnLock: (isbn: string, claimToken: string, now: Date, leaseExpiresAt: Date) => Effect.Effect<boolean, DatabaseError, DbService>
   releaseIsbnLocks: (isbns: string[], claimToken: string) => Effect.Effect<void, DatabaseError, DbService>
   applyMetadata: (
     job: ClaimedBookEnrichmentJob,
@@ -98,6 +103,13 @@ export interface BookEnrichmentRepositoryInterface {
     jobId: string,
     claimToken: string,
     nextAttemptAt: Date,
+    now: Date
+  ) => Effect.Effect<boolean, DatabaseError, DbService>
+  /** Extend an active claim before another durable step starts. */
+  renewClaim: (
+    jobId: string,
+    claimToken: string,
+    leaseExpiresAt: Date,
     now: Date
   ) => Effect.Effect<boolean, DatabaseError, DbService>
   getStatusesForUserBooks: (
@@ -159,6 +171,30 @@ export const BookEnrichmentRepositoryLive = Layer.effect(
     )
 
     return {
+      claimJob: (jobId, expectedAttempt, claimToken, now, leaseExpiresAt) => Effect.tryPromise({
+        try: async () => {
+          const eligible = or(
+            and(inArray(bookEnrichmentJobs.status, ['pending', 'retrying']), or(isNull(bookEnrichmentJobs.nextAttemptAt), lte(bookEnrichmentJobs.nextAttemptAt, now))),
+            and(eq(bookEnrichmentJobs.status, 'processing'), lte(bookEnrichmentJobs.leaseExpiresAt, now))
+          )
+          const rows = await dbService.db.update(bookEnrichmentJobs).set({
+            status: 'processing', attempts: sql`${bookEnrichmentJobs.attempts} + 1`, claimToken,
+            leaseExpiresAt, nextAttemptAt: null, updatedAt: now
+          }).where(and(eq(bookEnrichmentJobs.id, jobId), eq(bookEnrichmentJobs.attempts, expectedAttempt - 1), lt(bookEnrichmentJobs.attempts, bookEnrichmentJobs.maxAttempts), eligible, activeOwnership,
+            exists(dbService.db.select({ value: sql`1` }).from(books).where(and(eq(books.id, bookEnrichmentJobs.bookId), eq(books.isbn, bookEnrichmentJobs.isbn), eq(books.source, 'manual'), eq(books.entrySource, 'csv_import')))))).returning()
+          if (rows[0]) return rows[0].claimToken ? rows[0] as ClaimedBookEnrichmentJob : null
+          const replay = await dbService.db.select().from(bookEnrichmentJobs).where(and(
+            eq(bookEnrichmentJobs.id, jobId), eq(bookEnrichmentJobs.attempts, expectedAttempt),
+            eq(bookEnrichmentJobs.claimToken, claimToken), eq(bookEnrichmentJobs.status, 'processing'),
+            gt(bookEnrichmentJobs.leaseExpiresAt, now), activeOwnership,
+            exists(dbService.db.select({ value: sql`1` }).from(books).where(and(
+              eq(books.id, bookEnrichmentJobs.bookId), eq(books.isbn, bookEnrichmentJobs.isbn),
+              eq(books.source, 'manual'), eq(books.entrySource, 'csv_import')
+            )))
+          )).limit(1)
+          return replay[0] ? replay[0] as ClaimedBookEnrichmentJob : null
+        }, catch: error => new DatabaseError({ message: `Failed to claim enrichment job: ${error}`, operation: 'bookEnrichment.claimJob' })
+      }),
       getUserBookIdsForBooks: (userId, bookIds, limit = 20) =>
         Effect.tryPromise({
           try: async () => {
@@ -203,6 +239,48 @@ export const BookEnrichmentRepositoryLive = Layer.effect(
           },
           catch: error => new DatabaseError({ message: `Failed to load enrichment batch progress: ${error}`, operation: 'bookEnrichment.getBatchProgress' })
         }),
+
+      listDispatchable: (userId, batchId) => Effect.tryPromise({
+        try: () => dbService.db.select({ id: bookEnrichmentJobs.id, isbn: bookEnrichmentJobs.isbn, attempts: bookEnrichmentJobs.attempts })
+          .from(bookEnrichmentJobs).where(and(eq(bookEnrichmentJobs.userId, userId), eq(bookEnrichmentJobs.batchId, batchId), inArray(bookEnrichmentJobs.status, ['pending', 'retrying']), or(isNull(bookEnrichmentJobs.nextAttemptAt), lte(bookEnrichmentJobs.nextAttemptAt, new Date())))),
+        catch: error => new DatabaseError({ message: `Failed to list dispatchable enrichment jobs: ${error}`, operation: 'bookEnrichment.listDispatchable' })
+      }),
+
+      getBatchUserBookIds: (userId, batchId, limit = 100) => Effect.tryPromise({
+        try: async () => {
+          const rows = await dbService.db.select({ id: userBooks.id }).from(userBooks)
+            .innerJoin(bookEnrichmentJobs, and(eq(bookEnrichmentJobs.bookId, userBooks.bookId), eq(bookEnrichmentJobs.userId, userBooks.userId)))
+            .where(and(eq(userBooks.userId, userId), eq(bookEnrichmentJobs.batchId, batchId), isNull(userBooks.removedAt)))
+            .limit(Math.min(100, Math.max(1, limit)))
+          return rows.map(row => row.id)
+        },
+        catch: error => new DatabaseError({ message: `Failed to load enrichment batch books: ${error}`, operation: 'bookEnrichment.getBatchUserBookIds' })
+      }),
+      listRecoverableDispatch: (now, limit) => Effect.tryPromise({
+        try: async () => {
+          // A worker can crash after its final claim. Terminalize that lease
+          // before recovery so it cannot be claimed indefinitely.
+          await dbService.db.update(bookEnrichmentJobs).set({
+            status: 'failed',
+            claimToken: null,
+            leaseExpiresAt: null,
+            nextAttemptAt: null,
+            lastError: 'Maximum enrichment attempts exhausted',
+            completedAt: now,
+            updatedAt: now
+          }).where(and(
+            eq(bookEnrichmentJobs.status, 'processing'),
+            or(isNull(bookEnrichmentJobs.leaseExpiresAt), lte(bookEnrichmentJobs.leaseExpiresAt, now)),
+            gte(bookEnrichmentJobs.attempts, bookEnrichmentJobs.maxAttempts)
+          ))
+          return dbService.db.select({ id: bookEnrichmentJobs.id, attempts: bookEnrichmentJobs.attempts, isbn: bookEnrichmentJobs.isbn, userId: bookEnrichmentJobs.userId, batchId: bookEnrichmentJobs.batchId })
+            .from(bookEnrichmentJobs).where(or(
+              and(inArray(bookEnrichmentJobs.status, ['pending', 'retrying']), or(isNull(bookEnrichmentJobs.nextAttemptAt), lte(bookEnrichmentJobs.nextAttemptAt, now))),
+              and(eq(bookEnrichmentJobs.status, 'processing'), or(isNull(bookEnrichmentJobs.leaseExpiresAt), lte(bookEnrichmentJobs.leaseExpiresAt, now)), lt(bookEnrichmentJobs.attempts, bookEnrichmentJobs.maxAttempts))
+            )).orderBy(asc(bookEnrichmentJobs.updatedAt)).limit(Math.max(1, limit))
+        },
+        catch: error => new DatabaseError({ message: `Failed to list recoverable enrichment dispatches: ${error}`, operation: 'bookEnrichment.listRecoverableDispatch' })
+      }),
 
       cancelIneligibleJobs: now =>
         Effect.tryPromise({
@@ -357,6 +435,13 @@ export const BookEnrichmentRepositoryLive = Layer.effect(
             operation: 'bookEnrichment.acquireIsbnLocks'
           })
         }),
+
+      renewIsbnLock: (isbn, claimToken, now, leaseExpiresAt) => Effect.tryPromise({
+        try: async () => {
+          const rows = await dbService.db.update(bookEnrichmentLocks).set({ leaseExpiresAt, updatedAt: now }).where(and(eq(bookEnrichmentLocks.isbn, isbn), eq(bookEnrichmentLocks.claimToken, claimToken), gt(bookEnrichmentLocks.leaseExpiresAt, now))).returning({ isbn: bookEnrichmentLocks.isbn })
+          return rows.length > 0
+        }, catch: error => new DatabaseError({ message: `Failed to renew enrichment ISBN lock: ${error}`, operation: 'bookEnrichment.renewIsbnLock' })
+      }),
 
       releaseIsbnLocks: (isbns, claimToken) =>
         Effect.tryPromise({
@@ -563,6 +648,23 @@ export const BookEnrichmentRepositoryLive = Layer.effect(
             message: `Failed to defer enrichment claim: ${error}`,
             operation: 'bookEnrichment.deferClaim'
           })
+        }),
+
+      renewClaim: (jobId, claimToken, leaseExpiresAt, now) =>
+        Effect.tryPromise({
+          try: async () => {
+            const rows = await dbService.db.update(bookEnrichmentJobs).set({
+              leaseExpiresAt,
+              updatedAt: now
+            }).where(and(
+              eq(bookEnrichmentJobs.id, jobId),
+              eq(bookEnrichmentJobs.claimToken, claimToken),
+              eq(bookEnrichmentJobs.status, 'processing'),
+              gt(bookEnrichmentJobs.leaseExpiresAt, now)
+            )).returning({ id: bookEnrichmentJobs.id })
+            return rows.length > 0
+          },
+          catch: error => new DatabaseError({ message: `Failed to renew enrichment claim: ${error}`, operation: 'bookEnrichment.renewClaim' })
         }),
 
       getStatusesForUserBooks: (userId, bookIds) =>

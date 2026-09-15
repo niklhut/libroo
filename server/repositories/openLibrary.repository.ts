@@ -119,8 +119,8 @@ function getOpenLibraryCoversBase() {
 }
 
 function getOpenLibraryTimeout() {
-  const config = useRuntimeConfig()
-  const rawValue = config.openLibraryRequestTimeoutSeconds
+  const config: { openLibraryRequestTimeoutSeconds?: unknown } = typeof useRuntimeConfig === 'function' ? useRuntimeConfig() : {}
+  const rawValue = config.openLibraryRequestTimeoutSeconds ?? process.env.NUXT_OPEN_LIBRARY_REQUEST_TIMEOUT_SECONDS
   const seconds = typeof rawValue === 'number'
     ? rawValue
     : Number(String(rawValue ?? '').trim())
@@ -131,8 +131,8 @@ function getOpenLibraryTimeout() {
 }
 
 function getOpenLibraryCoverTimeout() {
-  const config = useRuntimeConfig()
-  const rawValue = config.openLibraryCoverTimeoutSeconds
+  const config: { openLibraryCoverTimeoutSeconds?: unknown } = typeof useRuntimeConfig === 'function' ? useRuntimeConfig() : {}
+  const rawValue = config.openLibraryCoverTimeoutSeconds ?? process.env.NUXT_OPEN_LIBRARY_COVER_TIMEOUT_SECONDS
   const seconds = typeof rawValue === 'number'
     ? rawValue
     : Number(String(rawValue ?? '').trim())
@@ -143,7 +143,7 @@ function getOpenLibraryCoverTimeout() {
 }
 
 function getOpenLibraryContactEmail() {
-  const config = useRuntimeConfig()
+  const config: { openLibraryContactEmail?: unknown } = typeof useRuntimeConfig === 'function' ? useRuntimeConfig() : {}
   const value = config.openLibraryContactEmail || process.env.NUXT_OPEN_LIBRARY_CONTACT_EMAIL
   return typeof value === 'string' ? value.trim() : ''
 }

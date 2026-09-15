@@ -21,6 +21,8 @@ jobs:
       NUXT_HUB_CLOUDFLARE_BUCKET_NAME: ${{ secrets.NUXT_HUB_CLOUDFLARE_BUCKET_NAME }}
       CLOUDFLARE_ZONE_ID: ${{ vars.CLOUDFLARE_ZONE_ID }}
       NUXT_CLOUDFLARE_WORKER_NAME: libroo-production
+      ENRICHMENT_WORKER_NAME: libroo-enrichment-production
+      ENRICHMENT_QUEUE_NAME: libroo-enrichment-production
       NUXT_CLOUDFLARE_CUSTOM_DOMAIN: ${{ vars.NUXT_CLOUDFLARE_CUSTOM_DOMAIN }}
       NUXT_BETTER_AUTH_SECRET: ${{ secrets.NUXT_BETTER_AUTH_SECRET }}
       NUXT_BETTER_AUTH_URL: ${{ vars.NUXT_BETTER_AUTH_URL }}
@@ -167,6 +169,14 @@ jobs:
       - name: Build Cloudflare worker
         run: pnpm build:cloudflare
 
+      - name: Provision production enrichment Queue
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          node scripts/cloudflare/queues.mjs ensure "${ENRICHMENT_QUEUE_NAME}"
+
       - name: Validate production Wrangler configuration
         run: node scripts/production/validate-wrangler-config.mjs .output/server/wrangler.json
 
@@ -206,6 +216,28 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: pnpm exec wrangler d1 migrations apply DB --remote --config .output/server/wrangler.json
+
+      - name: Deploy production enrichment Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ENRICHMENT_QUEUE_NAME: libroo-enrichment-production
+          ENRICHMENT_WORKER_NAME: libroo-enrichment-production
+        run: |
+          set -euo pipefail
+          node scripts/cloudflare/generate-enrichment-wrangler-config.mjs \
+            .output/server/wrangler.json "${RUNNER_TEMP}/enrichment-wrangler.json"
+          pnpm exec wrangler deploy --config "${RUNNER_TEMP}/enrichment-wrangler.json"
+
+      - name: Sync production enrichment Worker secret
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          node -e 'if (!process.env.NUXT_OPEN_LIBRARY_CONTACT_EMAIL) process.exit(1)' \
+            || { echo 'NUXT_OPEN_LIBRARY_CONTACT_EMAIL is required for enrichment Worker.'; exit 1; }
+          printf '%s' "${NUXT_OPEN_LIBRARY_CONTACT_EMAIL}" | pnpm exec wrangler secret put NUXT_OPEN_LIBRARY_CONTACT_EMAIL --config "${RUNNER_TEMP}/enrichment-wrangler.json"
 
       - name: Sync production Worker secrets
         env:

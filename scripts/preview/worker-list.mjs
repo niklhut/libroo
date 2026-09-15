@@ -24,7 +24,7 @@ if (!response.ok || !body.success) {
 
 const workers = body.result
   .map(worker => worker.id)
-  .filter(name => /^libroo-pr-\d+$/.test(name))
+  .filter(name => /^(?:libroo-pr|libroo-enrichment-pr)-\d+$/.test(name))
   .sort()
 
 process.stdout.write(JSON.stringify(workers))
