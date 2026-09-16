@@ -63,7 +63,7 @@
     "@libsql/linux-x64-musl": "0.5.29"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "0.22.0",
+    "@cloudflare/vitest-plugin": "1.1.10",
     "@nuxt/eslint": "^1.17.0",
     "@nuxt/test-utils": "^4.3.2",
     "@playwright/test": "^1.63.0",

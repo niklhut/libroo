@@ -14,6 +14,8 @@ allowBuilds:
   workerd: true
 
 minimumReleaseAgeExclude:
-  - '@cloudflare/vitest-pool-workers@0.16.20'
+  - '@cloudflare/vitest-plugin@1.1.10'
+  - miniflare@5.20260915.0-alpha
+  - wrangler@4.132.0
   - miniflare@4.20260625.0
   - wrangler@4.105.0
