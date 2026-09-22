@@ -36,11 +36,14 @@ const server = createServer((request, response) => {
   }
 
   if (url.pathname === '/search.json') {
-    const isbn = url.searchParams.get('isbn') || ''
-    const book = books[isbn]
-    const docs = []
-    if (book) {
-      docs.push({
+    const query = url.searchParams.get('q') || ''
+    const requestedIsbns = url.searchParams.get('isbn')
+      ? [url.searchParams.get('isbn')]
+      : [...query.matchAll(/\d{10,13}/g)].map(match => match[0])
+    const docs = requestedIsbns.flatMap((isbn) => {
+      const book = books[isbn]
+      if (!book) return []
+      return [{
         key: book.works[0].key.replace(/^\/works\//, ''),
         title: book.title,
         author_name: book.authors.map(author => author.name),
@@ -57,25 +60,9 @@ const server = createServer((request, response) => {
             number_of_pages: book.number_of_pages
           }]
         }
-      })
-    }
+      }]
+    })
     sendJson(response, { docs })
-    return
-  }
-
-  if (url.pathname === '/api/books') {
-    if (url.searchParams.get('jscmd') !== 'details') {
-      response.writeHead(400, { 'content-type': 'application/json' })
-      response.end(JSON.stringify({ error: 'The fixture only supports jscmd=details' }))
-      return
-    }
-    const bibkeys = (url.searchParams.get('bibkeys') || '').split(',')
-    const body = Object.fromEntries(bibkeys.flatMap((bibkey) => {
-      const isbn = bibkey.replace(/^ISBN:/, '')
-      const book = books[isbn]
-      return book ? [[bibkey, { details: book }]] : []
-    }))
-    sendJson(response, body)
     return
   }
 
