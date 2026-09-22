@@ -560,6 +560,10 @@ export const runBookEnrichmentSchema = z.object({
   bookId: z.string().min(1).max(128)
 })
 
+export const runCanonicalEnrichmentBatchSchema = z.object({
+  userBookIds: z.array(z.string().min(1).max(128)).min(1).max(20)
+})
+
 export const runLibraryEnrichmentBatchSchema = z.object({
   batchId: z.string().min(1).max(128)
 })

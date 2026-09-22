@@ -54,6 +54,7 @@ describe('server/middleware/01.books-rate-limit', () => {
     expect(middleware.shouldEnforceRateLimit(makeEvent('/api/books'))).toBe(true)
     expect(middleware.shouldEnforceRateLimit(makeEvent('/api/books/bulk-lookup'))).toBe(true)
     expect(middleware.shouldEnforceRateLimit(makeEvent('/api/books/enrichment/run'))).toBe(true)
+    expect(middleware.shouldEnforceRateLimit(makeEvent('/api/books/enrichment/run-batch'))).toBe(true)
     expect(middleware.shouldEnforceRateLimit(makeEvent('/api/books/bulk-add'))).toBe(false)
     expect(middleware.shouldEnforceRateLimit(makeEvent('/api/books/lookup', 'GET'))).toBe(false)
   })

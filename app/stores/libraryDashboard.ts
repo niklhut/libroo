@@ -308,6 +308,26 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
     })
   }
 
+  function startCanonicalEnrichment(userBookIds: string[]) {
+    const uniqueIds = [...new Set(userBookIds.filter(Boolean))]
+    if (uniqueIds.length === 0) return
+
+    void (async () => {
+      for (let offset = 0; offset < uniqueIds.length; offset += 20) {
+        const batch = uniqueIds.slice(offset, offset + 20)
+        try {
+          const updates = await $fetch<LibraryBookEnrichmentUpdate[]>('/api/books/enrichment/run-batch', {
+            method: 'POST',
+            body: { userBookIds: batch }
+          })
+          for (const update of updates) updateBookEnrichment(update.userBookId, update)
+        } catch (error) {
+          console.error('Failed to start canonical book enrichment', error)
+        }
+      }
+    })()
+  }
+
   function resetResults() {
     page.value = DEFAULT_PAGE
     allBooks.value = []
@@ -407,6 +427,7 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
     markNeedsSync,
     clearNeedsSync,
     startEnrichmentBatch,
+    startCanonicalEnrichment,
     resetResults,
     resetAll,
     cacheResults,

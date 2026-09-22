@@ -254,23 +254,35 @@ describe('useIsbnLookupStore', () => {
   })
 
   it('adds a typed single ISBN through the shared bulk add primitive and marks dashboard sync', async () => {
-    const fetchMock = vi.fn().mockResolvedValueOnce({
-      added: [{ isbn: '9781234567890' }],
-      books: [{
-        id: 'user-book-1',
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        added: [{ isbn: '9781234567890' }],
+        books: [{
+          id: 'user-book-1',
+          bookId: 'book-1',
+          libraryState: 'owned',
+          title: 'Book A',
+          author: 'Author A',
+          isbn: '9781234567890',
+          coverPath: null,
+          location: null,
+          tags: [],
+          addedAt: '2026-09-08T12:00:00.000Z',
+          enrichmentStatus: 'queued'
+        }],
+        failed: []
+      })
+      .mockResolvedValueOnce([{
+        userBookId: 'user-book-1',
         bookId: 'book-1',
-        libraryState: 'owned',
         title: 'Book A',
         author: 'Author A',
+        authors: ['Author A'],
         isbn: '9781234567890',
-        coverPath: null,
-        location: null,
-        tags: [],
-        addedAt: '2026-09-08T12:00:00.000Z',
-        enrichmentStatus: 'queued'
-      }],
-      failed: []
-    })
+        coverPath: 'covers/book-a.webp',
+        coverUrl: '/api/blob/covers/book-a.webp',
+        status: null
+      }])
 
     ;(globalThis as unknown as { $fetch: typeof fetchMock }).$fetch = fetchMock
 
@@ -299,13 +311,19 @@ describe('useIsbnLookupStore', () => {
       method: 'POST',
       body: { books: [{ isbn: '9781234567890', libraryState: 'owned' }] }
     })
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/books/enrichment/run-batch', {
+      method: 'POST',
+      body: { userBookIds: ['user-book-1'] }
+    }))
+    await vi.waitFor(() => expect(dashboardStore.allBooks[0]?.coverPath).toBe('covers/book-a.webp'))
     expect(dashboardStore.shouldSync).toBe(true)
     expect(dashboardStore.syncTargetPages).toBe(2)
     expect(dashboardStore.allBooks[0]).toMatchObject({
       id: 'user-book-1',
       title: 'Book A',
       isbn: '9781234567890',
-      enrichmentStatus: 'queued'
+      enrichmentStatus: null,
+      coverPath: 'covers/book-a.webp'
     })
     expect(dashboardStore.getPendingAddedBooks()).toEqual([
       expect.objectContaining({ id: 'user-book-1', isbn: '9781234567890' })
