@@ -128,7 +128,7 @@ describe('Turnstile Better Auth captcha plugin', () => {
     const fetchMock = installTurnstileFetch(true)
     const [plugin] = createTurnstileCaptchaPlugins(config)
 
-    await expect(plugin.onRequest(protectedRequest('/sign-in/email'), authContext as never).resolves.toBeUndefined()
+    await expect(plugin.onRequest(protectedRequest('/sign-in/email'), authContext as never)).resolves.toBeUndefined()
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })
