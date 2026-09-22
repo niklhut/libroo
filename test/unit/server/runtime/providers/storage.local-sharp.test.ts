@@ -12,6 +12,7 @@ describe('StorageServiceLocalSharpLive', () => {
   let tempDir: string
   let pngFixture: Buffer
   let jpegFixture: Buffer
+  let svgFixture: Buffer
   let invalidFixture: Buffer
 
   beforeEach(async () => {
@@ -33,6 +34,7 @@ describe('StorageServiceLocalSharpLive', () => {
         background: { r: 220, g: 180, b: 90 }
       }
     }).jpeg().toBuffer()
+    svgFixture = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="2" height="2"><rect width="2" height="2" fill="red"/></svg>')
     invalidFixture = Buffer.from('this is not an image')
   })
 
@@ -61,6 +63,21 @@ describe('StorageServiceLocalSharpLive', () => {
       const stored = await run(Effect.flatMap(StorageService, service => service.get('covers/book-cover')))
       expect(stored).toBeInstanceOf(Blob)
       expect(stored?.type).toBe('image/webp')
+      expect(await sharp(Buffer.from(await stored!.arrayBuffer())).metadata()).toMatchObject({
+        format: 'webp'
+      })
+    })
+
+    it('converts SVG cover images to WebP when Sharp is available', async () => {
+      const metadata = await run(Effect.flatMap(StorageService, service =>
+        service.putCoverImage('covers/svg-cover', svgFixture)
+      ))
+
+      expect(metadata).toMatchObject({
+        pathname: 'covers/svg-cover',
+        contentType: 'image/webp'
+      })
+      const stored = await run(Effect.flatMap(StorageService, service => service.get('covers/svg-cover')))
       expect(await sharp(Buffer.from(await stored!.arrayBuffer())).metadata()).toMatchObject({
         format: 'webp'
       })

@@ -297,6 +297,9 @@ importers:
         specifier: 4.131.1
         version: 4.131.1(@types/node@26.4.1)
     optionalDependencies:
+      '@img/sharp-wasm32':
+        specifier: 0.35.4
+        version: 0.35.4
       '@libsql/linux-arm64-musl':
         specifier: 0.5.29
         version: 0.5.29

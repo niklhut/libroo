@@ -54,6 +54,11 @@ RUN for package in /app/node_modules/@libsql/linux-*-musl; do \
         cp -RL "$package" "/app/.output/server/node_modules/@libsql/$name"; \
       fi; \
     done \
+    && if [ -e /app/node_modules/@img/sharp-wasm32 ]; then \
+      mkdir -p /app/.output/server/node_modules/@img/sharp-wasm32/lib; \
+      cp -RL /app/node_modules/@img/sharp-wasm32/lib/*.wasm \
+        /app/.output/server/node_modules/@img/sharp-wasm32/lib/; \
+    fi \
     && mkdir -p /data/db /data/blob \
     && chown -R node:node /app /data
 USER node

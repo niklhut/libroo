@@ -2,7 +2,11 @@ import { Effect, Layer } from 'effect'
 import { blob } from '@nuxthub/blob'
 import { StorageError, StorageService } from '../../services/storage.service'
 import type { BlobMetadata, StorageUsage } from '../../services/storage.service'
-import { detectImageContentType, UNKNOWN_IMAGE_CONTENT_TYPE } from '../../../shared/utils/image-content-type'
+import {
+  detectImageContentType,
+  pathnameForImageContentType,
+  UNKNOWN_IMAGE_CONTENT_TYPE
+} from '../../../shared/utils/image-content-type'
 
 function toMetadata(result: {
   pathname: string
@@ -16,35 +20,6 @@ function toMetadata(result: {
     size: result.size,
     uploadedAt: result.uploadedAt instanceof Date ? result.uploadedAt : new Date(result.uploadedAt)
   }
-}
-
-function extensionForContentType(contentType: string) {
-  switch (contentType) {
-    case 'image/jpeg':
-      return '.jpg'
-    case 'image/png':
-      return '.png'
-    case 'image/webp':
-      return '.webp'
-    case 'image/gif':
-      return '.gif'
-    default:
-      return null
-  }
-}
-
-function pathnameForStoredCover(pathname: string, contentType: string) {
-  const extension = extensionForContentType(contentType)
-  if (!extension) {
-    return pathname
-  }
-
-  const lastSlash = pathname.lastIndexOf('/')
-  const lastDot = pathname.lastIndexOf('.')
-  if (lastDot > lastSlash) {
-    return `${pathname.slice(0, lastDot)}${extension}`
-  }
-  return `${pathname}${extension}`
 }
 
 function coverUsagePrefix(prefix?: string) {
@@ -94,7 +69,7 @@ export const StorageServiceCloudflareLive = Layer.succeed(StorageService, {
             operation: 'convertCoverImage'
           })
         }
-        return blob.put(pathnameForStoredCover(pathname, contentType), data, {
+        return blob.put(pathnameForImageContentType(pathname, contentType), data, {
           contentType
         }).then(toMetadata)
       },
