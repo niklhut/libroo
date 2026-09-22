@@ -38,8 +38,9 @@ const server = createServer((request, response) => {
   if (url.pathname === '/search.json') {
     const isbn = url.searchParams.get('isbn') || ''
     const book = books[isbn]
-    sendJson(response, {
-      docs: book ? [{
+    const docs = []
+    if (book) {
+      docs.push({
         key: book.works[0].key,
         title: book.title,
         author_name: book.authors.map(author => author.name),
@@ -49,8 +50,9 @@ const server = createServer((request, response) => {
         publish_date: [book.publish_date],
         number_of_pages_median: book.number_of_pages,
         isbn: [isbn]
-      }] : []
-    })
+      })
+    }
+    sendJson(response, { docs })
     return
   }
 
