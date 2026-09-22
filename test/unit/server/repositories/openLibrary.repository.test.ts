@@ -17,6 +17,52 @@ describe('OpenLibraryRepository details lookup', () => {
     vi.restoreAllMocks()
   })
 
+  it('uses one ISBN Search API request for the interactive core lookup', async () => {
+    vi.stubGlobal('useRuntimeConfig', () => ({
+      openLibraryRequestTimeoutSeconds: 12,
+      openLibraryCoverTimeoutSeconds: 20,
+      openLibraryContactEmail: ''
+    }))
+    const requestedUrls: string[] = []
+    const httpClient = HttpClient.make((request) => {
+      requestedUrls.push(request.url)
+      return Effect.succeed(HttpClientResponse.fromWeb(request, new Response(JSON.stringify({
+        docs: [{
+          key: '/works/OL1W',
+          title: 'Fantastic Mr. Fox',
+          author_name: ['Roald Dahl'],
+          edition_key: ['OL7353617M'],
+          cover_i: 15152634,
+          publisher: ['Puffin'],
+          publish_date: ['October 1, 1988'],
+          number_of_pages_median: 96,
+          isbn: ['0140328726', '9780140328721']
+        }]
+      }))))
+    })
+
+    const result = await Effect.runPromise(Effect.flatMap(OpenLibraryRepository, repository =>
+      repository.lookupCoreByISBN('978-0-14-032872-1')
+    ).pipe(
+      Effect.provide(OpenLibraryRepositoryLive),
+      Effect.provide(Layer.succeed(DbService, { executeAtomic: vi.fn() } as never)),
+      Effect.provide(Layer.succeed(HttpClient.HttpClient, httpClient))
+    ))
+
+    expect(requestedUrls).toHaveLength(1)
+    const requestUrl = new URL(requestedUrls[0]!)
+    expect(requestUrl.pathname).toBe('/search.json')
+    expect(requestUrl.searchParams.get('isbn')).toBe('9780140328721')
+    expect(result).toMatchObject({
+      title: 'Fantastic Mr. Fox',
+      authors: ['Roald Dahl'],
+      isbn: '9780140328721',
+      openLibraryKey: '/books/OL7353617M',
+      workKey: '/works/OL1W',
+      coverUrl: 'https://covers.openlibrary.org/b/id/15152634-L.jpg?default=false'
+    })
+  })
+
   it('uses jscmd=details for single and batch lookup without edition requests', async () => {
     vi.stubGlobal('useRuntimeConfig', () => ({
       openLibraryRequestTimeoutSeconds: 12,
@@ -165,10 +211,9 @@ describe('OpenLibraryRepository details lookup', () => {
 
     expect(Either.isLeft(result)).toBe(true)
     if (Either.isLeft(result)) {
-      expect(result.left).toMatchObject({
-        _tag: 'OpenLibraryApiError',
-        message: 'Open Library returned HTTP 429'
-      })
+      expect(result.left._tag).toBe('OpenLibraryApiError')
+      expect(result.left.message).toBe('Open Library returned HTTP 429 for /api/books')
+      expect(result.left.status).toBe(429)
     }
   })
 

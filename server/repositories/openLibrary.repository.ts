@@ -18,6 +18,7 @@ export class OpenLibraryBookNotFoundError extends Data.TaggedError('OpenLibraryB
 
 export class OpenLibraryApiError extends Data.TaggedError('OpenLibraryApiError')<{
   message: string
+  status?: number
 }> { }
 
 export class OpenLibraryCoverError extends Data.TaggedError('OpenLibraryCoverError')<{
@@ -25,12 +26,12 @@ export class OpenLibraryCoverError extends Data.TaggedError('OpenLibraryCoverErr
   isbn: string
 }> { }
 
-// OpenLibrary API response format for /api/books endpoint
+// Open Library edition and legacy Books API response formats
 type OpenLibraryText = string | { type?: string, value?: unknown }
 
 interface OpenLibraryBookDetails {
   title?: string
-  authors?: Array<{ name: string, url?: string }>
+  authors?: Array<{ name?: string, url?: string, key?: string }>
   publishers?: Array<string | { name: string }>
   publish_date?: string
   number_of_pages?: number
@@ -46,21 +47,39 @@ interface OpenLibraryBooksApiResponse {
   [key: string]: {
     details?: OpenLibraryBookDetails
     title?: string
-    authors?: Array<{ name: string, url?: string }>
-    publishers?: Array<{ name: string }>
+    authors?: Array<{ name?: string, url?: string, key?: string }>
+    publishers?: Array<string | { name: string }>
     publish_date?: string
     number_of_pages?: number
     notes?: OpenLibraryText
     excerpts?: Array<{ text?: OpenLibraryText }>
     cover?: { small?: string, medium?: string, large?: string }
     key?: string
-    subjects?: Array<{ name: string, url?: string }>
+    subjects?: Array<string | { name: string, url?: string }>
     thumbnail_url?: string
   }
 }
 
 type OpenLibraryBooksApiEntry = OpenLibraryBooksApiResponse[string]
 type OpenLibraryEditionDetails = OpenLibraryBookDetails | OpenLibraryBooksApiEntry
+
+interface OpenLibraryAuthorApiResponse {
+  name?: string
+}
+
+interface OpenLibrarySearchResponse {
+  docs?: Array<{
+    key?: string
+    title?: string
+    author_name?: string[]
+    edition_key?: string[]
+    cover_i?: number
+    publisher?: string[]
+    publish_date?: string[]
+    number_of_pages_median?: number
+    isbn?: string[]
+  }>
+}
 
 // OpenLibrary Works API response
 interface OpenLibraryWorksApiResponse {
@@ -75,7 +94,7 @@ interface OpenLibraryWorksApiResponse {
 
 // Service interface
 export interface OpenLibraryRepositoryInterface {
-  // The interactive core path deliberately performs only this edition request.
+  // The interactive core path deliberately performs only this ISBN search request.
   lookupCoreByISBN: (isbn: string) => Effect.Effect<OpenLibraryBookData, OpenLibraryBookNotFoundError | OpenLibraryApiError, HttpClientType.HttpClient>
   lookupByISBN: (isbn: string, priority?: OpenLibraryRequestPriority) => Effect.Effect<OpenLibraryBookData, OpenLibraryBookNotFoundError | OpenLibraryApiError, HttpClientType.HttpClient>
   /** Batch edition metadata only; skips author fallback and work hydration. */
@@ -166,7 +185,7 @@ function extractOpenLibraryText(value: unknown): string | undefined {
   return undefined
 }
 
-function normalizeAuthors(authors?: Array<{ name: string }>) {
+function normalizeAuthors(authors?: Array<{ name?: string }>) {
   return (authors ?? [])
     .map(author => author.name?.trim())
     .filter((author): author is string => Boolean(author))
@@ -237,7 +256,8 @@ const fetchJson = <T>(
     )
     if (response.status < 200 || response.status >= 300) {
       return yield* Effect.fail(new OpenLibraryApiError({
-        message: `Open Library returned HTTP ${response.status}`
+        message: `Open Library returned HTTP ${response.status} for ${new URL(url).pathname}`,
+        status: response.status
       }))
     }
     const json = yield* response.json.pipe(
@@ -297,6 +317,22 @@ export const OpenLibraryRepositoryLive = Layer.effect(
     const acquireSlot = (priority: OpenLibraryRequestPriority = 'interactive') => runtimeProfile === 'selfhost'
       ? acquireLocalSlot
       : acquireDistributedSlotWithRetry(priority)
+
+    const resolveEditionAuthors = (details: OpenLibraryBookDetails, apiBase: string, priority: OpenLibraryRequestPriority) => {
+      const authors = normalizeAuthors(details.authors)
+      const authorKeys = [...new Set((details.authors ?? [])
+        .map(author => author.key)
+        .filter((key): key is string => Boolean(key?.startsWith('/authors/'))))]
+      if (authors.length > 0 || authorKeys.length === 0) return Effect.succeed(authors)
+      return Effect.forEach(
+        authorKeys.slice(0, 3),
+        key => fetchJson<OpenLibraryAuthorApiResponse>(`${apiBase}${key}.json`, acquireSlot(priority), 'metadata').pipe(
+          Effect.map(author => author.name?.trim() ?? ''),
+          Effect.catchAll(error => Effect.logDebug(`[OpenLibrary] Author lookup failed for ${key}: ${String(error)}`).pipe(Effect.as('')))
+        ),
+        { concurrency: 3 }
+      ).pipe(Effect.map(names => names.filter(Boolean)))
+    }
 
     const lookupByISBNs = (isbns: string[], priority: OpenLibraryRequestPriority = 'interactive') =>
       Effect.gen(function* () {
@@ -407,20 +443,42 @@ export const OpenLibraryRepositoryLive = Layer.effect(
         const normalizedISBN = normalizeISBN(isbn)
         const apiBase = getOpenLibraryApiBase()
         const coversBase = getOpenLibraryCoversBase()
-        const response = yield* fetchJson<OpenLibraryBooksApiResponse>(
-          `${apiBase}/api/books?bibkeys=ISBN:${normalizedISBN}&jscmd=details&format=json`,
+        const searchUrl = new URL(`${apiBase}/search.json`)
+        searchUrl.searchParams.set('isbn', normalizedISBN)
+        searchUrl.searchParams.set('fields', 'key,title,author_name,edition_key,cover_i,publisher,publish_date,number_of_pages_median,isbn')
+        searchUrl.searchParams.set('limit', '10')
+        const response = yield* fetchJson<OpenLibrarySearchResponse>(
+          searchUrl.toString(),
           acquireSlot('interactive'),
           'metadata'
         )
-        const entry = response[`ISBN:${normalizedISBN}`]
+        const entry = response.docs?.find(doc => doc.isbn?.some(identifier => normalizeISBN(identifier) === normalizedISBN))
         if (!entry) {
           return yield* Effect.fail(new OpenLibraryBookNotFoundError({
             isbn: normalizedISBN,
             message: 'Open Library has no record for this ISBN'
           }))
         }
-        const details = entry.details ?? entry
-        return toOpenLibraryBookData(normalizedISBN, entry, details, coversBase)
+        const editionKey = entry.edition_key?.[0]
+        const openLibraryKey = editionKey
+          ? editionKey.startsWith('/books/') ? editionKey : `/books/${editionKey}`
+          : ''
+        const coverId = entry.cover_i
+        const authors = (entry.author_name ?? []).map(name => name.trim()).filter(Boolean)
+        return {
+          title: entry.title || 'Unknown Title',
+          authors: authors.length > 0 ? authors : ['Unknown Author'],
+          isbn: normalizedISBN,
+          openLibraryKey,
+          workKey: entry.key?.startsWith('/works/') ? entry.key : null,
+          coverUrl: typeof coverId === 'number' && coverId > 0
+            ? `${coversBase}/b/id/${coverId}-L.jpg?default=false`
+            : null,
+          publishDate: entry.publish_date?.[0],
+          publishers: entry.publisher,
+          numberOfPages: entry.number_of_pages_median,
+          coverId
+        } satisfies OpenLibraryBookData
       })
 
     // Complete a persisted core payload without repeating its edition request.
@@ -431,12 +489,12 @@ export const OpenLibraryRepositoryLive = Layer.effect(
         const apiBase = getOpenLibraryApiBase()
         let authors = seed.authors
         if (authors.length === 0 || (authors.length === 1 && authors[0] === 'Unknown Author')) {
-          const response = yield* fetchJson<OpenLibraryBooksApiResponse>(
-            `${apiBase}/api/books?bibkeys=ISBN:${normalizeISBN(seed.isbn)}&jscmd=data&format=json`,
+          const edition = yield* fetchJson<OpenLibraryBookDetails>(
+            `${apiBase}/isbn/${encodeURIComponent(normalizeISBN(seed.isbn))}.json`,
             acquireSlot(priority),
             'metadata'
           )
-          authors = normalizeAuthors(response[`ISBN:${normalizeISBN(seed.isbn)}`]?.authors)
+          authors = yield* resolveEditionAuthors(edition, apiBase, priority)
           if (authors.length === 0) authors = seed.authors
         }
         if (!seed.workKey || (seed.description && (seed.subjects?.length ?? 0) >= MIN_ENRICHED_SUBJECT_COUNT)) {

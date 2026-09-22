@@ -35,6 +35,25 @@ const server = createServer((request, response) => {
     return
   }
 
+  if (url.pathname === '/search.json') {
+    const isbn = url.searchParams.get('isbn') || ''
+    const book = books[isbn]
+    sendJson(response, {
+      docs: book ? [{
+        key: book.works[0].key,
+        title: book.title,
+        author_name: book.authors.map(author => author.name),
+        edition_key: [book.key.split('/').pop()],
+        cover_i: book.covers[0],
+        publisher: book.publishers,
+        publish_date: [book.publish_date],
+        number_of_pages_median: book.number_of_pages,
+        isbn: [isbn]
+      }] : []
+    })
+    return
+  }
+
   if (url.pathname === '/api/books') {
     if (url.searchParams.get('jscmd') !== 'details') {
       response.writeHead(400, { 'content-type': 'application/json' })
