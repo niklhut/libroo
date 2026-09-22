@@ -41,15 +41,22 @@ const server = createServer((request, response) => {
     const docs = []
     if (book) {
       docs.push({
-        key: book.works[0].key,
+        key: book.works[0].key.replace(/^\/works\//, ''),
         title: book.title,
         author_name: book.authors.map(author => author.name),
-        edition_key: [book.key.split('/').pop()],
-        cover_i: book.covers[0],
-        publisher: book.publishers,
-        publish_date: [book.publish_date],
-        number_of_pages_median: book.number_of_pages,
-        isbn: [isbn]
+        isbn: [isbn],
+        editions: {
+          docs: [{
+            key: book.key,
+            title: book.title,
+            author_name: book.authors.map(author => author.name),
+            isbn: [isbn],
+            cover_i: book.covers[0],
+            publisher: book.publishers,
+            publish_date: [book.publish_date],
+            number_of_pages: book.number_of_pages
+          }]
+        }
       })
     }
     sendJson(response, { docs })

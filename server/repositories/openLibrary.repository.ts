@@ -78,6 +78,18 @@ interface OpenLibrarySearchResponse {
     publish_date?: string[]
     number_of_pages_median?: number
     isbn?: string[]
+    editions?: {
+      docs?: Array<{
+        key?: string
+        title?: string
+        author_name?: string[]
+        isbn?: string[]
+        cover_i?: number
+        publisher?: string[]
+        publish_date?: string[]
+        number_of_pages?: number
+      }>
+    }
   }>
 }
 
@@ -114,6 +126,12 @@ export class OpenLibraryRepository extends Context.Tag('OpenLibraryRepository')<
 // Normalize ISBN (remove dashes and spaces)
 function normalizeISBN(isbn: string): string {
   return isbn.replace(/[-\s]/g, '')
+}
+
+function normalizeOpenLibraryWorkKey(key?: string): string | null {
+  if (key?.startsWith('/works/')) return key
+  if (key && /^OL[^/?#]+W$/i.test(key)) return `/works/${key}`
+  return null
 }
 
 const DEFAULT_OPEN_LIBRARY_TIMEOUT_SECONDS = 12
@@ -445,7 +463,7 @@ export const OpenLibraryRepositoryLive = Layer.effect(
         const coversBase = getOpenLibraryCoversBase()
         const searchUrl = new URL(`${apiBase}/search.json`)
         searchUrl.searchParams.set('isbn', normalizedISBN)
-        searchUrl.searchParams.set('fields', 'key,title,author_name,edition_key,cover_i,publisher,publish_date,number_of_pages_median,isbn')
+        searchUrl.searchParams.set('fields', 'key,title,author_name,edition_key,cover_i,publisher,publish_date,number_of_pages_median,isbn,editions,editions.key,editions.title,editions.author_name,editions.isbn,editions.cover_i,editions.publisher,editions.publish_date,editions.number_of_pages')
         searchUrl.searchParams.set('limit', '10')
         const response = yield* fetchJson<OpenLibrarySearchResponse>(
           searchUrl.toString(),
@@ -459,24 +477,25 @@ export const OpenLibraryRepositoryLive = Layer.effect(
             message: 'Open Library has no record for this ISBN'
           }))
         }
-        const editionKey = entry.edition_key?.[0]
+        const edition = entry.editions?.docs?.find(doc => doc.isbn?.some(identifier => normalizeISBN(identifier) === normalizedISBN))
+        const editionKey = edition?.key ?? entry.edition_key?.[0]
         const openLibraryKey = editionKey
           ? editionKey.startsWith('/books/') ? editionKey : `/books/${editionKey}`
           : ''
-        const coverId = entry.cover_i
-        const authors = (entry.author_name ?? []).map(name => name.trim()).filter(Boolean)
+        const coverId = edition?.cover_i ?? entry.cover_i
+        const authors = (edition?.author_name ?? entry.author_name ?? []).map(name => name.trim()).filter(Boolean)
         return {
-          title: entry.title || 'Unknown Title',
+          title: edition?.title || entry.title || 'Unknown Title',
           authors: authors.length > 0 ? authors : ['Unknown Author'],
           isbn: normalizedISBN,
           openLibraryKey,
-          workKey: entry.key?.startsWith('/works/') ? entry.key : null,
+          workKey: normalizeOpenLibraryWorkKey(entry.key),
           coverUrl: typeof coverId === 'number' && coverId > 0
             ? `${coversBase}/b/id/${coverId}-L.jpg?default=false`
             : null,
-          publishDate: entry.publish_date?.[0],
-          publishers: entry.publisher,
-          numberOfPages: entry.number_of_pages_median,
+          publishDate: edition?.publish_date?.[0] ?? entry.publish_date?.[0],
+          publishers: edition?.publisher ?? entry.publisher,
+          numberOfPages: edition?.number_of_pages ?? entry.number_of_pages_median,
           coverId
         } satisfies OpenLibraryBookData
       })

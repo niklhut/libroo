@@ -28,15 +28,38 @@ describe('OpenLibraryRepository details lookup', () => {
       requestedUrls.push(request.url)
       return Effect.succeed(HttpClientResponse.fromWeb(request, new Response(JSON.stringify({
         docs: [{
-          key: '/works/OL1W',
-          title: 'Fantastic Mr. Fox',
-          author_name: ['Roald Dahl'],
-          edition_key: ['OL7353617M'],
-          cover_i: 15152634,
-          publisher: ['Puffin'],
-          publish_date: ['October 1, 1988'],
-          number_of_pages_median: 96,
-          isbn: ['0140328726', '9780140328721']
+          key: 'OL1W',
+          title: 'Work-level title',
+          author_name: ['Work-level author'],
+          edition_key: ['OL-WRONGM'],
+          cover_i: 1,
+          publisher: ['Work-level publisher'],
+          publish_date: ['Work-level date'],
+          number_of_pages_median: 999,
+          isbn: ['0140328726', '9780140328721'],
+          editions: {
+            docs: [
+              {
+                key: '/books/OL-WRONGM',
+                title: 'Wrong edition',
+                isbn: ['9780000000000'],
+                cover_i: 2,
+                publisher: ['Wrong publisher'],
+                publish_date: ['Wrong date'],
+                number_of_pages: 100
+              },
+              {
+                key: '/books/OL7353617M',
+                title: 'Fantastic Mr. Fox',
+                author_name: ['Roald Dahl'],
+                isbn: ['0140328726', '9780140328721'],
+                cover_i: 15152634,
+                publisher: ['Puffin'],
+                publish_date: ['October 1, 1988'],
+                number_of_pages: 96
+              }
+            ]
+          }
         }]
       }))))
     })
@@ -53,12 +76,16 @@ describe('OpenLibraryRepository details lookup', () => {
     const requestUrl = new URL(requestedUrls[0]!)
     expect(requestUrl.pathname).toBe('/search.json')
     expect(requestUrl.searchParams.get('isbn')).toBe('9780140328721')
+    expect(requestUrl.searchParams.get('fields')).toContain('editions.isbn')
     expect(result).toMatchObject({
       title: 'Fantastic Mr. Fox',
       authors: ['Roald Dahl'],
       isbn: '9780140328721',
       openLibraryKey: '/books/OL7353617M',
       workKey: '/works/OL1W',
+      publishDate: 'October 1, 1988',
+      publishers: ['Puffin'],
+      numberOfPages: 96,
       coverUrl: 'https://covers.openlibrary.org/b/id/15152634-L.jpg?default=false'
     })
   })

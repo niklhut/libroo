@@ -101,7 +101,11 @@ test('mobile locations workflow @mobile', async ({ browser }, testInfo) => {
 
     const renamedChildNode = locations.node(renamedChildName)
     await renamedChildNode.parentSelect.click()
-    await page.getByRole('option', { name: 'Top level' }).click()
+    const parentOptions = page.getByRole('listbox').getByRole('option')
+    await expect(parentOptions).toHaveCount(2)
+    await page.getByRole('listbox').getByRole('option', { name: 'Top level', exact: true }).click()
+    await expect(renamedChildNode.parentSelect).toContainText('Top level')
+    await expect(renamedChildNode.move).toBeEnabled()
     await renamedChildNode.move.click()
     await expect(locations.node(renamedChildName).row.getByText(renamedChildName, { exact: true }).first()).toBeVisible()
     await expect(locations.node(renamedChildName).row.getByText(`${topName} - ${renamedChildName}`, { exact: true })).not.toBeVisible()
