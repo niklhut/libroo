@@ -259,6 +259,52 @@ describe('OpenLibraryRepository details lookup', () => {
     expect(result.get('9780141439518')).toMatchObject({ title: 'Second edition', openLibraryKey: '/books/OL2M' })
   })
 
+  it('retries every unmapped ISBN when a Search API page is full', async () => {
+    vi.stubGlobal('useRuntimeConfig', () => ({
+      openLibraryRequestTimeoutSeconds: 12,
+      openLibraryCoverTimeoutSeconds: 20,
+      openLibraryContactEmail: ''
+    }))
+    const requestedUrls: string[] = []
+    const targetIsbns = ['9780306406157', '9780141439518']
+    const httpClient = HttpClient.make((request) => {
+      requestedUrls.push(request.url)
+      const query = new URL(request.url).searchParams.get('q') ?? ''
+      const isbns = [...query.matchAll(/\d{10,13}/g)].map(match => match[0]!)
+      const docs = query.includes(' OR ')
+        ? Array.from({ length: 10 }, (_, index) => ({ isbn: [`999999999${index}`] }))
+        : [{
+            isbn: isbns,
+            editions: { docs: [{ title: `Book ${isbns[0]}`, isbn: isbns }] }
+          }]
+      return Effect.succeed(HttpClientResponse.fromWeb(request, new Response(JSON.stringify({ docs }))))
+    })
+    const provide = <A, E>(effect: Effect.Effect<A, E, HttpClient.HttpClient | typeof OpenLibraryRepository>) => effect.pipe(
+      Effect.provide(OpenLibraryRepositoryLive),
+      Effect.provide(Layer.succeed(DbService, { executeAtomic: vi.fn() } as never)),
+      Effect.provide(Layer.succeed(HttpClient.HttpClient, httpClient))
+    )
+
+    const enrichedResult = await Effect.runPromise(provide(Effect.flatMap(OpenLibraryRepository, repository =>
+      repository.lookupByISBNs(targetIsbns)
+    )))
+    expect(enrichedResult.size).toBe(2)
+    expect(requestedUrls).toHaveLength(3)
+    expect(requestedUrls.slice(1).map(url => new URL(url).searchParams.get('q'))).toEqual(
+      targetIsbns.map(isbn => `isbn:(${isbn})`)
+    )
+
+    requestedUrls.length = 0
+    const coreResult = await Effect.runPromise(provide(Effect.flatMap(OpenLibraryRepository, repository =>
+      repository.lookupCoreByISBNs(targetIsbns)
+    )))
+    expect(coreResult.size).toBe(2)
+    expect(requestedUrls).toHaveLength(3)
+    expect(requestedUrls.slice(1).map(url => new URL(url).searchParams.get('q'))).toEqual(
+      targetIsbns.map(isbn => `isbn:(${isbn})`)
+    )
+  }, 30_000)
+
   it('uses Search API authors from the matching edition', async () => {
     vi.stubGlobal('useRuntimeConfig', () => ({
       openLibraryRequestTimeoutSeconds: 12,
@@ -607,4 +653,35 @@ describe('OpenLibraryRepository details lookup', () => {
     expect(result.title).toBe('Seed')
     expect(result.authors).toEqual(['Author'])
   })
+
+  it('keeps enrichment moving when the optional ISBN author lookup fails', async () => {
+    vi.stubGlobal('useRuntimeConfig', () => ({ openLibraryRequestTimeoutSeconds: 12, openLibraryCoverTimeoutSeconds: 20, openLibraryContactEmail: '' }))
+    const urls: string[] = []
+    const httpClient = HttpClient.make((request) => {
+      urls.push(request.url)
+      if (new URL(request.url).pathname.startsWith('/isbn/')) {
+        return Effect.succeed(HttpClientResponse.fromWeb(request, new Response('missing edition', { status: 404 })))
+      }
+      return Effect.succeed(HttpClientResponse.fromWeb(request, new Response(JSON.stringify({
+        key: '/works/OL1W',
+        title: 'Work',
+        description: 'Recovered description',
+        subjects: ['one', 'two', 'three', 'four', 'five']
+      }))))
+    })
+    const seed = {
+      title: 'Seed', authors: ['Unknown Author'], isbn: '9780306406157', openLibraryKey: '/books/OL1M',
+      workKey: '/works/OL1W', coverUrl: null, subjects: [], description: undefined
+    }
+
+    const result = await Effect.runPromise(Effect.flatMap(OpenLibraryRepository, repo => repo.enrichMetadata(seed)).pipe(
+      Effect.provide(OpenLibraryRepositoryLive),
+      Effect.provide(Layer.succeed(DbService, { executeAtomic: vi.fn() } as never)),
+      Effect.provide(Layer.succeed(HttpClient.HttpClient, httpClient))
+    ))
+
+    expect(result.authors).toEqual(['Unknown Author'])
+    expect(result.description).toBe('Recovered description')
+    expect(urls.map(url => new URL(url).pathname)).toEqual(['/isbn/9780306406157.json', '/works/OL1W.json'])
+  }, 30_000)
 })

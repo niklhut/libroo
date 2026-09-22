@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Data, Duration } from 'effect'
+import { Context, Effect, Layer, Data, Duration, Either } from 'effect'
 import * as HttpClient from '@effect/platform/HttpClient'
 import * as HCError from '@effect/platform/HttpClientError'
 import type * as HttpClientType from '@effect/platform/HttpClient'
@@ -197,8 +197,30 @@ function buildISBNSearchUrl(apiBase: string, isbns: string[]) {
   const searchUrl = new URL(`${apiBase}/search.json`)
   searchUrl.searchParams.set('q', `isbn:(${isbns.join(' OR ')})`)
   searchUrl.searchParams.set('fields', SEARCH_FIELDS)
-  searchUrl.searchParams.set('limit', String(Math.max(isbns.length, 10)))
+  searchUrl.searchParams.set('limit', String(getISBNSearchLimit(isbns)))
   return searchUrl.toString()
+}
+
+function getISBNSearchLimit(isbns: string[]) {
+  return Math.max(isbns.length, 10)
+}
+
+function getMissingISBNsForFallback(
+  chunk: string[],
+  booksByIsbn: Map<string, OpenLibraryBookData>,
+  response: OpenLibrarySearchResponse
+) {
+  const docs = response.docs ?? []
+  const pageMayBeTruncated = docs.length >= getISBNSearchLimit(chunk)
+
+  return chunk.filter((isbn) => {
+    if (booksByIsbn.has(isbn)) return false
+    const hasReturnedMatch = docs.some(doc =>
+      doc.isbn?.some(identifier => normalizeISBN(identifier) === isbn)
+      || doc.editions?.docs?.some(edition => edition.isbn?.some(identifier => normalizeISBN(identifier) === isbn))
+    )
+    return pageMayBeTruncated || hasReturnedMatch
+  })
 }
 
 function getBookForISBN(response: OpenLibrarySearchResponse, isbn: string, coversBase: string): OpenLibraryBookData | undefined {
@@ -353,8 +375,7 @@ export const OpenLibraryRepositoryLive = Layer.effect(
           // Search returns only one edition per work. If a chunk contains
           // multiple ISBNs from the same work, resolve the omitted editions
           // individually so each ISBN retains its own edition metadata.
-          const missingISBNs = chunk.filter(isbn => !booksByIsbn.has(isbn)
-            && response.docs?.some(doc => doc.isbn?.some(identifier => normalizeISBN(identifier) === isbn)))
+          const missingISBNs = getMissingISBNsForFallback(chunk, booksByIsbn, response)
           const fallbackBooks = yield* Effect.forEach(
             missingISBNs,
             isbn => fetchJson<OpenLibrarySearchResponse>(
@@ -422,8 +443,7 @@ export const OpenLibraryRepositoryLive = Layer.effect(
             if (book) booksByIsbn.set(isbn, book)
           }
 
-          const missingISBNs = chunk.filter(isbn => !booksByIsbn.has(isbn)
-            && response.docs?.some(doc => doc.isbn?.some(identifier => normalizeISBN(identifier) === isbn)))
+          const missingISBNs = getMissingISBNsForFallback(chunk, booksByIsbn, response)
           const fallbackBooks = yield* Effect.forEach(
             missingISBNs,
             isbn => fetchJson<OpenLibrarySearchResponse>(
@@ -472,9 +492,15 @@ export const OpenLibraryRepositoryLive = Layer.effect(
             `${apiBase}/isbn/${encodeURIComponent(normalizeISBN(seed.isbn))}.json`,
             acquireSlot(priority),
             'metadata'
+          ).pipe(
+            Effect.either
           )
-          authors = yield* resolveEditionAuthors(edition, apiBase, priority)
-          if (authors.length === 0) authors = seed.authors
+          if (Either.isRight(edition)) {
+            authors = yield* resolveEditionAuthors(edition.right, apiBase, priority)
+            if (authors.length === 0) authors = seed.authors
+          } else {
+            yield* Effect.logDebug(`[OpenLibrary] Optional ISBN author lookup failed: ${String(edition.left)}`)
+          }
         }
         if (!seed.workKey || (seed.description && (seed.subjects?.length ?? 0) >= MIN_ENRICHED_SUBJECT_COUNT)) {
           return { ...seed, authors }
