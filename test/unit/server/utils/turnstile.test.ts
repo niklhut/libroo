@@ -8,7 +8,8 @@ const authContext = {
     basePath: '/api/auth'
   },
   logger: {
-    error: vi.fn()
+    error: vi.fn(),
+    warn: vi.fn()
   }
 }
 
@@ -83,6 +84,7 @@ describe('Turnstile Better Auth captcha plugin', () => {
   beforeEach(() => {
     vi.unstubAllGlobals()
     authContext.logger.error.mockReset()
+    authContext.logger.warn.mockReset()
   })
 
   afterEach(() => {
