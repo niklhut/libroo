@@ -313,7 +313,8 @@ describe('useIsbnLookupStore', () => {
     })
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/books/enrichment/run-batch', {
       method: 'POST',
-      body: { userBookIds: ['user-book-1'] }
+      body: { userBookIds: ['user-book-1'] },
+      signal: expect.any(AbortSignal)
     }))
     await vi.waitFor(() => expect(dashboardStore.allBooks[0]?.coverPath).toBe('covers/book-a.webp'))
     expect(dashboardStore.shouldSync).toBe(true)
