@@ -166,6 +166,8 @@ describe('OpenLibraryRepository details lookup', () => {
             publishers: ['Edition Press'],
             publish_date: '2002',
             number_of_pages: 123,
+            description: 'Edition description',
+            notes: 'Edition notes',
             subjects: ['Subject']
           }
       return Effect.succeed(HttpClientResponse.fromWeb(request, new Response(JSON.stringify(response))))
@@ -189,7 +191,8 @@ describe('OpenLibraryRepository details lookup', () => {
       coverUrl: 'https://covers.openlibrary.org/b/id/42-L.jpg?default=false',
       publishers: ['Edition Press'],
       publishDate: '2002',
-      numberOfPages: 123
+      numberOfPages: 123,
+      description: 'Edition description'
     })
   })
 

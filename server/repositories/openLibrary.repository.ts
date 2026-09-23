@@ -35,6 +35,7 @@ interface OpenLibraryBookDetails {
   publishers?: Array<string | { name: string }>
   publish_date?: string
   number_of_pages?: number
+  description?: OpenLibraryText
   notes?: OpenLibraryText
   excerpts?: Array<{ text?: OpenLibraryText }>
   covers?: number[]
@@ -283,7 +284,8 @@ function mapOpenLibraryEditionDetails(details: OpenLibraryBookDetails, isbn: str
     workKey: normalizeOpenLibraryWorkKey(Array.isArray(details.works) ? details.works[0]?.key : undefined),
     coverUrl: coverId ? `${coversBase}/b/id/${coverId}-L.jpg?default=false` : null,
     ...(coverId ? { coverId } : {}),
-    description: extractOpenLibraryText(details.notes)
+    description: extractOpenLibraryText(details.description)
+      ?? extractOpenLibraryText(details.notes)
       ?? extractOpenLibraryText(Array.isArray(details.excerpts) ? details.excerpts[0]?.text : undefined),
     subjects,
     publishDate: details.publish_date,
