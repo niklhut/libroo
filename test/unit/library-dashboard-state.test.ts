@@ -93,6 +93,31 @@ describe('useLibraryDashboardStore', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
+  it('ignores canonical enrichment responses that arrive after resetAll', async () => {
+    let resolveResponse: ((value: unknown) => void) | undefined
+    const response = new Promise((resolve) => {
+      resolveResponse = resolve
+    })
+    const fetchMock = vi.fn().mockReturnValue(response)
+    vi.stubGlobal('$fetch', fetchMock)
+    const store = createStore()
+    store.allBooks = [{ ...createBook('user-book-1'), enrichmentStatus: 'queued' }]
+
+    store.startCanonicalEnrichment(['user-book-1'])
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    store.resetAll()
+    resolveResponse?.([{
+      userBookId: 'user-book-1', bookId: 'book-user-book-1', isbn: '978000000001',
+      title: 'Title user-book-1', author: 'Author', authors: ['Author'], coverPath: 'covers/late.webp',
+      coverUrl: '/api/blob/covers/late.webp', subjects: [], status: null
+    }])
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(store.pendingEnrichmentUpdates).toEqual({})
+    expect(store.allBooks).toEqual([])
+  })
+
   it('runs different batches concurrently but deduplicates the same batch', async () => {
     vi.useFakeTimers()
     const fetchMock = vi.fn()

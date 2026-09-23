@@ -52,6 +52,7 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
     controller: AbortController
     timer: ReturnType<typeof setTimeout> | null
   }>()
+  const canonicalEnrichmentRuns = new Set<AbortController>()
 
   function getLoadedPages() {
     return Math.max(1, Math.ceil(allBooks.value.length / pageSize.value))
@@ -312,18 +313,27 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
     const uniqueIds = [...new Set(userBookIds.filter(Boolean))]
     if (uniqueIds.length === 0) return
 
+    const controller = new AbortController()
+    canonicalEnrichmentRuns.add(controller)
     void (async () => {
-      for (let offset = 0; offset < uniqueIds.length; offset += 20) {
-        const batch = uniqueIds.slice(offset, offset + 20)
-        try {
-          const updates = await $fetch<LibraryBookEnrichmentUpdate[]>('/api/books/enrichment/run-batch', {
-            method: 'POST',
-            body: { userBookIds: batch }
-          })
-          for (const update of updates) updateBookEnrichment(update.userBookId, update)
-        } catch (error) {
-          console.error('Failed to start canonical book enrichment', error)
+      try {
+        for (let offset = 0; offset < uniqueIds.length && !controller.signal.aborted; offset += 20) {
+          const batch = uniqueIds.slice(offset, offset + 20)
+          try {
+            const updates = await $fetch<LibraryBookEnrichmentUpdate[]>('/api/books/enrichment/run-batch', {
+              method: 'POST',
+              body: { userBookIds: batch },
+              signal: controller.signal
+            })
+            if (controller.signal.aborted) return
+            for (const update of updates) updateBookEnrichment(update.userBookId, update)
+          } catch (error) {
+            if (controller.signal.aborted) return
+            console.error('Failed to start canonical book enrichment', error)
+          }
         }
+      } finally {
+        canonicalEnrichmentRuns.delete(controller)
       }
     })()
   }
@@ -355,6 +365,8 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
     shouldRestoreScroll.value = false
     shouldSync.value = false
     syncTargetPages.value = DEFAULT_PAGE
+    for (const controller of canonicalEnrichmentRuns) controller.abort()
+    canonicalEnrichmentRuns.clear()
     cancelEnrichmentBatches()
     pendingAddedBooks.value = []
     pendingEnrichmentUpdates.value = {}

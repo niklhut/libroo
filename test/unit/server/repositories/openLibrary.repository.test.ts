@@ -137,6 +137,61 @@ describe('OpenLibraryRepository details lookup', () => {
     })
   })
 
+  it('falls back to the ISBN edition endpoint when Search omits its matching edition', async () => {
+    vi.stubGlobal('useRuntimeConfig', () => ({
+      openLibraryRequestTimeoutSeconds: 12,
+      openLibraryCoverTimeoutSeconds: 20,
+      openLibraryContactEmail: ''
+    }))
+    const requestedUrls: string[] = []
+    const httpClient = HttpClient.make((request) => {
+      requestedUrls.push(request.url)
+      const url = new URL(request.url)
+      const response = url.pathname === '/search.json'
+        ? {
+            docs: [{
+              key: '/works/OL1W',
+              title: 'Work title',
+              isbn: ['9780306406157'],
+              editions: { docs: [{ key: '/books/OL-WRONGM', title: 'Wrong edition', isbn: ['9780000000000'] }] }
+            }]
+          }
+        : {
+            key: '/books/OL1M',
+            title: 'Matching ISBN edition',
+            authors: [{ name: 'Edition Author' }],
+            works: [{ key: 'OL1W' }],
+            covers: [42],
+            publishers: ['Edition Press'],
+            publish_date: '2002',
+            number_of_pages: 123,
+            subjects: ['Subject']
+          }
+      return Effect.succeed(HttpClientResponse.fromWeb(request, new Response(JSON.stringify(response))))
+    })
+
+    const result = await Effect.runPromise(Effect.flatMap(OpenLibraryRepository, repository =>
+      repository.lookupCoreByISBN('9780306406157')
+    ).pipe(
+      Effect.provide(OpenLibraryRepositoryLive),
+      Effect.provide(Layer.succeed(DbService, { executeAtomic: vi.fn() } as never)),
+      Effect.provide(Layer.succeed(HttpClient.HttpClient, httpClient))
+    ))
+
+    expect(requestedUrls.map(url => new URL(url).pathname)).toEqual(['/search.json', '/isbn/9780306406157.json'])
+    expect(result).toMatchObject({
+      title: 'Matching ISBN edition',
+      authors: ['Edition Author'],
+      isbn: '9780306406157',
+      openLibraryKey: '/books/OL1M',
+      workKey: '/works/OL1W',
+      coverUrl: 'https://covers.openlibrary.org/b/id/42-L.jpg?default=false',
+      publishers: ['Edition Press'],
+      publishDate: '2002',
+      numberOfPages: 123
+    })
+  })
+
   it('uses the Search API for single and batch lookup without edition requests', async () => {
     vi.stubGlobal('useRuntimeConfig', () => ({
       openLibraryRequestTimeoutSeconds: 12,

@@ -253,6 +253,34 @@ function getBookForISBN(response: OpenLibrarySearchResponse, isbn: string, cover
   }
 }
 
+function mapOpenLibraryEditionDetails(details: OpenLibraryBookDetails, isbn: string, coversBase: string): OpenLibraryBookData {
+  const authors = normalizeAuthors(details.authors)
+  const coverId = details.covers?.find(id => Number.isInteger(id) && id > 0)
+  const publishers = (details.publishers ?? [])
+    .map(publisher => typeof publisher === 'string' ? publisher : publisher.name)
+    .filter(Boolean)
+  const subjects = (details.subjects ?? [])
+    .map(subject => typeof subject === 'string' ? subject : subject.name)
+    .filter(subject => subject && !subject.startsWith('nyt:'))
+
+  return {
+    title: details.title?.trim() || 'Unknown Title',
+    authors: authors.length > 0 ? authors : ['Unknown Author'],
+    isbn,
+    openLibraryKey: details.key?.startsWith('/books/')
+      ? details.key
+      : details.key ? `/books/${details.key}` : '',
+    workKey: normalizeOpenLibraryWorkKey(details.works?.[0]?.key),
+    coverUrl: coverId ? `${coversBase}/b/id/${coverId}-L.jpg?default=false` : null,
+    ...(coverId ? { coverId } : {}),
+    description: extractOpenLibraryText(details.notes) ?? extractOpenLibraryText(details.excerpts?.[0]?.text),
+    subjects,
+    publishDate: details.publish_date,
+    publishers,
+    numberOfPages: details.number_of_pages
+  }
+}
+
 // Helper to make HTTP GET request with timeout and get JSON response
 const fetchJson = <T>(
   url: string,
@@ -471,13 +499,26 @@ export const OpenLibraryRepositoryLive = Layer.effect(
           'metadata'
         )
         const book = getBookForISBN(response, normalizedISBN, coversBase)
-        if (!book) {
-          return yield* Effect.fail(new OpenLibraryBookNotFoundError({
-            isbn: normalizedISBN,
-            message: 'Open Library has no edition record for this ISBN'
-          }))
-        }
-        return book
+        if (book) return book
+
+        // Search can identify the matching work ISBN without returning its
+        // nested edition. Fall back to the ISBN endpoint only for that miss.
+        const details = yield* fetchJson<OpenLibraryBookDetails>(
+          `${apiBase}/isbn/${encodeURIComponent(normalizedISBN)}.json`,
+          acquireSlot('interactive'),
+          'metadata'
+        ).pipe(
+          Effect.catchAll((error): Effect.Effect<never, OpenLibraryBookNotFoundError | OpenLibraryApiError> => {
+            if (error instanceof OpenLibraryApiError && error.status === 404) {
+              return Effect.fail(new OpenLibraryBookNotFoundError({
+                isbn: normalizedISBN,
+                message: 'Open Library has no edition record for this ISBN'
+              }))
+            }
+            return Effect.fail(error)
+          })
+        )
+        return mapOpenLibraryEditionDetails(details, normalizedISBN, coversBase)
       })
 
     // Complete a persisted core payload without repeating its edition request.
