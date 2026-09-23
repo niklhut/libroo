@@ -12,7 +12,7 @@ import {
 } from '../../shared/utils/schemas'
 import type { LibraryQueryFilters } from '../../shared/utils/library-query'
 import { detectImageContentType, UNKNOWN_IMAGE_CONTENT_TYPE } from '../../shared/utils/image-content-type'
-import type { BookEnrichmentPatch, BookEnrichmentStatus, BulkBookLookupItem, BulkBookLookupResponse, BookLookupResult, LibraryState, TagWithCount } from '../../shared/types/book'
+import type { BookEnrichmentPatch, BookEnrichmentStatus, BulkBookLookupItem, BulkBookLookupResponse, BookLookupResult, LibraryBookEnrichmentUpdate, LibraryState, TagWithCount } from '../../shared/types/book'
 import { toBookEnrichmentUiStatus } from '../../shared/utils/book-enrichment'
 import type { Book } from '../repositories/book.repository'
 import { normalizeIsbnIdentity } from '../../shared/utils/isbn'
@@ -223,6 +223,11 @@ export interface BookServiceInterface {
   enrichOpenLibraryBook: (
     bookId: string
   ) => Effect.Effect<BookEnrichmentPatch, DatabaseError | BookNotEnrichableError | BookNotFoundError | OpenLibraryApiError, DbService | StorageService | OpenLibraryRepository | HttpClient.HttpClient>
+
+  runOwnedCanonicalEnrichmentBatch: (
+    userId: string,
+    userBookIds: string[]
+  ) => Effect.Effect<LibraryBookEnrichmentUpdate[], never, DbService | StorageService | OpenLibraryRepository | HttpClient.HttpClient>
 
   recoverCanonicalEnrichment: (
     limit?: number
@@ -734,6 +739,27 @@ export const BookServiceLive = Layer.effect(
       // therefore the authorization boundary for foreground enrichment.
       enrichOpenLibraryBook: bookId => enrichOpenLibraryBookImpl(bookId),
 
+      runOwnedCanonicalEnrichmentBatch: (userId, userBookIds) =>
+        Effect.forEach(
+          [...new Set(userBookIds)],
+          userBookId => Effect.gen(function* () {
+            const ownedBook = yield* bookRepo.getUserBookWithDetails(userBookId, userId).pipe(
+              Effect.either
+            )
+            if (Either.isLeft(ownedBook)) {
+              yield* Effect.logWarning(`Skipping canonical enrichment for inaccessible user book ${userBookId}`)
+              return null
+            }
+            const enrichment = yield* enrichOpenLibraryBookImpl(ownedBook.right.bookId).pipe(Effect.either)
+            if (Either.isLeft(enrichment)) {
+              yield* Effect.logWarning(`Canonical enrichment failed for user book ${userBookId}: ${String(enrichment.left)}`)
+              return null
+            }
+            return { ...enrichment.right, userBookId }
+          }),
+          { concurrency: getBooksEnrichmentConfig().concurrency }
+        ).pipe(Effect.map(updates => updates.filter((update): update is LibraryBookEnrichmentUpdate => update !== null))),
+
       recoverCanonicalEnrichment(limit = 20) {
         return Effect.gen(function* () {
           const config = getBooksEnrichmentConfig()
@@ -986,6 +1012,9 @@ export const lookupBook = (userId: string, isbn: string) =>
 
 export const enrichOpenLibraryBook = (bookId: string) =>
   Effect.flatMap(BookService, service => service.enrichOpenLibraryBook(bookId))
+
+export const runOwnedCanonicalEnrichmentBatch = (userId: string, userBookIds: string[]) =>
+  Effect.flatMap(BookService, service => service.runOwnedCanonicalEnrichmentBatch(userId, userBookIds))
 
 export const recoverCanonicalEnrichment = (limit?: number) =>
   Effect.flatMap(BookService, service => service.recoverCanonicalEnrichment(limit))

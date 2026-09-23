@@ -22,7 +22,10 @@ export default defineConfig({
         extends: true,
         test: {
           name: 'unit',
-          include: ['test/unit/**/*.test.ts']
+          include: ['test/unit/**/*.test.ts'],
+          // Several unit suites initialize disk-backed SQLite databases and
+          // apply migrations in beforeEach; allow for slower CI workers.
+          hookTimeout: 30_000
         }
       },
       {

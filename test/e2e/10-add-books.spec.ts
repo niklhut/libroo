@@ -162,6 +162,10 @@ test('shows bulk added books before the post-save library refresh completes', as
     await expect(page).toHaveURL(/\/library(?:\?.*)?$/)
     await expect(libraryBookLink(page, 'Bulk Fixture Book 13')).toBeVisible()
     await expect(libraryBookLink(page, 'Bulk Fixture Book 14')).toBeVisible()
+    const bulkBookCover = page.locator('img[alt="Bulk Fixture Book 13"]')
+    await expect.poll(() => bulkBookCover.evaluate(image => (image as HTMLImageElement).naturalWidth > 0), {
+      timeout: 30_000
+    }).toBe(true)
   } finally {
     await refreshGate.release()
     await context.close()

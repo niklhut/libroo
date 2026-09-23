@@ -4,7 +4,7 @@ The ISBN form prefetches after 220 ms of unchanged, checksum-valid input. Prefet
 
 ## First result
 
-Ownership and canonical-book reads run concurrently. An existing canonical record avoids the provider request. A catalog miss makes one Open Library edition request, batches author persistence, and saves the core book and an enrichment job before returning an addable result. Persistence still resolves competing canonical inserts.
+Ownership and canonical-book reads run concurrently. An existing canonical record avoids the provider request. A catalog miss makes one Open Library ISBN search request, batches author persistence, and saves the core book and an enrichment job before returning an addable result. Work details remain deferred to enrichment. Persistence still resolves competing canonical inserts.
 
 Migration `0019_durable_open_library_payload.sql` adds nullable `books.open_library_metadata`. It retains the initial edition payload for later requests and retries. Existing books without this payload continue using the legacy enrichment lookup.
 

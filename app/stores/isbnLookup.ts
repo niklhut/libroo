@@ -336,6 +336,9 @@ export const useIsbnLookupStore = defineStore('isbn-lookup', () => {
         // Seed the dashboard immediately so navigation does not wait for the
         // follow-up library refresh to make a successful add visible.
         for (const book of addedBooks) dashboardStore.addBook(book)
+        dashboardStore.startCanonicalEnrichment(addedBooks
+          .filter(book => book.enrichmentStatus === 'queued' || book.enrichmentStatus === 'retrying')
+          .map(book => book.id))
       }
       if (success.length > 0) dashboardStore.markNeedsSync(loadedPagesBeforeAdd)
 
