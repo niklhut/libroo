@@ -4,6 +4,7 @@ import * as HttpClientResponse from '@effect/platform/HttpClientResponse'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   OPEN_LIBRARY_COVER_STORAGE_CONCURRENCY,
+  OpenLibraryBookNotFoundError,
   OpenLibraryRepository,
   OpenLibraryRepositoryLive
 } from '../../../../server/repositories/openLibrary.repository'
@@ -189,6 +190,67 @@ describe('OpenLibraryRepository details lookup', () => {
       publishers: ['Edition Press'],
       publishDate: '2002',
       numberOfPages: 123
+    })
+  })
+
+  it('does not call the ISBN endpoint when Search has no matching ISBN', async () => {
+    vi.stubGlobal('useRuntimeConfig', () => ({
+      openLibraryRequestTimeoutSeconds: 12,
+      openLibraryCoverTimeoutSeconds: 20,
+      openLibraryContactEmail: ''
+    }))
+    const requestedUrls: string[] = []
+    const httpClient = HttpClient.make((request) => {
+      requestedUrls.push(request.url)
+      return Effect.succeed(HttpClientResponse.fromWeb(request, new Response(JSON.stringify({
+        docs: [{ isbn: ['9780000000000'], editions: { docs: [{ isbn: ['9780000000000'] }] } }]
+      }))))
+    })
+
+    const result = await Effect.runPromise(Effect.flatMap(OpenLibraryRepository, repository =>
+      repository.lookupCoreByISBN('9780306406157').pipe(Effect.either)
+    ).pipe(
+      Effect.provide(OpenLibraryRepositoryLive),
+      Effect.provide(Layer.succeed(DbService, { executeAtomic: vi.fn() } as never)),
+      Effect.provide(Layer.succeed(HttpClient.HttpClient, httpClient))
+    ))
+
+    expect(Either.isLeft(result)).toBe(true)
+    if (Either.isLeft(result)) expect(result.left).toBeInstanceOf(OpenLibraryBookNotFoundError)
+    expect(requestedUrls.map(url => new URL(url).pathname)).toEqual(['/search.json'])
+  })
+
+  it('ignores malformed array fields in an ISBN edition response', async () => {
+    vi.stubGlobal('useRuntimeConfig', () => ({
+      openLibraryRequestTimeoutSeconds: 12,
+      openLibraryCoverTimeoutSeconds: 20,
+      openLibraryContactEmail: ''
+    }))
+    const httpClient = HttpClient.make((request) => {
+      const url = new URL(request.url)
+      const response = url.pathname === '/search.json'
+        ? { docs: [{ isbn: ['9780306406157'], editions: { docs: [{ isbn: ['9780000000000'] }] } }] }
+        : {
+            key: '/books/OL1M', title: 'Matching edition', authors: [{ name: 'Author' }],
+            covers: { invalid: true }, publishers: { invalid: true }, subjects: 'invalid'
+          }
+      return Effect.succeed(HttpClientResponse.fromWeb(request, new Response(JSON.stringify(response))))
+    })
+
+    const result = await Effect.runPromise(Effect.flatMap(OpenLibraryRepository, repository =>
+      repository.lookupCoreByISBN('9780306406157')
+    ).pipe(
+      Effect.provide(OpenLibraryRepositoryLive),
+      Effect.provide(Layer.succeed(DbService, { executeAtomic: vi.fn() } as never)),
+      Effect.provide(Layer.succeed(HttpClient.HttpClient, httpClient))
+    ))
+
+    expect(result).toMatchObject({
+      title: 'Matching edition',
+      authors: ['Author'],
+      coverUrl: null,
+      subjects: [],
+      publishers: []
     })
   })
 

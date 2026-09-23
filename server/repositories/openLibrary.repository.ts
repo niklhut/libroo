@@ -186,8 +186,9 @@ function extractOpenLibraryText(value: unknown): string | undefined {
 }
 
 function normalizeAuthors(authors?: Array<{ name?: string }>) {
+  if (!Array.isArray(authors)) return []
   return (authors ?? [])
-    .map(author => author.name?.trim())
+    .map(author => typeof author?.name === 'string' ? author.name.trim() : '')
     .filter((author): author is string => Boolean(author))
 }
 
@@ -215,12 +216,15 @@ function getMissingISBNsForFallback(
 
   return chunk.filter((isbn) => {
     if (booksByIsbn.has(isbn)) return false
-    const hasReturnedMatch = docs.some(doc =>
-      doc.isbn?.some(identifier => normalizeISBN(identifier) === isbn)
-      || doc.editions?.docs?.some(edition => edition.isbn?.some(identifier => normalizeISBN(identifier) === isbn))
-    )
-    return pageMayBeTruncated || hasReturnedMatch
+    return pageMayBeTruncated || hasSearchISBNMatch(response, isbn)
   })
+}
+
+function hasSearchISBNMatch(response: OpenLibrarySearchResponse, isbn: string) {
+  return (response.docs ?? []).some(doc =>
+    doc.isbn?.some(identifier => normalizeISBN(identifier) === isbn)
+    || doc.editions?.docs?.some(edition => edition.isbn?.some(identifier => normalizeISBN(identifier) === isbn))
+  )
 }
 
 function getBookForISBN(response: OpenLibrarySearchResponse, isbn: string, coversBase: string): OpenLibraryBookData | undefined {
@@ -255,13 +259,19 @@ function getBookForISBN(response: OpenLibrarySearchResponse, isbn: string, cover
 
 function mapOpenLibraryEditionDetails(details: OpenLibraryBookDetails, isbn: string, coversBase: string): OpenLibraryBookData {
   const authors = normalizeAuthors(details.authors)
-  const coverId = details.covers?.find(id => Number.isInteger(id) && id > 0)
-  const publishers = (details.publishers ?? [])
-    .map(publisher => typeof publisher === 'string' ? publisher : publisher.name)
-    .filter(Boolean)
-  const subjects = (details.subjects ?? [])
-    .map(subject => typeof subject === 'string' ? subject : subject.name)
-    .filter(subject => subject && !subject.startsWith('nyt:'))
+  const coverId = (Array.isArray(details.covers) ? details.covers : [])
+    .find((id): id is number => typeof id === 'number' && Number.isInteger(id) && id > 0)
+  const publishers = (Array.isArray(details.publishers) ? details.publishers : [])
+    .flatMap((publisher) => {
+      if (typeof publisher === 'string') return [publisher]
+      return publisher && typeof publisher.name === 'string' ? [publisher.name] : []
+    })
+  const subjects = (Array.isArray(details.subjects) ? details.subjects : [])
+    .flatMap((subject) => {
+      if (typeof subject === 'string') return [subject]
+      return subject && typeof subject.name === 'string' ? [subject.name] : []
+    })
+    .filter(subject => !subject.startsWith('nyt:'))
 
   return {
     title: details.title?.trim() || 'Unknown Title',
@@ -270,10 +280,11 @@ function mapOpenLibraryEditionDetails(details: OpenLibraryBookDetails, isbn: str
     openLibraryKey: details.key?.startsWith('/books/')
       ? details.key
       : details.key ? `/books/${details.key}` : '',
-    workKey: normalizeOpenLibraryWorkKey(details.works?.[0]?.key),
+    workKey: normalizeOpenLibraryWorkKey(Array.isArray(details.works) ? details.works[0]?.key : undefined),
     coverUrl: coverId ? `${coversBase}/b/id/${coverId}-L.jpg?default=false` : null,
     ...(coverId ? { coverId } : {}),
-    description: extractOpenLibraryText(details.notes) ?? extractOpenLibraryText(details.excerpts?.[0]?.text),
+    description: extractOpenLibraryText(details.notes)
+      ?? extractOpenLibraryText(Array.isArray(details.excerpts) ? details.excerpts[0]?.text : undefined),
     subjects,
     publishDate: details.publish_date,
     publishers,
@@ -500,6 +511,12 @@ export const OpenLibraryRepositoryLive = Layer.effect(
         )
         const book = getBookForISBN(response, normalizedISBN, coversBase)
         if (book) return book
+        if (!hasSearchISBNMatch(response, normalizedISBN)) {
+          return yield* Effect.fail(new OpenLibraryBookNotFoundError({
+            isbn: normalizedISBN,
+            message: 'Open Library has no edition record for this ISBN'
+          }))
+        }
 
         // Search can identify the matching work ISBN without returning its
         // nested edition. Fall back to the ISBN endpoint only for that miss.
