@@ -30,7 +30,7 @@
     "@better-auth/passkey": "^1.7.6",
     "@comark/nuxt": "^0.7.0",
     "@effect/platform": "^0.97.2",
-    "@effect/platform-node": "^0.108.2",
+    "@effect/platform-node": "^4.0.2",
     "@iconify-json/lucide": "^1.2.137",
     "@iconify-json/simple-icons": "^1.2.97",
     "@libsql/client": "^0.18.0",
