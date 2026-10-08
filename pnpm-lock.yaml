@@ -177,10 +177,10 @@ importers:
         version: 0.7.0(magicast@0.5.5)(nuxt@4.5.2(9ba5003a1921bc9bf8eddc3aab025be5))(vue@3.5.43(typescript@6.0.3))
       '@effect/platform':
         specifier: ^0.97.2
-        version: 0.97.2(effect@3.22.2)
+        version: 0.97.2(effect@4.0.2)
       '@effect/platform-node':
         specifier: ^0.108.2
-        version: 0.108.2(@effect/cluster@0.60.2(@effect/platform@0.97.2(effect@3.22.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(@effect/sql@0.52.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(@effect/workflow@0.19.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@3.22.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(effect@3.22.2))(effect@3.22.2))(@effect/platform@0.97.2(effect@3.22.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(@effect/sql@0.52.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(effect@3.22.2)
+        version: 0.108.2(@effect/cluster@0.60.2(@effect/platform@0.97.2(effect@4.0.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2))(@effect/sql@0.52.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2))(@effect/workflow@0.19.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@4.0.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2))(effect@4.0.2))(effect@4.0.2))(@effect/platform@0.97.2(effect@4.0.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2))(@effect/sql@0.52.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2))(effect@4.0.2)
       '@iconify-json/lucide':
         specifier: ^1.2.137
         version: 1.2.137
@@ -224,8 +224,8 @@ importers:
         specifier: ^0.45.3
         version: 0.45.3(@libsql/client@0.18.0)(kysely@0.29.6)
       effect:
-        specifier: ^3.22.2
-        version: 3.22.2
+        specifier: ^4.0.2
+        version: 4.0.2
       h3:
         specifier: 1.15.11
         version: 1.15.11
@@ -4286,8 +4286,8 @@ packages:
   ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
 
-  effect@3.22.2:
-    resolution: {integrity: sha512-fm1CQXCs7GTMwpadZxwU5rnAb2bN6mbQpknq/pXBGCzSKkosNYb9k0wsoL0TfB10rSa5xOEZJjo77u/KLXSANg==}
+  effect@4.0.2:
+    resolution: {integrity: sha512-YeYnLqSFrL4+tCOXRrfNP03w8FILoF/wDl+ukraJAGzXrjcS383W7LAAvGBbLatEyktmLxRq+9xJinx7QzXW5A==}
 
   electron-to-chromium@1.5.439:
     resolution: {integrity: sha512-qu6QIPXhsb+CRcAiTMNjR4A1y/7tCYKkKjr5CZXRVih6qkDf79peZ2BpEU3qoDBNCRrcy3Mra3X9nG5oruuA7Q==}
@@ -4586,10 +4586,6 @@ packages:
   fake-indexeddb@6.2.5:
     resolution: {integrity: sha512-CGnyrvbhPlWYMngksqrSSUT1BAVP49dZocrHuK0SvtR0D5TMs5wP0o3j7jexDJW01KSadjBp1M/71o/KR3nD1w==}
     engines: {node: '>=18'}
-
-  fast-check@3.23.2:
-    resolution: {integrity: sha512-h5+1OzzfCC3Ef7VbtKdcv7zsstUQwUDlYpUTvjeUsJAssPgLn7QzbboPtL5ro04Mq0rPOsMzl7q5hIbRs2wD1A==}
-    engines: {node: '>=8.0.0'}
 
   fast-deep-equal@3.1.3:
     resolution: {integrity: sha512-f3qQ9oQy9j2AhBe/H9VC91wLmKBCCU/gDOnKNAYG5hswO7BLKj09Hc5HYNz9cGI++xlpDCIgDaitVs03ATR84Q==}
@@ -6057,9 +6053,6 @@ packages:
   punycode@2.3.1:
     resolution: {integrity: sha512-vYt7UD1U9Wg6138shLtLOvdAu+8DsC/ilFtEVHcH+wydcSpNE20AfSOduf6MkRFahL5FY7X1oU7nKVZFtfq8Fg==}
     engines: {node: '>=6'}
-
-  pure-rand@6.1.0:
-    resolution: {integrity: sha512-bVWawvoZoBYpp6yIoQtQXHZjmz35RSVHnUOTefl8Vcjr8snTPY1wnpSPMWekcFwbxI6gtmT7rSYPFvz71ldiOA==}
 
   pvtsutils@1.3.6:
     resolution: {integrity: sha512-PLgQXQ6H2FWCaeRak8vvk1GW462lMxB5s3Jm673N82zI4vqtVUPuZdffdZbPDFRoU8kAhItWFtPCWiPpp4/EDg==}
@@ -7758,45 +7751,45 @@ snapshots:
 
   '@dxup/unimport@0.1.2': {}
 
-  '@effect/cluster@0.60.2(@effect/platform@0.97.2(effect@3.22.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(@effect/sql@0.52.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(@effect/workflow@0.19.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@3.22.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(effect@3.22.2))(effect@3.22.2)':
+  '@effect/cluster@0.60.2(@effect/platform@0.97.2(effect@4.0.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2))(@effect/sql@0.52.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2))(@effect/workflow@0.19.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@4.0.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2))(effect@4.0.2))(effect@4.0.2)':
     dependencies:
-      '@effect/platform': 0.97.2(effect@3.22.2)
-      '@effect/rpc': 0.76.2(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2)
-      '@effect/sql': 0.52.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2)
-      '@effect/workflow': 0.19.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@3.22.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(effect@3.22.2)
-      effect: 3.22.2
+      '@effect/platform': 0.97.2(effect@4.0.2)
+      '@effect/rpc': 0.76.2(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2)
+      '@effect/sql': 0.52.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2)
+      '@effect/workflow': 0.19.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@4.0.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2))(effect@4.0.2)
+      effect: 4.0.2
       kubernetes-types: 1.30.0
 
-  '@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2)(ioredis@5.11.1(supports-color@10.2.2))':
+  '@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2)(ioredis@5.11.1(supports-color@10.2.2))':
     dependencies:
-      '@effect/platform': 0.97.2(effect@3.22.2)
-      effect: 3.22.2
+      '@effect/platform': 0.97.2(effect@4.0.2)
+      effect: 4.0.2
       uuid: 11.1.1
     optionalDependencies:
       ioredis: 5.11.1(supports-color@10.2.2)
 
-  '@effect/platform-node-shared@0.61.1(@effect/cluster@0.60.2(@effect/platform@0.97.2(effect@3.22.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(@effect/sql@0.52.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(@effect/workflow@0.19.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@3.22.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(effect@3.22.2))(effect@3.22.2))(@effect/platform@0.97.2(effect@3.22.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(@effect/sql@0.52.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(effect@3.22.2)':
+  '@effect/platform-node-shared@0.61.1(@effect/cluster@0.60.2(@effect/platform@0.97.2(effect@4.0.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2))(@effect/sql@0.52.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2))(@effect/workflow@0.19.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@4.0.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2))(effect@4.0.2))(effect@4.0.2))(@effect/platform@0.97.2(effect@4.0.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2))(@effect/sql@0.52.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2))(effect@4.0.2)':
     dependencies:
-      '@effect/cluster': 0.60.2(@effect/platform@0.97.2(effect@3.22.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(@effect/sql@0.52.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(@effect/workflow@0.19.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@3.22.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(effect@3.22.2))(effect@3.22.2)
-      '@effect/platform': 0.97.2(effect@3.22.2)
-      '@effect/rpc': 0.76.2(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2)
-      '@effect/sql': 0.52.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2)
+      '@effect/cluster': 0.60.2(@effect/platform@0.97.2(effect@4.0.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2))(@effect/sql@0.52.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2))(@effect/workflow@0.19.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@4.0.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2))(effect@4.0.2))(effect@4.0.2)
+      '@effect/platform': 0.97.2(effect@4.0.2)
+      '@effect/rpc': 0.76.2(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2)
+      '@effect/sql': 0.52.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2)
       '@parcel/watcher': 2.6.0
-      effect: 3.22.2
+      effect: 4.0.2
       multipasta: 0.2.8
       ws: 8.22.0
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@effect/platform-node@0.108.2(@effect/cluster@0.60.2(@effect/platform@0.97.2(effect@3.22.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(@effect/sql@0.52.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(@effect/workflow@0.19.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@3.22.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(effect@3.22.2))(effect@3.22.2))(@effect/platform@0.97.2(effect@3.22.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(@effect/sql@0.52.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(effect@3.22.2)':
+  '@effect/platform-node@0.108.2(@effect/cluster@0.60.2(@effect/platform@0.97.2(effect@4.0.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2))(@effect/sql@0.52.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2))(@effect/workflow@0.19.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@4.0.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2))(effect@4.0.2))(effect@4.0.2))(@effect/platform@0.97.2(effect@4.0.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2))(@effect/sql@0.52.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2))(effect@4.0.2)':
     dependencies:
-      '@effect/cluster': 0.60.2(@effect/platform@0.97.2(effect@3.22.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(@effect/sql@0.52.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(@effect/workflow@0.19.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@3.22.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(effect@3.22.2))(effect@3.22.2)
-      '@effect/platform': 0.97.2(effect@3.22.2)
-      '@effect/platform-node-shared': 0.61.1(@effect/cluster@0.60.2(@effect/platform@0.97.2(effect@3.22.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(@effect/sql@0.52.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(@effect/workflow@0.19.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@3.22.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(effect@3.22.2))(effect@3.22.2))(@effect/platform@0.97.2(effect@3.22.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(@effect/sql@0.52.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(effect@3.22.2)
-      '@effect/rpc': 0.76.2(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2)
-      '@effect/sql': 0.52.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2)
-      effect: 3.22.2
+      '@effect/cluster': 0.60.2(@effect/platform@0.97.2(effect@4.0.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2))(@effect/sql@0.52.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2))(@effect/workflow@0.19.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@4.0.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2))(effect@4.0.2))(effect@4.0.2)
+      '@effect/platform': 0.97.2(effect@4.0.2)
+      '@effect/platform-node-shared': 0.61.1(@effect/cluster@0.60.2(@effect/platform@0.97.2(effect@4.0.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2))(@effect/sql@0.52.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2))(@effect/workflow@0.19.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@4.0.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2))(effect@4.0.2))(effect@4.0.2))(@effect/platform@0.97.2(effect@4.0.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2))(@effect/sql@0.52.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2))(effect@4.0.2)
+      '@effect/rpc': 0.76.2(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2)
+      '@effect/sql': 0.52.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2)
+      effect: 4.0.2
       mime: 3.0.0
       undici: 7.30.0
       ws: 8.22.0
@@ -7804,32 +7797,32 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@effect/platform@0.97.2(effect@3.22.2)':
+  '@effect/platform@0.97.2(effect@4.0.2)':
     dependencies:
-      effect: 3.22.2
+      effect: 4.0.2
       find-my-way-ts: 0.1.6
       msgpackr: 1.12.1
       multipasta: 0.2.8
 
-  '@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2)':
+  '@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2)':
     dependencies:
-      '@effect/platform': 0.97.2(effect@3.22.2)
-      effect: 3.22.2
+      '@effect/platform': 0.97.2(effect@4.0.2)
+      effect: 4.0.2
       msgpackr: 1.12.1
 
-  '@effect/sql@0.52.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2)':
+  '@effect/sql@0.52.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2)':
     dependencies:
-      '@effect/experimental': 0.61.1(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2)(ioredis@5.11.1(supports-color@10.2.2))
-      '@effect/platform': 0.97.2(effect@3.22.2)
-      effect: 3.22.2
+      '@effect/experimental': 0.61.1(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2)(ioredis@5.11.1(supports-color@10.2.2))
+      '@effect/platform': 0.97.2(effect@4.0.2)
+      effect: 4.0.2
       uuid: 11.1.1
 
-  '@effect/workflow@0.19.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@3.22.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(effect@3.22.2)':
+  '@effect/workflow@0.19.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2)(ioredis@5.11.1(supports-color@10.2.2)))(@effect/platform@0.97.2(effect@4.0.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2))(effect@4.0.2)':
     dependencies:
-      '@effect/experimental': 0.61.1(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2)(ioredis@5.11.1(supports-color@10.2.2))
-      '@effect/platform': 0.97.2(effect@3.22.2)
-      '@effect/rpc': 0.76.2(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2)
-      effect: 3.22.2
+      '@effect/experimental': 0.61.1(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2)(ioredis@5.11.1(supports-color@10.2.2))
+      '@effect/platform': 0.97.2(effect@4.0.2)
+      '@effect/rpc': 0.76.2(@effect/platform@0.97.2(effect@4.0.2))(effect@4.0.2)
+      effect: 4.0.2
 
   '@emnapi/core@1.10.0':
     dependencies:
@@ -11563,10 +11556,7 @@ snapshots:
 
   ee-first@1.1.1: {}
 
-  effect@3.22.2:
-    dependencies:
-      '@standard-schema/spec': 1.1.0
-      fast-check: 3.23.2
+  effect@4.0.2: {}
 
   electron-to-chromium@1.5.439: {}
 
@@ -11927,10 +11917,6 @@ snapshots:
   exsolve@1.1.1: {}
 
   fake-indexeddb@6.2.5: {}
-
-  fast-check@3.23.2:
-    dependencies:
-      pure-rand: 6.1.0
 
   fast-deep-equal@3.1.3: {}
 
@@ -13563,8 +13549,6 @@ snapshots:
   punycode.js@2.3.1: {}
 
   punycode@2.3.1: {}
-
-  pure-rand@6.1.0: {}
 
   pvtsutils@1.3.6:
     dependencies:
