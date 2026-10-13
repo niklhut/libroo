@@ -37,6 +37,13 @@
       "groupSlug": "github-actions"
     },
     {
+      "description": "Effect and its platform packages have coupled peer dependencies and must be upgraded together.",
+      "matchPackageNames": ["effect", "@effect/*"],
+      "groupName": "Effect ecosystem",
+      "groupSlug": "effect",
+      "separateMajorMinor": false
+    },
+    {
       "description": "Pinia and its Nuxt module have coupled major-version peer dependencies and must be upgraded together.",
       "matchPackageNames": ["pinia", "@pinia/nuxt"],
       "groupName": "Pinia ecosystem",
