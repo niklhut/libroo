@@ -500,7 +500,7 @@ async function onTagsSaved() {
         </div>
 
         <BookLocationModal
-          v-if="isOwnedBook"
+          v-if="book && isOwnedBook"
           v-model:open="isLocationModalOpen"
           :user-book-id="userBookId"
           :current-location="book.location"
@@ -513,7 +513,7 @@ async function onTagsSaved() {
           @saved="onLoanSaved"
         />
         <BookReadingProgressModal
-          v-if="isOwnedBook"
+          v-if="book && isOwnedBook"
           v-model:open="isReadingModalOpen"
           :progress="book.readingProgress"
           :total-pages="book.numberOfPages"
@@ -521,6 +521,7 @@ async function onTagsSaved() {
           @save:progress="saveReadingProgress"
         />
         <TagManagerModal
+          v-if="book"
           v-model:open="isTagModalOpen"
           :user-book-id="userBookId"
           :user-tags="book.userTags"
@@ -579,6 +580,7 @@ async function onTagsSaved() {
         </UModal>
 
         <UModal
+          v-if="book"
           v-model:open="isOwnershipDialogOpen"
           title="No longer own this book?"
           :description="book.activeLoan
@@ -596,7 +598,7 @@ async function onTagsSaved() {
               Cancel
             </UButton>
             <UButton
-              v-if="!book.activeLoan"
+              v-if="book && !book.activeLoan"
               icon="i-lucide-history"
               :loading="isUpdatingLibraryState"
               @click="markAsPreviouslyOwned"
