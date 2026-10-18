@@ -12,7 +12,7 @@ const defaultEmailCapabilities = (): EmailCapabilities => ({
 export function useEmailCapabilities() {
   return useAsyncData<EmailCapabilities>(
     'email-capabilities',
-    () => $fetch('/api/capabilities/email'),
+    () => $fetch<EmailCapabilities>('/api/capabilities/email'),
     { default: defaultEmailCapabilities }
   )
 }

@@ -10,7 +10,7 @@ const defaultAuthCapabilities = (): AuthCapabilities => ({
 export function useAuthCapabilities() {
   return useAsyncData<AuthCapabilities>(
     'auth-capabilities',
-    () => $fetch('/api/capabilities/auth'),
+    () => $fetch<AuthCapabilities>('/api/capabilities/auth'),
     { default: defaultAuthCapabilities }
   )
 }
