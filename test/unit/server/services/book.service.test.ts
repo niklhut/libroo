@@ -1,4 +1,4 @@
-import { Effect, Either, Layer } from 'effect'
+import { Effect, Result, Layer } from 'effect'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   MANUAL_COVER_MAX_BASE64_LENGTH,
@@ -53,10 +53,10 @@ describe('manual cover validation', () => {
     ['a non-canonical base64 payload', '/9j/4AB='],
     ['a non-image payload', Buffer.from('not an image').toString('base64')]
   ])('rejects %s as InvalidManualCoverError', async (_label, data) => {
-    const result = await Effect.runPromise(Effect.either(decodeCoverImage(data)))
+    const result = await Effect.runPromise(Effect.result(decodeCoverImage(data)))
 
-    expect(Either.isLeft(result)).toBe(true)
-    if (Either.isLeft(result)) expect(result.left).toBeInstanceOf(InvalidManualCoverError)
+    expect(Result.isFailure(result)).toBe(true)
+    if (Result.isFailure(result)) expect(result.failure).toBeInstanceOf(InvalidManualCoverError)
   })
 
   it('accepts real image magic bytes and passes them to storage', async () => {
@@ -85,10 +85,10 @@ describe('manual cover validation', () => {
       coverImage: { data: 'A'.repeat(MANUAL_COVER_MAX_BASE64_LENGTH + 1), contentType: 'image/png', size: 1 }
     }
 
-    const result = await Effect.runPromise(Effect.either(provide(createManualBook('user-1', input))))
+    const result = await Effect.runPromise(Effect.result(provide(createManualBook('user-1', input))))
 
-    expect(Either.isLeft(result)).toBe(true)
-    if (Either.isLeft(result)) expect(result.left).toBeInstanceOf(InvalidManualCoverError)
+    expect(Result.isFailure(result)).toBe(true)
+    if (Result.isFailure(result)) expect(result.failure).toBeInstanceOf(InvalidManualCoverError)
     expect(storageService.putCoverImage).not.toHaveBeenCalled()
   })
 

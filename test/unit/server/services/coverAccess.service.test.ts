@@ -1,4 +1,4 @@
-import { Effect, Either, Layer } from 'effect'
+import { Effect, Result, Layer } from 'effect'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { BookRepository, type BookRepositoryInterface } from '../../../../server/repositories/book.repository'
 import { LendingRepository, type LendingRepositoryInterface } from '../../../../server/repositories/lending.repository'
@@ -45,9 +45,9 @@ describe('getAuthorizedCover', () => {
   it('denies unrelated manual covers without reading storage', async () => {
     const result = await runEither('covers/manual/other/book.webp')
 
-    expect(Either.isLeft(result)).toBe(true)
-    if (Either.isLeft(result)) {
-      expect(result.left).toBeInstanceOf(CoverAccessDeniedError)
+    expect(Result.isFailure(result)).toBe(true)
+    if (Result.isFailure(result)) {
+      expect(result.failure).toBeInstanceOf(CoverAccessDeniedError)
     }
     expect(storageService.get).not.toHaveBeenCalled()
   })
@@ -62,9 +62,9 @@ describe('getAuthorizedCover', () => {
   it('denies non-ISBN top-level cover paths without reading storage', async () => {
     const result = await runEither('covers/not-an-isbn.webp')
 
-    expect(Either.isLeft(result)).toBe(true)
-    if (Either.isLeft(result)) {
-      expect(result.left).toBeInstanceOf(CoverAccessDeniedError)
+    expect(Result.isFailure(result)).toBe(true)
+    if (Result.isFailure(result)) {
+      expect(result.failure).toBeInstanceOf(CoverAccessDeniedError)
     }
     expect(storageService.get).not.toHaveBeenCalled()
   })
@@ -72,9 +72,9 @@ describe('getAuthorizedCover', () => {
   it('denies unknown path patterns without reading storage', async () => {
     const result = await runEither('avatars/user-1.webp')
 
-    expect(Either.isLeft(result)).toBe(true)
-    if (Either.isLeft(result)) {
-      expect(result.left).toBeInstanceOf(CoverAccessDeniedError)
+    expect(Result.isFailure(result)).toBe(true)
+    if (Result.isFailure(result)) {
+      expect(result.failure).toBeInstanceOf(CoverAccessDeniedError)
     }
     expect(storageService.get).not.toHaveBeenCalled()
   })
@@ -83,9 +83,9 @@ describe('getAuthorizedCover', () => {
     vi.mocked(storageService.get).mockReturnValueOnce(Effect.succeed(null))
     const result = await runEither('covers/9781234567890.webp')
 
-    expect(Either.isLeft(result)).toBe(true)
-    if (Either.isLeft(result)) {
-      expect(result.left).toBeInstanceOf(CoverAccessDeniedError)
+    expect(Result.isFailure(result)).toBe(true)
+    if (Result.isFailure(result)) {
+      expect(result.failure).toBeInstanceOf(CoverAccessDeniedError)
     }
   })
 
@@ -94,7 +94,7 @@ describe('getAuthorizedCover', () => {
   }
 
   function runEither(pathname: string) {
-    return Effect.runPromise(Effect.either(provide(getAuthorizedCover(pathname, user))))
+    return Effect.runPromise(Effect.result(provide(getAuthorizedCover(pathname, user))))
   }
 
   function provide<A, E>(effect: Effect.Effect<A, E, BookRepository | LendingRepository | StorageService>) {

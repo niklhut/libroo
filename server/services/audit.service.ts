@@ -27,7 +27,7 @@ export interface AuditServiceInterface {
   ) => Effect.Effect<CleanupAuditResult, DatabaseError, AuditRepository | DbService>
 }
 
-export class AuditService extends Context.Tag('AuditService')<AuditService, AuditServiceInterface>() { }
+export class AuditService extends Context.Service<AuditService, AuditServiceInterface>()('AuditService') { }
 
 export const AuditServiceLive = Layer.effect(
   AuditService,

@@ -6,7 +6,7 @@ export interface AuthCapabilityServiceInterface {
   getCapabilities: () => Effect.Effect<AuthCapabilities>
 }
 
-export class AuthCapabilityService extends Context.Tag('AuthCapabilityService')<AuthCapabilityService, AuthCapabilityServiceInterface>() { }
+export class AuthCapabilityService extends Context.Service<AuthCapabilityService, AuthCapabilityServiceInterface>()('AuthCapabilityService') { }
 
 export const AuthCapabilityServiceLive = Layer.succeed(AuthCapabilityService, {
   getCapabilities: () => Effect.sync(getAuthCapabilities)

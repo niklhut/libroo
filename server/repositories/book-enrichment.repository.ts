@@ -111,10 +111,10 @@ export interface BookEnrichmentRepositoryInterface {
   isCoverReferenced: (pathname: string) => Effect.Effect<boolean, DatabaseError, DbService>
 }
 
-export class BookEnrichmentRepository extends Context.Tag('BookEnrichmentRepository')<
+export class BookEnrichmentRepository extends Context.Service<
   BookEnrichmentRepository,
   BookEnrichmentRepositoryInterface
->() {}
+>()('BookEnrichmentRepository') {}
 
 const activeStatusCondition = inArray(bookEnrichmentJobs.status, ['pending', 'processing', 'retrying'])
 

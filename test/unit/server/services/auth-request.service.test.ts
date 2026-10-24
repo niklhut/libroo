@@ -76,10 +76,10 @@ describe('AuthRequestService', () => {
     const error = new Error('auth failed')
     authMock.handler.mockRejectedValueOnce(error)
 
-    const result = await runAuthRequestService(Effect.either(handle(makeSignupRequest())))
+    const result = await runAuthRequestService(Effect.result(handle(makeSignupRequest())))
 
-    expect(result._tag).toBe('Left')
-    expect(result.left).toBe(error)
+    expect(result._tag).toBe('Failure')
+    expect(result.failure).toBe(error)
     expect(signupInviteServiceMock.releaseInviteReservation).toHaveBeenCalledWith('reservation-1')
     expect(signupInviteServiceMock.acceptInvite).not.toHaveBeenCalled()
   })
@@ -120,10 +120,10 @@ describe('AuthRequestService', () => {
     authMock.handler.mockResolvedValueOnce(response)
     signupInviteServiceMock.acceptInvite.mockReturnValueOnce(Effect.fail(error))
 
-    const result = await runAuthRequestService(Effect.either(handle(makeSignupRequest())))
+    const result = await runAuthRequestService(Effect.result(handle(makeSignupRequest())))
 
-    expect(result._tag).toBe('Left')
-    expect(result.left).toBe(error)
+    expect(result._tag).toBe('Failure')
+    expect(result.failure).toBe(error)
     expect(signupInviteServiceMock.acceptInvite).toHaveBeenCalledWith('reservation-1', 'user-1')
     expect(signupInviteServiceMock.deleteCompensatingSignupAccount).toHaveBeenCalledWith('user-1')
     expect(signupInviteServiceMock.releaseInviteReservation).toHaveBeenCalledWith('reservation-1')
@@ -138,9 +138,9 @@ describe('AuthRequestService', () => {
     signupInviteServiceMock.acceptInvite.mockReturnValueOnce(Effect.fail(error))
     signupInviteServiceMock.deleteCompensatingSignupAccount.mockReturnValueOnce(Effect.fail(compensationError))
 
-    const result = await runAuthRequestService(Effect.either(handle(makeSignupRequest())))
+    const result = await runAuthRequestService(Effect.result(handle(makeSignupRequest())))
 
-    expect(result).toMatchObject({ _tag: 'Left', left: error })
+    expect(result).toMatchObject({ _tag: 'Failure', failure: error })
     expect(signupInviteServiceMock.releaseInviteReservation).toHaveBeenCalledWith('reservation-1')
     expect(consoleError).toHaveBeenCalledWith(expect.stringContaining('Failed to compensate orphaned signup account'), expect.objectContaining({
       userId: 'user-1',
@@ -168,13 +168,13 @@ describe('AuthRequestService', () => {
       passwordResetEnabled: false
     })
 
-    const result = await runAuthRequestService(Effect.either(handle(new Request('http://localhost/api/auth/request-password-reset', {
+    const result = await runAuthRequestService(Effect.result(handle(new Request('http://localhost/api/auth/request-password-reset', {
       method: 'POST'
     }))))
 
-    expect(result._tag).toBe('Left')
-    expect(result.left).toBeInstanceOf(PasswordResetUnavailableError)
-    expect(result.left).toMatchObject({
+    expect(result._tag).toBe('Failure')
+    expect(result.failure).toBeInstanceOf(PasswordResetUnavailableError)
+    expect(result.failure).toMatchObject({
       message: 'Password reset email is not available for this deployment. Contact the administrator to reset your password.'
     })
     expect(authMock.handler).not.toHaveBeenCalled()
@@ -185,11 +185,11 @@ describe('AuthRequestService', () => {
       enabled: true
     })
 
-    const result = await runAuthRequestService(Effect.either(handle(new Request('http://localhost/api/auth/change-email'))))
+    const result = await runAuthRequestService(Effect.result(handle(new Request('http://localhost/api/auth/change-email'))))
 
-    expect(result._tag).toBe('Left')
-    expect(result.left).toBeInstanceOf(EmailChangeNotAllowedError)
-    expect(result.left).toMatchObject({
+    expect(result._tag).toBe('Failure')
+    expect(result.failure).toBeInstanceOf(EmailChangeNotAllowedError)
+    expect(result.failure).toMatchObject({
       message: 'Use account settings to change email'
     })
     expect(authMock.handler).not.toHaveBeenCalled()

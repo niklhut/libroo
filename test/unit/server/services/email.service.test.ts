@@ -142,7 +142,7 @@ describe('EmailService', () => {
       }
     }), { status: 422 })))
 
-    const result = await Effect.runPromise(Effect.either(sendEmail({
+    const result = await Effect.runPromise(Effect.result(sendEmail({
       to: 'not-an-email',
       subject: 'Verify your email',
       text: 'Verify with this link'
@@ -150,8 +150,8 @@ describe('EmailService', () => {
       Effect.provide(EmailServiceLive)
     )))
 
-    expect(result._tag).toBe('Left')
-    expect(result.left).toMatchObject({
+    expect(result._tag).toBe('Failure')
+    expect(result.failure).toMatchObject({
       _tag: 'EmailDeliveryError',
       message: '[VALIDATION_ERROR] Invalid recipient'
     })
@@ -171,7 +171,7 @@ describe('EmailService', () => {
       }
     }), { status: 402 })))
 
-    const result = await Effect.runPromise(Effect.either(sendEmail({
+    const result = await Effect.runPromise(Effect.result(sendEmail({
       to: 'ada@example.com',
       subject: 'Verify your email',
       text: 'Verify with this link'
@@ -179,8 +179,8 @@ describe('EmailService', () => {
       Effect.provide(EmailServiceLive)
     )))
 
-    expect(result._tag).toBe('Left')
-    expect(result.left).toMatchObject({
+    expect(result._tag).toBe('Failure')
+    expect(result.failure).toMatchObject({
       _tag: 'EmailDeliveryError',
       message: 'Plunk email sending limit exceeded. Verification email could not be sent; increase the Plunk limit or switch email providers.'
     })

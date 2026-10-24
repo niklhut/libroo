@@ -136,12 +136,12 @@ describe('AccountDeletionRepository', () => {
       updatedAt: now
     })
 
-    const result = await runRepository(db, Effect.either(Effect.flatMap(AccountDeletionRepository, repository =>
+    const result = await runRepository(db, Effect.result(Effect.flatMap(AccountDeletionRepository, repository =>
       repository.deleteAccountData('admin-1')
     )))
 
-    expect(result._tag).toBe('Left')
-    expect(result.left).toBeInstanceOf(LastAdminAccountDeletionError)
+    expect(result._tag).toBe('Failure')
+    expect(result.failure).toBeInstanceOf(LastAdminAccountDeletionError)
     await expect(selectIds(db, user)).resolves.toEqual(['admin-1'])
     await expect(selectIds(db, account)).resolves.toEqual(['account-admin-1'])
   })
@@ -166,12 +166,12 @@ describe('AccountDeletionRepository', () => {
           message: 'Cannot delete the last remaining active admin account'
         }
       }
-    }, Effect.either(Effect.flatMap(AccountDeletionRepository, repository =>
+    }, Effect.result(Effect.flatMap(AccountDeletionRepository, repository =>
       repository.deleteAccountData('admin-1')
     )))
 
-    expect(result._tag).toBe('Left')
-    expect(result.left).toMatchObject({
+    expect(result._tag).toBe('Failure')
+    expect(result.failure).toMatchObject({
       _tag: 'LastAdminAccountDeletionError',
       message: 'Cannot delete the last remaining active admin account'
     })

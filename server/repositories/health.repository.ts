@@ -9,7 +9,7 @@ export interface HealthRepositoryInterface {
   checkDatabase: () => Effect.Effect<void, HealthCheckError>
 }
 
-export class HealthRepository extends Context.Tag('HealthRepository')<HealthRepository, HealthRepositoryInterface>() { }
+export class HealthRepository extends Context.Service<HealthRepository, HealthRepositoryInterface>()('HealthRepository') { }
 
 export const HealthRepositoryLive = Layer.effect(
   HealthRepository,

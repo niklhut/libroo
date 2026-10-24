@@ -6,7 +6,7 @@ export interface EmailCapabilityServiceInterface {
   getCapabilities: () => Effect.Effect<EmailCapabilities>
 }
 
-export class EmailCapabilityService extends Context.Tag('EmailCapabilityService')<EmailCapabilityService, EmailCapabilityServiceInterface>() { }
+export class EmailCapabilityService extends Context.Service<EmailCapabilityService, EmailCapabilityServiceInterface>()('EmailCapabilityService') { }
 
 export const EmailCapabilityServiceLive = Layer.succeed(EmailCapabilityService, {
   getCapabilities: () => Effect.sync(getEmailCapabilities)

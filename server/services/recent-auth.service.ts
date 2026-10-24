@@ -14,7 +14,7 @@ export interface RecentAuthServiceInterface {
   markSessionAsRecentlyAuthenticated: (sessionId: string) => Effect.Effect<void, RecentAuthError>
 }
 
-export class RecentAuthService extends Context.Tag('RecentAuthService')<RecentAuthService, RecentAuthServiceInterface>() { }
+export class RecentAuthService extends Context.Service<RecentAuthService, RecentAuthServiceInterface>()('RecentAuthService') { }
 
 export const RecentAuthServiceLive = Layer.succeed(RecentAuthService, {
   confirmPassword: (event, password) => Effect.gen(function* () {

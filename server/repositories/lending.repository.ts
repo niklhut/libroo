@@ -74,7 +74,7 @@ export interface LendingRepositoryInterface {
   acceptInviteByHash: (tokenHash: string, borrowerUserId: string) => Effect.Effect<BorrowedBook, InvalidInviteError | LoanUnavailableError | DatabaseError, DbService>
 }
 
-export class LendingRepository extends Context.Tag('LendingRepository')<LendingRepository, LendingRepositoryInterface>() { }
+export class LendingRepository extends Context.Service<LendingRepository, LendingRepositoryInterface>()('LendingRepository') { }
 
 function generateId(): string {
   return crypto.randomUUID()

@@ -7,7 +7,7 @@ export interface AdminRepositoryInterface {
   listLastSessionActivityByUserIds: (userIds: string[]) => Effect.Effect<Record<string, Date | null>, DatabaseError, DbService>
 }
 
-export class AdminRepository extends Context.Tag('AdminRepository')<AdminRepository, AdminRepositoryInterface>() { }
+export class AdminRepository extends Context.Service<AdminRepository, AdminRepositoryInterface>()('AdminRepository') { }
 
 export const AdminRepositoryLive = Layer.effect(
   AdminRepository,

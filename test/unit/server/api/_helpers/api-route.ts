@@ -24,7 +24,7 @@ vi.mock('../../../../../server/utils/effect', async () => {
     runEffect: async <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => {
       const exit = await effect.pipe(
         Effect.provide(AuthServiceLive),
-        Effect.catchAll((error: unknown) => {
+        Effect.catch((error: unknown) => {
           if (typeof error === 'object' && error && 'statusCode' in error) {
             return Effect.die(error)
           }
@@ -78,7 +78,7 @@ vi.mock('../../../../../server/utils/effect', async () => {
 
       return Exit.match(exit, {
         onFailure: (cause: Cause.Cause<unknown>) => {
-          const defects = [...Cause.defects(cause)]
+          const defects = [...cause.reasons.filter(Cause.isDieReason).map(reason => reason.defect)]
           throw defects[0] ?? new Error('Unexpected internal error')
         },
         onSuccess: value => value

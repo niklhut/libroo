@@ -19,7 +19,7 @@ export interface PreferencesServiceInterface {
   updatePreferences: (userId: string, input: unknown) => Effect.Effect<PreferencesView, InvalidPreferencesError | PreferencesError, DbService>
 }
 
-export class PreferencesService extends Context.Tag('PreferencesService')<PreferencesService, PreferencesServiceInterface>() { }
+export class PreferencesService extends Context.Service<PreferencesService, PreferencesServiceInterface>()('PreferencesService') { }
 
 const toView = (defaultLibraryStateFilter: LibraryState[]): PreferencesView => ({
   defaultLibraryStateFilter

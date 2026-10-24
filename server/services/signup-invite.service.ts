@@ -62,7 +62,7 @@ export interface SignupInviteServiceInterface {
   deleteCompensatingSignupAccount: (userId: string) => Effect.Effect<boolean, DatabaseError, DbService>
 }
 
-export class SignupInviteService extends Context.Tag('SignupInviteService')<SignupInviteService, SignupInviteServiceInterface>() { }
+export class SignupInviteService extends Context.Service<SignupInviteService, SignupInviteServiceInterface>()('SignupInviteService') { }
 
 export const SignupInviteServiceLive = Layer.effect(
   SignupInviteService,

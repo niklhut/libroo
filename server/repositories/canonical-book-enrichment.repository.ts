@@ -17,7 +17,7 @@ export interface CanonicalBookEnrichmentJob {
   lastError: string | null
 }
 
-export class CanonicalBookEnrichmentRepository extends Context.Tag('CanonicalBookEnrichmentRepository')<
+export class CanonicalBookEnrichmentRepository extends Context.Service<
   CanonicalBookEnrichmentRepository,
   {
     ensurePending: (bookId: string, isbn: string) => Effect.Effect<CanonicalBookEnrichmentJob, DatabaseError, DbService>
@@ -27,7 +27,7 @@ export class CanonicalBookEnrichmentRepository extends Context.Tag('CanonicalBoo
     complete: (bookId: string, claimToken: string, status: 'completed' | 'no_cover' | 'not_found', error: string | null, now: Date) => Effect.Effect<void, DatabaseError, DbService>
     retry: (bookId: string, claimToken: string, nextAttemptAt: Date, error: string, now: Date) => Effect.Effect<void, DatabaseError, DbService>
   }
->() {}
+>()('CanonicalBookEnrichmentRepository') {}
 
 const toJob = (row: typeof canonicalBookEnrichmentJobs.$inferSelect): CanonicalBookEnrichmentJob => ({
   bookId: row.bookId,

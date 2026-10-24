@@ -18,7 +18,7 @@ export interface StorageUsageSnapshotRepositoryInterface {
   upsertSnapshot: (value: StorageUsageSnapshot) => Effect.Effect<StorageUsageSnapshot, DatabaseError, DbService>
 }
 
-export class StorageUsageSnapshotRepository extends Context.Tag('StorageUsageSnapshotRepository')<StorageUsageSnapshotRepository, StorageUsageSnapshotRepositoryInterface>() { }
+export class StorageUsageSnapshotRepository extends Context.Service<StorageUsageSnapshotRepository, StorageUsageSnapshotRepositoryInterface>()('StorageUsageSnapshotRepository') { }
 
 export const StorageUsageSnapshotRepositoryLive = Layer.effect(
   StorageUsageSnapshotRepository,

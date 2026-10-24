@@ -23,7 +23,7 @@ export interface AuditRepositoryInterface {
   deleteOlderThan: (input: { category: AdminAuditCategory, before: Date }) => Effect.Effect<number, DatabaseError, DbService>
 }
 
-export class AuditRepository extends Context.Tag('AuditRepository')<AuditRepository, AuditRepositoryInterface>() { }
+export class AuditRepository extends Context.Service<AuditRepository, AuditRepositoryInterface>()('AuditRepository') { }
 
 export const AuditRepositoryLive = Layer.effect(
   AuditRepository,

@@ -1,5 +1,5 @@
 import { Context, Effect, Layer, Data, Duration } from 'effect'
-import type * as HttpClient from '@effect/platform/HttpClient'
+import type * as HttpClient from 'effect/http/HttpClient'
 import { eq, and, count, desc, asc, inArray, or, sql, notInArray, exists, isNull, not } from 'drizzle-orm'
 import { books, authors, bookAuthors, userBooks, tags, bookSystemTags, userBookTags, loans, user, locations } from 'hub:db:schema'
 import { normalizeTagInput, normalizeSuggestedTags } from '../../shared/utils/tag-ingestion'
@@ -292,7 +292,7 @@ export interface BookRepositoryInterface {
 }
 
 // Service tag
-export class BookRepository extends Context.Tag('BookRepository')<BookRepository, BookRepositoryInterface>() { }
+export class BookRepository extends Context.Service<BookRepository, BookRepositoryInterface>()('BookRepository') { }
 
 // Generate unique ID
 function generateId(): string {
@@ -334,7 +334,7 @@ function findStoredOpenLibraryCover(isbn: string) {
     for (const candidatePath of candidatePaths) {
       const foundPath = yield* getBlob(candidatePath).pipe(
         Effect.map(blob => blob ? candidatePath : null),
-        Effect.catchAll(error =>
+        Effect.catch(error =>
           Effect.logWarning(`Stored Open Library cover ${candidatePath} could not be verified: ${String(error)}`).pipe(
             Effect.as(null)
           )
@@ -778,7 +778,7 @@ export const BookRepositoryLive = Layer.effect(
           yield* setBookAuthors(bookId, data.authors)
         }
       }).pipe(
-        Effect.catchAll(error =>
+        Effect.catch(error =>
           Effect.logWarning(`Skipped Open Library metadata hydration for existing ISBN ${isbn}: ${String(error)}`)
         )
       )
@@ -1003,7 +1003,7 @@ export const BookRepositoryLive = Layer.effect(
               `),
               catch: error => new BookCreateError({ message: `Failed to insert book: ${error}` })
             }).pipe(
-              Effect.catchAll(error => (
+              Effect.catch(error => (
                 (error.message.includes('SQLITE_BUSY') || error.message.includes('database is locked'))
                 && attempt < 6
               )

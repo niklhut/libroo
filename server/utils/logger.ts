@@ -1,4 +1,4 @@
-import { Cause, HashMap, Logger } from 'effect'
+import { Cause, Logger, References } from 'effect'
 
 type LogPayload = Record<string, unknown> & {
   level: string
@@ -7,31 +7,24 @@ type LogPayload = Record<string, unknown> & {
 }
 
 export const structuredLogger = Logger.make<unknown, undefined>((options) => {
-  const annotations = HashMap.reduce(
-    options.annotations,
-    {} as Record<string, unknown>,
-    (payload, value, key) => {
-      payload[key] = value
-      return payload
-    }
-  )
+  const annotations = options.fiber.getRef(References.CurrentLogAnnotations)
   const payload: LogPayload = {
     ...annotations,
-    level: options.logLevel._tag,
+    level: options.logLevel,
     message: String(options.message),
     timestamp: options.date
   }
 
-  if (!Cause.isEmpty(options.cause)) {
+  if (options.cause.reasons.length > 0) {
     payload.cause = Cause.pretty(options.cause)
   }
 
-  switch (options.logLevel._tag) {
+  switch (options.logLevel) {
     case 'Fatal':
     case 'Error':
       console.error(payload)
       break
-    case 'Warning':
+    case 'Warn':
       console.warn(payload)
       break
     case 'Info':
@@ -48,7 +41,4 @@ export const structuredLogger = Logger.make<unknown, undefined>((options) => {
   return undefined
 })
 
-export const StructuredLoggerLive = Logger.replace(
-  Logger.defaultLogger,
-  structuredLogger
-)
+export const StructuredLoggerLive = Logger.layer([structuredLogger])

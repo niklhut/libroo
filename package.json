@@ -29,8 +29,7 @@
   "dependencies": {
     "@better-auth/passkey": "^1.7.12",
     "@comark/nuxt": "^0.8.1",
-    "@effect/platform": "^0.97.2",
-    "@effect/platform-node": "^0.108.2",
+    "@effect/platform-node": "^4.0.6",
     "@iconify-json/lucide": "^1.2.147",
     "@iconify-json/simple-icons": "^1.2.100",
     "@libsql/client": "^0.18.0",
@@ -45,7 +44,7 @@
     "better-auth": "^1.7.12",
     "comark": "0.8.1",
     "drizzle-orm": "^0.45.4",
-    "effect": "^3.22.2",
+    "effect": "^4.0.6",
     "h3": "1.15.11",
     "jose": "^6.2.13",
     "nodemailer": "^10.1.2",

@@ -20,7 +20,7 @@ export interface AuthRequestServiceInterface {
   handleAuthRequest: (request: Request) => Effect.Effect<Response, unknown, AuthRepository | DbService>
 }
 
-export class AuthRequestService extends Context.Tag('AuthRequestService')<AuthRequestService, AuthRequestServiceInterface>() { }
+export class AuthRequestService extends Context.Service<AuthRequestService, AuthRequestServiceInterface>()('AuthRequestService') { }
 
 export const AuthRequestServiceLive = Layer.effect(
   AuthRequestService,
@@ -74,7 +74,7 @@ export const AuthRequestServiceLive = Layer.effect(
             try: () => auth.handler(request),
             catch: error => error
           }).pipe(
-            Effect.catchAll(error =>
+            Effect.catch(error =>
               releaseReservation(signupInviteService, inviteReservationToken).pipe(
                 Effect.andThen(Effect.fail(error))
               )
@@ -93,7 +93,7 @@ export const AuthRequestServiceLive = Layer.effect(
 
             if (userId) {
               yield* signupInviteService.acceptInvite(inviteReservationToken, userId).pipe(
-                Effect.catchAll(error =>
+                Effect.catch(error =>
                   compensateSignupAccount(signupInviteService, userId, inviteReservationToken).pipe(
                     Effect.andThen(releaseReservation(signupInviteService, inviteReservationToken)),
                     Effect.andThen(Effect.fail(error))
@@ -152,7 +152,7 @@ function compensateSignupAccount(
         })
       }
     })),
-    Effect.catchAll(error => Effect.sync(() => {
+    Effect.catch(error => Effect.sync(() => {
       console.error('Failed to compensate orphaned signup account', {
         userId,
         reservationToken,
@@ -178,6 +178,6 @@ function releaseReservation(
   if (!reservationToken) return Effect.void
 
   return signupInviteService.releaseInviteReservation(reservationToken).pipe(
-    Effect.catchAll(() => Effect.void)
+    Effect.catch(() => Effect.void)
   )
 }

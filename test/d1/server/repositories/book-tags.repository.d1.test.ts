@@ -1,7 +1,7 @@
 /// <reference types="@cloudflare/vitest-plugin" />
 
 import { env } from 'cloudflare:workers'
-import { Effect, Either, Layer } from 'effect'
+import { Effect, Result, Layer } from 'effect'
 import { drizzle } from 'drizzle-orm/d1'
 import { asc, eq } from 'drizzle-orm'
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
@@ -72,25 +72,25 @@ describe('BookRepository tag mutations on D1', () => {
   })
 
   it('rejects batch updates for books not owned by the user', async () => {
-    const result = await runRepository(db, Effect.either(Effect.flatMap(BookRepository, repository =>
+    const result = await runRepository(db, Effect.result(Effect.flatMap(BookRepository, repository =>
       repository.batchUpdateTags('ub-1', 'user-2', ['tag-delete'], [], [])
     )))
 
-    expect(Either.isLeft(result)).toBe(true)
-    if (Either.isLeft(result)) {
-      expect(result.left).toBeInstanceOf(BookNotFoundError)
+    expect(Result.isFailure(result)).toBe(true)
+    if (Result.isFailure(result)) {
+      expect(result.failure).toBeInstanceOf(BookNotFoundError)
     }
     await expect(userTagNames(db, 'ub-1')).resolves.toEqual(['Delete Me'])
   })
 
   it('rejects promotion of a tag that is not a system tag for the book', async () => {
-    const result = await runRepository(db, Effect.either(Effect.flatMap(BookRepository, repository =>
+    const result = await runRepository(db, Effect.result(Effect.flatMap(BookRepository, repository =>
       repository.batchUpdateTags('ub-1', 'user-1', [], ['tag-other'], [])
     )))
 
-    expect(Either.isLeft(result)).toBe(true)
-    if (Either.isLeft(result)) {
-      expect(result.left).toBeInstanceOf(BookNotFoundError)
+    expect(Result.isFailure(result)).toBe(true)
+    if (Result.isFailure(result)) {
+      expect(result.failure).toBeInstanceOf(BookNotFoundError)
     }
     await expect(userTagNames(db, 'ub-1')).resolves.toEqual(['Delete Me'])
   })

@@ -1,7 +1,7 @@
 /// <reference types="@cloudflare/vitest-plugin" />
 
 import { env } from 'cloudflare:workers'
-import { Effect, Either, Layer } from 'effect'
+import { Effect, Result, Layer } from 'effect'
 import { drizzle } from 'drizzle-orm/d1'
 import { eq } from 'drizzle-orm'
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
@@ -82,7 +82,7 @@ describe('BookRepository.createManualBook on D1', () => {
   })
 
   it('rejects manual cover paths outside the signed-in user namespace', async () => {
-    const result = await runRepository(db, Effect.either(Effect.flatMap(BookRepository, repository =>
+    const result = await runRepository(db, Effect.result(Effect.flatMap(BookRepository, repository =>
       repository.createManualBook('user-1', {
         title: 'Borrowed Path',
         authors: ['Ada Lovelace'],
@@ -101,9 +101,9 @@ describe('BookRepository.createManualBook on D1', () => {
       })
     )))
 
-    expect(Either.isLeft(result)).toBe(true)
-    if (Either.isLeft(result)) {
-      expect(result.left).toBeInstanceOf(BookCreateError)
+    expect(Result.isFailure(result)).toBe(true)
+    if (Result.isFailure(result)) {
+      expect(result.failure).toBeInstanceOf(BookCreateError)
     }
     await expect(db.select().from(books)).resolves.toHaveLength(0)
     await expect(db.select().from(userBooks)).resolves.toHaveLength(0)
@@ -263,13 +263,13 @@ describe('BookRepository.createManualBook on D1', () => {
       updatedAt: now
     })
 
-    const result = await runRepository(db, Effect.either(Effect.flatMap(BookRepository, repository =>
+    const result = await runRepository(db, Effect.result(Effect.flatMap(BookRepository, repository =>
       repository.updateLibraryState(created.id, 'user-1', 'wishlisted')
     )))
 
-    expect(Either.isLeft(result)).toBe(true)
-    if (Either.isLeft(result)) {
-      expect(result.left).toBeInstanceOf(ActiveLoanRemovalError)
+    expect(Result.isFailure(result)).toBe(true)
+    if (Result.isFailure(result)) {
+      expect(result.failure).toBeInstanceOf(ActiveLoanRemovalError)
     }
     const [stored] = await db
       .select({ libraryState: userBooks.libraryState })

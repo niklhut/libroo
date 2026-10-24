@@ -1,4 +1,4 @@
-import { Effect, Either } from 'effect'
+import { Effect, Result } from 'effect'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { StorageError, StorageService } from '../../../../../server/services/storage.service'
 
@@ -78,14 +78,14 @@ describe('StorageServiceCloudflareLive', () => {
     })
 
     it('rejects unrecognized cover image bytes before storing', async () => {
-      const result = await run(Effect.either(Effect.flatMap(StorageService, service =>
+      const result = await run(Effect.result(Effect.flatMap(StorageService, service =>
         service.putCoverImage('covers/cover', octetFixture)
       )))
 
-      expect(Either.isLeft(result)).toBe(true)
-      if (Either.isLeft(result)) {
-        expect(result.left).toBeInstanceOf(StorageError)
-        expect(result.left).toMatchObject({
+      expect(Result.isFailure(result)).toBe(true)
+      if (Result.isFailure(result)) {
+        expect(result.failure).toBeInstanceOf(StorageError)
+        expect(result.failure).toMatchObject({
           operation: 'convertCoverImage'
         })
       }

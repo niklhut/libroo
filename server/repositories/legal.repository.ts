@@ -1,7 +1,7 @@
 import { Context, Data, Duration, Effect, Layer } from 'effect'
-import * as HttpClient from '@effect/platform/HttpClient'
-import * as HCError from '@effect/platform/HttpClientError'
-import type * as HttpClientType from '@effect/platform/HttpClient'
+import * as HttpClient from 'effect/http/HttpClient'
+import * as HCError from 'effect/http/HttpClientError'
+import type * as HttpClientType from 'effect/http/HttpClient'
 
 const maxLegalDocumentBytes = 256 * 1024
 const defaultLegalMarkdownFetchTimeoutSeconds = 5
@@ -14,7 +14,7 @@ export interface LegalRepositoryInterface {
   fetchMarkdown: (url: string) => Effect.Effect<string, LegalDocumentFetchError, HttpClientType.HttpClient>
 }
 
-export class LegalRepository extends Context.Tag('LegalRepository')<LegalRepository, LegalRepositoryInterface>() { }
+export class LegalRepository extends Context.Service<LegalRepository, LegalRepositoryInterface>()('LegalRepository') { }
 
 function isLegalDocumentFetchError(error: unknown): error is LegalDocumentFetchError {
   return Boolean(error && typeof error === 'object' && '_tag' in error && error._tag === 'LegalDocumentFetchError')

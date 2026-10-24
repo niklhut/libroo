@@ -44,7 +44,7 @@ export interface SignupInviteRepositoryInterface {
   emailExists: (email: string) => Effect.Effect<boolean, DatabaseError, DbService>
 }
 
-export class SignupInviteRepository extends Context.Tag('SignupInviteRepository')<SignupInviteRepository, SignupInviteRepositoryInterface>() { }
+export class SignupInviteRepository extends Context.Service<SignupInviteRepository, SignupInviteRepositoryInterface>()('SignupInviteRepository') { }
 
 export const SignupInviteRepositoryLive = Layer.effect(
   SignupInviteRepository,

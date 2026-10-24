@@ -71,7 +71,7 @@ export interface LocationRepositoryInterface {
   ) => Effect.Effect<void, LocationDeleteError | DatabaseError, DbService>
 }
 
-export class LocationRepository extends Context.Tag('LocationRepository')<LocationRepository, LocationRepositoryInterface>() { }
+export class LocationRepository extends Context.Service<LocationRepository, LocationRepositoryInterface>()('LocationRepository') { }
 
 function generateId(): string {
   return crypto.randomUUID()
@@ -516,12 +516,12 @@ export const LocationRepositoryLive = Layer.effect(
             try: () => executeDeleteLocationStatements(dbService, userId, scopedLocations, mode, targetLocation),
             catch: error => locationDeleteError('The location could not be deleted. Please try again.', error)
           }).pipe(
-            Effect.timeoutFail({
+            Effect.timeoutOrElse({
               duration: deleteLocationAtomicTimeout,
-              onTimeout: () => locationDeleteError(
+              orElse: () => Effect.fail(locationDeleteError(
                 'The location delete request timed out before its final state could be confirmed. Please refresh before trying again.',
                 new Error('deleteLocation timed out; database batch outcome is unknown')
-              )
+              ))
             })
           )
           if (affectedRows(results.at(-1)) === 0) {

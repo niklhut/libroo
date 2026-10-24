@@ -1,7 +1,7 @@
 /// <reference types="@cloudflare/vitest-plugin" />
 
 import { env } from 'cloudflare:workers'
-import { Effect, Either, Layer } from 'effect'
+import { Effect, Result, Layer } from 'effect'
 import { drizzle } from 'drizzle-orm/d1'
 import { eq } from 'drizzle-orm'
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
@@ -102,13 +102,13 @@ describe('AccountDeletionRepository on D1', () => {
       updatedAt: now
     })
 
-    const result = await runRepository(db, Effect.either(Effect.flatMap(AccountDeletionRepository, repository =>
+    const result = await runRepository(db, Effect.result(Effect.flatMap(AccountDeletionRepository, repository =>
       repository.deleteAccountData('admin-1')
     )))
 
-    expect(Either.isLeft(result)).toBe(true)
-    if (Either.isLeft(result)) {
-      expect(result.left).toBeInstanceOf(LastAdminAccountDeletionError)
+    expect(Result.isFailure(result)).toBe(true)
+    if (Result.isFailure(result)) {
+      expect(result.failure).toBeInstanceOf(LastAdminAccountDeletionError)
     }
     await expect(selectIds(db, user)).resolves.toEqual(['admin-1'])
     await expect(selectIds(db, account)).resolves.toEqual(['account-admin-1'])
@@ -139,13 +139,13 @@ describe('AccountDeletionRepository on D1', () => {
 
     await db.delete(user).where(eq(user.id, 'admin-2'))
 
-    const result = await runRepository(db, Effect.either(Effect.flatMap(AccountDeletionRepository, repository =>
+    const result = await runRepository(db, Effect.result(Effect.flatMap(AccountDeletionRepository, repository =>
       repository.deleteAccountData('admin-1')
     )))
 
-    expect(Either.isLeft(result)).toBe(true)
-    if (Either.isLeft(result)) {
-      expect(result.left).toBeInstanceOf(LastAdminAccountDeletionError)
+    expect(Result.isFailure(result)).toBe(true)
+    if (Result.isFailure(result)) {
+      expect(result.failure).toBeInstanceOf(LastAdminAccountDeletionError)
     }
     await expect(selectIds(db, user)).resolves.toEqual(['admin-1'])
     await expect(selectIds(db, account)).resolves.toEqual(['account-admin-1'])

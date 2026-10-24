@@ -12,10 +12,10 @@ describe('MetricsService', () => {
     const metricsRepository = fakeMetricsRepository()
     const storageRepository = { getSnapshot: vi.fn(() => Effect.succeed(null)), upsertSnapshot: vi.fn() }
 
-    const result = await run(Effect.either(getAdminMetrics({ actor: { id: 'user-1', role: 'user' }, headers: new Headers() })), metricsRepository, storageRepository)
+    const result = await run(Effect.result(getAdminMetrics({ actor: { id: 'user-1', role: 'user' }, headers: new Headers() })), metricsRepository, storageRepository)
 
-    expect(result._tag).toBe('Left')
-    if (result._tag === 'Left') expect(result.left).toBeInstanceOf(AdminAccessForbiddenError)
+    expect(result._tag).toBe('Failure')
+    if (result._tag === 'Failure') expect(result.failure).toBeInstanceOf(AdminAccessForbiddenError)
     expect(metricsRepository.countUsers).not.toHaveBeenCalled()
     expect(storageRepository.getSnapshot).not.toHaveBeenCalled()
   })

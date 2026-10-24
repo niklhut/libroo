@@ -54,10 +54,10 @@ export interface LibraryTransferRepositoryInterface {
   ) => Effect.Effect<LibraryImportRepositoryResult, DatabaseError, DbService>
 }
 
-export class LibraryTransferRepository extends Context.Tag('LibraryTransferRepository')<
+export class LibraryTransferRepository extends Context.Service<
   LibraryTransferRepository,
   LibraryTransferRepositoryInterface
->() { }
+>()('LibraryTransferRepository') { }
 
 function generateId(): string {
   return crypto.randomUUID()

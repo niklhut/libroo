@@ -21,7 +21,7 @@ export interface PreferencesRepositoryInterface {
   upsertPreferences: (userId: string, defaultLibraryStateFilter: LibraryState[]) => Effect.Effect<UserPreferences, PreferencesError, DbService>
 }
 
-export class PreferencesRepository extends Context.Tag('PreferencesRepository')<PreferencesRepository, PreferencesRepositoryInterface>() { }
+export class PreferencesRepository extends Context.Service<PreferencesRepository, PreferencesRepositoryInterface>()('PreferencesRepository') { }
 
 const normalizeStoredFilter = (value: unknown): LibraryState[] => {
   if (!Array.isArray(value)) return []

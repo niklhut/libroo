@@ -16,7 +16,7 @@ export interface RateLimitServiceInterface {
   ) => Effect.Effect<{ deleted: number, windowSeconds: number }, DatabaseError, RateLimitRepository | DbService>
 }
 
-export class RateLimitService extends Context.Tag('RateLimitService')<RateLimitService, RateLimitServiceInterface>() { }
+export class RateLimitService extends Context.Service<RateLimitService, RateLimitServiceInterface>()('RateLimitService') { }
 
 export const RateLimitServiceLive = Layer.effect(
   RateLimitService,

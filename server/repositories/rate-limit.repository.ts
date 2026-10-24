@@ -8,7 +8,7 @@ export interface RateLimitRepositoryInterface {
   deleteOlderThan: (before: number) => Effect.Effect<number, DatabaseError, DbService>
 }
 
-export class RateLimitRepository extends Context.Tag('RateLimitRepository')<RateLimitRepository, RateLimitRepositoryInterface>() { }
+export class RateLimitRepository extends Context.Service<RateLimitRepository, RateLimitRepositoryInterface>()('RateLimitRepository') { }
 
 export const RateLimitRepositoryLive = Layer.effect(
   RateLimitRepository,

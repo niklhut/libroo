@@ -1,5 +1,5 @@
 import { Context, Data, Effect, Layer } from 'effect'
-import type * as HttpClient from '@effect/platform/HttpClient'
+import type * as HttpClient from 'effect/http/HttpClient'
 import { LegalRepository, type LegalDocumentFetchError } from '../repositories/legal.repository'
 import type { LegalDocument, LegalDocumentKind, LegalStatus } from '~~/shared/types/legal'
 
@@ -12,7 +12,7 @@ export interface LegalServiceInterface {
   getStatus: () => Effect.Effect<LegalStatus>
 }
 
-export class LegalService extends Context.Tag('LegalService')<LegalService, LegalServiceInterface>() { }
+export class LegalService extends Context.Service<LegalService, LegalServiceInterface>()('LegalService') { }
 
 function configString(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''

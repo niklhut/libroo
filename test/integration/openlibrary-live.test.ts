@@ -1,6 +1,6 @@
 import { Effect, Layer } from 'effect'
-import * as FetchHttpClient from '@effect/platform/FetchHttpClient'
-import type * as HttpClient from '@effect/platform/HttpClient'
+import * as FetchHttpClient from 'effect/http/FetchHttpClient'
+import type * as HttpClient from 'effect/http/HttpClient'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   OpenLibraryRepository,

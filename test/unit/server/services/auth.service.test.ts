@@ -111,13 +111,13 @@ describe('AuthService', () => {
       session: { id: 'session-1' }
     })
 
-    const result = await runAuthService(Effect.either(
+    const result = await runAuthService(Effect.result(
       Effect.flatMap(AuthService, service => service.requireAuth(makeEvent()))
     ))
 
-    expect(result._tag).toBe('Left')
-    expect(result.left).toBeInstanceOf(UnauthorizedError)
-    expect(result.left).toMatchObject({
+    expect(result._tag).toBe('Failure')
+    expect(result.failure).toBeInstanceOf(UnauthorizedError)
+    expect(result.failure).toMatchObject({
       message: 'Account is banned'
     })
   })
@@ -149,12 +149,12 @@ describe('AuthService', () => {
     const event = makeEvent()
     authMock.getSession.mockResolvedValueOnce(null)
 
-    const result = await runAuthService(Effect.either(
+    const result = await runAuthService(Effect.result(
       Effect.flatMap(AuthService, service => service.requireAuth(event))
     ))
 
-    expect(result._tag).toBe('Left')
-    expect(result.left).toMatchObject({
+    expect(result._tag).toBe('Failure')
+    expect(result.failure).toMatchObject({
       message: 'No active session'
     })
     expect(authSessionLoggerMock.logAuthSessionResolution).toHaveBeenCalledWith({
@@ -168,12 +168,12 @@ describe('AuthService', () => {
     const error = new Error('database offline')
     authMock.getSession.mockRejectedValueOnce(error)
 
-    const result = await runAuthService(Effect.either(
+    const result = await runAuthService(Effect.result(
       Effect.flatMap(AuthService, service => service.requireAuth(event))
     ))
 
-    expect(result._tag).toBe('Left')
-    expect(result.left).toMatchObject({
+    expect(result._tag).toBe('Failure')
+    expect(result.failure).toMatchObject({
       message: 'Failed to get session'
     })
     expect(authSessionLoggerMock.logAuthSessionResolution).toHaveBeenCalledWith({
@@ -301,12 +301,12 @@ describe('AuthService', () => {
       session: { id: 'session-1' }
     })
 
-    const result = await runAuthService(Effect.either(
+    const result = await runAuthService(Effect.result(
       Effect.flatMap(AuthService, service => service.requireVerifiedAuth(makeEvent()))
     ))
 
-    expect(result._tag).toBe('Left')
-    expect(result.left).toMatchObject({
+    expect(result._tag).toBe('Failure')
+    expect(result.failure).toMatchObject({
       message: 'Email verification required'
     })
   })
@@ -380,12 +380,12 @@ describe('AuthService', () => {
     })
     authMock.sendVerificationEmail.mockRejectedValueOnce(new Error('transport failed'))
 
-    const result = await runAuthService(Effect.either(
+    const result = await runAuthService(Effect.result(
       Effect.flatMap(AuthService, service => service.resendVerificationEmail(makeEvent()))
     ))
 
-    expect(result._tag).toBe('Left')
-    expect(result.left).toMatchObject({
+    expect(result._tag).toBe('Failure')
+    expect(result.failure).toMatchObject({
       _tag: 'VerificationEmailDeliveryError',
       message: 'Unable to send verification email'
     })
@@ -463,12 +463,12 @@ describe('AuthService', () => {
       session: { id: 'session-1' }
     })
 
-    const result = await runAuthService(Effect.either(
+    const result = await runAuthService(Effect.result(
       Effect.flatMap(AuthService, service => service.setPendingEmailChange(makeEvent(), 'ada.new@example.com', ''))
     ))
 
-    expect(result._tag).toBe('Left')
-    expect(result.left).toMatchObject({
+    expect(result._tag).toBe('Failure')
+    expect(result.failure).toMatchObject({
       _tag: 'UnauthorizedError',
       message: 'You need to sign in again.'
     })
@@ -488,12 +488,12 @@ describe('AuthService', () => {
     })
     authRepoMock.emailIsInUse.mockReturnValueOnce(Effect.succeed(true))
 
-    const result = await runAuthService(Effect.either(
+    const result = await runAuthService(Effect.result(
       Effect.flatMap(AuthService, service => service.setPendingEmailChange(makeEvent(), 'taken@example.com', 'current-password'))
     ))
 
-    expect(result._tag).toBe('Left')
-    expect(result.left).toMatchObject({
+    expect(result._tag).toBe('Failure')
+    expect(result.failure).toMatchObject({
       _tag: 'PendingEmailConflictError',
       message: 'Email is already in use'
     })
@@ -512,12 +512,12 @@ describe('AuthService', () => {
       session: { id: 'session-1' }
     })
 
-    const result = await runAuthService(Effect.either(
+    const result = await runAuthService(Effect.result(
       Effect.flatMap(AuthService, service => service.setPendingEmailChange(makeEvent(), 'ada.new@example.com', 'current-password'))
     ))
 
-    expect(result._tag).toBe('Left')
-    expect(result.left).toMatchObject({
+    expect(result._tag).toBe('Failure')
+    expect(result.failure).toMatchObject({
       _tag: 'EmailCapabilityDisabledError',
       message: 'Email-change verification is not enabled. Change email with current password instead.'
     })
@@ -581,12 +581,12 @@ describe('AuthService', () => {
     })
     authRepoMock.getPendingEmailByCurrentEmail.mockReturnValueOnce(Effect.succeed('ada.new@example.com'))
 
-    const result = await runAuthService(Effect.either(
+    const result = await runAuthService(Effect.result(
       Effect.flatMap(AuthService, service => service.validateEmailVerificationToken('token'))
     ))
 
-    expect(result._tag).toBe('Left')
-    expect(result.left).toMatchObject({
+    expect(result._tag).toBe('Failure')
+    expect(result.failure).toMatchObject({
       _tag: 'InvalidEmailVerificationTokenError',
       message: 'This email change link is no longer active. Request a new verification email from settings.'
     })
@@ -600,12 +600,12 @@ describe('AuthService', () => {
       value: new Date()
     }))
 
-    const result = await runAuthService(Effect.either(
+    const result = await runAuthService(Effect.result(
       Effect.flatMap(AuthService, service => service.validateEmailVerificationToken('token'))
     ))
 
-    expect(result._tag).toBe('Left')
-    expect(result.left).toMatchObject({
+    expect(result._tag).toBe('Failure')
+    expect(result.failure).toMatchObject({
       _tag: 'ExpiredEmailVerificationTokenError',
       message: 'TOKEN_EXPIRED'
     })

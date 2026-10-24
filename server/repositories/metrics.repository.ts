@@ -13,7 +13,7 @@ export interface MetricsRepositoryInterface {
   countTags: () => Effect.Effect<number, DatabaseError, DbService>
 }
 
-export class MetricsRepository extends Context.Tag('MetricsRepository')<MetricsRepository, MetricsRepositoryInterface>() { }
+export class MetricsRepository extends Context.Service<MetricsRepository, MetricsRepositoryInterface>()('MetricsRepository') { }
 
 export const MetricsRepositoryLive = Layer.effect(
   MetricsRepository,

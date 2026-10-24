@@ -1,5 +1,5 @@
 import { Effect, Layer } from 'effect'
-import * as HttpClient from '@effect/platform/HttpClient'
+import * as HttpClient from 'effect/http/HttpClient'
 import { describe, expect, it, vi } from 'vitest'
 import { DbService } from '../../../../server/services/db.service'
 import { StorageService, type StorageServiceInterface } from '../../../../server/services/storage.service'

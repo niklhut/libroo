@@ -1,5 +1,5 @@
 import { Context, Data, Effect, Layer } from 'effect'
-import type * as HttpClient from '@effect/platform/HttpClient'
+import type * as HttpClient from 'effect/http/HttpClient'
 import { BookEnrichmentRepository, type BookEnrichmentUpdateRecord, type ClaimedBookEnrichmentJob } from '../repositories/book-enrichment.repository'
 import { BookRepository, type DatabaseError } from '../repositories/book.repository'
 import { OpenLibraryRepository } from '../repositories/openLibrary.repository'
@@ -43,10 +43,10 @@ export class InvalidEnrichmentBatchError extends Data.TaggedError('InvalidEnrich
   message: string
 }> {}
 
-export class BookEnrichmentService extends Context.Tag('BookEnrichmentService')<
+export class BookEnrichmentService extends Context.Service<
   BookEnrichmentService,
   BookEnrichmentServiceInterface
->() {}
+>()('BookEnrichmentService') {}
 
 function groupJobsByIsbn(jobs: ClaimedBookEnrichmentJob[]) {
   const grouped = new Map<string, ClaimedBookEnrichmentJob[]>()
@@ -157,25 +157,25 @@ export const BookEnrichmentServiceLive = Layer.effect(
       if (acquiredIsbns.length === 0) return result
 
       const releaseLocks = enrichmentRepo.releaseIsbnLocks(acquiredIsbns, claimToken).pipe(
-        Effect.catchAll(error => Effect.logWarning(`Failed to release enrichment ISBN locks: ${String(error)}`))
+        Effect.catch(error => Effect.logWarning(`Failed to release enrichment ISBN locks: ${String(error)}`))
       )
       yield* Effect.gen(function* () {
-        const lookupResult = yield* Effect.either(openLibraryRepo.lookupByISBNs(acquiredIsbns))
-        if (lookupResult._tag === 'Left') {
+        const lookupResult = yield* Effect.result(openLibraryRepo.lookupByISBNs(acquiredIsbns))
+        if (lookupResult._tag === 'Failure') {
           for (const isbn of acquiredIsbns) {
             for (const job of groupedJobs.get(isbn) ?? []) {
               if (job.attempts >= job.maxAttempts) {
-                yield* enrichmentRepo.markFailed(job.id, job.claimToken, lookupResult.left.message, now)
+                yield* enrichmentRepo.markFailed(job.id, job.claimToken, lookupResult.failure.message, now)
                 result.failed++
               } else {
-                yield* enrichmentRepo.scheduleRetry(job.id, job.claimToken, retryAt(now, job.attempts, config.backoffSeconds), lookupResult.left.message, now)
+                yield* enrichmentRepo.scheduleRetry(job.id, job.claimToken, retryAt(now, job.attempts, config.backoffSeconds), lookupResult.failure.message, now)
                 result.retried++
               }
             }
           }
           return
         }
-        const metadataByIsbn = lookupResult.right
+        const metadataByIsbn = lookupResult.success
         const coverCandidates = acquiredIsbns.filter(isbn => Boolean(metadataByIsbn.get(isbn)?.coverUrl))
         const storedEntries = yield* Effect.forEach(coverCandidates, isbn => bookRepo.findStoredOpenLibraryCover(isbn).pipe(Effect.map(pathname => [isbn, pathname] as const)), { concurrency: config.concurrency })
         const coverPaths = new Map(storedEntries)
@@ -204,17 +204,17 @@ export const BookEnrichmentServiceLive = Layer.effect(
             }
             appliedCount++
             const tagsStartedAt = Date.now()
-            const tagsResult = yield* Effect.either(bookRepo.addSystemTagsToBook(job.bookId, data.subjects ?? []))
+            const tagsResult = yield* Effect.result(bookRepo.addSystemTagsToBook(job.bookId, data.subjects ?? []))
             yield* Effect.logInfo('CSV enrichment tags hydrated').pipe(Effect.annotateLogs({
               batchId: job.batchId, bookId: job.bookId, durationMs: Date.now() - tagsStartedAt,
-              outcome: tagsResult._tag === 'Right' ? 'success' : 'failure'
+              outcome: tagsResult._tag === 'Success' ? 'success' : 'failure'
             }))
-            if (tagsResult._tag === 'Left') {
+            if (tagsResult._tag === 'Failure') {
               if (job.attempts >= job.maxAttempts) {
-                yield* enrichmentRepo.markFailed(job.id, job.claimToken, tagsResult.left.message, now)
+                yield* enrichmentRepo.markFailed(job.id, job.claimToken, tagsResult.failure.message, now)
                 result.failed++
               } else {
-                yield* enrichmentRepo.scheduleRetry(job.id, job.claimToken, retryAt(now, job.attempts, config.backoffSeconds), tagsResult.left.message, now)
+                yield* enrichmentRepo.scheduleRetry(job.id, job.claimToken, retryAt(now, job.attempts, config.backoffSeconds), tagsResult.failure.message, now)
                 result.retried++
               }
               continue
@@ -234,7 +234,7 @@ export const BookEnrichmentServiceLive = Layer.effect(
           const coverPath = coverPaths.get(isbn)
           if (appliedCount === 0 && coverPath && freshlyDownloaded.has(coverPath)) {
             yield* cleanupSharedCoverIfUnreferenced(coverPath).pipe(
-              Effect.catchAll(error => Effect.logWarning(`Failed to clean up unreferenced enrichment cover ${coverPath}: ${String(error)}`))
+              Effect.catch(error => Effect.logWarning(`Failed to clean up unreferenced enrichment cover ${coverPath}: ${String(error)}`))
             )
           }
         }

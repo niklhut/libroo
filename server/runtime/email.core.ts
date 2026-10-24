@@ -17,7 +17,7 @@ export interface EmailServiceInterface {
   sendEmail: (message: EmailMessage) => Effect.Effect<void, EmailDeliveryError>
 }
 
-export class EmailService extends Context.Tag('EmailService')<EmailService, EmailServiceInterface>() { }
+export class EmailService extends Context.Service<EmailService, EmailServiceInterface>()('EmailService') { }
 
 export const sendEmail = (message: EmailMessage) =>
   Effect.flatMap(EmailService, service => service.sendEmail(message))
