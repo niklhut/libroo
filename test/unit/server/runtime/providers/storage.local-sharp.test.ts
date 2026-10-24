@@ -1,4 +1,4 @@
-import { Effect, Either } from 'effect'
+import { Effect, Result } from 'effect'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -84,14 +84,14 @@ describe('StorageServiceLocalSharpLive', () => {
     })
 
     it('fails malformed cover images with a convertCoverImage StorageError', async () => {
-      const result = await run(Effect.either(Effect.flatMap(StorageService, service =>
+      const result = await run(Effect.result(Effect.flatMap(StorageService, service =>
         service.putCoverImage('covers/bad-cover', invalidFixture)
       )))
 
-      expect(Either.isLeft(result)).toBe(true)
-      if (Either.isLeft(result)) {
-        expect(result.left).toBeInstanceOf(StorageError)
-        expect(result.left).toMatchObject({
+      expect(Result.isFailure(result)).toBe(true)
+      if (Result.isFailure(result)) {
+        expect(result.failure).toBeInstanceOf(StorageError)
+        expect(result.failure).toMatchObject({
           operation: 'convertCoverImage'
         })
       }
@@ -112,28 +112,28 @@ describe('StorageServiceLocalSharpLive', () => {
     ]
 
     it.each(unsafePathnames)('rejects unsafe put pathname %s before disk access', async (pathname) => {
-      const result = await run(Effect.either(Effect.flatMap(StorageService, service =>
+      const result = await run(Effect.result(Effect.flatMap(StorageService, service =>
         service.put(pathname, Buffer.from('data'), { contentType: 'text/plain' })
       )))
 
-      expect(Either.isLeft(result)).toBe(true)
-      if (Either.isLeft(result)) {
-        expect(result.left).toBeInstanceOf(StorageError)
-        expect(result.left).toMatchObject({
+      expect(Result.isFailure(result)).toBe(true)
+      if (Result.isFailure(result)) {
+        expect(result.failure).toBeInstanceOf(StorageError)
+        expect(result.failure).toMatchObject({
           operation: 'put'
         })
       }
     })
 
     it.each(unsafePathnames)('rejects unsafe get pathname %s before disk access', async (pathname) => {
-      const result = await run(Effect.either(Effect.flatMap(StorageService, service =>
+      const result = await run(Effect.result(Effect.flatMap(StorageService, service =>
         service.get(pathname)
       )))
 
-      expect(Either.isLeft(result)).toBe(true)
-      if (Either.isLeft(result)) {
-        expect(result.left).toBeInstanceOf(StorageError)
-        expect(result.left).toMatchObject({
+      expect(Result.isFailure(result)).toBe(true)
+      if (Result.isFailure(result)) {
+        expect(result.failure).toBeInstanceOf(StorageError)
+        expect(result.failure).toMatchObject({
           operation: 'get'
         })
       }
@@ -148,11 +148,11 @@ describe('StorageServiceLocalSharpLive', () => {
       process.env.NUXT_LOCAL_STORAGE_DIR = fileRoot
 
       try {
-        const result = await run(Effect.either(Effect.flatMap(StorageService, service => service.getUsage('covers/'))))
+        const result = await run(Effect.result(Effect.flatMap(StorageService, service => service.getUsage('covers/'))))
 
-        expect(Either.isLeft(result)).toBe(true)
-        if (Either.isLeft(result)) {
-          expect(result.left).toMatchObject({ operation: 'getUsage' })
+        expect(Result.isFailure(result)).toBe(true)
+        if (Result.isFailure(result)) {
+          expect(result.failure).toMatchObject({ operation: 'getUsage' })
         }
       } finally {
         if (previousRoot === undefined) {

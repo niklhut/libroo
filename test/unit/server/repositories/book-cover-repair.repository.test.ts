@@ -8,7 +8,7 @@ import enrichmentMigration from '../../../../server/db/migrations/sqlite/0012_im
 import authFactorsMigration from '../../../../server/db/migrations/sqlite/0013_auth-two-factor-passkeys.sql?raw'
 import durableOpenLibraryPayloadMigration from '../../../../server/db/migrations/sqlite/0019_durable_open_library_payload.sql?raw'
 import { Effect, Layer } from 'effect'
-import * as HttpClient from '@effect/platform/HttpClient'
+import * as HttpClient from 'effect/http/HttpClient'
 import { createClient } from '@libsql/client'
 import { drizzle } from 'drizzle-orm/libsql'
 import { eq } from 'drizzle-orm'

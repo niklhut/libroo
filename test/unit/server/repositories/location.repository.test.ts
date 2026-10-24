@@ -155,7 +155,7 @@ describe.each<AtomicMode>(['d1-batch', 'selfhost-transaction'])('LocationReposit
     await seedLocations(db)
     const root = await getLocation(db, 'root')
 
-    const result = await Effect.runPromise(Effect.either(repositoryEffect(
+    const result = await Effect.runPromise(Effect.result(repositoryEffect(
       db,
       mode,
       Effect.flatMap(LocationRepository, repository =>
@@ -171,10 +171,10 @@ describe.each<AtomicMode>(['d1-batch', 'selfhost-transaction'])('LocationReposit
       }
     )))
 
-    expect(result._tag).toBe('Left')
-    if (result._tag === 'Left') {
-      expect(result.left).toBeInstanceOf(LocationUpdateError)
-      expect(result.left.message).toContain('hierarchy changed')
+    expect(result._tag).toBe('Failure')
+    if (result._tag === 'Failure') {
+      expect(result.failure).toBeInstanceOf(LocationUpdateError)
+      expect(result.failure.message).toContain('hierarchy changed')
     }
     await expect(locationPaths(db)).resolves.toEqual([
       { id: 'child', path: 'Concurrent Name - Row', depth: 1 },
@@ -216,7 +216,7 @@ describe.each<AtomicMode>(['d1-batch', 'selfhost-transaction'])('LocationReposit
     const child = await getLocation(db, 'child')
     const otherRoot = await getLocation(db, 'other-root')
 
-    const result = await Effect.runPromise(Effect.either(repositoryEffect(
+    const result = await Effect.runPromise(Effect.result(repositoryEffect(
       db,
       mode,
       Effect.flatMap(LocationRepository, repository =>
@@ -229,10 +229,10 @@ describe.each<AtomicMode>(['d1-batch', 'selfhost-transaction'])('LocationReposit
       }
     )))
 
-    expect(result._tag).toBe('Left')
-    if (result._tag === 'Left') {
-      expect(result.left).toBeInstanceOf(LocationUpdateError)
-      expect(result.left.message).toContain('hierarchy changed')
+    expect(result._tag).toBe('Failure')
+    if (result._tag === 'Failure') {
+      expect(result.failure).toBeInstanceOf(LocationUpdateError)
+      expect(result.failure.message).toContain('hierarchy changed')
     }
     await expect(locationPaths(db)).resolves.toEqual([
       { id: 'child', path: 'Shelf - Row', depth: 1 },
@@ -287,7 +287,7 @@ describe.each<AtomicMode>(['d1-batch', 'selfhost-transaction'])('LocationReposit
       })
       .where(eq(locations.id, 'other-root'))
 
-    const result = await Effect.runPromise(Effect.either(repositoryEffect(
+    const result = await Effect.runPromise(Effect.result(repositoryEffect(
       db,
       mode,
       Effect.flatMap(LocationRepository, repository =>
@@ -295,10 +295,10 @@ describe.each<AtomicMode>(['d1-batch', 'selfhost-transaction'])('LocationReposit
       )
     )))
 
-    expect(result._tag).toBe('Left')
-    if (result._tag === 'Left') {
-      expect(result.left).toBeInstanceOf(LocationDeleteError)
-      expect(result.left.message).toContain('hierarchy changed')
+    expect(result._tag).toBe('Failure')
+    if (result._tag === 'Failure') {
+      expect(result.failure).toBeInstanceOf(LocationDeleteError)
+      expect(result.failure.message).toContain('hierarchy changed')
     }
     await expect(bookLocation(db)).resolves.toBe('grandchild')
     await expect(locationPaths(db)).resolves.toEqual([
@@ -362,16 +362,16 @@ describe.each<AtomicMode>(['d1-batch', 'selfhost-transaction'])('LocationReposit
 
     const root = await getLocation(db, 'root')
     const target = await getLocation(db, 'other-root')
-    const result = await Effect.runPromise(Effect.either(repositoryEffect(db, mode,
+    const result = await Effect.runPromise(Effect.result(repositoryEffect(db, mode,
       Effect.flatMap(LocationRepository, repository =>
         repository.deleteLocation('user-1', root, 'move', target)
       )
     )))
 
-    expect(result._tag).toBe('Left')
-    if (result._tag === 'Left') {
-      expect(result.left).toBeInstanceOf(LocationDeleteError)
-      expect(result.left.message).toBe('The location could not be deleted. Please try again.')
+    expect(result._tag).toBe('Failure')
+    if (result._tag === 'Failure') {
+      expect(result.failure).toBeInstanceOf(LocationDeleteError)
+      expect(result.failure.message).toBe('The location could not be deleted. Please try again.')
     }
     await expect(bookLocation(db)).resolves.toBe('grandchild')
     await expect(locationPaths(db)).resolves.toEqual([

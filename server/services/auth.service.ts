@@ -76,7 +76,7 @@ export interface AuthServiceInterface {
 }
 
 // Service tag
-export class AuthService extends Context.Tag('AuthService')<AuthService, AuthServiceInterface>() { }
+export class AuthService extends Context.Service<AuthService, AuthServiceInterface>()('AuthService') { }
 
 // Helper to fetch session from event
 const fetchSession = (event: H3Event): Effect.Effect<SessionData, UnauthorizedError> =>

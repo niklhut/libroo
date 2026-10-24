@@ -1,6 +1,6 @@
-import { Effect, Either, Layer } from 'effect'
-import * as HttpClient from '@effect/platform/HttpClient'
-import * as HttpClientResponse from '@effect/platform/HttpClientResponse'
+import { Effect, Result, Layer } from 'effect'
+import * as HttpClient from 'effect/http/HttpClient'
+import * as HttpClientResponse from 'effect/http/HttpClientResponse'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   OPEN_LIBRARY_COVER_STORAGE_CONCURRENCY,
@@ -211,15 +211,15 @@ describe('OpenLibraryRepository details lookup', () => {
     })
 
     const result = await Effect.runPromise(Effect.flatMap(OpenLibraryRepository, repository =>
-      repository.lookupCoreByISBN('9780306406157').pipe(Effect.either)
+      repository.lookupCoreByISBN('9780306406157').pipe(Effect.result)
     ).pipe(
       Effect.provide(OpenLibraryRepositoryLive),
       Effect.provide(Layer.succeed(DbService, { executeAtomic: vi.fn() } as never)),
       Effect.provide(Layer.succeed(HttpClient.HttpClient, httpClient))
     ))
 
-    expect(Either.isLeft(result)).toBe(true)
-    if (Either.isLeft(result)) expect(result.left).toBeInstanceOf(OpenLibraryBookNotFoundError)
+    expect(Result.isFailure(result)).toBe(true)
+    if (Result.isFailure(result)) expect(result.failure).toBeInstanceOf(OpenLibraryBookNotFoundError)
     expect(requestedUrls.map(url => new URL(url).pathname)).toEqual(['/search.json'])
   })
 
@@ -469,17 +469,17 @@ describe('OpenLibraryRepository details lookup', () => {
     const result = await Effect.runPromise(Effect.flatMap(OpenLibraryRepository, repository =>
       repository.lookupByISBNs(['9780306406157'])
     ).pipe(
-      Effect.either,
+      Effect.result,
       Effect.provide(OpenLibraryRepositoryLive),
       Effect.provide(Layer.succeed(DbService, { executeAtomic: vi.fn() } as never)),
       Effect.provide(Layer.succeed(HttpClient.HttpClient, httpClient))
     ))
 
-    expect(Either.isLeft(result)).toBe(true)
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe('OpenLibraryApiError')
-      expect(result.left.message).toBe('Open Library returned HTTP 429 for /search.json')
-      expect(result.left.status).toBe(429)
+    expect(Result.isFailure(result)).toBe(true)
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe('OpenLibraryApiError')
+      expect(result.failure.message).toBe('Open Library returned HTTP 429 for /search.json')
+      expect(result.failure.status).toBe(429)
     }
   })
 

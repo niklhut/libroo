@@ -36,10 +36,10 @@ export interface LibraryTransferServiceInterface {
   ) => Effect.Effect<LibraryImportResult, InvalidLibraryCsvError | DatabaseError, BookEnrichmentRepository | DbService | StorageService>
 }
 
-export class LibraryTransferService extends Context.Tag('LibraryTransferService')<
+export class LibraryTransferService extends Context.Service<
   LibraryTransferService,
   LibraryTransferServiceInterface
->() { }
+>()('LibraryTransferService') { }
 
 const SHARED_COVER_CLEANUP_LEASE_MS = 60_000
 
@@ -214,7 +214,7 @@ export const LibraryTransferServiceLive = Layer.effect(
               new Date(now.getTime() + SHARED_COVER_CLEANUP_LEASE_MS),
               now
             ).pipe(
-              Effect.catchAll(error =>
+              Effect.catch(error =>
                 Effect.logWarning(`Failed to lock replaced import cover ${pathname}: ${String(error)}`).pipe(
                   Effect.as(new Set<string>())
                 )
@@ -224,7 +224,7 @@ export const LibraryTransferServiceLive = Layer.effect(
 
             yield* Effect.gen(function* () {
               const referenced = yield* enrichmentRepo.isCoverReferenced(pathname).pipe(
-                Effect.catchAll(error =>
+                Effect.catch(error =>
                   Effect.logWarning(`Failed to check replaced import cover ${pathname}: ${String(error)}`).pipe(
                     Effect.as(true)
                   )
@@ -232,14 +232,14 @@ export const LibraryTransferServiceLive = Layer.effect(
               )
               if (referenced) return
               yield* deleteBlob(pathname).pipe(
-                Effect.catchAll(error =>
+                Effect.catch(error =>
                   Effect.logWarning(`Failed to delete replaced import cover ${pathname}: ${String(error)}`)
                 )
               )
             }).pipe(
               Effect.ensuring(
                 enrichmentRepo.releaseIsbnLocks([isbn], claimToken).pipe(
-                  Effect.catchAll(error =>
+                  Effect.catch(error =>
                     Effect.logWarning(`Failed to unlock replaced import cover ${pathname}: ${String(error)}`)
                   )
                 )

@@ -49,7 +49,7 @@ export interface LendingServiceInterface {
   acceptInvite: (token: string, borrowerUserId: string) => Effect.Effect<BorrowedBook, InvalidInviteError | LoanUnavailableError | DatabaseError, DbService>
 }
 
-export class LendingService extends Context.Tag('LendingService')<LendingService, LendingServiceInterface>() { }
+export class LendingService extends Context.Service<LendingService, LendingServiceInterface>()('LendingService') { }
 
 function createAcceptToken(): string {
   return `${crypto.randomUUID().replaceAll('-', '')}${crypto.randomUUID().replaceAll('-', '')}`
@@ -100,7 +100,7 @@ export const LendingServiceLive = Layer.effect(
         }
         if (!getEmailCapabilities().inviteEmailEnabled) {
           yield* lendingRepo.updateInviteEmailDelivery(loanId, ownerUserId, 'pending', null).pipe(
-            Effect.catchAll(statusError => Effect.logError(`Could not persist pending loan invitation delivery: ${statusError.message}`))
+            Effect.catch(statusError => Effect.logError(`Could not persist pending loan invitation delivery: ${statusError.message}`))
           )
           return 'unavailable' as const
         }
@@ -108,11 +108,11 @@ export const LendingServiceLive = Layer.effect(
         const attemptedAt = new Date()
         const deliveryStatus = yield* sendEmail(emailMessage(invite, invite.borrowerEmail, absoluteUrl)).pipe(
           Effect.mapError(() => new LoanInviteDeliveryError({ message: 'Loan invitation email delivery failed' })),
-          Effect.catchAll(error =>
+          Effect.catch(error =>
             Effect.logWarning(`Loan invitation email delivery failed: ${error.message}`).pipe(
-              Effect.zipRight(
+              Effect.andThen(
                 lendingRepo.updateInviteEmailDelivery(loanId, ownerUserId, 'failed', attemptedAt).pipe(
-                  Effect.catchAll(statusError => Effect.logError(`Could not persist failed loan invitation delivery: ${statusError.message}`))
+                  Effect.catch(statusError => Effect.logError(`Could not persist failed loan invitation delivery: ${statusError.message}`))
                 )
               ),
               Effect.as('failed' as const)
@@ -122,7 +122,7 @@ export const LendingServiceLive = Layer.effect(
         if (deliveryStatus === 'failed') return deliveryStatus
 
         yield* lendingRepo.updateInviteEmailDelivery(loanId, ownerUserId, 'sent', attemptedAt).pipe(
-          Effect.catchAll(statusError => Effect.logError(`Could not persist sent loan invitation delivery: ${statusError.message}`))
+          Effect.catch(statusError => Effect.logError(`Could not persist sent loan invitation delivery: ${statusError.message}`))
         )
         return 'sent' as const
       })

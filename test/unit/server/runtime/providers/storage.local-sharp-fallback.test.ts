@@ -1,4 +1,4 @@
-import { Effect, Either } from 'effect'
+import { Effect, Result } from 'effect'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -50,14 +50,14 @@ describe('StorageServiceLocalSharpLive without Sharp', () => {
   })
 
   it('continues rejecting unrecognized image bytes', async () => {
-    const result = await run(Effect.either(Effect.flatMap(StorageService, service =>
+    const result = await run(Effect.result(Effect.flatMap(StorageService, service =>
       service.putCoverImage('covers/manual/book.webp', Buffer.from('not an image'))
     )))
 
-    expect(Either.isLeft(result)).toBe(true)
-    if (Either.isLeft(result)) {
-      expect(result.left).toBeInstanceOf(StorageError)
-      expect(result.left).toMatchObject({ operation: 'convertCoverImage' })
+    expect(Result.isFailure(result)).toBe(true)
+    if (Result.isFailure(result)) {
+      expect(result.failure).toBeInstanceOf(StorageError)
+      expect(result.failure).toMatchObject({ operation: 'convertCoverImage' })
     }
   })
 

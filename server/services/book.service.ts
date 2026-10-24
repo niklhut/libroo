@@ -1,5 +1,5 @@
-import { Context, Effect, Layer, Either, Data } from 'effect'
-import type * as HttpClient from '@effect/platform/HttpClient'
+import { Context, Effect, Layer, Result, Data } from 'effect'
+import type * as HttpClient from 'effect/http/HttpClient'
 import { normalizeReadingProgress } from '../../shared/utils/reading-progress'
 import {
   BULK_LOOKUP_CONCURRENCY,
@@ -275,7 +275,7 @@ export interface BookServiceInterface {
 
 // ===== Service Tag =====
 
-export class BookService extends Context.Tag('BookService')<BookService, BookServiceInterface>() { }
+export class BookService extends Context.Service<BookService, BookServiceInterface>()('BookService') { }
 
 // ===== Live Implementation =====
 
@@ -347,7 +347,7 @@ export const BookServiceLive = Layer.effect(
     const getEnrichmentStatuses = (userId: string, bookIds: string[]) =>
       Effect.gen(function* () {
         const imported = yield* enrichmentRepo.getStatusesForUserBooks(userId, bookIds).pipe(
-          Effect.catchAll(error => Effect.logWarning(`Failed to load optional book enrichment statuses: ${String(error)}`).pipe(
+          Effect.catch(error => Effect.logWarning(`Failed to load optional book enrichment statuses: ${String(error)}`).pipe(
             Effect.as(new Map<string, BookEnrichmentStatus>())
           ))
         )
@@ -355,7 +355,7 @@ export const BookServiceLive = Layer.effect(
           bookIds.filter(bookId => !imported.has(bookId)),
           bookId => canonicalEnrichmentRepo.get(bookId).pipe(
             Effect.map(job => [bookId, job?.status] as const),
-            Effect.catchAll(error => Effect.logWarning(`Failed to load optional canonical enrichment status: ${String(error)}`).pipe(
+            Effect.catch(error => Effect.logWarning(`Failed to load optional canonical enrichment status: ${String(error)}`).pipe(
               Effect.as([bookId, undefined] as const)
             ))
           ),
@@ -422,15 +422,15 @@ export const BookServiceLive = Layer.effect(
         }
 
         let downloadedCoverPath: string | null = null
-        const enrichment = yield* Effect.either(Effect.gen(function* () {
+        const enrichment = yield* Effect.result(Effect.gen(function* () {
           const seed = current.openLibraryMetadata
           const dataEffect = seed
             ? openLibraryRepo.enrichMetadata(seed, 'enrichment')
             : openLibraryRepo.lookupByISBN(current.isbn!, 'enrichment')
           const coverSeed = seed?.coverUrl ?? null
           const parallel = yield* Effect.all({
-            data: Effect.either(withLookupTiming('enrichment.workMetadata', current.isbn!, dataEffect)),
-            cover: Effect.either(Effect.gen(function* () {
+            data: Effect.result(withLookupTiming('enrichment.workMetadata', current.isbn!, dataEffect)),
+            cover: Effect.result(Effect.gen(function* () {
               const stored = coverSeed
                 ? yield* bookRepo.findStoredOpenLibraryCover(current.isbn!)
                 : null
@@ -443,11 +443,11 @@ export const BookServiceLive = Layer.effect(
               return { storedCover: null, downloadedCoverPath: downloaded }
             }))
           }, { concurrency: 'unbounded' })
-          if (Either.isRight(parallel.cover)) downloadedCoverPath = parallel.cover.right.downloadedCoverPath
-          if (Either.isLeft(parallel.data)) return yield* Effect.fail(parallel.data.left)
-          if (Either.isLeft(parallel.cover)) return yield* Effect.fail(parallel.cover.left)
-          const data = parallel.data.right
-          const coverResult = parallel.cover.right
+          if (Result.isSuccess(parallel.cover)) downloadedCoverPath = parallel.cover.success.downloadedCoverPath
+          if (Result.isFailure(parallel.data)) return yield* Effect.fail(parallel.data.failure)
+          if (Result.isFailure(parallel.cover)) return yield* Effect.fail(parallel.cover.failure)
+          const data = parallel.data.success
+          const coverResult = parallel.cover.success
           let storedCover = coverResult.storedCover
           if (!storedCover && !downloadedCoverPath && !coverSeed && data.coverUrl) {
             storedCover = yield* bookRepo.findStoredOpenLibraryCover(current.isbn!)
@@ -467,22 +467,22 @@ export const BookServiceLive = Layer.effect(
           const tags = yield* bookRepo.getSystemTagsByBookId(book.id)
           return toEnrichmentPatch(book, status, tags.map(tag => tag.name))
         }))
-        if (Either.isRight(enrichment)) return enrichment.right
+        if (Result.isSuccess(enrichment)) return enrichment.success
         if (downloadedCoverPath) {
           yield* enrichmentRepo.isCoverReferenced(downloadedCoverPath).pipe(
             Effect.flatMap(referenced => referenced ? Effect.void : deleteBlob(downloadedCoverPath!)),
-            Effect.catchAll(error =>
+            Effect.catch(error =>
               Effect.logWarning(`Failed to clean up unreferenced enrichment cover ${downloadedCoverPath}: ${String(error)}`)
             )
           )
         }
-        if (enrichment.left instanceof OpenLibraryBookNotFoundError) {
-          yield* canonicalEnrichmentRepo.complete(current.id, claimed.claimToken!, 'not_found', enrichment.left.message, new Date())
+        if (enrichment.failure instanceof OpenLibraryBookNotFoundError) {
+          yield* canonicalEnrichmentRepo.complete(current.id, claimed.claimToken!, 'not_found', enrichment.failure.message, new Date())
           const tags = yield* bookRepo.getSystemTagsByBookId(current.id)
           return toEnrichmentPatch(current, 'not_found', tags.map(tag => tag.name))
         }
         const retryAt = new Date(Date.now() + Math.min(300_000, 5_000 * 2 ** Math.max(0, claimed.attempts - 1)))
-        yield* canonicalEnrichmentRepo.retry(current.id, claimed.claimToken!, retryAt, String(enrichment.left), new Date())
+        yield* canonicalEnrichmentRepo.retry(current.id, claimed.claimToken!, retryAt, String(enrichment.failure), new Date())
         const tags = yield* bookRepo.getSystemTagsByBookId(current.id)
         const status = claimed.attempts >= claimed.maxAttempts ? 'failed' as const : 'retrying' as const
         return toEnrichmentPatch(current, status, tags.map(tag => tag.name))
@@ -533,7 +533,7 @@ export const BookServiceLive = Layer.effect(
 
           const results = yield* Effect.forEach(
             normalizedBooks,
-            book => Effect.either(
+            book => Effect.result(
               ensureCoreOpenLibraryBook(book.isbn).pipe(
                 Effect.flatMap(core => bookRepo.addBookByISBN(userId, book.isbn, book.libraryState, { coreOnly: true }).pipe(
                   Effect.map(userBook => toLibraryBook(userBook, core.job?.status))
@@ -545,11 +545,11 @@ export const BookServiceLive = Layer.effect(
 
           results.forEach((result, index) => {
             const isbn = normalizedBooks[index]!.isbn
-            if (Either.isRight(result)) {
-              added.push({ isbn: result.right.isbn ?? normalizedBooks[index]!.isbn })
-              addedBooks.push(result.right)
+            if (Result.isSuccess(result)) {
+              added.push({ isbn: result.success.isbn ?? normalizedBooks[index]!.isbn })
+              addedBooks.push(result.success)
             } else {
-              const error = result.left
+              const error = result.failure
               const message = '_tag' in error ? String(error._tag) : 'Unknown error'
               failed.push({ isbn, error: message })
             }
@@ -595,10 +595,10 @@ export const BookServiceLive = Layer.effect(
             Effect.tapError(error =>
               coverPath
                 ? deleteBlob(coverPath).pipe(
-                    Effect.catchAll(cleanupError =>
+                    Effect.catch(cleanupError =>
                       Effect.logWarning(`Failed to clean up manual cover ${coverPath}: ${cleanupError}`)
                     ),
-                    Effect.zipRight(Effect.fail(error))
+                    Effect.andThen(Effect.fail(error))
                   )
                 : Effect.fail(error)
             )
@@ -636,9 +636,9 @@ export const BookServiceLive = Layer.effect(
                   result.skipped += 1
                 }
               }).pipe(
-                Effect.catchAll(error =>
+                Effect.catch(error =>
                   Effect.logWarning(`Failed to repair Open Library cover for ISBN ${candidate.isbn}: ${String(error)}`).pipe(
-                    Effect.zipRight(Effect.sync(() => {
+                    Effect.andThen(Effect.sync(() => {
                       result.failed += 1
                     }))
                   )
@@ -670,10 +670,10 @@ export const BookServiceLive = Layer.effect(
 
       batchRemoveFromLibrary: (ids, userId) =>
         Effect.gen(function* () {
-          // Wrap each operation in Either to capture success/failure individually
+          // Wrap each operation in Result to capture success/failure individually
           const results = yield* Effect.forEach(
             ids,
-            id => Effect.either(bookRepo.removeFromLibrary(id, userId)),
+            id => Effect.result(bookRepo.removeFromLibrary(id, userId)),
             { concurrency: 10 }
           )
 
@@ -683,11 +683,11 @@ export const BookServiceLive = Layer.effect(
           const errors: unknown[] = []
           results.forEach((result, index) => {
             const id = ids[index]!
-            if (Either.isRight(result)) {
+            if (Result.isSuccess(result)) {
               removedIds.push(id)
             } else {
               failedIds.push(id)
-              errors.push(result.left)
+              errors.push(result.failure)
             }
           })
           // Log all errors
@@ -744,18 +744,18 @@ export const BookServiceLive = Layer.effect(
           [...new Set(userBookIds)],
           userBookId => Effect.gen(function* () {
             const ownedBook = yield* bookRepo.getUserBookWithDetails(userBookId, userId).pipe(
-              Effect.either
+              Effect.result
             )
-            if (Either.isLeft(ownedBook)) {
+            if (Result.isFailure(ownedBook)) {
               yield* Effect.logWarning(`Skipping canonical enrichment for inaccessible user book ${userBookId}`)
               return null
             }
-            const enrichment = yield* enrichOpenLibraryBookImpl(ownedBook.right.bookId).pipe(Effect.either)
-            if (Either.isLeft(enrichment)) {
-              yield* Effect.logWarning(`Canonical enrichment failed for user book ${userBookId}: ${String(enrichment.left)}`)
+            const enrichment = yield* enrichOpenLibraryBookImpl(ownedBook.success.bookId).pipe(Effect.result)
+            if (Result.isFailure(enrichment)) {
+              yield* Effect.logWarning(`Canonical enrichment failed for user book ${userBookId}: ${String(enrichment.failure)}`)
               return null
             }
-            return { ...enrichment.right, userBookId }
+            return { ...enrichment.success, userBookId }
           }),
           { concurrency: getBooksEnrichmentConfig().concurrency }
         ).pipe(Effect.map(updates => updates.filter((update): update is LibraryBookEnrichmentUpdate => update !== null))),
@@ -772,10 +772,10 @@ export const BookServiceLive = Layer.effect(
             if (deadline - Date.now() <= safetyThreshold) break
             attempted++
             yield* enrichOpenLibraryBookImpl(job.bookId).pipe(
-              Effect.catchAll(error => Effect.logWarning(`Canonical enrichment recovery failed: ${String(error)}`).pipe(Effect.as(null)))
+              Effect.catch(error => Effect.logWarning(`Canonical enrichment recovery failed: ${String(error)}`).pipe(Effect.as(null)))
             )
             const recovered = yield* canonicalEnrichmentRepo.get(job.bookId).pipe(
-              Effect.catchAll(error => Effect.logWarning(`Failed to read recovered canonical enrichment status: ${String(error)}`).pipe(Effect.as(null)))
+              Effect.catch(error => Effect.logWarning(`Failed to read recovered canonical enrichment status: ${String(error)}`).pipe(Effect.as(null)))
             )
             if (recovered?.status === 'completed') completed++
           }
@@ -801,13 +801,13 @@ export const BookServiceLive = Layer.effect(
           const uniqueIsbns = [...firstIndexByIsbn.keys()]
           const outcomes = new Map<string, UniqueOutcome>()
 
-          const localLookup = yield* Effect.either(Effect.all({
+          const localLookup = yield* Effect.result(Effect.all({
             books: bookRepo.findByIsbns(uniqueIsbns),
             ownership: bookRepo.findUserLibraryByIsbns(userId, uniqueIsbns)
           }, { concurrency: 2 }))
 
-          if (Either.isLeft(localLookup)) {
-            yield* Effect.logError(localLookup.left)
+          if (Result.isFailure(localLookup)) {
+            yield* Effect.logError(localLookup.failure)
             for (const isbn of uniqueIsbns) {
               outcomes.set(isbn, {
                 status: 'error',
@@ -816,10 +816,10 @@ export const BookServiceLive = Layer.effect(
               })
             }
           } else {
-            const { books: localBooks, ownership } = localLookup.right
+            const { books: localBooks, ownership } = localLookup.success
             const localResults = yield* Effect.forEach(
               [...localBooks.entries()],
-              ([isbn, book]) => Effect.either(Effect.gen(function* () {
+              ([isbn, book]) => Effect.result(Effect.gen(function* () {
                 const tags = yield* bookRepo.getSystemTagsByBookId(book.id)
                 const needsEnrichment = book.source === 'open_library'
                   && (!book.coverPath || !book.description || tags.length === 0)
@@ -834,15 +834,15 @@ export const BookServiceLive = Layer.effect(
               { concurrency: BULK_LOOKUP_CONCURRENCY }
             )
             for (const result of localResults) {
-              if (Either.isRight(result)) outcomes.set(result.right[0], { status: 'ok', result: result.right[1] })
-              else yield* Effect.logError(result.left)
+              if (Result.isSuccess(result)) outcomes.set(result.success[0], { status: 'ok', result: result.success[1] })
+              else yield* Effect.logError(result.failure)
             }
 
             const unresolved = uniqueIsbns.filter(isbn => !localBooks.has(isbn))
             if (unresolved.length > 0) {
-              const remoteLookup = yield* Effect.either(openLibraryRepo.lookupCoreByISBNs(unresolved))
-              if (Either.isLeft(remoteLookup)) {
-                yield* Effect.logError(remoteLookup.left)
+              const remoteLookup = yield* Effect.result(openLibraryRepo.lookupCoreByISBNs(unresolved))
+              if (Result.isFailure(remoteLookup)) {
+                yield* Effect.logError(remoteLookup.failure)
                 for (const isbn of unresolved) {
                   outcomes.set(isbn, {
                     status: 'error',
@@ -856,14 +856,14 @@ export const BookServiceLive = Layer.effect(
                   never,
                   DbService | StorageService | OpenLibraryRepository | HttpClient.HttpClient
                 > => Effect.gen(function* () {
-                  const data = remoteLookup.right.get(isbn)
+                  const data = remoteLookup.success.get(isbn)
                   if (!data) {
                     return [isbn, {
                       status: 'ok',
                       result: { found: false, isbn, message: 'Book not found on OpenLibrary' }
                     }] as const
                   }
-                  const result = yield* Effect.either(Effect.gen(function* () {
+                  const result = yield* Effect.result(Effect.gen(function* () {
                     const book = yield* bookRepo.createCoreOpenLibraryBook(isbn, data)
                     const job = yield* canonicalEnrichmentRepo.ensurePending(book.id, isbn)
                     return {
@@ -872,16 +872,16 @@ export const BookServiceLive = Layer.effect(
                     }
                   }))
                   let outcome: UniqueOutcome
-                  if (Either.isRight(result)) {
+                  if (Result.isSuccess(result)) {
                     outcome = {
                       status: 'ok',
                       result: {
-                        ...result.right.result,
-                        enrichment: { status: toBookEnrichmentUiStatus(result.right.job.status) }
+                        ...result.success.result,
+                        enrichment: { status: toBookEnrichmentUiStatus(result.success.job.status) }
                       }
                     }
                   } else {
-                    yield* Effect.logError(result.left)
+                    yield* Effect.logError(result.failure)
                     outcome = {
                       status: 'error',
                       errorCode: 'persistence_failure',

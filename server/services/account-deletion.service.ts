@@ -28,7 +28,7 @@ export interface AccountDeletionServiceInterface {
   ) => Effect.Effect<AccountDeletionResult, InvalidAccountDeletionConfirmationError | LastAdminAccountDeletionError | UnauthorizedError | DatabaseError, AccountDeletionRepository | BookEnrichmentRepository | DbService | StorageService>
 }
 
-export class AccountDeletionService extends Context.Tag('AccountDeletionService')<AccountDeletionService, AccountDeletionServiceInterface>() { }
+export class AccountDeletionService extends Context.Service<AccountDeletionService, AccountDeletionServiceInterface>()('AccountDeletionService') { }
 
 const SHARED_COVER_CLEANUP_LEASE_MS = 60_000
 
@@ -55,7 +55,7 @@ export const AccountDeletionServiceLive = Layer.succeed(AccountDeletionService, 
 
       for (const blobPath of result.blobPaths) {
         yield* deleteBlob(blobPath).pipe(
-          Effect.catchAll(error =>
+          Effect.catch(error =>
             Effect.logWarning(`Failed to delete account blob ${blobPath}: ${String(error)}`)
           )
         )
@@ -81,7 +81,7 @@ export const AccountDeletionServiceLive = Layer.succeed(AccountDeletionService, 
               leaseExpiresAt,
               now
             ).pipe(
-              Effect.catchAll(error =>
+              Effect.catch(error =>
                 Effect.logWarning(`Failed to lock shared account cover ${sharedCoverPath}: ${String(error)}`).pipe(
                   Effect.as(new Set<string>())
                 )
@@ -91,7 +91,7 @@ export const AccountDeletionServiceLive = Layer.succeed(AccountDeletionService, 
 
             yield* Effect.gen(function* () {
               const referenced = yield* enrichmentRepo.isCoverReferenced(sharedCoverPath).pipe(
-                Effect.catchAll(error =>
+                Effect.catch(error =>
                   Effect.logWarning(`Failed to check shared account cover ${sharedCoverPath}: ${String(error)}`).pipe(
                     Effect.as(true)
                   )
@@ -99,14 +99,14 @@ export const AccountDeletionServiceLive = Layer.succeed(AccountDeletionService, 
               )
               if (referenced) return
               yield* deleteBlob(sharedCoverPath).pipe(
-                Effect.catchAll(error =>
+                Effect.catch(error =>
                   Effect.logWarning(`Failed to delete unreferenced account cover ${sharedCoverPath}: ${String(error)}`)
                 )
               )
             }).pipe(
               Effect.ensuring(
                 enrichmentRepo.releaseIsbnLocks([isbn], claimToken).pipe(
-                  Effect.catchAll(error =>
+                  Effect.catch(error =>
                     Effect.logWarning(`Failed to unlock shared account cover ${sharedCoverPath}: ${String(error)}`)
                   )
                 )

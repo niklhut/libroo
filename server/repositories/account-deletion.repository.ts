@@ -25,7 +25,7 @@ export interface AccountDeletionRepositoryInterface {
   deleteAccountData: (userId: string) => Effect.Effect<AccountDeletionResult, LastAdminAccountDeletionError | DatabaseError>
 }
 
-export class AccountDeletionRepository extends Context.Tag('AccountDeletionRepository')<AccountDeletionRepository, AccountDeletionRepositoryInterface>() { }
+export class AccountDeletionRepository extends Context.Service<AccountDeletionRepository, AccountDeletionRepositoryInterface>()('AccountDeletionRepository') { }
 
 export const AccountDeletionRepositoryLive = Layer.effect(
   AccountDeletionRepository,

@@ -1,6 +1,6 @@
 import { Effect, Layer } from 'effect'
-import * as FetchHttpClient from '@effect/platform/FetchHttpClient'
-import * as HttpClient from '@effect/platform/HttpClient'
+import * as FetchHttpClient from 'effect/http/FetchHttpClient'
+import * as HttpClient from 'effect/http/HttpClient'
 import { DbServiceCloudflareLive } from './providers/db.cloudflare'
 import { EmailServicePlunkLive } from './providers/email.plunk'
 import { StorageServiceCloudflareLive } from './providers/storage.cloudflare'

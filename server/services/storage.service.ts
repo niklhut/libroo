@@ -32,7 +32,7 @@ export interface StorageServiceInterface {
   getUsage: (prefix?: string) => Effect.Effect<StorageUsage, StorageError>
 }
 
-export class StorageService extends Context.Tag('StorageService')<StorageService, StorageServiceInterface>() { }
+export class StorageService extends Context.Service<StorageService, StorageServiceInterface>()('StorageService') { }
 
 export const putBlob = (pathname: string, data: Buffer | Blob | ArrayBuffer, options?: BlobPutOptions) =>
   Effect.flatMap(StorageService, service => service.put(pathname, data, options))

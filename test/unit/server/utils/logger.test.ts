@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { Cause, Effect, Logger, LogLevel } from 'effect'
+import { Cause, Effect, References } from 'effect'
 import { StructuredLoggerLive } from '../../../../server/utils/logger'
 
 const consoleMethods = ['error', 'warn', 'info', 'debug', 'log'] as const
@@ -13,7 +13,7 @@ function spyOnConsole() {
 async function runWithStructuredLogger(effect: Effect.Effect<void>) {
   await Effect.runPromise(
     effect.pipe(
-      Logger.withMinimumLogLevel(LogLevel.Debug),
+      Effect.provideService(References.MinimumLogLevel, 'Debug'),
       Effect.provide(StructuredLoggerLive)
     )
   )

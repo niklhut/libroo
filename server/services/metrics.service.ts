@@ -22,7 +22,7 @@ export interface MetricsServiceInterface {
   getAdminMetrics: (input: GetAdminMetricsInput) => Effect.Effect<AdminMetrics, AdminForbiddenError | DatabaseError, DbService>
 }
 
-export class MetricsService extends Context.Tag('MetricsService')<MetricsService, MetricsServiceInterface>() { }
+export class MetricsService extends Context.Service<MetricsService, MetricsServiceInterface>()('MetricsService') { }
 
 export const MetricsServiceLive = Layer.effect(
   MetricsService,
@@ -46,7 +46,7 @@ export const MetricsServiceLive = Layer.effect(
 
           const storage = yield* storageUsageSnapshotRepository.getSnapshot().pipe(
             Effect.map(snapshot => toStorageMetrics(snapshot)),
-            Effect.catchAll(() => Effect.succeed<AdminStorageMetrics>({ state: 'unavailable' }))
+            Effect.catch(() => Effect.succeed<AdminStorageMetrics>({ state: 'unavailable' }))
           )
 
           return {

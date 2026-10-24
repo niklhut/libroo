@@ -12,7 +12,7 @@ export interface AuthRepositoryInterface {
   clearPendingEmail: (userId: string) => Effect.Effect<void, DatabaseError>
 }
 
-export class AuthRepository extends Context.Tag('AuthRepository')<AuthRepository, AuthRepositoryInterface>() { }
+export class AuthRepository extends Context.Service<AuthRepository, AuthRepositoryInterface>()('AuthRepository') { }
 
 export const AuthRepositoryLive = Layer.effect(
   AuthRepository,

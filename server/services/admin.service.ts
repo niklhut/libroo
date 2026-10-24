@@ -56,7 +56,7 @@ export interface AdminServiceInterface {
   ) => Effect.Effect<AdminAuditLogPage, AdminForbiddenError | InvalidAdminRequestError | DatabaseError, DbService>
 }
 
-export class AdminService extends Context.Tag('AdminService')<AdminService, AdminServiceInterface>() { }
+export class AdminService extends Context.Service<AdminService, AdminServiceInterface>()('AdminService') { }
 
 export const AdminServiceLive = Layer.effect(
   AdminService,

@@ -43,7 +43,7 @@ export interface LocationServiceInterface {
   ) => Effect.Effect<void, InvalidLocationMoveError | LocationHasBooksError | LocationNotFoundError | LocationDeleteError | DatabaseError, DbService>
 }
 
-export class LocationService extends Context.Tag('LocationService')<LocationService, LocationServiceInterface>() { }
+export class LocationService extends Context.Service<LocationService, LocationServiceInterface>()('LocationService') { }
 
 export const LocationServiceLive = Layer.effect(
   LocationService,

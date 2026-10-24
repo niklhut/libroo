@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
-import { Effect, Either, Layer } from 'effect'
+import { Effect, Result, Layer } from 'effect'
 import { createClient } from '@libsql/client'
 import { drizzle } from 'drizzle-orm/libsql'
 import { eq } from 'drizzle-orm'
@@ -110,11 +110,11 @@ describe.each<AtomicMode>(['d1-batch', 'selfhost-transaction'])('LendingReposito
   ] as const)('rejects updateLoanNote for %s', async (_label, ownerUserId, status) => {
     await seedUserBook(db, `ub-note-${_label}`, 'owner-1', 'book-1')
     await seedLoan(db, { id: `loan-note-${_label}`, userBookId: `ub-note-${_label}`, ownerUserId: 'owner-1', status })
-    const result = await runRepository(db, mode, Effect.either(Effect.flatMap(LendingRepository, repository =>
+    const result = await runRepository(db, mode, Effect.result(Effect.flatMap(LendingRepository, repository =>
       repository.updateLoanNote(`loan-note-${_label}`, ownerUserId, 'Private')
     )))
-    expect(Either.isLeft(result)).toBe(true)
-    if (Either.isLeft(result)) expect(result.left).toBeInstanceOf(LoanNotFoundError)
+    expect(Result.isFailure(result)).toBe(true)
+    if (Result.isFailure(result)) expect(result.failure).toBeInstanceOf(LoanNotFoundError)
   })
 
   it.each([
@@ -131,13 +131,13 @@ describe.each<AtomicMode>(['d1-batch', 'selfhost-transaction'])('LendingReposito
       canceledAt: status === 'canceled' ? new Date('2026-06-25T10:00:00.000Z') : null
     })
 
-    const result = await runRepository(db, mode, Effect.either(Effect.flatMap(LendingRepository, repository =>
+    const result = await runRepository(db, mode, Effect.result(Effect.flatMap(LendingRepository, repository =>
       repository.returnLoan(`loan-${status}`, 'owner-1')
     )))
 
-    expect(Either.isLeft(result)).toBe(true)
-    if (Either.isLeft(result)) {
-      expect(result.left).toBeInstanceOf(LoanNotFoundError)
+    expect(Result.isFailure(result)).toBe(true)
+    if (Result.isFailure(result)) {
+      expect(result.failure).toBeInstanceOf(LoanNotFoundError)
     }
   })
 
@@ -167,13 +167,13 @@ describe.each<AtomicMode>(['d1-batch', 'selfhost-transaction'])('LendingReposito
     await seedUserBook(db, userBookId, 'owner-1', 'book-1')
     await seedLoan(db, { id, userBookId, ownerUserId: 'owner-1', ...loanInput })
 
-    const result = await runRepository(db, mode, Effect.either(Effect.flatMap(LendingRepository, repository =>
+    const result = await runRepository(db, mode, Effect.result(Effect.flatMap(LendingRepository, repository =>
       repository.cancelLoan(id, 'owner-1')
     )))
 
-    expect(Either.isLeft(result)).toBe(true)
-    if (Either.isLeft(result)) {
-      expect(result.left).toBeInstanceOf(LoanNotFoundError)
+    expect(Result.isFailure(result)).toBe(true)
+    if (Result.isFailure(result)) {
+      expect(result.failure).toBeInstanceOf(LoanNotFoundError)
     }
   })
 
@@ -184,11 +184,11 @@ describe.each<AtomicMode>(['d1-batch', 'selfhost-transaction'])('LendingReposito
     await seedUserBook(db, `ub-wrong-${_label}`, 'owner-1', 'book-1')
     await seedLoan(db, { id: `loan-wrong-${_label}`, userBookId: `ub-wrong-${_label}`, ownerUserId: 'owner-1', status: 'active' })
 
-    const result = await runRepository(db, mode, Effect.either(effectForLoan(`loan-wrong-${_label}`)))
+    const result = await runRepository(db, mode, Effect.result(effectForLoan(`loan-wrong-${_label}`)))
 
-    expect(Either.isLeft(result)).toBe(true)
-    if (Either.isLeft(result)) {
-      expect(result.left).toBeInstanceOf(LoanNotFoundError)
+    expect(Result.isFailure(result)).toBe(true)
+    if (Result.isFailure(result)) {
+      expect(result.failure).toBeInstanceOf(LoanNotFoundError)
     }
   })
 
@@ -215,12 +215,12 @@ describe.each<AtomicMode>(['d1-batch', 'selfhost-transaction'])('LendingReposito
     await seedUserBook(db, 'ub-delete-active', 'owner-1', 'book-1')
     await seedLoan(db, { id: 'loan-delete-active', userBookId: 'ub-delete-active', ownerUserId: 'owner-1', status: 'active' })
 
-    const result = await runRepository(db, mode, Effect.either(Effect.flatMap(LendingRepository, repository =>
+    const result = await runRepository(db, mode, Effect.result(Effect.flatMap(LendingRepository, repository =>
       repository.deleteLoan('loan-delete-active', 'owner-1')
     )))
 
-    expect(Either.isLeft(result)).toBe(true)
-    if (Either.isLeft(result)) expect(result.left).toBeInstanceOf(LoanUnavailableError)
+    expect(Result.isFailure(result)).toBe(true)
+    if (Result.isFailure(result)) expect(result.failure).toBeInstanceOf(LoanUnavailableError)
     expect((await getLoan(db, 'loan-delete-active')).status).toBe('active')
   })
 
@@ -228,12 +228,12 @@ describe.each<AtomicMode>(['d1-batch', 'selfhost-transaction'])('LendingReposito
     await seedUserBook(db, 'ub-delete-wrong-owner', 'owner-1', 'book-1')
     await seedLoan(db, { id: 'loan-delete-wrong-owner', userBookId: 'ub-delete-wrong-owner', ownerUserId: 'owner-1', status: 'returned', returnedAt: baseTime })
 
-    const result = await runRepository(db, mode, Effect.either(Effect.flatMap(LendingRepository, repository =>
+    const result = await runRepository(db, mode, Effect.result(Effect.flatMap(LendingRepository, repository =>
       repository.deleteLoan('loan-delete-wrong-owner', 'owner-2')
     )))
 
-    expect(Either.isLeft(result)).toBe(true)
-    if (Either.isLeft(result)) expect(result.left).toBeInstanceOf(LoanNotFoundError)
+    expect(Result.isFailure(result)).toBe(true)
+    if (Result.isFailure(result)) expect(result.failure).toBeInstanceOf(LoanNotFoundError)
     expect((await getLoan(db, 'loan-delete-wrong-owner')).status).toBe('returned')
   })
 

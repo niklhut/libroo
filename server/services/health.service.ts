@@ -13,7 +13,7 @@ export interface HealthServiceInterface {
   getStatus: () => Effect.Effect<HealthStatus, HealthCheckError>
 }
 
-export class HealthService extends Context.Tag('HealthService')<HealthService, HealthServiceInterface>() { }
+export class HealthService extends Context.Service<HealthService, HealthServiceInterface>()('HealthService') { }
 
 export const HealthServiceLive = Layer.effect(
   HealthService,

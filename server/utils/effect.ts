@@ -1,5 +1,5 @@
 import { Cause, Effect, Exit, Layer, pipe } from 'effect'
-import type * as HttpClient from '@effect/platform/HttpClient'
+import type * as HttpClient from 'effect/http/HttpClient'
 import { RuntimeInfrastructureLive } from '../runtime/active'
 import { RateLimitRepositoryLive } from '../repositories/rate-limit.repository'
 import type { RateLimitRepository } from '../repositories/rate-limit.repository'
@@ -253,7 +253,7 @@ export function handleError(error: unknown): Effect.Effect<never> {
  * and throwing them to the HTTP layer.
  *
  * Error handling flow:
- * 1. Effect.catchAll intercepts all expected errors (E channel)
+ * 1. Effect.catch intercepts all expected errors (E channel)
  * 2. handleError converts them to H3Errors and uses Effect.die() to throw as defects
  * 3. runPromiseExit captures the Exit (success or failure with Cause)
  * 4. On failure, we extract the H3Error defect and throw it
@@ -265,7 +265,7 @@ export async function runEffect<A, E>(
   const exit = await pipe(
     effect,
     Effect.provide(MainLive),
-    Effect.catchAll(handleError),
+    Effect.catch(handleError),
     Effect.runPromiseExit
   )
 
@@ -273,7 +273,7 @@ export async function runEffect<A, E>(
     onFailure: (cause) => {
       // handleError uses Effect.die() to throw H3Errors as defects.
       // Extract the first defect (which should be our H3Error) and throw it.
-      const defects = [...Cause.defects(cause)]
+      const defects = [...cause.reasons.filter(Cause.isDieReason).map(reason => reason.defect)]
       if (defects.length > 0 && isError(defects[0])) {
         throw defects[0]
       }

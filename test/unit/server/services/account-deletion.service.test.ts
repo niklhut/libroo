@@ -30,7 +30,7 @@ describe('AccountDeletionService', () => {
     const deleteBlob = vi.fn()
 
     const result = await runAccountDeletionService(
-      Effect.either(Effect.flatMap(AccountDeletionService, service =>
+      Effect.result(Effect.flatMap(AccountDeletionService, service =>
         service.deleteOwnAccount(makeEvent(), 'user-1', {
           currentPassword: 'secret',
           confirmation: 'delete'
@@ -40,8 +40,8 @@ describe('AccountDeletionService', () => {
       deleteBlob
     )
 
-    expect(result._tag).toBe('Left')
-    expect(result.left).toBeInstanceOf(InvalidAccountDeletionConfirmationError)
+    expect(result._tag).toBe('Failure')
+    expect(result.failure).toBeInstanceOf(InvalidAccountDeletionConfirmationError)
     expect(authMock.verifyPassword).not.toHaveBeenCalled()
     expect(deleteAccountData).not.toHaveBeenCalled()
     expect(deleteBlob).not.toHaveBeenCalled()
@@ -53,7 +53,7 @@ describe('AccountDeletionService', () => {
     authMock.verifyPassword.mockRejectedValueOnce(new Error('bad password'))
 
     const result = await runAccountDeletionService(
-      Effect.either(Effect.flatMap(AccountDeletionService, service =>
+      Effect.result(Effect.flatMap(AccountDeletionService, service =>
         service.deleteOwnAccount(makeEvent(), 'user-1', {
           currentPassword: 'wrong',
           confirmation: ACCOUNT_DELETION_CONFIRMATION_TEXT
@@ -63,8 +63,8 @@ describe('AccountDeletionService', () => {
       deleteBlob
     )
 
-    expect(result._tag).toBe('Left')
-    expect(result.left).toBeInstanceOf(UnauthorizedError)
+    expect(result._tag).toBe('Failure')
+    expect(result.failure).toBeInstanceOf(UnauthorizedError)
     expect(authMock.verifyPassword).toHaveBeenCalledTimes(1)
     expect(deleteAccountData).not.toHaveBeenCalled()
     expect(deleteBlob).not.toHaveBeenCalled()

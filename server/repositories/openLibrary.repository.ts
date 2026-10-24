@@ -1,7 +1,7 @@
-import { Context, Effect, Layer, Data, Duration, Either } from 'effect'
-import * as HttpClient from '@effect/platform/HttpClient'
-import * as HCError from '@effect/platform/HttpClientError'
-import type * as HttpClientType from '@effect/platform/HttpClient'
+import { Semaphore, Context, Effect, Layer, Data, Duration, Result } from 'effect'
+import * as HttpClient from 'effect/http/HttpClient'
+import * as HCError from 'effect/http/HttpClientError'
+import type * as HttpClientType from 'effect/http/HttpClient'
 import { MAX_BULK_ISBN_COUNT } from '../../shared/utils/schemas'
 import { DbService } from '../services/db.service'
 import { putCoverImage, type StorageService } from '../services/storage.service'
@@ -101,10 +101,10 @@ export interface OpenLibraryRepositoryInterface {
 }
 
 // Service tag
-export class OpenLibraryRepository extends Context.Tag('OpenLibraryRepository')<
+export class OpenLibraryRepository extends Context.Service<
   OpenLibraryRepository,
   OpenLibraryRepositoryInterface
->() { }
+>()('OpenLibraryRepository') { }
 
 // Normalize ISBN (remove dashes and spaces)
 function normalizeISBN(isbn: string): string {
@@ -356,7 +356,7 @@ export const OpenLibraryRepositoryLive = Layer.effect(
           : Effect.sleep(Duration.seconds(result.retryAfterSeconds)).pipe(
               Effect.flatMap(() => acquireDistributedSlotWithRetry(priority))
             )),
-        Effect.catchAll(error => isSqliteBusy(error.message) && attempt < 6
+        Effect.catch(error => isSqliteBusy(error.message) && attempt < 6
           ? Effect.sleep(Duration.millis(25 * 2 ** attempt)).pipe(
               Effect.flatMap(() => acquireDistributedSlotWithRetry(priority, attempt + 1))
             )
@@ -388,7 +388,7 @@ export const OpenLibraryRepositoryLive = Layer.effect(
         authorKeys.slice(0, 3),
         key => fetchJson<OpenLibraryAuthorApiResponse>(`${apiBase}${key}.json`, acquireSlot(priority), 'metadata').pipe(
           Effect.map(author => author.name?.trim() ?? ''),
-          Effect.catchAll(error => Effect.logDebug(`[OpenLibrary] Author lookup failed for ${key}: ${String(error)}`).pipe(Effect.as('')))
+          Effect.catch(error => Effect.logDebug(`[OpenLibrary] Author lookup failed for ${key}: ${String(error)}`).pipe(Effect.as('')))
         ),
         { concurrency: 3 }
       ).pipe(Effect.map(names => names.filter(Boolean)))
@@ -440,7 +440,7 @@ export const OpenLibraryRepositoryLive = Layer.effect(
           workKeys,
           key => fetchJson<OpenLibraryWorksApiResponse>(`${apiBase}${key}.json`, acquireSlot(priority), 'work').pipe(
             Effect.map(data => [key, data] as const),
-            Effect.catchAll(error => Effect.logDebug(`[OpenLibrary] Error fetching work ${key}: ${String(error)}`).pipe(
+            Effect.catch(error => Effect.logDebug(`[OpenLibrary] Error fetching work ${key}: ${String(error)}`).pipe(
               Effect.as([key, null] as const)
             ))
           ),
@@ -527,7 +527,7 @@ export const OpenLibraryRepositoryLive = Layer.effect(
           acquireSlot('interactive'),
           'metadata'
         ).pipe(
-          Effect.catchAll((error): Effect.Effect<never, OpenLibraryBookNotFoundError | OpenLibraryApiError> => {
+          Effect.catch((error): Effect.Effect<never, OpenLibraryBookNotFoundError | OpenLibraryApiError> => {
             if (error instanceof OpenLibraryApiError && error.status === 404) {
               return Effect.fail(new OpenLibraryBookNotFoundError({
                 isbn: normalizedISBN,
@@ -553,20 +553,20 @@ export const OpenLibraryRepositoryLive = Layer.effect(
             acquireSlot(priority),
             'metadata'
           ).pipe(
-            Effect.either
+            Effect.result
           )
-          if (Either.isRight(edition)) {
-            authors = yield* resolveEditionAuthors(edition.right, apiBase, priority)
+          if (Result.isSuccess(edition)) {
+            authors = yield* resolveEditionAuthors(edition.success, apiBase, priority)
             if (authors.length === 0) authors = seed.authors
           } else {
-            yield* Effect.logDebug(`[OpenLibrary] Optional ISBN author lookup failed: ${String(edition.left)}`)
+            yield* Effect.logDebug(`[OpenLibrary] Optional ISBN author lookup failed: ${String(edition.failure)}`)
           }
         }
         if (!seed.workKey || (seed.description && (seed.subjects?.length ?? 0) >= MIN_ENRICHED_SUBJECT_COUNT)) {
           return { ...seed, authors }
         }
         const work = yield* fetchJson<OpenLibraryWorksApiResponse>(`${apiBase}${seed.workKey}.json`, acquireSlot(priority), 'work').pipe(
-          Effect.catchAll(error => Effect.logDebug(`[OpenLibrary] Optional work enrichment failed: ${String(error)}`).pipe(Effect.as(null)))
+          Effect.catch(error => Effect.logDebug(`[OpenLibrary] Optional work enrichment failed: ${String(error)}`).pipe(Effect.as(null)))
         )
         if (!work) return { ...seed, authors }
         const description = seed.description || extractOpenLibraryText(work.description)
@@ -585,7 +585,7 @@ export const OpenLibraryRepositoryLive = Layer.effect(
         const slotStartedAt = Date.now()
         const acquired = yield* acquireSlot(priority).pipe(
           Effect.as(true),
-          Effect.catchAll(error =>
+          Effect.catch(error =>
             Effect.logWarning(error.message).pipe(Effect.as(false))
           )
         )
@@ -613,7 +613,7 @@ export const OpenLibraryRepositoryLive = Layer.effect(
             message: `Failed to fetch cover: ${HCError.isHttpClientError(error) ? error.message : String(error)}`,
             isbn: normalizedISBN
           })),
-          Effect.catchAll(error =>
+          Effect.catch(error =>
             Effect.logWarning(`Cover download failed for ISBN ${error.isbn}: ${error.message}`).pipe(
               Effect.as(null as ArrayBuffer | null)
             )
@@ -628,7 +628,7 @@ export const OpenLibraryRepositoryLive = Layer.effect(
     const downloadCovers = (isbns: string[], size: 'S' | 'M' | 'L' = 'L', providerUrls?: Map<string, string | null>, priority: OpenLibraryRequestPriority = 'interactive') =>
       Effect.gen(function* () {
         const normalized = [...new Set(isbns.map(normalizeISBN))]
-        const storageSemaphore = yield* Effect.makeSemaphore(OPEN_LIBRARY_COVER_STORAGE_CONCURRENCY)
+        const storageSemaphore = yield* Semaphore.make(OPEN_LIBRARY_COVER_STORAGE_CONCURRENCY)
         const results = yield* Effect.forEach(
           normalized,
           isbn => Effect.gen(function* () {
@@ -650,7 +650,7 @@ export const OpenLibraryRepositoryLive = Layer.effect(
                   })
                 )),
                 Effect.map(blobMetadata => blobMetadata.pathname),
-                Effect.catchAll(error =>
+                Effect.catch(error =>
                   Effect.logWarning(`Failed to store cover in blob storage: ${error}`).pipe(
                     Effect.as(null)
                   )

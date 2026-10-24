@@ -12,6 +12,6 @@ export interface DbServiceInterface {
   ) => Promise<readonly unknown[]>
 }
 
-export class DbService extends Context.Tag('DbService')<DbService, DbServiceInterface>() { }
+export class DbService extends Context.Service<DbService, DbServiceInterface>()('DbService') { }
 
 export const getDb = Effect.map(DbService, service => service.db)

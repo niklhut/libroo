@@ -27,14 +27,14 @@ describe('AdminService', () => {
     authMock.listUsers.mockRejectedValueOnce({ statusCode: 403 })
 
     const result = await runAdminService(
-      Effect.either(Effect.flatMap(AdminService, service =>
+      Effect.result(Effect.flatMap(AdminService, service =>
         service.listUsers({ headers: new Headers(), page: 1, pageSize: 25 })
       )),
       listLastSessionActivityByUserIds
     )
 
-    expect(result._tag).toBe('Left')
-    expect(result.left).toBeInstanceOf(AdminForbiddenError)
+    expect(result._tag).toBe('Failure')
+    expect(result.failure).toBeInstanceOf(AdminForbiddenError)
     expect(listLastSessionActivityByUserIds).not.toHaveBeenCalled()
   })
 
@@ -43,15 +43,15 @@ describe('AdminService', () => {
     authMock.listUsers.mockRejectedValueOnce({ statusCode: 500, message: 'upstream unavailable' })
 
     const result = await runAdminService(
-      Effect.either(Effect.flatMap(AdminService, service =>
+      Effect.result(Effect.flatMap(AdminService, service =>
         service.listUsers({ headers: new Headers(), page: 1, pageSize: 25 })
       )),
       listLastSessionActivityByUserIds
     )
 
-    expect(result._tag).toBe('Left')
-    expect(result.left).toBeInstanceOf(DatabaseError)
-    expect(result.left).toMatchObject({
+    expect(result._tag).toBe('Failure')
+    expect(result.failure).toBeInstanceOf(DatabaseError)
+    expect(result.failure).toMatchObject({
       operation: 'admin.listUsers',
       message: 'upstream unavailable'
     })
@@ -154,7 +154,7 @@ describe('AdminService', () => {
     const listAudit = vi.fn()
 
     const result = await runAdminService(
-      Effect.either(Effect.flatMap(AdminService, service =>
+      Effect.result(Effect.flatMap(AdminService, service =>
         service.listAuditEntries({
           actor: { id: 'user-1', role: 'user' }
         })
@@ -164,8 +164,8 @@ describe('AdminService', () => {
       listAudit
     )
 
-    expect(result._tag).toBe('Left')
-    expect(result.left).toBeInstanceOf(AdminForbiddenError)
+    expect(result._tag).toBe('Failure')
+    expect(result.failure).toBeInstanceOf(AdminForbiddenError)
     expect(listAudit).not.toHaveBeenCalled()
   })
 
@@ -173,7 +173,7 @@ describe('AdminService', () => {
     const listAudit = vi.fn()
 
     const result = await runAdminService(
-      Effect.either(Effect.flatMap(AdminService, service =>
+      Effect.result(Effect.flatMap(AdminService, service =>
         service.listAuditEntries({
           actor: { id: 'admin-1', role: 'admin' },
           category: 'everything'
@@ -184,8 +184,8 @@ describe('AdminService', () => {
       listAudit
     )
 
-    expect(result._tag).toBe('Left')
-    expect(result.left).toBeInstanceOf(InvalidAdminRequestError)
+    expect(result._tag).toBe('Failure')
+    expect(result.failure).toBeInstanceOf(InvalidAdminRequestError)
     expect(listAudit).not.toHaveBeenCalled()
   })
 })

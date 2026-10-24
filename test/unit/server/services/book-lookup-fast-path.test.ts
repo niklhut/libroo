@@ -66,7 +66,7 @@ describe('interactive book lookup', () => {
   it('starts the canonical read while the ownership read is still pending', async () => {
     let finishOwnership: (() => void) | undefined
     const { run } = setup({
-      hasBookInUserLibrary: () => Effect.async((resume) => {
+      hasBookInUserLibrary: () => Effect.callback((resume) => {
         finishOwnership = () => resume(Effect.succeed(null))
       }),
       findByIsbn: () => Effect.sync(() => {

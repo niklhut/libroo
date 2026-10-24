@@ -64,7 +64,7 @@ describe('LendingService invitation delivery', () => {
 
   it('passes a loan note through creation and delegates note updates', async () => {
     await Effect.runPromise(Effect.flatMap(LendingService, service =>
-      Effect.zipRight(
+      Effect.andThen(
         service.createLoan('book-1', 'owner-1', { borrowerDisplayName: 'Grace', note: 'Private' }),
         service.updateLoanNote('loan-1', 'owner-1', null)
       )

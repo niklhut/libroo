@@ -1,4 +1,4 @@
-import { Effect, Either } from 'effect'
+import { Effect, Result } from 'effect'
 import { enrichImportedBooks } from '../../server/services/book-enrichment.service'
 import { recoverCanonicalEnrichment } from '../../server/services/book.service'
 import { runEffect } from '../../server/utils/effect'
@@ -11,17 +11,17 @@ export default defineTask({
   run: async () => {
     const sweepId = crypto.randomUUID()
     const [imported, canonical] = await Promise.all([
-      runEffect(Effect.either(enrichImportedBooks())),
-      runEffect(Effect.either(recoverCanonicalEnrichment(20)))
+      runEffect(Effect.result(enrichImportedBooks())),
+      runEffect(Effect.result(recoverCanonicalEnrichment(20)))
     ])
-    if (Either.isLeft(imported)) {
-      console.error('Imported book enrichment sweep failed', { sweepId, error: imported.left })
+    if (Result.isFailure(imported)) {
+      console.error('Imported book enrichment sweep failed', { sweepId, error: imported.failure })
     }
-    if (Either.isLeft(canonical)) {
-      console.error('Canonical enrichment recovery failed', { sweepId, error: canonical.left })
+    if (Result.isFailure(canonical)) {
+      console.error('Canonical enrichment recovery failed', { sweepId, error: canonical.failure })
     }
-    const result = Either.isRight(imported) ? imported.right : null
-    const canonicalRecovery = Either.isRight(canonical) ? canonical.right : null
+    const result = Result.isSuccess(imported) ? imported.success : null
+    const canonicalRecovery = Result.isSuccess(canonical) ? canonical.success : null
     console.info('Book enrichment sweep completed', { sweepId, result, canonicalRecovery })
     return { result, canonicalRecovery }
   }

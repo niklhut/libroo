@@ -1,7 +1,7 @@
 /// <reference types="@cloudflare/vitest-plugin" />
 
 import { env } from 'cloudflare:workers'
-import { Effect, Either, Layer } from 'effect'
+import { Effect, Result, Layer } from 'effect'
 import { drizzle } from 'drizzle-orm/d1'
 import { eq } from 'drizzle-orm'
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
@@ -68,20 +68,20 @@ describe('LendingRepository transitions on D1', () => {
     const updated = await runRepository(db, Effect.flatMap(LendingRepository, repository =>
       repository.updateLoanNote('loan-note', 'owner-1', 'Updated')
     ))
-    const wrongOwner = await runRepository(db, Effect.either(Effect.flatMap(LendingRepository, repository =>
+    const wrongOwner = await runRepository(db, Effect.result(Effect.flatMap(LendingRepository, repository =>
       repository.updateLoanNote('loan-note', 'owner-2', 'Leaked')
     )))
 
     expect(updated.note).toBe('Updated')
     expect((await getLoan(db, 'loan-note')).note).toBe('Updated')
-    expect(Either.isLeft(wrongOwner)).toBe(true)
+    expect(Result.isFailure(wrongOwner)).toBe(true)
   })
 
   it.each(['wishlisted', 'previously_owned'] as const)('rejects loan creation for %s books', async (libraryState) => {
     const userBookId = `ub-${libraryState}`
     await seedUserBook(db, userBookId, 'owner-1', 'book-1', libraryState)
 
-    const result = await runRepository(db, Effect.either(Effect.flatMap(LendingRepository, repository =>
+    const result = await runRepository(db, Effect.result(Effect.flatMap(LendingRepository, repository =>
       repository.createLoan({
         userBookId,
         ownerUserId: 'owner-1',
@@ -95,10 +95,10 @@ describe('LendingRepository transitions on D1', () => {
       })
     )))
 
-    expect(Either.isLeft(result)).toBe(true)
-    if (Either.isLeft(result)) {
-      expect(result.left).toBeInstanceOf(BookNotOwnedError)
-      expect(result.left.libraryState).toBe(libraryState)
+    expect(Result.isFailure(result)).toBe(true)
+    if (Result.isFailure(result)) {
+      expect(result.failure).toBeInstanceOf(BookNotOwnedError)
+      expect(result.failure.libraryState).toBe(libraryState)
     }
   })
 
@@ -113,13 +113,13 @@ describe('LendingRepository transitions on D1', () => {
       acceptTokenHash: null
     })
 
-    const result = await runRepository(db, Effect.either(Effect.flatMap(LendingRepository, repository =>
+    const result = await runRepository(db, Effect.result(Effect.flatMap(LendingRepository, repository =>
       repository.cancelLoan('loan-accepted', 'owner-1')
     )))
 
-    expect(Either.isLeft(result)).toBe(true)
-    if (Either.isLeft(result)) {
-      expect(result.left).toBeInstanceOf(LoanNotFoundError)
+    expect(Result.isFailure(result)).toBe(true)
+    if (Result.isFailure(result)) {
+      expect(result.failure).toBeInstanceOf(LoanNotFoundError)
     }
   })
 
@@ -130,11 +130,11 @@ describe('LendingRepository transitions on D1', () => {
     await seedUserBook(db, `ub-${_label}`, 'owner-1', 'book-1')
     await seedLoan(db, { id: `loan-${_label}`, userBookId: `ub-${_label}`, ownerUserId: 'owner-1', status: 'active' })
 
-    const result = await runRepository(db, Effect.either(effectForLoan(`loan-${_label}`)))
+    const result = await runRepository(db, Effect.result(effectForLoan(`loan-${_label}`)))
 
-    expect(Either.isLeft(result)).toBe(true)
-    if (Either.isLeft(result)) {
-      expect(result.left).toBeInstanceOf(LoanNotFoundError)
+    expect(Result.isFailure(result)).toBe(true)
+    if (Result.isFailure(result)) {
+      expect(result.failure).toBeInstanceOf(LoanNotFoundError)
     }
   })
 
@@ -161,12 +161,12 @@ describe('LendingRepository transitions on D1', () => {
     await seedUserBook(db, 'ub-delete-active', 'owner-1', 'book-1')
     await seedLoan(db, { id: 'loan-delete-active', userBookId: 'ub-delete-active', ownerUserId: 'owner-1', status: 'active' })
 
-    const result = await runRepository(db, Effect.either(Effect.flatMap(LendingRepository, repository =>
+    const result = await runRepository(db, Effect.result(Effect.flatMap(LendingRepository, repository =>
       repository.deleteLoan('loan-delete-active', 'owner-1')
     )))
 
-    expect(Either.isLeft(result)).toBe(true)
-    if (Either.isLeft(result)) expect(result.left).toBeInstanceOf(LoanUnavailableError)
+    expect(Result.isFailure(result)).toBe(true)
+    if (Result.isFailure(result)) expect(result.failure).toBeInstanceOf(LoanUnavailableError)
     expect((await getLoan(db, 'loan-delete-active')).status).toBe('active')
   })
 
@@ -174,12 +174,12 @@ describe('LendingRepository transitions on D1', () => {
     await seedUserBook(db, 'ub-delete-wrong-owner', 'owner-1', 'book-1')
     await seedLoan(db, { id: 'loan-delete-wrong-owner', userBookId: 'ub-delete-wrong-owner', ownerUserId: 'owner-1', status: 'returned', returnedAt: baseTime })
 
-    const result = await runRepository(db, Effect.either(Effect.flatMap(LendingRepository, repository =>
+    const result = await runRepository(db, Effect.result(Effect.flatMap(LendingRepository, repository =>
       repository.deleteLoan('loan-delete-wrong-owner', 'owner-2')
     )))
 
-    expect(Either.isLeft(result)).toBe(true)
-    if (Either.isLeft(result)) expect(result.left).toBeInstanceOf(LoanNotFoundError)
+    expect(Result.isFailure(result)).toBe(true)
+    if (Result.isFailure(result)) expect(result.failure).toBeInstanceOf(LoanNotFoundError)
     expect((await getLoan(db, 'loan-delete-wrong-owner')).status).toBe('returned')
   })
 

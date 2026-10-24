@@ -14,7 +14,7 @@ type EffectHandlerOptions = {
  * Authentication defaults to verified users, but can be relaxed to any signed-in
  * session or disabled for public routes with the auth option.
  *
- * Errors are handled within Effect using catchAll, converting them to H3 errors.
+ * Errors are handled within Effect using catch, converting them to H3 errors.
  * The H3 error is then thrown after the Effect completes for proper HTTP response handling.
  *
  * Example usage:

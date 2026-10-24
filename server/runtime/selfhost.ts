@@ -1,5 +1,5 @@
 import { Effect, Layer } from 'effect'
-import * as HttpClient from '@effect/platform/HttpClient'
+import * as HttpClient from 'effect/http/HttpClient'
 import { NodeHttpClient } from '@effect/platform-node'
 import { DbServiceSelfHostLive } from './providers/db.selfhost'
 import { EmailServiceSmtpLive } from './providers/email.smtp'
@@ -11,7 +11,7 @@ const HttpClientLive = Layer.effect(
     const baseClient = yield* HttpClient.HttpClient
     return HttpClient.followRedirects(baseClient, 10)
   })
-).pipe(Layer.provide(NodeHttpClient.layer))
+).pipe(Layer.provide(NodeHttpClient.layerNodeHttp))
 
 export const RuntimeInfrastructureLive = Layer.mergeAll(
   DbServiceSelfHostLive,

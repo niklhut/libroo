@@ -88,7 +88,7 @@ function runImport(
     acquireIsbnLocks,
     releaseIsbnLocks,
     deleteBlob,
-    effect: Effect.runPromise(Effect.either(effect))
+    effect: Effect.runPromise(Effect.result(effect))
   }
 }
 
@@ -107,10 +107,10 @@ describe('LibraryTransferService.importLibraryCsv', () => {
     const { effect, importRecords } = runImport(csv)
     const outcome = await effect
 
-    expect(outcome._tag).toBe('Left')
-    if (outcome._tag === 'Left') {
-      expect(outcome.left).toBeInstanceOf(InvalidLibraryCsvError)
-      expect(outcome.left.message).toBe(message)
+    expect(outcome._tag).toBe('Failure')
+    if (outcome._tag === 'Failure') {
+      expect(outcome.failure).toBeInstanceOf(InvalidLibraryCsvError)
+      expect(outcome.failure.message).toBe(message)
     }
     expect(importRecords).not.toHaveBeenCalled()
   })
@@ -119,7 +119,7 @@ describe('LibraryTransferService.importLibraryCsv', () => {
     const csv = `${header}\n${Array.from({ length: LIBRARY_CSV_MAX_DATA_ROWS }, (_, index) => `Dune ${index}`).join('\n')}`
     const { effect, importRecords } = runImport(csv)
 
-    await expect(effect).resolves.toMatchObject({ _tag: 'Right', right: publicResult })
+    await expect(effect).resolves.toMatchObject({ _tag: 'Success', success: publicResult })
     expect(importRecords).toHaveBeenCalledWith(
       'user-1',
       expect.objectContaining({ length: LIBRARY_CSV_MAX_DATA_ROWS }),
@@ -153,7 +153,7 @@ describe('LibraryTransferService.importLibraryCsv', () => {
     }])
     const { effect, importRecords } = runImport(csv)
 
-    await expect(effect).resolves.toMatchObject({ _tag: 'Right' })
+    await expect(effect).resolves.toMatchObject({ _tag: 'Success' })
     expect(importRecords).toHaveBeenCalledWith(
       'user-1',
       [expect.objectContaining({
@@ -175,7 +175,7 @@ describe('LibraryTransferService.importLibraryCsv', () => {
     }))
     const { effect, isCoverReferenced, acquireIsbnLocks, releaseIsbnLocks, deleteBlob } = runImport(`${header}\nDune`, { importRecords })
 
-    await expect(effect).resolves.toMatchObject({ _tag: 'Right' })
+    await expect(effect).resolves.toMatchObject({ _tag: 'Success' })
     expect(acquireIsbnLocks).toHaveBeenCalledWith(
       ['9780441172719'],
       expect.stringMatching(/^library-import:/),
@@ -197,7 +197,7 @@ describe('LibraryTransferService.importLibraryCsv', () => {
       isCoverReferenced: true
     })
 
-    await expect(effect).resolves.toMatchObject({ _tag: 'Right' })
+    await expect(effect).resolves.toMatchObject({ _tag: 'Success' })
     expect(deleteBlob).not.toHaveBeenCalled()
   })
 
@@ -211,7 +211,7 @@ describe('LibraryTransferService.importLibraryCsv', () => {
       acquireLock: false
     })
 
-    await expect(effect).resolves.toMatchObject({ _tag: 'Right' })
+    await expect(effect).resolves.toMatchObject({ _tag: 'Success' })
     expect(isCoverReferenced).not.toHaveBeenCalled()
     expect(deleteBlob).not.toHaveBeenCalled()
     expect(releaseIsbnLocks).not.toHaveBeenCalled()
@@ -228,7 +228,7 @@ describe('LibraryTransferService.importLibraryCsv', () => {
       acquireIsbnLocksEffect
     })
 
-    await expect(effect).resolves.toMatchObject({ _tag: 'Right', right: publicResult })
+    await expect(effect).resolves.toMatchObject({ _tag: 'Success', success: publicResult })
     expect(isCoverReferenced).not.toHaveBeenCalled()
     expect(deleteBlob).not.toHaveBeenCalled()
     expect(releaseIsbnLocks).not.toHaveBeenCalled()
@@ -245,7 +245,7 @@ describe('LibraryTransferService.importLibraryCsv', () => {
       isCoverReferencedEffect
     })
 
-    await expect(effect).resolves.toMatchObject({ _tag: 'Right', right: publicResult })
+    await expect(effect).resolves.toMatchObject({ _tag: 'Success', success: publicResult })
     expect(deleteBlob).not.toHaveBeenCalled()
     expect(releaseIsbnLocks).toHaveBeenCalledOnce()
   })
@@ -261,7 +261,7 @@ describe('LibraryTransferService.importLibraryCsv', () => {
       deleteBlobEffect
     })
 
-    await expect(effect).resolves.toMatchObject({ _tag: 'Right', right: publicResult })
+    await expect(effect).resolves.toMatchObject({ _tag: 'Success', success: publicResult })
     expect(deleteBlob).toHaveBeenCalledWith('covers/9780441172719.webp')
     expect(releaseIsbnLocks).toHaveBeenCalledOnce()
   })
@@ -269,7 +269,7 @@ describe('LibraryTransferService.importLibraryCsv', () => {
   it('does not enqueue enrichment without explicit opt-in', async () => {
     const { effect, importRecords } = runImport(`${header}\nDune`, { enrich: false })
 
-    await expect(effect).resolves.toMatchObject({ _tag: 'Right' })
+    await expect(effect).resolves.toMatchObject({ _tag: 'Success' })
     expect(importRecords).toHaveBeenCalledWith(
       'user-1',
       expect.any(Array),
