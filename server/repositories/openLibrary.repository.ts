@@ -315,6 +315,26 @@ const fetchJson = <T>(
       }))
     )
     if (response.status < 200 || response.status >= 300) {
+      // Diagnostics must not hide the original HTTP failure if reading the
+      // upstream error page fails or stalls. Never log request headers/contact.
+      const responseBodyExcerpt = yield* response.text.pipe(
+        Effect.map(body => body.slice(0, 1024)),
+        Effect.timeout(Duration.seconds(2)),
+        Effect.catch(() => Effect.succeed('[response body unavailable]'))
+      )
+      yield* Effect.logWarning('Open Library upstream request failed').pipe(
+        Effect.annotateLogs({
+          operation,
+          requestUrl: url,
+          status: response.status,
+          requestDurationMs: Date.now() - requestStartedAt,
+          cfRay: response.headers['cf-ray'] ?? null,
+          server: response.headers.server ?? null,
+          contentType: response.headers['content-type'] ?? null,
+          retryAfter: response.headers['retry-after'] ?? null,
+          responseBodyExcerpt
+        })
+      )
       return yield* Effect.fail(new OpenLibraryApiError({
         message: `Open Library returned HTTP ${response.status} for ${new URL(url).pathname}`,
         status: response.status
