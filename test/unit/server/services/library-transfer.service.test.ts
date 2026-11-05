@@ -1,3 +1,4 @@
+import { LIBRARY_IMPORT_BATCH_SIZE } from '../../../../shared/utils/library-import-batches'
 import { Effect, Layer } from 'effect'
 import { describe, expect, it, vi } from 'vitest'
 import {
@@ -39,6 +40,7 @@ function runImport(
   options: {
     importRecords?: ReturnType<typeof vi.fn>
     enrich?: boolean
+    continueOnInvalidRows?: boolean
     isCoverReferenced?: boolean
     acquireLock?: boolean
     isCoverReferencedEffect?: ReturnType<typeof vi.fn>
@@ -65,7 +67,7 @@ function runImport(
     listExportRecords: vi.fn(() => Effect.succeed([])),
     importRecords
   }
-  const effect = importLibraryCsv('user-1', csv, 'existing', enrich).pipe(
+  const effect = importLibraryCsv('user-1', csv, 'existing', enrich, options.continueOnInvalidRows).pipe(
     Effect.provide(LibraryTransferServiceLive),
     Effect.provide(Layer.succeed(LibraryTransferRepository, repository)),
     Effect.provide(Layer.succeed(BookEnrichmentRepository, {
@@ -93,6 +95,30 @@ function runImport(
 }
 
 describe('LibraryTransferService.importLibraryCsv', () => {
+  it('reports the invalid middle row and imports both valid rows in a batch', async () => {
+    const entries = [['First book', 'read'], ['Invalid book', 'typo'], ['Last book', 'unread']]
+    const csv = [header, ...entries.map(([title, status]) => libraryCsvColumns.map(column => column === 'title' ? title : column === 'reading_status' ? status : '').join(','))].join('\n')
+    const importRecords = vi.fn(() => Effect.succeed({
+      ...result,
+      created: 2,
+      details: [{ row: 2, title: 'First book', status: 'created' }, { row: 3, title: 'Last book', status: 'created' }]
+    }))
+    const { effect } = runImport(csv, { importRecords, continueOnInvalidRows: true })
+    await expect(effect).resolves.toMatchObject({
+      _tag: 'Success',
+      success: {
+        created: 2,
+        failed: [{ row: 3, title: 'Invalid book' }],
+        details: [
+          { row: 2, title: 'First book', status: 'created' },
+          { row: 3, title: 'Invalid book', status: 'failed' },
+          { row: 4, title: 'Last book', status: 'created' }
+        ]
+      }
+    })
+    expect(importRecords).toHaveBeenCalledWith('user-1', [expect.objectContaining({ title: 'First book' }), expect.objectContaining({ title: 'Last book' })], 'existing', expect.anything())
+  })
+
   it.each([
     ['title is required', `${[...libraryCsvColumns.filter(column => column !== 'title'), 'title'].join(',')}\n[""Ada""]`],
     ['Invalid JSON in tags field', `${header}\nDune,,,[not valid JSON]`],
@@ -115,17 +141,24 @@ describe('LibraryTransferService.importLibraryCsv', () => {
     expect(importRecords).not.toHaveBeenCalled()
   })
 
-  it('imports a maximal valid CSV and returns the repository result', async () => {
-    const csv = `${header}\n${Array.from({ length: LIBRARY_CSV_MAX_DATA_ROWS }, (_, index) => `Dune ${index}`).join('\n')}`
+  it('imports a maximal valid request batch and returns the repository result', async () => {
+    const csv = `${header}\n${Array.from({ length: LIBRARY_IMPORT_BATCH_SIZE }, (_, index) => `Dune ${index}`).join('\n')}`
     const { effect, importRecords } = runImport(csv)
 
     await expect(effect).resolves.toMatchObject({ _tag: 'Success', success: publicResult })
     expect(importRecords).toHaveBeenCalledWith(
       'user-1',
-      expect.objectContaining({ length: LIBRARY_CSV_MAX_DATA_ROWS }),
+      expect.objectContaining({ length: LIBRARY_IMPORT_BATCH_SIZE }),
       'existing',
       expect.objectContaining({ enqueueEnrichment: true, batchId: expect.any(String) })
     )
+  })
+
+  it('rejects oversized API batches before invoking the repository', async () => {
+    const csv = `${header}\n${Array.from({ length: LIBRARY_IMPORT_BATCH_SIZE + 1 }, (_, index) => `Book ${index}`).join('\n')}`
+    const { effect, importRecords } = runImport(csv)
+    await expect(effect).resolves.toMatchObject({ _tag: 'Failure' })
+    expect(importRecords).not.toHaveBeenCalled()
   })
 
   it('canonicalizes ISBN-10 and preserves export provenance for matching', async () => {
@@ -166,6 +199,17 @@ describe('LibraryTransferService.importLibraryCsv', () => {
       'existing',
       expect.objectContaining({ enqueueEnrichment: true })
     )
+  })
+
+  it('acquires cover locks once per import and only deletes covers whose locks were acquired', async () => {
+    const importRecords = vi.fn(() => Effect.succeed({ ...result, orphanedSharedCoverPaths: ['covers/9780441172719.webp', 'covers/9780385533225.webp'] }))
+    const acquireIsbnLocksEffect = vi.fn(() => Effect.succeed(new Set(['9780441172719'])))
+    const { effect, isCoverReferenced, releaseIsbnLocks, deleteBlob } = runImport(`${header}\nDune`, { importRecords, acquireIsbnLocksEffect })
+    await expect(effect).resolves.toMatchObject({ _tag: 'Success' })
+    expect(acquireIsbnLocksEffect).toHaveBeenCalledExactlyOnceWith(['9780441172719', '9780385533225'], expect.any(String), expect.any(Date), expect.any(Date))
+    expect(isCoverReferenced).toHaveBeenCalledExactlyOnceWith('covers/9780441172719.webp')
+    expect(deleteBlob).toHaveBeenCalledExactlyOnceWith('covers/9780441172719.webp')
+    expect(releaseIsbnLocks).toHaveBeenCalledWith(['9780441172719'], expect.any(String))
   })
 
   it('deletes a replaced shared cover only when no record or loan still references it', async () => {

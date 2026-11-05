@@ -1,3 +1,4 @@
+import { LIBRARY_IMPORT_BATCH_SIZE, LIBRARY_IMPORT_FIELD_BUDGET, libraryImportWork } from '../../shared/utils/library-import-batches'
 import { Context, Data, Effect, Layer } from 'effect'
 import {
   formatCsvList,
@@ -32,7 +33,8 @@ export interface LibraryTransferServiceInterface {
     userId: string,
     csv: string,
     conflictStrategy: LibraryImportConflictStrategy,
-    enrich: boolean
+    enrich: boolean,
+    continueOnInvalidRows: boolean
   ) => Effect.Effect<LibraryImportResult, InvalidLibraryCsvError | DatabaseError, BookEnrichmentRepository | DbService | StorageService>
 }
 
@@ -176,75 +178,71 @@ export const LibraryTransferServiceLive = Layer.effect(
           })))
         }),
 
-      importLibraryCsv: (userId, csv, conflictStrategy, enrich) =>
+      importLibraryCsv: (userId, csv, conflictStrategy, enrich, continueOnInvalidRows) =>
         Effect.gen(function* () {
           const startedAt = Date.now()
           const batchId = crypto.randomUUID()
-          const rows = yield* Effect.try({
+          const { records, rowNumbers, failed } = yield* Effect.try({
             try: () => {
               const records: LibraryImportBookInput[] = []
+              const rowNumbers: number[] = []
+              const failed: LibraryImportResult['failed'] = []
+              let rowNumber = 1
               for (const row of parseLibraryCsvRows(csv)) {
-                records.push(toImportRecord(row))
+                rowNumber++
+                try {
+                  records.push(toImportRecord(row))
+                  rowNumbers.push(rowNumber)
+                } catch (error) {
+                  if (!continueOnInvalidRows) throw error
+                  failed.push({ row: rowNumber, title: row.title, reason: error instanceof Error ? error.message : 'Invalid CSV row' })
+                }
               }
-              return records
+              if (rowNumber - 1 > LIBRARY_IMPORT_BATCH_SIZE || records.reduce((sum, record) => sum + libraryImportWork(record), 0) > LIBRARY_IMPORT_FIELD_BUDGET) {
+                throw new Error('Import request is too large. Use the batched CSV importer or send smaller batches.')
+              }
+              return { records, rowNumbers, failed }
             },
             catch: error => new InvalidLibraryCsvError({
               message: error instanceof Error ? error.message : 'CSV could not be parsed'
             })
           })
 
-          const imported = yield* transferRepo.importRecords(userId, rows, conflictStrategy, {
+          if (failed.length && !records.length) {
+            return { created: 0, updated: 0, skipped: 0, enrichmentQueued: 0, enrichmentBatchId: null, failed, details: failed.map(item => ({ ...item, status: 'failed' as const })) }
+          }
+          const imported = yield* transferRepo.importRecords(userId, records, conflictStrategy, {
             enqueueEnrichment: enrich,
             batchId,
             maxAttempts: getBooksEnrichmentConfig().maxAttempts
           })
           const enrichmentRepo = yield* BookEnrichmentRepository
+          const cleanupPaths: { isbn: string, pathname: string }[] = []
           for (const pathname of new Set(imported.orphanedSharedCoverPaths)) {
             const isbn = isbnFromSharedCoverPath(pathname)
-            if (!isbn) {
-              yield* Effect.logWarning(`Skipped replaced import cover with an unsupported path: ${pathname}`)
-              continue
-            }
-
+            if (isbn) cleanupPaths.push({ isbn, pathname })
+            else yield* Effect.logWarning(`Skipped replaced import cover with an unsupported path: ${pathname}`)
+          }
+          if (cleanupPaths.length) {
             const claimToken = `library-import:${crypto.randomUUID()}`
             const now = new Date()
             const acquired = yield* enrichmentRepo.acquireIsbnLocks(
-              [isbn],
-              claimToken,
-              new Date(now.getTime() + SHARED_COVER_CLEANUP_LEASE_MS),
-              now
-            ).pipe(
-              Effect.catch(error =>
-                Effect.logWarning(`Failed to lock replaced import cover ${pathname}: ${String(error)}`).pipe(
-                  Effect.as(new Set<string>())
-                )
-              )
-            )
-            if (!acquired.has(isbn)) continue
-
-            yield* Effect.gen(function* () {
-              const referenced = yield* enrichmentRepo.isCoverReferenced(pathname).pipe(
-                Effect.catch(error =>
-                  Effect.logWarning(`Failed to check replaced import cover ${pathname}: ${String(error)}`).pipe(
-                    Effect.as(true)
+              cleanupPaths.map(item => item.isbn), claimToken,
+              new Date(now.getTime() + SHARED_COVER_CLEANUP_LEASE_MS), now
+            ).pipe(Effect.catch(error => Effect.logWarning(`Failed to lock replaced import covers: ${String(error)}`).pipe(Effect.as(new Set<string>()))))
+            if (acquired.size) {
+              yield* Effect.gen(function* () {
+                for (const { isbn, pathname } of cleanupPaths) {
+                  if (!acquired.has(isbn)) continue
+                  const referenced = yield* enrichmentRepo.isCoverReferenced(pathname).pipe(
+                    Effect.catch(error => Effect.logWarning(`Failed to check replaced import cover ${pathname}: ${String(error)}`).pipe(Effect.as(true)))
                   )
-                )
-              )
-              if (referenced) return
-              yield* deleteBlob(pathname).pipe(
-                Effect.catch(error =>
-                  Effect.logWarning(`Failed to delete replaced import cover ${pathname}: ${String(error)}`)
-                )
-              )
-            }).pipe(
-              Effect.ensuring(
-                enrichmentRepo.releaseIsbnLocks([isbn], claimToken).pipe(
-                  Effect.catch(error =>
-                    Effect.logWarning(`Failed to unlock replaced import cover ${pathname}: ${String(error)}`)
-                  )
-                )
-              )
-            )
+                  if (!referenced) yield* deleteBlob(pathname).pipe(Effect.catch(error => Effect.logWarning(`Failed to delete replaced import cover ${pathname}: ${String(error)}`)))
+                }
+              }).pipe(Effect.ensuring(enrichmentRepo.releaseIsbnLocks([...acquired], claimToken).pipe(
+                Effect.catch(error => Effect.logWarning(`Failed to unlock replaced import covers: ${String(error)}`))
+              )))
+            }
           }
 
           const { orphanedSharedCoverPaths: _, ...result } = imported
@@ -256,7 +254,16 @@ export const LibraryTransferServiceLive = Layer.effect(
               completedAt: new Date().toISOString()
             })
           )
-          return result
+          if (!failed.length) return result
+          const withOriginalRow = <T extends { row: number }>(item: T): T => ({ ...item, row: rowNumbers[item.row - 2]! })
+          return {
+            ...result,
+            failed: [...result.failed.map(withOriginalRow), ...failed].sort((a, b) => a.row - b.row),
+            details: [
+              ...(result.details ?? result.failed.map(item => ({ ...item, status: 'failed' as const }))).map(item => withOriginalRow(item)),
+              ...failed.map(item => ({ ...item, status: 'failed' as const }))
+            ].sort((a, b) => a.row - b.row)
+          }
         })
     }
   })
@@ -269,6 +276,7 @@ export const importLibraryCsv = (
   userId: string,
   csv: string,
   conflictStrategy: LibraryImportConflictStrategy,
-  enrich = false
+  enrich = false,
+  continueOnInvalidRows = false
 ) =>
-  Effect.flatMap(LibraryTransferService, service => service.importLibraryCsv(userId, csv, conflictStrategy, enrich))
+  Effect.flatMap(LibraryTransferService, service => service.importLibraryCsv(userId, csv, conflictStrategy, enrich, continueOnInvalidRows))

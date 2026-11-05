@@ -38,13 +38,15 @@ describe('server/api/library/import.post', () => {
       body: {
         csv: 'title,authors,isbn,tags,location,reading_status,current_page,progress_percent,rating,note,added_date,active_loan_status,active_loan_borrower,active_loan_loaned_at,active_loan_due_at\nDune,Frank Herbert,,,,unread,,,,,,,,,',
         conflictStrategy: 'csv',
-        enrich: true
+        enrich: true,
+        continueOnInvalidRows: true
       }
     }))).resolves.toBe(result)
     expect(serviceMocks.importLibraryCsv).toHaveBeenCalledWith(
       'session-user',
       expect.stringContaining('Dune'),
       'csv',
+      true,
       true
     )
   })

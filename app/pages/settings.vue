@@ -10,6 +10,7 @@ import {
   type AccountPasswordChangeSchema
 } from '~~/shared/utils/account-settings'
 import type { LibraryImportConflictStrategy, LibraryImportResult } from '~~/shared/types/library-transfer'
+import { importLibraryCsvInBatches, type LibraryImportReport } from '~~/shared/utils/library-import-batches'
 import { roleIncludesAdmin } from '~~/shared/utils/auth-roles'
 import { canShowVerificationResendAction, canUseVerifiedEmailChange, getPasswordUpdatedDescription } from '~~/shared/utils/email-capability-ui'
 import { canShowEmailManagement, canShowPasskeyManagement, canShowPasswordManagement, canShowTwoFactorManagement } from '~~/shared/utils/auth-capability-ui'
@@ -131,6 +132,9 @@ const importConflictStrategy = ref<LibraryImportConflictStrategy>('existing')
 const importEnrich = ref(false)
 const importConfirmOpen = ref(false)
 const isImporting = ref(false)
+const importProgress = ref({ processed: 0, total: 0 })
+const importReport = ref<LibraryImportReport | null>(null)
+const importReportOpen = ref(false)
 const isExporting = ref(false)
 const LIBRARY_IMPORT_MAX_BYTES = 10 * 1024 * 1024
 
@@ -821,30 +825,22 @@ async function importLibraryCsvFile() {
 
   isImporting.value = true
   try {
-    const result = await $fetch<LibraryImportResult>('/api/library/import', {
-      method: 'POST',
-      body: {
-        csv: importCsv.value,
-        conflictStrategy: importConflictStrategy.value,
-        enrich: importEnrich.value
-      }
+    importReport.value = null
+    const report = await importLibraryCsvInBatches({
+      csv: importCsv.value,
+      conflictStrategy: importConflictStrategy.value,
+      enrich: importEnrich.value
+    }, body => $fetch<LibraryImportResult>('/api/library/import', { method: 'POST', body }), (processed, total) => {
+      importProgress.value = { processed, total }
     })
 
     importConfirmOpen.value = false
     libraryImportOpen.value = false
-    resetImport()
-    // The library page may already have cached pages. Mark them stale before
-    // navigating so imported rows and their enrichment status are reconciled.
+    importReport.value = report
+    importReportOpen.value = true
+    // Preserve the current library, including successful rows from a partial run.
     dashboardStore.markNeedsSync()
-    if (result.enrichmentBatchId) dashboardStore.startEnrichmentBatch(result.enrichmentBatchId)
-
-    toast.add({
-      title: 'Import complete',
-      description: `${result.created} created, ${result.updated} updated, ${result.skipped} skipped${result.enrichmentQueued ? `, ${result.enrichmentQueued} queued for missing covers and details` : ''}${result.failed.length ? `, ${result.failed.length} failed` : ''}.`,
-      color: result.failed.length ? 'warning' : 'success'
-    })
-
-    await navigateTo('/library')
+    for (const batchId of report.enrichmentBatchIds) dashboardStore.startEnrichmentBatch(batchId)
   } catch (err: unknown) {
     toast.add({
       title: 'Import failed',
@@ -1374,6 +1370,8 @@ async function importLibraryCsvFile() {
 
       <UModal
         v-model:open="libraryImportOpen"
+        :dismissible="!isImporting"
+        :close="!isImporting"
         title="Import library CSV"
         description="Restore a Libroo CSV export into your library."
       >
@@ -1391,6 +1389,7 @@ async function importLibraryCsvFile() {
                 icon="i-lucide-file-up"
                 color="neutral"
                 variant="outline"
+                :disabled="isImporting"
                 @click="importFileInput?.click()"
               >
                 {{ importFileName || 'Choose CSV' }}
@@ -1408,11 +1407,13 @@ async function importLibraryCsvFile() {
             </div>
             <URadioGroup
               v-model="importConflictStrategy"
+              :disabled="isImporting"
               :items="importConflictItems"
               legend="When a book already exists"
             />
             <UCheckbox
               v-model="importEnrich"
+              :disabled="isImporting"
               label="Find missing covers and book details"
               description="After import, valid ISBNs can fill blank descriptions, publication details, and covers. Existing values are never replaced."
             />
@@ -1520,6 +1521,8 @@ async function importLibraryCsvFile() {
 
       <UModal
         v-model:open="importConfirmOpen"
+        :dismissible="!isImporting"
+        :close="!isImporting"
         title="Import library CSV?"
         description="This will update your library using the selected conflict strategy."
         :ui="{ footer: 'justify-end gap-3' }"
@@ -1529,6 +1532,18 @@ async function importLibraryCsvFile() {
             <p>
               File: <span class="font-medium">{{ importFileName }}</span>
             </p>
+            <div
+              v-if="isImporting"
+              role="status"
+              class="space-y-2"
+            >
+              <p>Processed {{ importProgress.processed }} of {{ importProgress.total }} rows. Keep this page open.</p>
+              <UProgress
+                :model-value="importProgress.processed"
+                :max="Math.max(1, importProgress.total)"
+                aria-label="CSV import progress"
+              />
+            </div>
             <p>
               Existing books:
               <span class="font-medium">
@@ -1564,6 +1579,68 @@ async function importLibraryCsvFile() {
             @click="importLibraryCsvFile"
           >
             Confirm import
+          </UButton>
+        </template>
+      </UModal>
+
+      <UModal
+        v-model:open="importReportOpen"
+        title="Import result"
+        description="Review the completed rows and any errors before closing this report."
+        :ui="{ content: 'max-w-2xl', footer: 'justify-end gap-3' }"
+      >
+        <template #body>
+          <div
+            v-if="importReport"
+            class="space-y-4"
+          >
+            <p role="status">
+              Row outcomes: {{ importReport.result.created }} created, {{ importReport.result.updated }} updated,
+              {{ importReport.result.skipped }} skipped, {{ importReport.result.failed.length }} failed.
+            </p>
+            <p class="text-sm text-muted">
+              Processed {{ importReport.processedRows }} of {{ importReport.totalRows }} rows.
+            </p>
+            <UAlert
+              v-if="importReport.interrupted"
+              color="warning"
+              title="Import stopped early"
+              description="Some rows may already be saved. Re-import the same file with Keep existing data to continue without replacing saved books."
+            />
+            <UAlert
+              v-else-if="importReport.result.failed.length"
+              color="warning"
+              title="Some rows could not be imported"
+              description="Successful rows were saved. Expand row details to review errors; retry with Keep existing data after correcting the problem."
+            />
+            <p
+              v-if="importReport.result.skipped"
+              class="text-sm text-muted"
+            >
+              Wishlist entries are shown separately from owned books.
+            </p>
+            <p
+              v-if="importReport.result.enrichmentQueued"
+              class="text-sm text-muted"
+            >
+              {{ importReport.result.enrichmentQueued }} books queued for missing covers and details.
+            </p>
+            <LibraryImportDetails :result="importReport.result" />
+          </div>
+        </template>
+        <template #footer>
+          <UButton
+            color="neutral"
+            variant="outline"
+            @click="importReportOpen = false"
+          >
+            Close report
+          </UButton>
+          <UButton
+            to="/library"
+            @click="importReportOpen = false"
+          >
+            View library
           </UButton>
         </template>
       </UModal>

@@ -79,6 +79,51 @@ describe('LibraryTransferRepository.importRecords on D1', () => {
     expect(exported.some(book => book.title === 'Other user private title')).toBe(false)
   })
 
+  it('imports 25 ordinary rows using one lookup batch and one write batch, then skips without writes', async () => {
+    const sizes: number[] = []
+    const database = db as unknown as DbServiceInterface['db']
+    const service: DbServiceInterface = { db: database, executeAtomic: (build) => {
+      const statements = build(database)
+      sizes.push(statements.length)
+      return database.batch(statements)
+    } }
+    const records = Array.from({ length: 25 }, (_, index) => importRecord({ title: `Batched book ${index}`, authors: ['Batch Author'], tags: ['Batch Tag'], locationPath: 'Room - Shelf' }))
+    const run = (strategy: LibraryImportConflictStrategy) => Effect.runPromise(Effect.flatMap(LibraryTransferRepository, repository => repository.importRecords('user-1', records, strategy, { enqueueEnrichment: false, batchId: 'perf', maxAttempts: 5 })).pipe(Effect.provide(LibraryTransferRepositoryLive), Effect.provide(Layer.succeed(DbService, service))))
+    expect(await run('csv')).toMatchObject({ created: 25, failed: [] })
+    expect(sizes).toHaveLength(2)
+    expect(sizes[1]).toBeGreaterThan(25)
+    sizes.length = 0
+    expect(await run('existing')).toMatchObject({ created: 0, skipped: 25, failed: [] })
+    expect(sizes).toHaveLength(1)
+  })
+
+  it('rolls back a failed write batch and preserves valid row results and dimension IDs on fallback', async () => {
+    await env.DB.prepare('CREATE TRIGGER reject_bad_import BEFORE INSERT ON books WHEN NEW.title = \'Rejected batch row\' BEGIN SELECT RAISE(ABORT, \'Deliberate import constraint\'); END').run()
+    try {
+      const result = await importRecords([
+        importRecord({ title: 'Before failed row', tags: ['Resilient'], locationPath: 'Room - Shelf' }),
+        importRecord({ title: 'Rejected batch row', tags: ['Next Tag'], locationPath: 'Room - Other Shelf' }),
+        importRecord({ title: 'After failed row', tags: ['Next Tag'], locationPath: 'Room - Other Shelf' })
+      ], 'csv')
+      expect(result).toMatchObject({ created: 2, updated: 0, failed: [{ row: 3, title: 'Rejected batch row', reason: expect.stringContaining('Deliberate import constraint') }] })
+      expect(result.details!.map(row => row.status)).toEqual(['created', 'failed', 'created'])
+      expect((await db.select().from(userBooks))).toHaveLength(2)
+      expect((await db.select().from(books)).map(row => row.title).sort()).toEqual(['After failed row', 'Before failed row'])
+    } finally {
+      await env.DB.prepare('DROP TRIGGER reject_bad_import').run()
+    }
+  })
+
+  it('imports blank-author rows separately without a Libroo ID or ISBN', async () => {
+    const records = [importRecord({ title: 'Anonymous book', authors: [] }), importRecord({ title: 'Anonymous book', authors: [] })]
+    expect(await importRecords(records, 'csv')).toMatchObject({ created: 2, updated: 0, skipped: 0, failed: [] })
+    expect(await importRecords(records, 'existing')).toMatchObject({ created: 2, updated: 0, skipped: 0, failed: [] })
+    expect(await db.select().from(userBooks)).toHaveLength(4)
+    expect(await db.select({ name: authors.name }).from(authors)).toEqual([{ name: 'Unknown Author' }])
+    expect(await importRecords([importRecord({ title: 'Anonymous book', authors: ['Unknown Author'] })], 'existing'))
+      .toMatchObject({ created: 0, skipped: 1, failed: [] })
+  })
+
   it('reuses new author, tag, and location dimensions across records', async () => {
     const result = await importRecords([
       importRecord({ title: 'First Shelf Book', authors: ['Ada Lovelace'], tags: ['Computing'], locationPath: 'Shelf - Row' }),
@@ -95,6 +140,37 @@ describe('LibraryTransferRepository.importRecords on D1', () => {
     const tagLinks = await db.select().from(userBookTags)
     expect(new Set(authorLinks.map(row => row.authorId))).toHaveProperty('size', 1)
     expect(new Set(tagLinks.map(row => row.tagId))).toHaveProperty('size', 1)
+  })
+
+  it.each(['existing', 'csv'] as const)('matches Slovak titles and whitespace on repeated imports with the %s strategy', async (strategy) => {
+    const records = [
+      importRecord({ title: 'Červený kapitán', authors: ['Dominik Dán'], isbn: null }),
+      importRecord({ title: 'Štúdia v červenom', authors: ['Arthur Conan Doyle'], isbn: null }),
+      importRecord({ title: 'Žena v kajute 10', authors: ['Ruth Ware'], isbn: null }),
+      importRecord({ title: 'A  title with spaces', authors: ['Other Author'], isbn: null })
+    ]
+    expect(await importRecords(records, strategy)).toMatchObject({ created: 4, updated: 0, skipped: 0, failed: [] })
+    const repeat = records.map(record => ({ ...record, title: record.title.toUpperCase().replace(/\s+/g, ' '), authors: record.authors.map(name => `  ${name.toUpperCase()}  `) }))
+    expect(await importRecords(repeat, strategy)).toMatchObject({
+      created: 0, updated: strategy === 'csv' ? 4 : 0, skipped: strategy === 'existing' ? 4 : 0, failed: []
+    })
+    await expect(db.select().from(userBooks)).resolves.toHaveLength(4)
+    await expect(db.select().from(books)).resolves.toHaveLength(4)
+  })
+
+  it('reports which records matched by title, ISBN and export ID without querying another user', async () => {
+    await seedExistingBook(db)
+    const skipped = await importRecords([importRecord({ title: 'Incoming title', authors: ['Ada Lovelace'], isbn: '9781111111111' })], 'existing')
+    expect(skipped.details).toEqual([expect.objectContaining({ row: 2, title: 'Incoming title', status: 'skipped', matchedBy: 'isbn', matchedTitle: 'Existing Book', userBookId: 'ub-existing' })])
+    const updated = await importRecords([importRecord({ sourceUserBookId: 'ub-existing', title: 'Edited title', isbn: null })], 'csv')
+    expect(updated.details).toEqual([expect.objectContaining({ status: 'updated', matchedBy: 'libroo_id', matchedTitle: 'Existing Book', userBookId: 'ub-existing' })])
+    const records = [importRecord({ title: 'Červený kapitán', isbn: null }), importRecord({ title: 'Červený kapitán', isbn: null })]
+    const repeated = await importRecords(records, 'existing')
+    expect(repeated.details).toEqual([
+      expect.objectContaining({ row: 2, status: 'created' }),
+      expect.objectContaining({ row: 3, status: 'skipped', matchedBy: 'title_authors', matchedTitle: 'Červený kapitán' })
+    ])
+    expect(repeated.details![0]!.userBookId).toBe(repeated.details![1]!.userBookId)
   })
 
   it('skips detected duplicates with the existing strategy', async () => {

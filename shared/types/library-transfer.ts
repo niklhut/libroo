@@ -45,6 +45,18 @@ export interface LibraryImportBookInput {
   formatVersion: number | null
 }
 
+export interface LibraryImportRowDetail {
+  row: number
+  title: string
+  status: 'created' | 'updated' | 'skipped' | 'failed' | 'unconfirmed' | 'not_processed'
+  userBookId?: string
+  matchedBy?: 'libroo_id' | 'isbn' | 'title_authors'
+  matchedTitle?: string
+  firstRow?: number
+  repeatedInFile?: boolean
+  reason?: string
+}
+
 export interface LibraryImportResult {
   created: number
   updated: number
@@ -52,4 +64,5 @@ export interface LibraryImportResult {
   enrichmentQueued: number
   enrichmentBatchId: string | null
   failed: Array<{ row: number, title: string, reason: string }>
+  details?: LibraryImportRowDetail[]
 }

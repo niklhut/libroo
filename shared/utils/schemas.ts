@@ -549,7 +549,8 @@ export const libraryImportSchema = z.object({
       error: 'CSV file is too large'
     }),
   conflictStrategy: z.enum(['existing', 'csv'], { error: 'Conflict strategy is invalid' }).default('existing'),
-  enrich: z.boolean({ error: 'Enrichment preference must be a boolean' }).default(false)
+  enrich: z.boolean({ error: 'Enrichment preference must be a boolean' }).default(false),
+  continueOnInvalidRows: z.boolean().default(false)
 })
 
 export const bookEnrichmentUpdatesSchema = z.object({
