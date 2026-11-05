@@ -51,6 +51,34 @@ describe('LibraryTransferRepository.importRecords on D1', () => {
     await seedUser(db)
   })
 
+  it('exports more than 100 books with ordered authors and tags, excluding removed and other users’ records', async () => {
+    const records = Array.from({ length: 126 }, (_, i) => importRecord({
+      title: `Export ${String(i).padStart(3, '0')}`,
+      authors: ['Second Author', 'First Author'],
+      tags: ['Zulu', 'Alpha']
+    }))
+    expect(await importRecords(records, 'csv')).toMatchObject({ created: 126, failed: [] })
+    const [removed] = await db.select({ id: userBooks.id }).from(userBooks).innerJoin(books, eq(userBooks.bookId, books.id)).where(eq(books.title, 'Export 125'))
+    await db.update(userBooks).set({ removedAt: new Date() }).where(eq(userBooks.id, removed!.id))
+    const now = new Date()
+    await db.insert(user).values({ id: 'other-user', name: 'Other', email: 'other@example.com', createdAt: now, updatedAt: now })
+    await db.insert(books).values({ id: 'private-other-book', title: 'Other user private title', source: 'manual', createdByUserId: 'other-user', createdAt: now })
+    await db.insert(userBooks).values({ id: 'private-other-copy', userId: 'other-user', bookId: 'private-other-book', addedAt: now })
+    const [sharedBook] = await db.select({ id: books.id }).from(books).where(eq(books.title, 'Export 000'))
+    await db.insert(userBooks).values([
+      { id: 'other-user-shared-copy', userId: 'other-user', bookId: sharedBook!.id, addedAt: now },
+      { id: 'removed-shared-copy', userId: 'user-1', bookId: sharedBook!.id, addedAt: now, removedAt: now }
+    ])
+    await db.insert(tags).values({ id: 'other-private-tag', name: 'Other private tag', normalizedName: 'other private tag', createdAt: now, updatedAt: now })
+    await db.insert(userBookTags).values({ id: 'other-private-link', userBookId: 'other-user-shared-copy', tagId: 'other-private-tag', createdAt: now, updatedAt: now })
+    const exported = await runRepository(db, Effect.flatMap(LibraryTransferRepository, repository => repository.listExportRecords('user-1')))
+
+    expect(exported).toHaveLength(125)
+    expect(exported[0]).toMatchObject({ title: 'Export 000', authors: ['Second Author', 'First Author'], tags: ['Alpha', 'Zulu'] })
+    expect(exported.at(-1)?.title).toBe('Export 124')
+    expect(exported.some(book => book.title === 'Other user private title')).toBe(false)
+  })
+
   it('reuses new author, tag, and location dimensions across records', async () => {
     const result = await importRecords([
       importRecord({ title: 'First Shelf Book', authors: ['Ada Lovelace'], tags: ['Computing'], locationPath: 'Shelf - Row' }),
