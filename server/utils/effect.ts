@@ -1,3 +1,5 @@
+import { BookEditRepositoryLive, type BookEditRepository } from '../repositories/book-edit.repository'
+import { BookEditServiceLive, type BookEditService } from '../services/book-edit.service'
 import { Cause, Effect, Exit, Layer, pipe } from 'effect'
 import type * as HttpClient from 'effect/http/HttpClient'
 import { RuntimeInfrastructureLive } from '../runtime/active'
@@ -22,6 +24,7 @@ const BaseServicesLive = Layer.mergeAll(
 const RepositoriesLive = Layer.provideMerge(
   Layer.mergeAll(
     BookRepositoryLive,
+    BookEditRepositoryLive,
     BookEnrichmentRepositoryLive,
     CanonicalBookEnrichmentRepositoryLive,
     OpenLibraryRepositoryLive,
@@ -45,7 +48,7 @@ const RepositoriesLive = Layer.provideMerge(
 
 // Service layer (depends on repositories)
 const CoreServicesLive = Layer.provideMerge(
-  Layer.mergeAll(BookServiceLive, BookEnrichmentServiceLive, LendingServiceLive, AdminServiceLive, AuditServiceLive, LocationServiceLive, LibraryTransferServiceLive, PreferencesServiceLive, AccountDeletionServiceLive, SignupInviteServiceLive, EmailCapabilityServiceLive, AuthCapabilityServiceLive, HealthServiceLive, LegalServiceLive, RateLimitServiceLive, MetricsServiceLive),
+  Layer.mergeAll(BookServiceLive, BookEditServiceLive, BookEnrichmentServiceLive, LendingServiceLive, AdminServiceLive, AuditServiceLive, LocationServiceLive, LibraryTransferServiceLive, PreferencesServiceLive, AccountDeletionServiceLive, SignupInviteServiceLive, EmailCapabilityServiceLive, AuthCapabilityServiceLive, HealthServiceLive, LegalServiceLive, RateLimitServiceLive, MetricsServiceLive),
   RepositoriesLive
 )
 
@@ -62,7 +65,9 @@ export const MainLive = Layer.provideMerge(
 
 // Type for all available services
 export type MainServices
-  = DbService
+  = BookEditService
+    | BookEditRepository
+    | DbService
     | StorageService
     | AuthService
     | BookRepository
@@ -123,6 +128,8 @@ const errorStatusCodes: Record<string, number> = {
   ExpiredEmailVerificationTokenError: 401,
   PasswordResetUnavailableError: 404,
   EmailChangeNotAllowedError: 403,
+  BookEditConflictError: 409,
+  BookCoverNotFoundError: 404,
   BookNotFoundError: 404,
   BookNotEnrichableError: 400,
   BookNotOwnedError: 409,

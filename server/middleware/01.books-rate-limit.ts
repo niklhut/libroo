@@ -9,7 +9,7 @@ import { runEffect } from '../utils/effect'
 const BOOKS_RATE_LIMIT_PATHS = new Set(['/api/books/lookup', '/api/books', '/api/books/bulk-lookup', '/api/books/enrichment/run', '/api/books/enrichment/run-batch', '/api/books/enrichment/batch'])
 
 export function shouldEnforceRateLimit(event: { method?: string, path?: string }) {
-  return event.method === 'POST' && BOOKS_RATE_LIMIT_PATHS.has(event.path ?? '')
+  return event.method === 'POST' && (BOOKS_RATE_LIMIT_PATHS.has(event.path ?? '') || /^\/api\/books\/[^/]+\/cover-preview$/.test(event.path ?? ''))
 }
 
 export function getBooksRateLimitKey(event: Parameters<typeof getRequestIP>[0], userId?: string) {

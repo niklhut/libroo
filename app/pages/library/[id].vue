@@ -6,6 +6,7 @@ const route = useRoute()
 const config = useRuntimeConfig()
 const userBookId = route.params.id as string
 
+const isEditModalOpen = ref(false)
 const isLocationModalOpen = ref(false)
 const isLendingModalOpen = ref(false)
 const isReadingModalOpen = ref(false)
@@ -227,6 +228,11 @@ async function onTagsSaved() {
 
       <template v-else>
         <div class="grid gap-6 lg:grid-cols-[17.5rem_minmax(0,1fr)] lg:gap-8">
+          <BookEditModal
+            v-model:open="isEditModalOpen"
+            :book="book"
+            @saved="updated => { book = updated; useLibraryDashboardStore().updateBookDetails(updated) }"
+          />
           <BookDetailSidebar :book="book" />
 
           <main class="flex flex-col gap-4">
@@ -235,6 +241,7 @@ async function onTagsSaved() {
               :is-deleting="isDeleting"
               :is-updating-library-state="isUpdatingLibraryState"
               :format-date="formatDate"
+              @edit="isEditModalOpen = true"
               @move-to-library="requestMoveToLibrary"
               @move-to-wishlist="isMoveToWishlistDialogOpen = true"
               @mark-previously-owned="isOwnershipDialogOpen = true"

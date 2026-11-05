@@ -59,6 +59,26 @@ function toSearchResponse(url: string, response: object) {
 }
 
 describe('OpenLibraryRepository details lookup', () => {
+  it.each([true, false])('rejects oversized cover previews with or without a Content-Length header (%s)', async (withHeader) => {
+    vi.stubGlobal('useRuntimeConfig', () => ({ openLibraryRequestTimeoutSeconds: 12, openLibraryCoverTimeoutSeconds: 20, openLibraryContactEmail: '' }))
+    let cancelled = false
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) { controller.enqueue(new Uint8Array(64 * 1024)) },
+      cancel() { cancelled = true }
+    })
+    const httpClient = HttpClient.make(request => Effect.succeed(HttpClientResponse.fromWeb(request, new Response(body, {
+      headers: withHeader ? { 'content-length': String(2 * 1024 * 1024 + 1) } : {}
+    }))))
+    const result = await Effect.runPromise(Effect.flatMap(OpenLibraryRepository, repo => repo.fetchCoverImage('9780306406157', 'L')).pipe(
+      Effect.provide(OpenLibraryRepositoryLive),
+      Effect.provide(Layer.succeed(DbService, { executeAtomic: vi.fn() } as never)),
+      Effect.provide(Layer.succeed(HttpClient.HttpClient, httpClient))
+    ))
+    expect(result).toBeNull()
+    if (!withHeader) expect(cancelled).toBe(true)
+    else await body.cancel()
+  })
+
   afterEach(() => {
     vi.unstubAllGlobals()
     vi.unstubAllEnvs()

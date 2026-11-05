@@ -624,3 +624,17 @@ export const removeBookSchema = z.object({
 })
 
 export type RemoveBookSchema = z.infer<typeof removeBookSchema>
+
+export const bookEditSchema = z.object({
+  title: manualBookCreateSchema.shape.title,
+  authors: manualBookCreateSchema.shape.authors,
+  isbn: manualBookCreateSchema.shape.isbn,
+  publishDate: manualBookCreateSchema.shape.publishDate,
+  publisher: manualBookCreateSchema.shape.publisher,
+  numberOfPages: manualBookCreateSchema.shape.numberOfPages,
+  coverImage: manualBookCreateSchema.shape.coverImage,
+  expectedBookId: z.string().min(1),
+  description: trimmedNullableString(20000, 'Description').default(null),
+  removeCover: z.boolean().default(false)
+}).refine(value => !(value.removeCover && value.coverImage), { message: 'Choose a cover or remove it, not both', path: ['coverImage'] })
+export type BookEditSchema = z.infer<typeof bookEditSchema>

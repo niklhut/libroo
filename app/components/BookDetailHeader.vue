@@ -7,6 +7,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
+  edit: []
   moveToLibrary: []
   moveToWishlist: []
   markPreviouslyOwned: []
@@ -48,6 +49,13 @@ const menuItems = computed(() => [
         </p>
       </div>
       <div class="flex shrink-0 flex-wrap gap-2">
+        <UButton
+          label="Edit book"
+          icon="i-lucide-pencil"
+          variant="outline"
+          color="neutral"
+          @click="emit('edit')"
+        />
         <UButton
           v-if="book.libraryState === 'wishlisted' || book.libraryState === 'previously_owned'"
           color="primary"

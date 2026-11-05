@@ -25,6 +25,20 @@ describe('useLibraryDashboardStore', () => {
     createStore = () => useLibraryDashboardStore()
   })
 
+  it('updates edited cards immediately and ignores later enrichment for their old metadata', () => {
+    const store = createStore()
+    const original = createBook('edited')
+    store.addBook(original)
+    store.cacheResults('library')
+    const updated = { ...original, bookId: 'private-copy', title: 'Corrected title', author: 'Corrected author', authors: [], coverPath: 'new.webp', openLibraryKey: null, workKey: null } as import('../../shared/types/book').BookDetails
+    store.updateBookDetails(updated)
+    store.updateBookEnrichment(original.id, { bookId: original.bookId, title: 'Old title', author: 'Old author', authors: [], coverPath: 'old.webp', coverUrl: null, isbn: original.isbn, subjects: [], status: null } as LibraryBookEnrichmentUpdate)
+    expect(store.allBooks[0]).toMatchObject({ title: 'Corrected title', bookId: 'private-copy', coverPath: 'new.webp' })
+    expect(store.pendingAddedBooks[0]?.title).toBe('Corrected title')
+    expect(store.resultCache).toEqual({})
+    expect(store.shouldSync).toBe(true)
+  })
+
   it('starts enrichment with an immediate foreground request for the batch', async () => {
     const fetchMock = vi.fn().mockResolvedValue({ claimed: 0, pending: 0, nextAttemptAt: null })
     vi.stubGlobal('$fetch', fetchMock)
