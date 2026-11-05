@@ -460,6 +460,22 @@ describe('useLibraryDashboardStore', () => {
     })
   })
 
+  it('invalidates cached queries even when the deleted book is not in the visible results', () => {
+    const store = createStore()
+    store.allBooks = [createBook('deleted')]
+    store.pagination = { page: 1, pageSize: 12, totalItems: 1, totalPages: 1, hasMore: false }
+    store.cacheResults('old-query')
+    store.allBooks = [createBook('remaining')]
+    store.cacheResults('current-query')
+
+    store.removeBooks(['deleted'])
+
+    expect(store.allBooks.map(book => book.id)).toEqual(['remaining'])
+    expect(store.resultCache).toEqual({})
+    expect(store.restoreCachedResults('old-query')).toBeNull()
+    expect(store.shouldSync).toBe(true)
+  })
+
   it('marks sync with loaded page target and can clear it', () => {
     const store = createStore()
     const { pageSize, allBooks, shouldSync, syncTargetPages } = storeToRefs(store)
