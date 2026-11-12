@@ -37,8 +37,8 @@
       "groupSlug": "github-actions"
     },
     {
-      "matchDatasources": ["node-version", "docker"],
-      "matchPackageNames": ["node"],
+      "matchDatasources": ["node-version", "docker", "github-releases"],
+      "matchPackageNames": ["node", "actions/node-versions"],
       "matchUpdateTypes": ["major", "minor", "patch"],
       "groupName": "Node.js",
       "groupSlug": "node-js"
