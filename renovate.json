@@ -37,6 +37,13 @@
       "groupSlug": "github-actions"
     },
     {
+      "matchDatasources": ["node-version", "docker"],
+      "matchPackageNames": ["node"],
+      "matchUpdateTypes": ["major", "minor", "patch"],
+      "groupName": "Node.js",
+      "groupSlug": "node-js"
+    },
+    {
       "description": "Effect and its platform packages have coupled peer dependencies and must be upgraded together.",
       "matchPackageNames": ["effect", "@effect/*"],
       "groupName": "Effect ecosystem",
