@@ -6,6 +6,7 @@ export function useBookDetailActions(
   refresh: () => Promise<unknown>
 ) {
   const toast = useToast()
+  const dashboardStore = useLibraryDashboardStore()
   const isDeleting = ref(false)
   const isReturningLoan = ref(false)
   const isSavingReadingProgress = ref(false)
@@ -21,6 +22,7 @@ export function useBookDetailActions(
         method: 'DELETE',
         query: confirmActiveLoan ? { confirmActiveLoan: 'true' } : undefined
       })
+      dashboardStore.removeBooks([userBookId])
       toast.add({ title: 'Book removed', color: 'success' })
       await navigateTo('/library')
       return 'removed'

@@ -115,6 +115,11 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
   function removeBooks(removedIds: string[]) {
     if (removedIds.length === 0) return
 
+    // Remove from the visible list before navigating back from a detail page,
+    // and invalidate every filtered snapshot that could resurrect the record.
+    markNeedsSync(getLoadedPages())
+    resultCache.value = {}
+    resultCacheKeyOrder.value = []
     const removedIdSet = new Set(removedIds)
     pendingEnrichmentUpdates.value = Object.fromEntries(
       Object.entries(pendingEnrichmentUpdates.value).filter(([id]) => !removedIdSet.has(id))
