@@ -38,8 +38,12 @@ test('immediately removes a deleted book while the library refresh is pending', 
   const remainingTitle = `Keep after delete ${Date.now()}`
   let releaseRefresh!: () => void
   let markRefreshStarted!: () => void
-  const refreshGate = new Promise<void>((resolve) => { releaseRefresh = resolve })
-  const refreshStarted = new Promise<void>((resolve) => { markRefreshStarted = resolve })
+  const refreshGate = new Promise<void>((resolve) => {
+    releaseRefresh = resolve
+  })
+  const refreshStarted = new Promise<void>((resolve) => {
+    markRefreshStarted = resolve
+  })
   try {
     await addManualBook(page, remainingTitle)
     await addManualBook(page, title)
