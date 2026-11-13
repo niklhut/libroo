@@ -127,9 +127,9 @@ export const LibraryTransferRepositoryLive = Layer.effect(
               .where(and(eq(userBooks.userId, userId), isNull(userBooks.removedAt)))
               .orderBy(asc(books.title), asc(userBooks.addedAt))
 
-            const bookIds = [...new Set(rows.map(row => row.bookId))]
-            const userBookIds = rows.map(row => row.userBookId)
-            const authorRows = bookIds.length === 0
+            // Scope through ownership instead of binding every exported ID.
+            // D1 caps bound parameters at 100, regardless of library size.
+            const authorRows = rows.length === 0
               ? []
               : await dbService.db
                   .select({
@@ -138,9 +138,14 @@ export const LibraryTransferRepositoryLive = Layer.effect(
                   })
                   .from(bookAuthors)
                   .innerJoin(authors, eq(bookAuthors.authorId, authors.id))
-                  .where(inArray(bookAuthors.bookId, bookIds))
+                  .where(inArray(
+                    bookAuthors.bookId,
+                    dbService.db.select({ bookId: userBooks.bookId })
+                      .from(userBooks)
+                      .where(and(eq(userBooks.userId, userId), isNull(userBooks.removedAt)))
+                  ))
                   .orderBy(asc(bookAuthors.sortOrder), asc(authors.name))
-            const tagRows = userBookIds.length === 0
+            const tagRows = rows.length === 0
               ? []
               : await dbService.db
                   .select({
@@ -149,7 +154,8 @@ export const LibraryTransferRepositoryLive = Layer.effect(
                   })
                   .from(userBookTags)
                   .innerJoin(tags, eq(userBookTags.tagId, tags.id))
-                  .where(inArray(userBookTags.userBookId, userBookIds))
+                  .innerJoin(userBooks, eq(userBooks.id, userBookTags.userBookId))
+                  .where(and(eq(userBooks.userId, userId), isNull(userBooks.removedAt)))
                   .orderBy(asc(tags.name))
 
             const authorsByBook = new Map<string, string[]>()
