@@ -2,6 +2,7 @@
 import * as z from 'zod'
 import type { FormSubmitEvent, AuthFormField } from '@nuxt/ui'
 import { canShowForgotPasswordAction } from '~~/shared/utils/email-capability-ui'
+import { booleanConfigValue } from '~~/shared/utils/runtime-config'
 import { canShowOAuthSignIn, canShowPasskeySignIn, canShowPasswordForm, getOAuthProviderLabel } from '~~/shared/utils/auth-capability-ui'
 import { authClient } from '~/utils/auth-client'
 
@@ -12,6 +13,7 @@ definePageMeta({
 usePageTitle('Login')
 
 const route = useRoute()
+const config = useRuntimeConfig()
 const authStore = useAuthStore()
 const { user, pendingMfa } = storeToRefs(authStore)
 const { signIn } = authStore
@@ -22,6 +24,7 @@ const { data: authCapabilities } = await useAuthCapabilities()
 const isLoading = ref(false)
 const error = ref('')
 const showPassword = ref(false)
+const registrationEnabled = computed(() => booleanConfigValue(config.public.registrationEnabled, true))
 const showForgotPassword = computed(() => canShowForgotPasswordAction(emailCapabilities.value))
 const browserSupportsPasskeys = ref(false)
 const showPasskeySignIn = computed(() => browserSupportsPasskeys.value && canShowPasskeySignIn(authCapabilities.value))
@@ -317,7 +320,10 @@ async function signInWithOAuth() {
         icon="i-lucide-library"
         @submit="onSubmit"
       >
-        <template #description>
+        <template
+          v-if="registrationEnabled"
+          #description
+        >
           Don't have an account?
           <ULink
             :to="{ path: '/register', query: route.query.redirect ? { redirect: route.query.redirect } : undefined }"
