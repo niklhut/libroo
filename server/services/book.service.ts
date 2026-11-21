@@ -124,7 +124,7 @@ export interface BookServiceInterface {
   listTags: (userId: string) => Effect.Effect<TagWithCount[], DatabaseError, DbService>
   getUserLibrary: (
     userId: string,
-    pagination: PaginationParams & LibraryQueryFilters
+    pagination: PaginationParams & LibraryQueryFilters & { perShelf?: boolean, shelf?: string, shelfIndex?: boolean }
   ) => Effect.Effect<PaginatedResult<LibraryBook>, LocationNotFoundError | DatabaseError, DbService>
 
   getAuthorLibrary: (
@@ -351,17 +351,12 @@ export const BookServiceLive = Layer.effect(
             Effect.as(new Map<string, BookEnrichmentStatus>())
           ))
         )
-        const canonical = yield* Effect.forEach(
-          bookIds.filter(bookId => !imported.has(bookId)),
-          bookId => canonicalEnrichmentRepo.get(bookId).pipe(
-            Effect.map(job => [bookId, job?.status] as const),
-            Effect.catch(error => Effect.logWarning(`Failed to load optional canonical enrichment status: ${String(error)}`).pipe(
-              Effect.as([bookId, undefined] as const)
-            ))
-          ),
-          { concurrency: 8 }
+        const canonical = yield* canonicalEnrichmentRepo.getStatuses(bookIds.filter(id => !imported.has(id))).pipe(
+          Effect.catch(error => Effect.logWarning(`Failed to load optional canonical enrichment statuses: ${String(error)}`).pipe(
+            Effect.as(new Map<string, BookEnrichmentStatus>())
+          ))
         )
-        for (const [bookId, status] of canonical) if (status) imported.set(bookId, status)
+        for (const [id, status] of canonical) imported.set(id, status)
         return imported
       })
 
@@ -973,7 +968,7 @@ export const BookServiceLive = Layer.effect(
 
 // ===== Helper Effects =====
 
-export const getUserLibrary = (userId: string, pagination: PaginationParams & LibraryQueryFilters) =>
+export const getUserLibrary = (userId: string, pagination: PaginationParams & LibraryQueryFilters & { perShelf?: boolean, shelf?: string, shelfIndex?: boolean }) =>
   Effect.flatMap(BookService, service => service.getUserLibrary(userId, pagination))
 
 export const listTags = (userId: string) =>
