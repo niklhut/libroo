@@ -9,7 +9,7 @@ import {
   type AccountEmailChangeSchema,
   type AccountPasswordChangeSchema
 } from '~~/shared/utils/account-settings'
-import type { LibraryImportConflictStrategy, LibraryImportResult } from '~~/shared/types/library-transfer'
+import type { LibraryBackupExport, LibraryImportConflictStrategy, LibraryImportResult } from '~~/shared/types/library-transfer'
 import { roleIncludesAdmin } from '~~/shared/utils/auth-roles'
 import { canShowVerificationResendAction, canUseVerifiedEmailChange, getPasswordUpdatedDescription } from '~~/shared/utils/email-capability-ui'
 import { canShowEmailManagement, canShowPasskeyManagement, canShowPasswordManagement, canShowTwoFactorManagement } from '~~/shared/utils/auth-capability-ui'
@@ -131,7 +131,7 @@ const importConflictStrategy = ref<LibraryImportConflictStrategy>('existing')
 const importEnrich = ref(false)
 const importConfirmOpen = ref(false)
 const isImporting = ref(false)
-const isExporting = ref(false)
+const exportingFormat = ref<'csv' | 'zip' | null>(null)
 const LIBRARY_IMPORT_MAX_BYTES = 10 * 1024 * 1024
 
 const importConflictItems = [
@@ -756,17 +756,36 @@ async function deleteAccount(payload: FormSubmitEvent<AccountDeletionSchema>) {
   }
 }
 
-async function downloadLibraryCsv() {
-  if (!import.meta.client) return
+async function downloadLibrary(format: 'csv' | 'zip') {
+  if (!import.meta.client || exportingFormat.value) return
 
-  isExporting.value = true
+  exportingFormat.value = format
   try {
-    const csv = await $fetch<string>('/api/library/export', { responseType: 'text' })
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+    let blob: Blob
+    if (format === 'csv') {
+      const csv = await $fetch<string>('/api/library/export', { responseType: 'text' })
+      blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+    } else {
+      const [{ createLibraryBackup }, backup] = await Promise.all([
+        import('~/utils/library-backup'),
+        $fetch<LibraryBackupExport>('/api/library/backup')
+      ])
+      const archive = await createLibraryBackup(backup)
+      blob = archive.blob
+      if (archive.missingCovers.length) {
+        const count = archive.missingCovers.length
+        toast.add({
+          title: 'Some covers could not be downloaded',
+          description: `The ZIP includes every book. ${count} cover ${count === 1 ? 'file is' : 'files are'} missing.`,
+          color: 'warning'
+        })
+      }
+    }
+
     const url = URL.createObjectURL(blob)
     const anchor = document.createElement('a')
     anchor.href = url
-    anchor.download = `libroo-library-${new Date().toISOString().slice(0, 10)}.csv`
+    anchor.download = `libroo-library-${new Date().toISOString().slice(0, 10)}.${format}`
     document.body.appendChild(anchor)
     anchor.click()
     anchor.remove()
@@ -778,7 +797,7 @@ async function downloadLibraryCsv() {
       color: 'error'
     })
   } finally {
-    isExporting.value = false
+    exportingFormat.value = null
   }
 }
 
@@ -1073,19 +1092,30 @@ async function importLibraryCsvFile() {
                   Export library
                 </p>
                 <p class="text-sm text-muted">
-                  Download your books, tags, locations, reading state, and active loans as CSV.
+                  Download your library as CSV, or download a ZIP backup with covers.
                 </p>
               </div>
             </div>
-            <UButton
-              color="neutral"
-              variant="outline"
-              :loading="isExporting"
-              :disabled="isExporting"
-              @click="downloadLibraryCsv"
-            >
-              Export CSV
-            </UButton>
+            <div class="flex flex-wrap gap-2">
+              <UButton
+                color="neutral"
+                variant="outline"
+                :loading="exportingFormat === 'csv'"
+                :disabled="exportingFormat !== null"
+                @click="downloadLibrary('csv')"
+              >
+                Export CSV
+              </UButton>
+              <UButton
+                color="neutral"
+                variant="outline"
+                :loading="exportingFormat === 'zip'"
+                :disabled="exportingFormat !== null"
+                @click="downloadLibrary('zip')"
+              >
+                Export ZIP
+              </UButton>
+            </div>
           </div>
 
           <div class="flex flex-col gap-4 py-5 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
