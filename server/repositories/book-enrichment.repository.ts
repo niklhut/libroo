@@ -672,11 +672,10 @@ export const BookEnrichmentRepositoryLive = Layer.effect(
       isCoverReferenced: pathname =>
         Effect.tryPromise({
           try: async () => {
-            const [bookRows, loanRows] = await Promise.all([
-              dbService.db.select({ id: books.id }).from(books).where(eq(books.coverPath, pathname)).limit(1),
-              dbService.db.select({ id: loans.id }).from(loans).where(eq(loans.snapshotCoverPath, pathname)).limit(1)
-            ])
-            return Boolean(bookRows[0] || loanRows[0])
+            const rows = await dbService.db.select({ id: books.id }).from(books).where(eq(books.coverPath, pathname))
+              .unionAll(dbService.db.select({ id: loans.id }).from(loans).where(eq(loans.snapshotCoverPath, pathname)))
+              .limit(1)
+            return rows.length > 0
           },
           catch: error => new DatabaseError({
             message: `Failed to check cover references: ${error}`,
