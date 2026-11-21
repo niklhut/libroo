@@ -22,7 +22,8 @@ export const libraryCsvColumns = [
 ] as const
 
 export type LibraryCsvColumn = typeof libraryCsvColumns[number]
-export type LibraryCsvRow = Record<LibraryCsvColumn, string>
+const backupColumns = ['description', 'publisher', 'publish_date', 'number_of_pages', 'cover_file'] as const
+export type LibraryCsvRow = Record<LibraryCsvColumn, string> & Partial<Record<typeof backupColumns[number], string>>
 
 export const LIBRARY_CSV_MAX_BYTES = 10 * 1024 * 1024
 export const LIBRARY_CSV_MAX_DATA_ROWS = 10_000
@@ -48,10 +49,11 @@ export function escapeCsvValue(value: unknown): string {
   return `"${escapedText.replaceAll('"', '""')}"`
 }
 
-export function formatLibraryCsv(rows: LibraryCsvRow[]): string {
+export function formatLibraryCsv(rows: LibraryCsvRow[], includeCovers = false): string {
+  const columns = includeCovers ? [...libraryCsvColumns, ...backupColumns] : libraryCsvColumns
   return [
-    libraryCsvColumns.map(escapeCsvValue).join(','),
-    ...rows.map(row => libraryCsvColumns.map(column => escapeCsvValue(row[column])).join(','))
+    columns.map(escapeCsvValue).join(','),
+    ...rows.map(row => columns.map(column => escapeCsvValue(row[column])).join(','))
   ].join('\n')
 }
 

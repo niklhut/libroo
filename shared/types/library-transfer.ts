@@ -2,7 +2,17 @@ import type { LibraryState, ReadingStatus } from './book'
 
 export type LibraryImportConflictStrategy = 'existing' | 'csv'
 
+export interface LibraryBackupExport {
+  csv: string
+  covers: Array<{ file: string, url: string }>
+}
+
 export interface LibraryExportRecord {
+  coverPath?: string | null
+  description?: string | null
+  publishers?: string | null
+  publishDate?: string | null
+  numberOfPages?: number | null
   userBookId: string
   title: string
   authors: string[]
