@@ -1,8 +1,8 @@
-import { Semaphore, Context, Effect, Layer, Data, Duration, Result } from 'effect'
+import { Semaphore, Context, Effect, Layer, Data, Duration, Result, Stream } from 'effect'
 import * as HttpClient from 'effect/http/HttpClient'
 import * as HCError from 'effect/http/HttpClientError'
 import type * as HttpClientType from 'effect/http/HttpClient'
-import { MAX_BULK_ISBN_COUNT } from '../../shared/utils/schemas'
+import { MANUAL_COVER_MAX_BYTES, MAX_BULK_ISBN_COUNT } from '../../shared/utils/schemas'
 import { DbService } from '../services/db.service'
 import { putCoverImage, type StorageService } from '../services/storage.service'
 import { DatabaseRateLimiter } from '../utils/database-rate-limiter'
@@ -96,6 +96,7 @@ export interface OpenLibraryRepositoryInterface {
   lookupCoreByISBNs: (isbns: string[], priority?: OpenLibraryRequestPriority) => Effect.Effect<Map<string, OpenLibraryBookData>, OpenLibraryApiError, HttpClientType.HttpClient>
   enrichMetadata: (data: OpenLibraryBookData, priority?: OpenLibraryRequestPriority) => Effect.Effect<OpenLibraryBookData, OpenLibraryApiError, HttpClientType.HttpClient>
   lookupByISBNs: (isbns: string[], priority?: OpenLibraryRequestPriority) => Effect.Effect<Map<string, OpenLibraryBookData>, OpenLibraryApiError, HttpClientType.HttpClient>
+  fetchCoverImage: (isbn: string, size: 'S' | 'M' | 'L') => Effect.Effect<ArrayBuffer | null, never, HttpClientType.HttpClient>
   downloadCover: (isbn: string, size?: 'S' | 'M' | 'L', providerCoverUrl?: string | null, priority?: OpenLibraryRequestPriority) => Effect.Effect<string | null, never, HttpClientType.HttpClient | StorageService>
   downloadCovers: (isbns: string[], size?: 'S' | 'M' | 'L') => Effect.Effect<Map<string, string | null>, never, HttpClientType.HttpClient | StorageService>
 }
@@ -596,19 +597,34 @@ export const OpenLibraryRepositoryLive = Layer.effect(
 
         const requestStartedAt = Date.now()
         const image = yield* HttpClient.get(coverUrl, { headers: getOpenLibraryHeaders() }).pipe(
-          Effect.timeout(getOpenLibraryCoverTimeout()),
           Effect.flatMap((response) => {
             if (response.status < 200 || response.status >= 300) {
               return Effect.succeed(null as ArrayBuffer | null)
             }
 
             const contentLength = response.headers['content-length']
-            if (contentLength && parseInt(contentLength) < 1000) {
+            if (contentLength && (parseInt(contentLength) < 1000 || parseInt(contentLength) > MANUAL_COVER_MAX_BYTES)) {
               return Effect.succeed(null as ArrayBuffer | null)
             }
 
-            return response.arrayBuffer
+            return Stream.runFoldEffect(response.stream, () => ({ chunks: [] as Uint8Array[], size: 0 }), (body, chunk) => {
+              if (body.size + chunk.byteLength > MANUAL_COVER_MAX_BYTES) {
+                return Effect.fail(new OpenLibraryCoverError({ isbn: normalizedISBN, message: 'Cover image exceeds 2 MB' }))
+              }
+              body.chunks.push(chunk)
+              body.size += chunk.byteLength
+              return Effect.succeed(body)
+            }).pipe(Effect.map((body) => {
+              const bytes = new Uint8Array(body.size)
+              let offset = 0
+              for (const chunk of body.chunks) {
+                bytes.set(chunk, offset)
+                offset += chunk.byteLength
+              }
+              return bytes.buffer
+            }))
           }),
+          Effect.timeout(getOpenLibraryCoverTimeout()),
           Effect.mapError(error => new OpenLibraryCoverError({
             message: `Failed to fetch cover: ${HCError.isHttpClientError(error) ? error.message : String(error)}`,
             isbn: normalizedISBN
@@ -681,6 +697,7 @@ export const OpenLibraryRepositoryLive = Layer.effect(
           }))
         }),
 
+      fetchCoverImage,
       downloadCovers,
       downloadCover: (isbn, size = 'L', providerCoverUrl = null, priority = 'interactive') =>
         downloadCovers([isbn], size, new Map([[normalizeISBN(isbn), providerCoverUrl]]), priority).pipe(

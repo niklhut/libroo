@@ -119,6 +119,8 @@ The admin metrics dashboard shows aggregate, instance-level operational metadata
 
 The library CSV export is a versioned transfer format for the current user's library. It includes current book/library fields, source identifiers used for conservative deduplication, and at most one active loan snapshot. It does not include borrower email or historical loan rows. See [Account Deletion And Retention](./account-deletion.md) for deletion mechanics and operator support guidance.
 
+Editing a saved book creates private metadata for that library entry. Other users’ shared catalog metadata is not changed. The stable library entry keeps its personal data and loans; background enrichment on the old metadata cannot overwrite the edit. Unreferenced older private metadata is removed, and replaced private cover files are cleaned up only when no book references them.
+
 CSV imports remain user-created manual records unless a trusted Libroo export points to the same Open Library edition. Metadata enrichment is disabled by default. When a user explicitly enables it, Libroo sends valid imported ISBNs to Open Library in a background job. Provider metadata is added without replacing the imported title, authors, or manual cover. The job state stores the user, imported book, ISBN, attempts, timing, and bounded diagnostic messages; it does not make the imported manual record available to other users.
 
 Key retention nuances:

@@ -146,6 +146,23 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
     }
   }
 
+  function updateBookDetails(details: import('~~/shared/types/book').BookDetails) {
+    const patch = (book: LibraryBook): LibraryBook => book.id === details.id
+      ? {
+          ...book, bookId: details.bookId, title: details.title, author: details.author, authors: details.authors,
+          isbn: details.isbn, coverPath: details.coverPath, description: details.description,
+          publishers: details.publishers, publishDate: details.publishDate, numberOfPages: details.numberOfPages,
+          openLibraryKey: details.openLibraryKey, workKey: details.workKey, enrichmentStatus: null
+        }
+      : book
+    allBooks.value = allBooks.value.map(patch)
+    pendingAddedBooks.value = pendingAddedBooks.value.map(patch)
+    pendingEnrichmentUpdates.value = Object.fromEntries(Object.entries(pendingEnrichmentUpdates.value).filter(([id]) => id !== details.id))
+    resultCache.value = {}
+    resultCacheKeyOrder.value = []
+    markNeedsSync(getLoadedPages())
+  }
+
   function updateBookTags(userBookId: string, tags: string[]) {
     const updateTags = (book: LibraryBook) => book.id === userBookId
       ? { ...book, tags: [...tags] }
@@ -439,6 +456,7 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
     addBook,
     removeBooks,
     updateBookTags,
+    updateBookDetails,
     updateBookEnrichment,
     applyPendingEnrichmentUpdates,
     markNeedsSync,

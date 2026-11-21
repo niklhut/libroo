@@ -54,6 +54,9 @@ vi.mock('../../../../server/services/rate-limit.service', () => ({
   RateLimitServiceLive: Layer.empty
 }))
 
+vi.mock('../../../../server/repositories/book-edit.repository', () => ({ BookEditRepositoryLive: Layer.empty }))
+vi.mock('../../../../server/services/book-edit.service', () => ({ BookEditServiceLive: Layer.empty }))
+
 describe('handleError', () => {
   beforeAll(() => {
     for (const name of liveLayerNames) {

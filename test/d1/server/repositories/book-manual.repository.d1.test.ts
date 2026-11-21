@@ -1,9 +1,11 @@
+import { BookEditRepository, BookEditRepositoryLive } from '../../../../server/repositories/book-edit.repository'
+import { bookEditSchema, manualBookCreateSchema } from '../../../../shared/utils/schemas'
 /// <reference types="@cloudflare/vitest-plugin" />
 
 import { env } from 'cloudflare:workers'
 import { Effect, Result, Layer } from 'effect'
 import { drizzle } from 'drizzle-orm/d1'
-import { eq } from 'drizzle-orm'
+import { count, eq } from 'drizzle-orm'
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import initialMigration from '../../../../server/db/migrations/sqlite/0000_initial_beta.sql?raw'
 import termsMigration from '../../../../server/db/migrations/sqlite/0001_add_terms_acceptance.sql?raw'
@@ -43,6 +45,53 @@ describe('BookRepository.createManualBook on D1', () => {
     await env.DB.prepare('DELETE FROM authors').run()
     await env.DB.prepare('DELETE FROM user').run()
     await seedUser(db)
+  })
+
+  it('edits one entry without changing shared metadata, private fields, or its stable ID', async () => {
+    const original = await runRepository(db, Effect.flatMap(BookRepository, repo => repo.createManualBook('user-1', {
+      ...manualBookCreateSchema.parse({ title: 'Original', authors: ['Original Author'], isbn: '9780441172719', tags: ['Favourite'], note: 'Keep note', rating: 4, readingStatus: 'reading', currentPage: 12 }), coverPath: 'covers/manual/user-1/original.webp'
+    })))
+    await db.update(books).set({ source: 'open_library' }).where(eq(books.id, original.bookId))
+    const now = new Date()
+    await db.insert(user).values({ id: 'user-2', name: 'Other', email: 'other@example.com', createdAt: now, updatedAt: now })
+    await db.insert(userBooks).values({ id: 'other-copy', userId: 'user-2', bookId: original.bookId, addedAt: now })
+    await db.insert(loans).values({
+      id: 'edit-loan', ownerUserId: 'user-1', userBookId: original.id, borrowerDisplayName: 'Borrower',
+      status: 'active', loanedAt: now, dueAt: now, snapshotBookTitle: 'Original', snapshotBookAuthor: 'Original Author',
+      snapshotOwnerName: 'Reader', snapshotCoverPath: 'covers/manual/user-1/loan-only.webp', createdAt: now, updatedAt: now
+    })
+    const input = bookEditSchema.parse({ expectedBookId: original.bookId, title: 'Corrected title', authors: ['New Author', 'Second Author'], isbn: '9780441172719', publisher: 'New Publisher', numberOfPages: 300 })
+    expect(await runEdit(db, 'user-1', original.id, input)).toBe(true)
+    const [edited] = await db.select().from(userBooks).where(eq(userBooks.id, original.id))
+    expect(edited).toMatchObject({ id: original.id, rating: 4, note: 'Keep note', currentPage: 12 })
+    expect(edited!.bookId).not.toBe(original.bookId)
+    const [other] = await db.select().from(userBooks).where(eq(userBooks.id, 'other-copy'))
+    expect(other!.bookId).toBe(original.bookId)
+    const [oldBook] = await db.select().from(books).where(eq(books.id, original.bookId))
+    expect(oldBook!.title).toBe('Original')
+    const details = await runRepository(db, Effect.flatMap(BookRepository, repo => repo.getUserBookWithDetails(original.id, 'user-1')))
+    expect(details).toMatchObject({ title: 'Corrected title', authors: [{ name: 'New Author' }, { name: 'Second Author' }], publishers: 'New Publisher', numberOfPages: 300, coverPath: null })
+    expect(details.userTags.map(tag => tag.name)).toContain('Favourite')
+    expect(details.activeLoan?.id).toBe('edit-loan')
+    const database = db as unknown as DbServiceInterface['db']
+    const coverReferenced = await Effect.runPromise(Effect.flatMap(BookEditRepository, repo =>
+      repo.isCoverReferenced('covers/manual/user-1/loan-only.webp')
+    ).pipe(Effect.provide(BookEditRepositoryLive), Effect.provide(Layer.succeed(DbService, { db: database, executeAtomic: build => database.batch(build(database)) }))))
+    expect(coverReferenced).toBe(true)
+    const [replacement] = await db.select().from(books).where(eq(books.id, edited!.bookId))
+    expect(replacement).toMatchObject({ source: 'manual', entrySource: 'manual_entry', createdByUserId: 'user-1', openLibraryMetadata: null })
+  })
+
+  it('fences concurrent saves and rejects another user without inserting book copies', async () => {
+    const original = await runRepository(db, Effect.flatMap(BookRepository, repo => repo.createManualBook('user-1', {
+      ...manualBookCreateSchema.parse({ title: 'Original', authors: ['Author'], isbn: null }), coverPath: null
+    })))
+    const input = bookEditSchema.parse({ expectedBookId: original.bookId, title: 'Edited', authors: ['Author'], isbn: null })
+    expect(await runEdit(db, 'not-owner', original.id, input)).toBe(false)
+    const results = await Promise.all([runEdit(db, 'user-1', original.id, input), runEdit(db, 'user-1', original.id, input)])
+    expect(results.filter(Boolean)).toHaveLength(1)
+    const [total] = await db.select({ count: count() }).from(books)
+    expect(total!.count).toBe(1)
   })
 
   it('creates a manual book through D1 batch without opening a transaction', async () => {
@@ -363,4 +412,12 @@ async function seedUser(database: D1Db) {
     createdAt: now,
     updatedAt: now
   })
+}
+
+function runEdit(database: D1Db, userId: string, userBookId: string, input: import('../../../../shared/utils/schemas').BookEditSchema) {
+  const db = database as unknown as DbServiceInterface['db']
+  return Effect.runPromise(Effect.flatMap(BookEditRepository, repo => repo.replace(userId, userBookId, input, null)).pipe(
+    Effect.provide(BookEditRepositoryLive),
+    Effect.provide(Layer.succeed(DbService, { db, executeAtomic: build => db.batch(build(db)) }))
+  ))
 }

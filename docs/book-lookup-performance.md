@@ -29,3 +29,24 @@ Info-level structured logs include `operation`, `durationMs`, and `outcome` for 
 Compare previously unseen ISBNs before and after deployment. Record click-to-addable-result and click-to-visible-cover separately using the browser network/performance tools. Also compare paste-to-result because a completed prefetch can hide request time before the click. Server timings do not include browser image loading. A warmed local record is a different workload from a first-ever provider lookup.
 
 No fixed latency improvement is assumed: Open Library response time, database location, and concurrent traffic still determine the deployed result.
+
+## Editing saved books
+
+Open a book from the library and choose **Edit book**. Imported, manually added
+and ISBN-added entries support title, ordered authors, ISBN, publisher,
+publication date, page count and description changes. **Find missing details by
+ISBN** fills empty fields for review; it preserves values already in the form.
+
+Upload a cover (up to 2 MB), remove it, or choose **Find cover by ISBN** to preview
+an Open Library image. A preview is not stored and does not change the entry.
+**Save changes** stores uploaded/fetched images through the normal WebP storage
+conversion. Cancel discards all staged changes.
+
+Changes apply only to the selected entry in your library, preserving its notes,
+tags, location, rating, reading progress and loans. Saved metadata is private and
+separate from the shared catalog, so background enrichment cannot overwrite the
+correction or change another user's copy. Concurrent edits return a conflict
+rather than silently overwriting one another. Unreferenced older private metadata
+is removed; replaced private cover files are deleted only when no record uses
+them. Shared covers are retained. Explicit future CSV imports still follow the
+selected conflict policy.

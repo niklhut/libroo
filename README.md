@@ -20,6 +20,7 @@ Database migrations live under `server/db/migrations/sqlite`.
 - Admin user management, role changes, bans, invites, and audit log.
 - Optional public registration or invite-only registration.
 - Manual book creation and ISBN lookup with Open Library metadata.
+- Edit saved book details, upload or remove covers, and preview cover lookup by ISBN.
 - Library list/detail views, authors, locations, tags, ratings, notes, and reading progress.
 - Borrowing and lending workflows, including public borrower invite links.
 - Versioned CSV import/export with optional background metadata and cover enrichment.
