@@ -41,7 +41,7 @@ useSeoMeta({
 </script>
 
 <template>
-  <UApp>
+  <UApp :toaster="{ disableSwipe: true }">
     <NuxtLayout>
       <NuxtPage />
     </NuxtLayout>

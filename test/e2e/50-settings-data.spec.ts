@@ -105,3 +105,37 @@ test('imports library data from CSV and renders imported metadata', async ({ pag
     readingStatus: 'reading'
   })
 })
+
+test('selects and copies notification text by dragging in either direction', async ({ page, context }, testInfo) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+  await registerSettingsUser(page, testInfo.title, 'settings-notification-selection')
+  await page.goto('/settings')
+  await page.route('**/api/library/export', route => route.fulfill({ status: 500, json: { message: 'Export unavailable for this test' } }))
+  await page.getByRole('button', { name: 'Export CSV', exact: true }).click()
+  const title = page.locator('[data-slot="title"]').filter({ hasText: /^Export failed$/ })
+  const description = page.locator('[data-slot="description"]').filter({ hasText: '/api/library/export' })
+  await expect(title).toBeVisible()
+  await expect(description).toBeVisible()
+
+  for (const [target, reverse] of [[title, false], [description, true]] as const) {
+    await target.hover()
+    const points = await target.evaluate((element) => {
+      window.getSelection()?.removeAllRanges()
+      const range = document.createRange()
+      range.selectNodeContents(element)
+      const firstLine = range.getClientRects()[0]!
+      return { left: firstLine.left + 1, right: firstLine.right - 1, y: firstLine.top + firstLine.height / 2 }
+    })
+    const [start, end] = reverse ? [points.right, points.left] : [points.left, points.right]
+    await page.mouse.move(start, points.y)
+    await page.mouse.down()
+    await page.mouse.move(end, points.y, { steps: 12 })
+    await page.mouse.up()
+    await expect.poll(() => page.evaluate(() => window.getSelection()?.toString().length ?? 0)).toBeGreaterThan(3)
+    await expect(title).toBeVisible()
+    const selection = await page.evaluate(() => window.getSelection()?.toString())
+    expect(await target.textContent()).toContain(selection)
+    await page.keyboard.press('ControlOrMeta+c')
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(selection)
+  }
+})
