@@ -5,6 +5,10 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 export interface DashboardPagination {
+  perShelf?: boolean
+  shelfCounts?: Record<string, number>
+  shelfLabels?: Record<string, string>
+  shelfNextPages?: Record<string, number>
   page: number
   pageSize: number
   totalItems: number
@@ -55,7 +59,7 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
   const canonicalEnrichmentRuns = new Set<AbortController>()
 
   function getLoadedPages() {
-    return Math.max(1, Math.ceil(allBooks.value.length / pageSize.value))
+    return pagination.value?.perShelf ? Math.max(1, page.value) : Math.max(1, Math.ceil(allBooks.value.length / pageSize.value))
   }
 
   function canOptimisticallyDisplayBook(book: LibraryBook) {
@@ -92,13 +96,13 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
     if (!pagination.value || existed) return
 
     const totalItems = pagination.value.totalItems + 1
-    const totalPages = Math.ceil(totalItems / pagination.value.pageSize)
+    const totalPages = pagination.value.perShelf ? pagination.value.totalPages : Math.ceil(totalItems / pagination.value.pageSize)
 
     pagination.value = {
       ...pagination.value,
       totalItems,
       totalPages,
-      hasMore: page.value < totalPages
+      hasMore: pagination.value.perShelf ? pagination.value.hasMore : page.value < totalPages
     }
   }
 
@@ -132,7 +136,7 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
     if (removedCount <= 0 || !pagination.value) return
 
     const totalItems = Math.max(0, pagination.value.totalItems - removedCount)
-    const totalPages = Math.ceil(totalItems / pagination.value.pageSize)
+    const totalPages = pagination.value.perShelf ? pagination.value.totalPages : Math.ceil(totalItems / pagination.value.pageSize)
 
     if (page.value > Math.max(1, totalPages)) {
       page.value = Math.max(1, totalPages)
@@ -142,7 +146,7 @@ export const useLibraryDashboardStore = defineStore('library-dashboard', () => {
       ...pagination.value,
       totalItems,
       totalPages,
-      hasMore: page.value < totalPages
+      hasMore: pagination.value.perShelf ? pagination.value.hasMore : page.value < totalPages
     }
   }
 

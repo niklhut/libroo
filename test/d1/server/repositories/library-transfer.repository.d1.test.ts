@@ -1,3 +1,7 @@
+import { CanonicalBookEnrichmentRepository, CanonicalBookEnrichmentRepositoryLive } from '../../../../server/repositories/canonical-book-enrichment.repository'
+import { BookEnrichmentRepository, BookEnrichmentRepositoryLive } from '../../../../server/repositories/book-enrichment.repository'
+import canonicalEnrichmentMigration from '../../../../server/db/migrations/sqlite/0016_canonical_book_enrichment.sql?raw'
+import { BookRepository, BookRepositoryLive } from '../../../../server/repositories/book.repository'
 /// <reference types="@cloudflare/vitest-plugin" />
 
 import { env } from 'cloudflare:workers'
@@ -49,6 +53,64 @@ describe('LibraryTransferRepository.importRecords on D1', () => {
       await env.DB.prepare(`DELETE FROM ${table}`).run()
     }
     await seedUser(db)
+  })
+
+  it('pages every matching shelf independently and excludes removed and other-user records', async () => {
+    const records = [
+      ...Array.from({ length: 20 }, (_, i) => importRecord({ title: `Alpha ${String(i).padStart(2, '0')}`, locationPath: 'Alpha' })),
+      ...Array.from({ length: 2 }, (_, i) => importRecord({ title: `Beta ${i}`, locationPath: 'Beta', tags: ['Preview'] })),
+      importRecord({ title: 'Unlocated', locationPath: null })
+    ]
+    await importRecords(records, 'csv')
+    const alpha = await db.select({ id: userBooks.id }).from(userBooks).innerJoin(books, eq(books.id, userBooks.bookId)).where(eq(books.title, 'Alpha 00'))
+    await db.update(userBooks).set({ removedAt: new Date() }).where(eq(userBooks.id, alpha[0]!.id))
+    const now = new Date()
+    await db.insert(user).values({ id: 'other-shelf-user', name: 'Other', email: 'other-shelf@example.com', emailVerified: true, createdAt: now, updatedAt: now })
+    const other = await db.select({ id: userBooks.id }).from(userBooks).innerJoin(books, eq(books.id, userBooks.bookId)).where(eq(books.title, 'Alpha 01'))
+    await db.update(userBooks).set({ userId: 'other-shelf-user', locationId: null }).where(eq(userBooks.id, other[0]!.id))
+
+    const first = await shelfLibrary(1, 3)
+    const counts = (items: typeof first.items) => Object.fromEntries(['Alpha', 'Beta', 'No location'].map(path => [path, items.filter(item => (item.location?.path ?? 'No location') === path).length]))
+    expect(counts(first.items)).toEqual({ 'Alpha': 3, 'Beta': 2, 'No location': 1 })
+    expect(first.pagination).toMatchObject({ totalItems: 21, totalPages: 6, perShelf: true, hasMore: true })
+    const alphaShelfId = first.items.find(item => item.location?.path === 'Alpha')!.location!.id
+    const alphaPage = await shelfLibrary(2, 3, undefined, true, alphaShelfId)
+    expect(alphaPage.items.map(item => item.location?.path)).toEqual(['Alpha', 'Alpha', 'Alpha'])
+    expect(alphaPage.pagination.shelfCounts).toEqual({ [alphaShelfId]: 18 })
+    const unlocated = await shelfLibrary(1, 3, undefined, true, 'none')
+    expect(unlocated.items.map(item => item.book.title)).toEqual(['Unlocated'])
+    expect(unlocated.pagination.shelfCounts).toEqual({ none: 1 })
+    const grid = await shelfLibrary(1, 3, undefined, false)
+    expect(grid.items).toHaveLength(3)
+    expect(grid.pagination).toMatchObject({ totalItems: 21, totalPages: 7 })
+    const second = await shelfLibrary(2, 3)
+    expect(counts(second.items)).toEqual({ 'Alpha': 3, 'Beta': 0, 'No location': 0 })
+    expect(second.items.some(item => first.items.some(previous => previous.id === item.id))).toBe(false)
+    const filtered = await shelfLibrary(1, 3, ['preview'])
+    expect(filtered.items.map(item => item.location?.path)).toEqual(['Beta', 'Beta'])
+    expect(filtered.pagination).toMatchObject({ totalItems: 2, totalPages: 1, hasMore: false })
+  })
+
+  it('hydrates an initial batch across more than 100 shelf books without exceeding D1 parameter limits', async () => {
+    await importRecords(Array.from({ length: 117 }, (_, i) => importRecord({ title: `Shelf preview ${i}`, locationPath: `Shelf ${Math.floor(i / 9)}`, tags: ['Preview'] })), 'csv')
+    const result = await shelfLibrary(1, 10)
+    expect(result.items).toHaveLength(117)
+    expect(new Set(result.items.map(item => item.location?.id)).size).toBe(13)
+    expect(result.items.every(item => item.book.authors.length === 1 && item.tags.includes('Preview'))).toBe(true)
+    expect(result.pagination).toMatchObject({ totalItems: 117, totalPages: 1, hasMore: false })
+    const database = db as unknown as DbServiceInterface['db']
+    const dbLayer = Layer.succeed(DbService, { db: database, executeAtomic: build => database.batch(build(database)) })
+    await Effect.runPromise(Effect.flatMap(CanonicalBookEnrichmentRepository, repository =>
+      repository.ensurePending(result.items[0]!.bookId, '9780306406157')
+    ).pipe(Effect.provide(CanonicalBookEnrichmentRepositoryLive), Effect.provide(dbLayer)))
+    const canonical = await Effect.runPromise(Effect.flatMap(CanonicalBookEnrichmentRepository, repository =>
+      repository.getStatuses(result.items.map(item => item.bookId))
+    ).pipe(Effect.provide(CanonicalBookEnrichmentRepositoryLive), Effect.provide(dbLayer)))
+    expect([...canonical]).toEqual([[result.items[0]!.bookId, 'pending']])
+    const imported = await Effect.runPromise(Effect.flatMap(BookEnrichmentRepository, repository =>
+      repository.getStatusesForUserBooks('user-1', result.items.map(item => item.bookId))
+    ).pipe(Effect.provide(BookEnrichmentRepositoryLive), Effect.provide(dbLayer)))
+    expect(imported.size).toBe(0)
   })
 
   it('exports more than 100 books with ordered authors and tags, excluding removed and other users’ records', async () => {
@@ -475,7 +537,7 @@ describe('LibraryTransferRepository.importRecords on D1', () => {
 })
 
 async function applyMigrations(database: D1Database) {
-  for (const migration of [initialMigration, termsMigration, locationRestrictMigration, libraryStateMigration, previouslyOwnedMigration, inviteEmailMigration, loanNoteMigration, borrowerSuggestionsMigration, enrichmentMigration, authFactorsMigration, recentAuthMigration, durableOpenLibraryPayloadMigration]) {
+  for (const migration of [initialMigration, termsMigration, locationRestrictMigration, libraryStateMigration, previouslyOwnedMigration, inviteEmailMigration, loanNoteMigration, borrowerSuggestionsMigration, enrichmentMigration, authFactorsMigration, recentAuthMigration, canonicalEnrichmentMigration, durableOpenLibraryPayloadMigration]) {
     for (const statement of migration.split('--> statement-breakpoint')) {
       const migrationStatement = statement.trim()
       if (migrationStatement) {
@@ -577,4 +639,14 @@ function importRecord(overrides: Partial<LibraryImportBookInput>): LibraryImport
     formatVersion: null,
     ...overrides
   }
+}
+
+async function shelfLibrary(page: number, pageSize: number, tags?: string[], perShelf = true, shelf?: string) {
+  const database = db as unknown as DbServiceInterface['db']
+  return Effect.runPromise(Effect.flatMap(BookRepository, repository => repository.getLibrary('user-1', {
+    page, pageSize, perShelf, shelf, sortBy: 'title', tags
+  })).pipe(
+    Effect.provide(BookRepositoryLive),
+    Effect.provide(Layer.succeed(DbService, { db: database, executeAtomic: build => database.batch(build(database)) }))
+  ))
 }

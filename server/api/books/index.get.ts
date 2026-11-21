@@ -7,11 +7,15 @@ const MAX_PAGE_SIZE = 100
 
 export default effectHandler((event, user) =>
   Effect.gen(function* () {
-    const filters = normalizeLibraryQuery(getQuery(event), {
+    const query = getQuery(event)
+    const filters = normalizeLibraryQuery(query, {
       defaultPageSize: DEFAULT_PAGE_SIZE,
       maxPageSize: MAX_PAGE_SIZE
     })
 
-    return yield* getUserLibrary(user.id, filters)
+    const shelfIndex = query.layout === 'shelf-index'
+    const perShelf = shelfIndex || query.layout === 'shelves'
+    const shelf = !shelfIndex && perShelf && typeof query.shelf === 'string' ? query.shelf : undefined
+    return yield* getUserLibrary(user.id, { ...filters, ...(perShelf ? { perShelf, ...(shelfIndex ? { shelfIndex } : shelf ? { shelf } : {}) } : {}) })
   })
 )

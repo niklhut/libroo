@@ -158,7 +158,7 @@ describe('optional enrichment status decoration', () => {
   it('returns library and detail payloads when enrichment status lookup fails', async () => {
     const bookRepository = {
       getLibrary: vi.fn(() => Effect.succeed({
-        items: [userBook],
+        items: [userBook, { ...userBook, id: 'user-book-2', bookId: 'book-2' }],
         pagination: { page: 1, pageSize: 20, total: 1, totalPages: 1 }
       })),
       getUserBookWithDetails: vi.fn(() => Effect.succeed(details))
@@ -170,12 +170,13 @@ describe('optional enrichment status decoration', () => {
       })))
     } as unknown as BookEnrichmentRepositoryInterface
 
+    const getStatuses = vi.fn(() => Effect.succeed(new Map()))
     const provideService = <A, E>(effect: Effect.Effect<A, E, BookService>) =>
       effect.pipe(
         Effect.provide(BookServiceLive),
         Effect.provide(Layer.succeed(BookRepository, bookRepository)),
         Effect.provide(Layer.succeed(BookEnrichmentRepository, enrichmentRepository)),
-        Effect.provide(Layer.succeed(CanonicalBookEnrichmentRepository, canonicalEnrichmentRepository)),
+        Effect.provide(Layer.succeed(CanonicalBookEnrichmentRepository, { ...canonicalEnrichmentRepository, getStatuses })),
         Effect.provide(Layer.succeed(OpenLibraryRepository, {} as OpenLibraryRepositoryInterface)),
         Effect.provide(Layer.succeed(LocationRepository, {} as LocationRepositoryInterface))
       )
@@ -190,6 +191,8 @@ describe('optional enrichment status decoration', () => {
     expect(library.items[0]?.enrichmentStatus).toBeNull()
     expect(bookDetails.enrichmentStatus).toBeNull()
     expect(enrichmentRepository.getStatusesForUserBooks).toHaveBeenCalledTimes(2)
+    expect(getStatuses).toHaveBeenCalledTimes(2)
+    expect(getStatuses).toHaveBeenNthCalledWith(1, [userBook.bookId, 'book-2'])
   })
 })
 

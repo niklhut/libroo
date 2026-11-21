@@ -1,5 +1,6 @@
+import { readIdsInBatches } from './batched-reads'
 import { Context, Effect, Layer } from 'effect'
-import { and, asc, eq, lt, lte, or, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, lt, lte, or, sql } from 'drizzle-orm'
 import { canonicalBookEnrichmentJobs } from 'hub:db:schema'
 import type { BookEnrichmentStatus } from '../../shared/types/book'
 import { DbService } from '../services/db.service'
@@ -22,6 +23,7 @@ export class CanonicalBookEnrichmentRepository extends Context.Service<
   {
     ensurePending: (bookId: string, isbn: string) => Effect.Effect<CanonicalBookEnrichmentJob, DatabaseError, DbService>
     get: (bookId: string) => Effect.Effect<CanonicalBookEnrichmentJob | null, DatabaseError, DbService>
+    getStatuses: (bookIds: string[]) => Effect.Effect<Map<string, BookEnrichmentStatus>, DatabaseError, DbService>
     listRecoverable: (now: Date, limit: number) => Effect.Effect<CanonicalBookEnrichmentJob[], DatabaseError, DbService>
     claim: (bookId: string, now: Date, leaseExpiresAt: Date) => Effect.Effect<CanonicalBookEnrichmentJob | null, DatabaseError, DbService>
     complete: (bookId: string, claimToken: string, status: 'completed' | 'no_cover' | 'not_found', error: string | null, now: Date) => Effect.Effect<void, DatabaseError, DbService>
@@ -55,6 +57,15 @@ export const CanonicalBookEnrichmentRepositoryLive = Layer.effect(
 
     return {
       get,
+      getStatuses: bookIds => Effect.tryPromise({
+        try: async () => {
+          const rows = await readIdsInBatches(dbService, bookIds, (database, chunk) => database
+            .select({ bookId: canonicalBookEnrichmentJobs.bookId, status: canonicalBookEnrichmentJobs.status })
+            .from(canonicalBookEnrichmentJobs).where(inArray(canonicalBookEnrichmentJobs.bookId, chunk)))
+          return new Map(rows.map(row => [row.bookId, row.status as BookEnrichmentStatus]))
+        },
+        catch: error => new DatabaseError({ message: `Failed to load canonical enrichment statuses: ${error}`, operation: 'canonicalEnrichment.getStatuses' })
+      }),
       listRecoverable: (now, limit) => Effect.tryPromise({
         try: async () => {
           const rows = await dbService.db.select().from(canonicalBookEnrichmentJobs).where(or(

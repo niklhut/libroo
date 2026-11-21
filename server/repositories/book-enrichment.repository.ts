@@ -1,3 +1,4 @@
+import { readIdsInBatches } from './batched-reads'
 import { Context, Effect, Layer } from 'effect'
 import { and, asc, eq, exists, inArray, isNotNull, isNull, lte, not, or, sql } from 'drizzle-orm'
 import { authors, bookAuthors, bookEnrichmentJobs, bookEnrichmentLocks, books, canonicalBookEnrichmentJobs, loans, userBooks, tags, userBookTags, bookSystemTags } from 'hub:db:schema'
@@ -569,7 +570,7 @@ export const BookEnrichmentRepositoryLive = Layer.effect(
         Effect.tryPromise({
           try: async () => {
             if (bookIds.length === 0) return new Map<string, BookEnrichmentStatus>()
-            const rows = await dbService.db
+            const rows = await readIdsInBatches(dbService, bookIds, (database, chunk) => database
               .select({
                 bookId: bookEnrichmentJobs.bookId,
                 status: bookEnrichmentJobs.status
@@ -581,9 +582,9 @@ export const BookEnrichmentRepositoryLive = Layer.effect(
               ))
               .where(and(
                 eq(bookEnrichmentJobs.userId, userId),
-                inArray(bookEnrichmentJobs.bookId, bookIds),
+                inArray(bookEnrichmentJobs.bookId, chunk),
                 isNull(userBooks.removedAt)
-              ))
+              )))
             return new Map(rows.map(row => [row.bookId, row.status as BookEnrichmentStatus]))
           },
           catch: error => new DatabaseError({

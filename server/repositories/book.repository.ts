@@ -1,3 +1,4 @@
+import { readIdsInBatches } from './batched-reads'
 import { Context, Effect, Layer, Data, Duration } from 'effect'
 import type * as HttpClient from 'effect/http/HttpClient'
 import { eq, and, count, desc, asc, inArray, or, sql, notInArray, exists, isNull, not } from 'drizzle-orm'
@@ -6,6 +7,7 @@ import { normalizeTagInput, normalizeSuggestedTags } from '../../shared/utils/ta
 import type { LibraryQueryFilters } from '../../shared/utils/library-query'
 import { escapeLocationLikePattern } from '../../shared/utils/location-hierarchy'
 import { DbService } from '../services/db.service'
+import { runtimeProfile } from '../runtime/profile.active'
 import type { AtomicDbStatement, AtomicDbStatements } from '../services/db.service'
 import { getBlob, type StorageService } from '../services/storage.service'
 import { downloadCover, lookupByISBN } from './openLibrary.repository'
@@ -123,6 +125,9 @@ export interface ManualBookRepositoryInput {
 }
 
 export interface BookLibraryFilters extends LibraryQueryFilters {
+  perShelf?: boolean
+  shelfIndex?: boolean
+  shelf?: string
   locationPath?: string
 }
 
@@ -231,8 +236,9 @@ export interface BookRepositoryInterface {
 
   getUserBookWithDetails: (
     userBookId: string,
-    userId: string
-  ) => Effect.Effect<BookDetails, BookNotFoundError | DatabaseError, DbService>
+    userId: string,
+    includeEnrichment?: boolean
+  ) => Effect.Effect<BookDetails & { jobStatus?: BookEnrichmentStatus }, BookNotFoundError | DatabaseError, DbService>
 
   promoteSuggestedTag: (
     userBookId: string,
@@ -415,7 +421,7 @@ export const BookRepositoryLive = Layer.effect(
         if (bookIds.length === 0) return new Map<string, RepositoryBookAuthor[]>()
 
         const rows = yield* Effect.tryPromise({
-          try: () => dbService.db
+          try: () => readIdsInBatches(dbService, bookIds, (database, chunk) => database
             .select({
               bookId: bookAuthors.bookId,
               id: authors.id,
@@ -423,8 +429,8 @@ export const BookRepositoryLive = Layer.effect(
             })
             .from(bookAuthors)
             .innerJoin(authors, eq(bookAuthors.authorId, authors.id))
-            .where(inArray(bookAuthors.bookId, bookIds))
-            .orderBy(asc(bookAuthors.sortOrder), asc(authors.name)),
+            .where(inArray(bookAuthors.bookId, chunk))
+            .orderBy(asc(bookAuthors.sortOrder), asc(authors.name))),
           catch: error => new DatabaseError({
             message: `Failed to load authors: ${error}`,
             operation: 'hydrateAuthorsForBookIds'
@@ -806,14 +812,14 @@ export const BookRepositoryLive = Layer.effect(
         if (userBookIds.length === 0) return new Map<string, string[]>()
 
         const rows = yield* Effect.tryPromise({
-          try: () => dbService.db
+          try: () => readIdsInBatches(dbService, userBookIds, (database, chunk) => database
             .select({
               userBookId: userBookTags.userBookId,
               tagName: tags.name
             })
             .from(userBookTags)
             .innerJoin(tags, eq(userBookTags.tagId, tags.id))
-            .where(inArray(userBookTags.userBookId, userBookIds)),
+            .where(inArray(userBookTags.userBookId, chunk))),
           catch: error => new DatabaseError({
             message: `Failed to load user tags: ${error}`,
             operation: 'hydrateUserTagsByUserBookIds'
@@ -885,7 +891,7 @@ export const BookRepositoryLive = Layer.effect(
         if (userBookIds.length === 0) return new Map<string, ActiveLoanSummary>()
 
         const rows = yield* Effect.tryPromise({
-          try: () => dbService.db
+          try: () => readIdsInBatches(dbService, userBookIds, (database, chunk) => database
             .select({
               userBookId: loans.userBookId,
               id: loans.id,
@@ -898,7 +904,7 @@ export const BookRepositoryLive = Layer.effect(
             })
             .from(loans)
             .leftJoin(user, eq(loans.borrowerUserId, user.id))
-            .where(and(inArray(loans.userBookId, userBookIds), eq(loans.status, 'active'))),
+            .where(and(inArray(loans.userBookId, chunk), eq(loans.status, 'active')))),
           catch: error => new DatabaseError({
             message: `Failed to load active loans: ${error}`,
             operation: 'hydrateActiveLoansByUserBookIds'
@@ -1548,6 +1554,9 @@ export const BookRepositoryLive = Layer.effect(
           const whereClause = and(
             eq(userBooks.userId, userId),
             isNull(userBooks.removedAt),
+            pagination.shelf === 'none'
+              ? isNull(userBooks.locationId)
+              : pagination.shelf ? eq(userBooks.locationId, pagination.shelf) : undefined,
             searchCondition,
             libraryStateCondition,
             pagination.loanStatus === 'loaned' ? activeLoanCondition : undefined,
@@ -1588,34 +1597,64 @@ export const BookRepositoryLive = Layer.effect(
 
           // Get total count
           const countResult = yield* Effect.tryPromise({
-            try: () =>
-              dbService.db
-                .select({ count: count() })
+            try: () => {
+              const query = dbService.db
+                .select({ count: count(), shelf: sql<string | null>`min(${userBooks.locationId})`, label: sql<string | null>`min(${locations.path})` })
                 .from(userBooks)
                 .innerJoin(books, eq(userBooks.bookId, books.id))
                 .leftJoin(locations, eq(userBooks.locationId, locations.id))
-                .where(whereClause),
+                .where(whereClause)
+              return pagination.perShelf ? query.groupBy(userBooks.locationId) : query
+            },
             catch: error => new DatabaseError({
               message: `Failed to count library items: ${error}`,
               operation: 'getLibrary.count'
             })
           })
 
-          const totalItems = countResult[0]?.count ?? 0
-          const totalPages = Math.ceil(totalItems / pageSize)
+          const totalItems = countResult.reduce((total, row) => total + row.count, 0)
+          const largestPageGroup = pagination.perShelf ? Math.max(0, ...countResult.map(row => row.count)) : totalItems
+          const totalPages = Math.ceil(largestPageGroup / pageSize)
+          const paginationResult = {
+            page,
+            pageSize,
+            totalItems,
+            totalPages,
+            hasMore: page < totalPages,
+            ...(pagination.perShelf ? { perShelf: true, shelfCounts: Object.fromEntries(countResult.map(row => [row.shelf ?? 'none', row.count])) } : {})
+          }
+          if (pagination.shelfIndex) {
+            return {
+              items: [],
+              pagination: {
+                ...paginationResult,
+                shelfLabels: Object.fromEntries(countResult.filter(row => row.shelf && row.label).map(row => [row.shelf!, row.label!]))
+              }
+            }
+          }
+          const ranked = dbService.db.select({
+            id: userBooks.id,
+            shelfRow: sql<number>`row_number() over (partition by ${userBooks.locationId} order by ${sql.join(orderBy, sql`, `)}, ${userBooks.id})`.as('shelf_row')
+          }).from(userBooks)
+            .innerJoin(books, eq(userBooks.bookId, books.id))
+            .leftJoin(locations, eq(userBooks.locationId, locations.id))
+            .where(whereClause).as('ranked_shelf_books')
 
           // Get paginated items
           const result = yield* Effect.tryPromise({
-            try: () =>
-              dbService.db
+            try: () => {
+              const query = dbService.db
                 .select()
                 .from(userBooks)
                 .innerJoin(books, eq(userBooks.bookId, books.id))
                 .leftJoin(locations, eq(userBooks.locationId, locations.id))
-                .where(whereClause)
-                .orderBy(...orderBy)
-                .limit(pageSize)
-                .offset(offset),
+                .where(pagination.perShelf
+                  ? inArray(userBooks.id, dbService.db.select({ id: ranked.id }).from(ranked)
+                      .where(sql`${ranked.shelfRow} > ${offset} and ${ranked.shelfRow} <= ${offset + pageSize}`))
+                  : whereClause)
+                .orderBy(...orderBy, asc(userBooks.id))
+              return pagination.perShelf ? query : query.limit(pageSize).offset(offset)
+            },
             catch: error => new DatabaseError({
               message: `Failed to get library items: ${error}`,
               operation: 'getLibrary.items'
@@ -1624,9 +1663,12 @@ export const BookRepositoryLive = Layer.effect(
 
           const userBookIds = result.map(row => row.user_books.id)
           const bookIds = result.map(row => row.books.id)
-          const userTagsByUserBook = yield* hydrateUserTagsByUserBookIds(userBookIds)
-          const authorsByBook = yield* hydrateAuthorsForBookIds(bookIds)
-          const activeLoansByUserBook = yield* hydrateActiveLoansByUserBookIds(userBookIds)
+          // Self-hosted libSQL uses transactions for large ID batches.
+          const [userTagsByUserBook, authorsByBook, activeLoansByUserBook] = yield* Effect.all([
+            hydrateUserTagsByUserBookIds(userBookIds),
+            hydrateAuthorsForBookIds(bookIds),
+            hydrateActiveLoansByUserBookIds(userBookIds)
+          ], { concurrency: runtimeProfile === 'cloudflare' ? 3 : 1 })
 
           const items = result.map(row => ({
             id: row.user_books.id,
@@ -1640,16 +1682,7 @@ export const BookRepositoryLive = Layer.effect(
             activeLoan: activeLoansByUserBook.get(row.user_books.id) ?? null
           }))
 
-          return {
-            items,
-            pagination: {
-              page,
-              pageSize,
-              totalItems,
-              totalPages,
-              hasMore: page < totalPages
-            }
-          }
+          return { items, pagination: paginationResult }
         }),
 
       listTags: userId =>

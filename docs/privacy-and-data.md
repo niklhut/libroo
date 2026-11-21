@@ -127,3 +127,9 @@ Key retention nuances:
 - Admin audit rows survive user deletion with actor/target foreign keys nulled.
 - Shared Open Library metadata can remain after account deletion because it is shared catalog data.
 - Backups can retain deleted data until the operator's retention window expires.
+
+### Library layout
+
+The library offers cover shelves grouped by location and a grid view. The first shelf request returns headings and counts for every non-empty shelf, including books without a location. The app loads each shelf’s cards as it approaches the viewport. Filters apply before grouping. Swipe a shelf or use its arrows to browse loaded books. Grid and shelf pages are cached separately. Counts refer to loaded results. Reaching the end of a shelf loads its next batch and advances to the first new book. Search results appear in the grid. Tags are clickable filters.
+
+The `libroo-library-layout` first-party preference cookie remembers the chosen layout in the current browser; it contains only `shelves` or `grid`, not book or account data. Coverless books use local title-and-author jackets and do not trigger additional external requests.
